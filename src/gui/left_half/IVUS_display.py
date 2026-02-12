@@ -88,10 +88,9 @@ class IVUSDisplay(QGraphicsView):
         self.contour_drawn: bool = False
         self.full_contours: dict = {}
 
-        self.current_spline: Spline | Tuple[Spline, Spline] = None  # entire contour (not only knotpoints), needed for elliptic ratio
-        self.lumen_spline: Spline | Tuple[Spline, Spline] = None
-        self.new_spline: Spline | Tuple[Spline, Spline] = None
-        self.current_geometry: list[SplineGeometry] = []
+        self.current_spline: Spline = None  # entire contour (not only knotpoints), needed for elliptic ratio
+        self.lumen_spline: Spline = None
+        self.new_spline: Spline = None
 
         self.active_point: Point = None
         self.active_point_index: int = None
@@ -99,7 +98,7 @@ class IVUSDisplay(QGraphicsView):
         self.measure_colors = self.main_window.measure_colors
         self.reference_mode: bool = False
         self.active_contour_type: ContourType = ContourType.LUMEN
-        self.split_index_dict: dict = {}
+        self.active_end_coords_flag = True # Flag to switch, which point double click sets
 
         self.initial_window_level = 128  # window level is the center which determines the brightness of the image
         self.initial_window_width = 256  # window width is the range of pixel values that are displayed
@@ -207,6 +206,8 @@ class IVUSDisplay(QGraphicsView):
                     self.main_window.data[key] = [[] for _ in range(2)]
                     self.main_window.data[key][0] = [[] for _ in range(num_frames)]
                     self.main_window.data[key][1] = [[] for _ in range(num_frames)]
+            self.main_window.data[f"{key}_start"] = [None] * num_frames # initialize start/end point storage for all contour types
+            self.main_window.data[f"{key}_end"]   = [None] * num_frames
 
     def _build_spline_from_contour(self, num_frames):
         """
@@ -286,6 +287,8 @@ class IVUSDisplay(QGraphicsView):
             if nframes:
                 self.main_window.data[key][0] = [[] for _ in range(nframes)]
                 self.main_window.data[key][1] = [[] for _ in range(nframes)]
+            self.main_window.data[f"{key}_end"]   = [None] * nframes
+            self.main_window.data[f"{key}_end"]   = [None] * nframes
 
     def display_image(self, update_image=False, update_contours=False, update_phase=False):
         image_types = (QGraphicsPixmapItem, Marker)
@@ -718,12 +721,20 @@ class IVUSDisplay(QGraphicsView):
         color = cfg.color if cfg else self.color_contour
         alpha = cfg.alpha if cfg else self.alpha_contour
 
+        key = self.contour_key(ct)
+        num_frames = len(self.main_window.data.get(f"{key}_start", []))
+        start_coords = self.main_window.data.get(f"{key}_start", [None]*num_frames)[self.frame]
+        end_coords   = self.main_window.data.get(f"{key}_end",   [None]*num_frames)[self.frame]
+
+        if start_coords is None and lumen_x:
+            start_coords = (lumen_x[0], lumen_y[0])
+
         geometry = SplineGeometry(
             lumen_x, 
             lumen_y, 
             self.n_points_contour, 
-            (lumen_x[0], lumen_y[0]), 
-            None
+            start_coords, 
+            end_coords,
         )
         geometry.interpolate()
 
@@ -827,11 +838,12 @@ class IVUSDisplay(QGraphicsView):
             cfg = self.contour_configs[self.active_contour_type]
             start_coords = (xs[0], ys[0])
             geometry = SplineGeometry(
-                xs,
-                ys,
-                self.n_points_contour,
-                start_coords,
-                None,
+                knot_points_x=xs,
+                knot_points_y=ys,
+                n_interpolated_points=self.n_points_contour,
+                start_coords=start_coords,
+                end_coords=None,
+                is_closed=True,
             )
             self.new_spline = Spline(
                 geometry, cfg.color, self.contour_thickness, cfg.alpha
@@ -841,7 +853,6 @@ class IVUSDisplay(QGraphicsView):
         elif self.new_spline:
             self.new_spline.geometry.knot_points_x = xs
             self.new_spline.geometry.knot_points_y = ys
-            self.new_spline.geometry.start_coords = (xs[0], ys[0])
             self.new_spline._rebuild_path()
 
     def _should_close_contour(self, current_pos) -> bool:
@@ -852,7 +863,7 @@ class IVUSDisplay(QGraphicsView):
             dist = math.hypot(current_pos.x() - start_x, current_pos.y() - start_y)
             return dist < 20
 
-    def _close_current_spline(self):
+    def _close_current_spline(self, is_closed: bool = True):
         """Close the current contour and save it."""
         if self.new_spline is not None:
             downsampled = downsample(
@@ -1002,32 +1013,33 @@ class IVUSDisplay(QGraphicsView):
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            if self.contour_mode and self.new_spline is not None:
-                # print("IVUSDisplay data:", self)
-                # print(f"Frame: {self.frame}")
-                # print(f"Image size: {self.image_size}")
-                # print(f"Scaling factor: {self.scaling_factor}")
-                # print(f"Active contour type: {self.active_contour_type}")
-                # print(f"Contour mode: {self.contour_mode}")
-                # print(f"Contour drawn: {self.contour_drawn}")
-                # print(f"Points to draw: {[(p.get_coords()) for p in self.points_to_draw]}")
-                # print(f"Contour points: {[(p.get_coords()) for p in self.contour_points]}")
-                # print(f"Active point: {self.active_point.get_coords() if self.active_point else None}")
-                # print(f"Active point index: {self.active_point_index}")
-                # print(f"Current spline: {self.current_spline}")
-                # print(f"New spline: {self.new_spline}")
-                # print(f"Lumen spline: {self.lumen_spline}")
-                # print(f"Full contours: {self.full_contours}")
-                # print(f"Window level: {self.window_level}, Window width: {self.window_width}")
-                # print(f"Measure index: {self.measure_index}")
-                # print(f"Reference mode: {self.reference_mode}")
+            if not self.contour_mode:
                 pos = self.mapToScene(event.pos())
-                self.new_spline.geometry.end_coords = (pos.x(), pos.y())
-                self.new_spline.update(pos, len(self.points_to_draw) - 1, len(self.points_to_draw) - 1)
-                self._close_current_spline()
-                print(self.new_spline.geometry)
+                if self.current_spline and self.current_spline.on_path(pos) is not None:
+                    
+                    self.active_end_coords_flag = not self.active_end_coords_flag
+                    key = self.contour_key()
+                    self.ensure_main_window_contour_structure(key)
+                    if self.active_end_coords_flag:
+                        self.current_spline.geometry.end_coords = (pos.x(), pos.y())
+                        self.main_window.data[f"{key}_end"][self.frame] = (pos.x(), pos.y())
+                        if self.active_contour_type == ContourType.LUMEN:
+                            self.lumen_spline.geometry.end_coords = (pos.x(), pos.y())
+                        if self.new_spline is not None:
+                            self.new_spline.geometry.end_coords = (pos.x(), pos.y())
+                    else:
+                        self.current_spline.geometry.start_coords = (pos.x(), pos.y())
+                        self.main_window.data[f"{key}_start"][self.frame] = (pos.x(), pos.y())
+                        if self.active_contour_type == ContourType.LUMEN:
+                            self.lumen_spline.geometry.start_coords = (pos.x(), pos.y())
+                        if self.new_spline is not None:
+                            self.new_spline.geometry.start_coords = (pos.x(), pos.y())
+                    print(f"Current spline: {self.current_spline}")
+                    print(f"Lumen spline: {self.lumen_spline}")
+                    print(f"New spline: {self.new_spline}")
+                    print(f"Contour Mode: {self.contour_mode}")
+                    print(f"End coords flag: {self.active_end_coords_flag}")
+                    print(f"Main window data: {self.main_window.data}")
             else:
-                print("Active Point:", self.active_point)
-                print("Active Point Index:", self.active_point_index)
-                print("Main window data:", self.main_window.data)
                 pass
+        super().mouseDoubleClickEvent(event)

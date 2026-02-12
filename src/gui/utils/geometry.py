@@ -30,6 +30,14 @@ class SplineGeometry:
             raise ValueError("X and Y knot points must have same length")
         if self.is_closed and len(self.knot_points_x) > 0:
             self._ensure_closed()
+    
+    def __str__(self):
+        return (f"SplineGeometry(knot_points_x={self.knot_points_x}, "
+                f"knot_points_y={self.knot_points_y}, "
+                f"n_interpolated_points={self.n_interpolated_points}, "
+                f"start_coords={self.start_coords}, "
+                f"end_coords={self.end_coords}, "
+                f"is_closed={self.is_closed})")
 
     def _ensure_start_end_coords(self):
         """Ensure start and end coordinates are included as knot poitns if specified."""
@@ -102,6 +110,11 @@ class SplineGeometry:
         
     def insert_point(self, x: float, y: float, insert_idx: Optional[int] = None) -> int:
         """Insert a new point into the spline"""
+        is_was_closed = self.is_closed and len(self.knot_points_x) > 1
+        if is_was_closed:
+            self.knot_points_x.pop()
+            self.knot_points_y.pop()
+
         if insert_idx is None:
             insert_idx = len(self.knot_points_x)
 
@@ -132,19 +145,24 @@ class SplineGeometry:
         return None
     
     def find_best_insertion_index(self, contour_index: int,
-                                  interpolated_x: np.ndarray,
-                                  interpolated_y: np.ndarray) -> int:
+                                interpolated_x: np.ndarray,
+                                interpolated_y: np.ndarray) -> int:
         """Find the best index to insert a new point based on contour position."""
         if not self.knot_points_x:
             return 0
         
+        # Slice off the last point if closed to avoid duplicate-index confusion
+        kx = self.knot_points_x[:-1]
+        ky = self.knot_points_y[:-1]
+        
         path_indices = []
-        for i in range(len(self.knot_points_x)):
-            knot_x, knot_y = self.knot_points_x[i], self.knot_points_y[i]
-            distances = np.sqrt((knot_x - interpolated_x) ** 2 + (knot_y - interpolated_y) ** 2)
+        for i in range(len(kx)):
+            distances = np.sqrt((kx[i] - interpolated_x) ** 2 + (ky[i] - interpolated_y) ** 2)
             path_indices.append(np.argmin(distances))
         
-        return bisect.bisect_left(path_indices, contour_index) # bisect keeps the order
+        # Find position using bisect
+        idx = bisect.bisect_left(path_indices, contour_index)
+        return idx
 
     def scale(self, factor: float) -> 'SplineGeometry':
         """Return a scaled version of the spline."""
@@ -197,7 +215,25 @@ class SplineGeometry:
                 new_y.pop()
 
         return SplineGeometry(new_x, new_y, None, None, self.n_interpolated_points, is_closed=close_final)
-    
+
+    def get_split_interpolated_points(self) -> Tuple[Tuple[np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray]]:
+        """
+        Returns ((main_x, main_y), (tail_x, tail_y)) split at the end_coords
+        """
+        full_x, full_y = self.interpolate()
+        if self.end_coords is None:
+            return (full_x, full_y), (np.array([]), np.array([]))
+
+        distances = np.sqrt(
+            (full_x - self.end_coords[0])**2 + 
+            (full_y - self.end_coords[1])**2
+        )
+        split_idx = np.argmin(distances)
+
+        main_segment = (full_x[:split_idx + 1], full_y[:split_idx + 1])
+        tail_segment = (full_x[split_idx:], full_y[split_idx:])
+        
+        return main_segment, tail_segment
 
 class Point(QGraphicsEllipseItem):
     """Qt-specific point drawing class - only handles Qt interaction"""
@@ -253,18 +289,25 @@ class Spline(QGraphicsPathItem):
                  geometry: SplineGeometry, 
                  color: Any = "blue", 
                  line_thickness: int = 1, 
-                 transparency: int = 255, 
-                 dashed: bool = False):
+                 transparency: int = 255):
         super().__init__()
         self.geometry = geometry
-        self.dashed = dashed
         
-        pen = get_qt_pen(color, line_thickness, transparency)
-        if self.dashed:
-            pen.setStyle(Qt.PenStyle.DashLine)
-        self.setPen(pen)
+        self.main_pen = get_qt_pen(color, line_thickness, transparency)
+        self.setPen(self.main_pen)
+
+        self.tail_item = QGraphicsPathItem(self) 
+        self.tail_pen = get_qt_pen(color, line_thickness, transparency)
+        self.tail_pen.setStyle(Qt.PenStyle.DotLine)
+        self.tail_item.setPen(self.tail_pen)
         
         self._rebuild_path()
+
+    def __str__(self):
+        return (f"Spline(geometry={self.geometry}, "
+                f"color={self.main_pen.color().name()}, "
+                f"line_thickness={self.main_pen.width()}, "
+                f"transparency={self.main_pen.color().alpha()})")
 
     @property
     def full_contours(self) -> Tuple[np.ndarray, np.ndarray]:
@@ -296,22 +339,35 @@ class Spline(QGraphicsPathItem):
         self.setPen(pen)
 
     def _rebuild_path(self):
-        """Internal: Rebuild Qt path from the geometry object"""
-        self.path = QPainterPath()
-        
-        interpolated_x, interpolated_y = self.geometry.interpolate()
-        
-        if len(interpolated_x) > 0:
-            start_point = QPointF(interpolated_x[0], interpolated_y[0])
-            self.path.moveTo(start_point)
+            """Internal: Rebuild Qt path from the geometry object with dotted 'closure' logic."""
+            # 1. Get the split interpolated points
+            # If end_coords exist, main_seg is start->end, tail_seg is end->start
+            main_seg, tail_seg = self.geometry.get_split_interpolated_points()
             
-            for i in range(1, len(interpolated_x)):
-                self.path.lineTo(interpolated_x[i], interpolated_y[i])
+            # --- Handle Main Path (Solid) ---
+            main_path = QPainterPath()
+            if len(main_seg[0]) > 0:
+                main_path.moveTo(QPointF(main_seg[0][0], main_seg[1][0]))
+                for i in range(1, len(main_seg[0])):
+                    main_path.lineTo(QPointF(main_seg[0][i], main_seg[1][i]))
             
-            if self.geometry.is_closed:
-                self.path.closeSubpath()
-            
-            self.setPath(self.path)
+            self.setPath(main_path)
+
+            tail_path = QPainterPath()
+            # Only draw dotted line if we have a tail AND the geometry is meant to be closed
+            if self.geometry.is_closed and len(tail_seg[0]) > 1:
+                tail_path.moveTo(QPointF(tail_seg[0][0], tail_seg[1][0]))
+                for i in range(1, len(tail_seg[0])):
+                    tail_path.lineTo(QPointF(tail_seg[0][i], tail_seg[1][i]))
+                
+                # If the geometry says it's closed but the tail doesn't quite reach 
+                # the start, we can force a closeSubpath or a lineTo start_coords
+                tail_path.lineTo(QPointF(main_seg[0][0], main_seg[1][0]))
+                
+                self.tail_item.setPath(tail_path)
+                self.tail_item.setVisible(True)
+            else:
+                self.tail_item.setVisible(False)
 
     def update(self, pos: QPointF, index: int, path_index: Optional[int] = None) -> int:
         """
