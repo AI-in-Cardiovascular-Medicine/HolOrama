@@ -321,6 +321,7 @@ class Spline(QGraphicsPathItem):
         if path_index is not None:
             # Adding a new point
             interpolated_x, interpolated_y = self.geometry.interpolate()
+            self.geometry._ensure_start_end_coords()
             new_idx = self.geometry.insert_point(pos.x(), pos.y(), 
                         self.geometry.find_best_insertion_index(path_index, interpolated_x, interpolated_y))
             self._rebuild_path()

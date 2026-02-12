@@ -13,7 +13,6 @@ from PyQt6.QtGui import QPixmap, QImage, QColor, QFont, QPen
 from shapely.geometry import Polygon
 
 from gui.utils.geometry import Point, Spline, SplineGeometry, get_qt_pen
-# from gui.utils.geometry import Point, Spline, get_qt_pen
 from gui.right_half.longitudinal_view import Marker
 from report.report import compute_polygon_metrics, farthest_points, closest_points
 from segmentation.segment import downsample
@@ -1003,11 +1002,30 @@ class IVUSDisplay(QGraphicsView):
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            if self.contour_mode:
-                print("Active Point:", self.active_point)
-                print("Active Point Index:", self.active_point_index)
-                print("Main window data:", self.main_window.data)
+            if self.contour_mode and self.new_spline is not None:
+                # print("IVUSDisplay data:", self)
+                # print(f"Frame: {self.frame}")
+                # print(f"Image size: {self.image_size}")
+                # print(f"Scaling factor: {self.scaling_factor}")
+                # print(f"Active contour type: {self.active_contour_type}")
+                # print(f"Contour mode: {self.contour_mode}")
+                # print(f"Contour drawn: {self.contour_drawn}")
+                # print(f"Points to draw: {[(p.get_coords()) for p in self.points_to_draw]}")
+                # print(f"Contour points: {[(p.get_coords()) for p in self.contour_points]}")
+                # print(f"Active point: {self.active_point.get_coords() if self.active_point else None}")
+                # print(f"Active point index: {self.active_point_index}")
+                # print(f"Current spline: {self.current_spline}")
+                # print(f"New spline: {self.new_spline}")
+                # print(f"Lumen spline: {self.lumen_spline}")
+                # print(f"Full contours: {self.full_contours}")
+                # print(f"Window level: {self.window_level}, Window width: {self.window_width}")
+                # print(f"Measure index: {self.measure_index}")
+                # print(f"Reference mode: {self.reference_mode}")
+                pos = self.mapToScene(event.pos())
+                self.new_spline.geometry.end_coords = (pos.x(), pos.y())
+                self.new_spline.update(pos, len(self.points_to_draw) - 1, len(self.points_to_draw) - 1)
                 self._close_current_spline()
+                print(self.new_spline.geometry)
             else:
                 print("Active Point:", self.active_point)
                 print("Active Point Index:", self.active_point_index)
