@@ -238,13 +238,14 @@ class SplineGeometry:
 class Point(QGraphicsEllipseItem):
     """Qt-specific point drawing class - only handles Qt interaction"""
     
-    def __init__(self, pos, line_thickness=1, point_radius=10, color=None, transparency=255):
+    def __init__(self, pos, line_thickness=1, point_radius=10, index=0, color=None, transparency=255):
         super().__init__()
         self.line_thickness = line_thickness
         self.point_radius = point_radius
         self.transparency = transparency
         
         self.x, self.y = pos[0], pos[1]
+        self.index = index
         
         self.default_color = get_qt_pen(color, line_thickness, transparency)
         self.setPen(self.default_color)

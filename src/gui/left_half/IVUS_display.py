@@ -693,7 +693,7 @@ class IVUSDisplay(QGraphicsView):
         # lumen
         lumen = self._get_contour_data(ContourType.LUMEN)
         if lumen and lumen[0][self.frame]:
-            self.draw_contour(lumen, contour_type=ContourType.LUMEN,
+            self._draw_contour(lumen, contour_type=ContourType.LUMEN,
                             set_current=(self.active_contour_type == ContourType.LUMEN))
         else:
             self.lumen_spline = None
@@ -707,9 +707,9 @@ class IVUSDisplay(QGraphicsView):
                 continue
             data = self._get_contour_data(ct)
             if data and data[0][self.frame]:
-                self.draw_contour(data, contour_type=ct, set_current=(ct == self.active_contour_type))
+                self._draw_contour(data, contour_type=ct, set_current=(ct == self.active_contour_type))
 
-    def draw_contour(self, contour_data, contour_type: ContourType = None, set_current: bool = False):
+    def _draw_contour(self, contour_data, contour_type: ContourType = None, set_current: bool = False):
         """
         Draw contour_data for the specified contour_type.
         - If set_current is True, this spline becomes self.current_spline (editing target).
