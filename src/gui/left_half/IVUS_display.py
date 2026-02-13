@@ -24,6 +24,12 @@ class ContourType(Enum):
     CALCIUM = "calcium"
     BRANCH = "branch"
 
+class SegmentationTool(Enum):
+    CLOSED_SPLINE = "closed_spline"
+    OPEN_SPLINE = "open_spline"
+    BRUSH = "brush"
+    LINE = "line"
+    RECTANGLE = "rectangle"
 
 @dataclass
 class ContourConfig:
@@ -287,7 +293,7 @@ class IVUSDisplay(QGraphicsView):
             if nframes:
                 self.main_window.data[key][0] = [[] for _ in range(nframes)]
                 self.main_window.data[key][1] = [[] for _ in range(nframes)]
-            self.main_window.data[f"{key}_end"]   = [None] * nframes
+            self.main_window.data[f"{key}_start"]   = [None] * nframes
             self.main_window.data[f"{key}_end"]   = [None] * nframes
 
     def display_image(self, update_image=False, update_contours=False, update_phase=False):
