@@ -21,7 +21,6 @@ class MetricsMixin:
             if unscaled_lumen is None:
                 return
             
-            # 1. Unpack the tuple of arrays
             try:
                 x, y = unscaled_lumen
                 # Ensure we have valid arrays and they match in length
@@ -35,7 +34,6 @@ class MetricsMixin:
                 logger.warning("unscaled_lumen is not in the expected (x_coords, y_coords) format.")
                 return
 
-            # 2. Create the Polygon directly from the zipped arrays
             # list(zip(x, y)) converts ( [x1, x2], [y1, y2] ) -> [ (x1, y1), (x2, y2) ]
             poly = Polygon(list(zip(x, y)))
 
@@ -47,7 +45,6 @@ class MetricsMixin:
             longest_d, far_x, far_y = farthest_points(self.main_window, poly.exterior.coords, self.frame)
             shortest_d, close_x, close_y = closest_points(self.main_window, poly, self.frame)
             
-            # Pass unscaled_eem (which is also a tuple of arrays) to the helper
             eem_area, pct = self.compute_eem_and_percent_stenosis(self.frame, lumen_area, unscaled_eem)
 
             if not self.main_window.hide_special_points:

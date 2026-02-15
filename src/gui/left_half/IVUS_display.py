@@ -9,13 +9,11 @@ import numpy as np
 from loguru import logger
 from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsTextItem
 from PyQt6.QtCore import Qt, QLineF, QPointF
-from PyQt6.QtGui import QPixmap, QImage, QColor, QFont, QPen
-from shapely.geometry import Polygon
+from PyQt6.QtGui import QPixmap, QImage
 
 from gui.utils.geometry import Point, Spline, SplineGeometry, get_qt_pen
 from gui.utils.metrics import MetricsMixin
 from gui.right_half.longitudinal_view import Marker
-from report.report import compute_polygon_metrics, farthest_points, closest_points
 from segmentation.segment import downsample
 
 

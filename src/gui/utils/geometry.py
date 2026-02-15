@@ -184,62 +184,7 @@ class SplineGeometry:
         else:
             return ([x / scaling_factor for x in self.knot_points_x],
                 [y / scaling_factor for y in self.knot_points_y])
-    
-    def split_at_two_indices(self, idx1: int, idx2: int) -> Tuple['SplineGeometry', 'SplineGeometry']:
-        """Splits a spline into two separate open sections, handling closed-loop redundancy."""
-        i, j = sorted([idx1, idx2])
-        
-        # If closed, the last point is a duplicate of the first.
-        kx = self.knot_points_x[:-1] if self.is_closed else self.knot_points_x
-        ky = self.knot_points_y[:-1] if self.is_closed else self.knot_points_y
-        
-        # inner segment
-        x1, y1 = kx[i : j+1], ky[i : j+1]
-        
-        # outer segment
-        # Note the +1 on the end slice to ensure the segments overlap at the knots
-        x2 = kx[j:] + kx[:i+1]
-        y2 = ky[j:] + ky[:i+1]
 
-        return (
-            SplineGeometry(x1, y1, None, None, self.n_interpolated_points, is_closed=False, dashed=False),
-            SplineGeometry(x2, y2, None, None, self.n_interpolated_points, is_closed=False, dashed=True)
-        )
-
-    def stitch_with(self, other: 'SplineGeometry', close_final: bool = True) -> 'SplineGeometry':
-        """Stitches two splines and cleans up the junction points."""
-        new_x = self.knot_points_x + other.knot_points_x[1:]
-        new_y = self.knot_points_y + other.knot_points_y[1:]
-        
-        # If we are closing it, the last point is already a duplicate of the first 
-        # because of the way split_at_two_indices wraps. 
-        # SplineGeometry.__post_init__ will call _ensure_closed, so we don't want 
-        # TWO duplicates at the end. We strip one here.
-        if close_final and len(new_x) > 1:
-            if new_x[0] == new_x[-1] and new_y[0] == new_y[-1]:
-                new_x.pop()
-                new_y.pop()
-
-        return SplineGeometry(new_x, new_y, None, None, self.n_interpolated_points, is_closed=close_final)
-
-    def get_split_interpolated_points(self) -> Tuple[Tuple[np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray]]:
-        """
-        Returns ((main_x, main_y), (tail_x, tail_y)) split at the end_coords
-        """
-        full_x, full_y = self.interpolate()
-        if self.end_coords is None:
-            return (full_x, full_y), (np.array([]), np.array([]))
-
-        distances = np.sqrt(
-            (full_x - self.end_coords[0])**2 + 
-            (full_y - self.end_coords[1])**2
-        )
-        split_idx = np.argmin(distances)
-
-        main_segment = (full_x[:split_idx + 1], full_y[:split_idx + 1])
-        tail_segment = (full_x[split_idx:], full_y[split_idx:])
-        
-        return main_segment, tail_segment
 
 class Point(QGraphicsEllipseItem):
     """Qt-specific point drawing class - only handles Qt interaction"""
