@@ -8,7 +8,6 @@ def new_contour(main_window, contour_type: ContourType):
     
     main_window.display.set_active_contour_type(contour_type)
     key = contour_type.value
-    main_window.display.ensure_main_window_contour_structure(key)
 
     xlist = main_window.data[key][0][main_window.display.frame] or []
     ylist = main_window.data[key][1][main_window.display.frame] or []

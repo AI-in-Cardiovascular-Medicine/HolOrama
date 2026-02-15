@@ -138,7 +138,6 @@ def remove_contours(main_window):
             main_window.status_bar.showMessage('Removing contours...')
             lower_limit, upper_limit = dialog.getInputs()
             key = main_window.display.contour_key()
-            main_window.display.ensure_main_window_contour_structure(key)
             for frame in range(lower_limit, upper_limit):
                 main_window.data[key][0][frame] = []
                 main_window.data[key][1][frame] = []
@@ -287,7 +286,6 @@ def stop_all(main_window):
 def delete_contour(main_window):
     if main_window.image_displayed:
         key = main_window.display.contour_key()
-        main_window.display.ensure_main_window_contour_structure(key)
 
         if not hasattr(main_window, 'tmp_contours'):
             main_window.tmp_contours = {}
@@ -320,7 +318,6 @@ def undo_delete(main_window):
         key = main_window.display.contour_key()
         if hasattr(main_window, 'tmp_contours') and key in main_window.tmp_contours:
             xlist, ylist = main_window.tmp_contours.pop(key)
-            main_window.display.ensure_main_window_contour_structure(key)
             
             frame = main_window.display.frame
             contour_data = main_window.data[key]

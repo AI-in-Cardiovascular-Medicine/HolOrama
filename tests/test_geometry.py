@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from gui.utils.geometry_py import SplineGeometry
+from gui.utils.geometry import SplineGeometry
 
 class TestSplineSplitting:
     

@@ -24,7 +24,10 @@ class LongitudinalView(QGraphicsView):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setScene(self.graphics_scene)
 
-    def set_data(self, images, contours):
+    def set_data(
+            self, 
+            images, 
+            contours):
         self.graphics_scene.clear()
         self.num_frames = images.shape[0]
         self.image_height = images.shape[1]

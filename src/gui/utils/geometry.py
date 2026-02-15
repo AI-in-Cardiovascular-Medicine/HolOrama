@@ -30,6 +30,7 @@ class SplineGeometry:
             raise ValueError("X and Y knot points must have same length")
         if self.is_closed and len(self.knot_points_x) > 0:
             self._ensure_closed()
+            self.interpolate()
     
     def __str__(self):
         return (f"SplineGeometry(knot_points_x={self.knot_points_x}, "
@@ -168,7 +169,12 @@ class SplineGeometry:
         """Return a scaled version of the spline."""
         scaled_x = [x * factor for x in self.knot_points_x]
         scaled_y = [y * factor for y in self.knot_points_y]
-        return SplineGeometry(scaled_x, scaled_y, self.n_interpolated_points, self.is_closed)
+        return SplineGeometry(
+            scaled_x, 
+            scaled_y, 
+            self.n_interpolated_points, 
+            self.start_coords,
+            self.end_coords)
     
     def to_unscaled(self, scaling_factor: float) -> Tuple[List[float], List[float]]:
         """Return unscaled knot points."""
@@ -319,6 +325,24 @@ class Spline(QGraphicsPathItem):
     def knot_points(self) -> Tuple[List[float], List[float]]:
         """Compatibility property for existing IVUSDisplay code"""
         return self.geometry.knot_points_x, self.geometry.knot_points_y
+    
+    @property
+    def full_points(self) -> List[Point]:
+        """Get all interpolated points as Qt Point items."""
+        x_vals, y_vals = self.geometry.interpolate()
+
+        points: List[Point] = []
+        for i, (x, y) in enumerate(zip(x_vals, y_vals)):
+            pt = Point(
+                pos=(x, y),
+                line_thickness=self.main_pen.width(),
+                index=i,
+                color=self.main_pen.color(),
+                transparency=self.main_pen.color().alpha(),
+            )
+            points.append(pt)
+
+        return points
 
     def set_geometry(self, geometry: SplineGeometry):
         """Update the underlying geometry and redraw"""

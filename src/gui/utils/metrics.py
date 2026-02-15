@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import numpy as np
 from loguru import logger
 from shapely.geometry import Polygon
@@ -15,40 +17,54 @@ class MetricsMixin:
     and UI text overlays.
     """
 
-    def _maybe_compute_metrics(self, unscaled_lumen: list[tuple[float, float]] | None = None, unscaled_eem: list[tuple[float, float]] | None = None):
-        if unscaled_lumen is None:
-            return
-        x, y = zip(*unscaled_lumen)
+    def _maybe_compute_metrics(self, unscaled_lumen: Tuple[np.ndarray, np.ndarray] | None = None, unscaled_eem: Tuple[np.ndarray, np.ndarray] | None = None):
+            if unscaled_lumen is None:
+                return
+            
+            # 1. Unpack the tuple of arrays
+            try:
+                x, y = unscaled_lumen
+                # Ensure we have valid arrays and they match in length
+                if x is None or y is None or len(x) != len(y):
+                    logger.warning("Mismatch or None in unscaled_lumen coordinates.")
+                    return
+                if len(x) < 3:
+                    # Not enough points to form a polygon
+                    return
+            except (ValueError, TypeError):
+                logger.warning("unscaled_lumen is not in the expected (x_coords, y_coords) format.")
+                return
 
-        if len(x) < 3:
-            return
+            # 2. Create the Polygon directly from the zipped arrays
+            # list(zip(x, y)) converts ( [x1, x2], [y1, y2] ) -> [ (x1, y1), (x2, y2) ]
+            poly = Polygon(list(zip(x, y)))
 
-        poly = Polygon(list(zip(x, y)))
+            if not poly.is_valid or poly.area == 0:
+                logger.warning("Invalid or zero-area polygon created. Skipping metrics.")
+                return            
 
-        if not poly.is_valid or poly.area == 0:
-            logger.warning("Invalid or zero-area polygon created. Skipping metrics.")
-            return            
+            lumen_area, lumen_circumf, _, _ = compute_polygon_metrics(self.main_window, poly, self.frame)
+            longest_d, far_x, far_y = farthest_points(self.main_window, poly.exterior.coords, self.frame)
+            shortest_d, close_x, close_y = closest_points(self.main_window, poly, self.frame)
+            
+            # Pass unscaled_eem (which is also a tuple of arrays) to the helper
+            eem_area, pct = self.compute_eem_and_percent_stenosis(self.frame, lumen_area, unscaled_eem)
 
-        lumen_area, lumen_circumf, _, _ = compute_polygon_metrics(self.main_window, poly, self.frame)
-        longest_d, far_x, far_y = farthest_points(self.main_window, poly.exterior.coords, self.frame)
-        shortest_d, close_x, close_y = closest_points(self.main_window, poly, self.frame)
-        eem_area, pct = self.compute_eem_and_percent_stenosis(self.frame, lumen_area, unscaled_eem)
+            if not self.main_window.hide_special_points:
+                pen = get_qt_pen('yellow', self.point_thickness * 2, self.alpha_contour)
+                self.graphics_scene.addLine(
+                    QLineF(far_x[0] * self.scaling_factor, far_y[0] * self.scaling_factor,
+                        far_x[1] * self.scaling_factor, far_y[1] * self.scaling_factor),
+                    pen,
+                )
+                self.graphics_scene.addLine(
+                    QLineF(close_x[0] * self.scaling_factor, close_y[0] * self.scaling_factor,
+                        close_x[1] * self.scaling_factor, close_y[1] * self.scaling_factor),
+                    pen,
+                )
 
-        if not self.main_window.hide_special_points:
-            pen = get_qt_pen('yellow', self.point_thickness * 2, self.alpha_contour)
-            self.graphics_scene.addLine(
-                QLineF(far_x[0] * self.scaling_factor, far_y[0] * self.scaling_factor,
-                       far_x[1] * self.scaling_factor, far_y[1] * self.scaling_factor),
-                pen,
-            )
-            self.graphics_scene.addLine(
-                QLineF(close_x[0] * self.scaling_factor, close_y[0] * self.scaling_factor,
-                       close_x[1] * self.scaling_factor, close_y[1] * self.scaling_factor),
-                pen,
-            )
-
-        ell = (longest_d / shortest_d) if shortest_d else 0
-        self.build_frame_metrics_text(lumen_area, lumen_circumf, ell, longest_d, shortest_d, eem_area, pct, update_phase=False)
+                ell = (longest_d / shortest_d) if shortest_d else 0
+                self.build_frame_metrics_text(lumen_area, lumen_circumf, ell, longest_d, shortest_d, eem_area, pct, update_phase=False)
 
     def _update_phase_text(self):
         code = self.main_window.data["phases"][self.frame]
@@ -77,7 +93,7 @@ class MetricsMixin:
         self.phase_text.setFont(QFont("Helvetica", int(self.image_size / 50), QFont.Weight.Bold))
         self.graphics_scene.addItem(self.phase_text)
 
-    def compute_eem_and_percent_stenosis(self, frame: int, lumen_area: float, eem_full: list[list[float]] | None = None):
+    def compute_eem_and_percent_stenosis(self, frame: int, lumen_area: float, eem_full: Tuple[float, float] | None = None):
         """
         Return (eem_area, percent_stenosis_text).
         Robust to numpy arrays and malformed data structures.
