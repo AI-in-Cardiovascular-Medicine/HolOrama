@@ -31,3 +31,10 @@ def new_reference(main_window):
         return
 
     main_window.display.start_reference()
+
+def new_angle(main_window, contour_type: ContourType):
+    if not main_window.image_displayed:
+        ErrorMessage(main_window, 'Cannot create manual angle before reading input file')
+        return
+
+    main_window.display.start_angle(contour_type)

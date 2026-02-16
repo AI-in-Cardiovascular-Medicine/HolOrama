@@ -12,7 +12,7 @@ from PyQt6.QtCore import Qt, QUrl
 from gui.popup_windows.frame_range_dialog import FrameRangeDialog
 from gui.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 from gui.popup_windows.video_player import VideoPlayer
-from gui.utils.contours_gui import new_contour, new_measure
+from gui.utils.contours_gui import new_contour, new_measure, new_angle
 from input_output.metadata import MetadataWindow
 from input_output.read_image import read_image
 from input_output.contours_io import write_contours, save_gated_images
@@ -81,6 +81,7 @@ def init_menu(main_window):
     measure_1.setShortcut('1')
     measure_2 = edit_menu.addAction('Measurement 2', partial(new_measure, main_window, index=1))
     measure_2.setShortcut('2')
+    angle_wire = edit_menu.addAction('Angle Wire Shadow', partial(new_angle, main_window, ContourType.WIRE))
 
     view_menu = main_window.menu_bar.addMenu('View')
     hide_contours_action = view_menu.addAction('Hide Contours', partial(hide_contours, main_window))
@@ -93,12 +94,6 @@ def init_menu(main_window):
     toggle_color_action = view_menu.addAction('Toggle Color', partial(toggle_color, main_window))
     toggle_color_action.setShortcut('C')
     view_menu.addSeparator()
-    filter_1 = view_menu.addAction('Apply Median Blur', partial(toggle_filter, main_window, index=0))
-    filter_1.setShortcut('3')
-    filter_2 = view_menu.addAction('Apply Gaussian Blur', partial(toggle_filter, main_window, index=1))
-    filter_2.setShortcut('4')
-    filter_3 = view_menu.addAction('Apply Bilateral Filter', partial(toggle_filter, main_window, index=2))
-    filter_3.setShortcut('5')
 
     run_menu = main_window.menu_bar.addMenu('Run')
     run_menu.addAction('Extract Diastolic and Systolic Frames', main_window.contour_based_gating)
@@ -267,15 +262,6 @@ def jiggle_frame(main_window):
         time.sleep(0.1)
         main_window.display_slider.set_value(current_frame)
         QApplication.processEvents()
-
-
-def toggle_filter(main_window, index):
-    if main_window.image_displayed:
-        if main_window.filter == index:
-            main_window.filter = None
-        else:
-            main_window.filter = index
-        main_window.display.display_image(update_image=True)
 
 
 def stop_all(main_window):

@@ -777,7 +777,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
 
     def start_reference(self):
         self.reference_mode = True
-        self.main_window.setCursor(Qt.CrossCursor)
+        self.main_window.setCursor(Qt.CursorShape.CrossCursor)
         self.main_window.data['reference'][self.frame] = None
         self.display_image(update_contours=True)
 
@@ -790,6 +790,9 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.reference_mode = False
         self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
         self.display_image(update_contours=True)
+
+    def start_angle(self, contour_type: ContourType):
+        pass
     ################################################################################################
 
     ######################
