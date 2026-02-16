@@ -268,7 +268,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             start_coords, 
             end_coords,
         )
-        geometry.interpolate()
+        _, _ = geometry.interpolate()
 
         if geometry.full_contour[0] is not None:
             knot_points = [
@@ -287,6 +287,12 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 self.graphics_scene.addItem(p)
             spline = Spline(geometry, color, thickness, alpha)
             self.graphics_scene.addItem(spline)
+
+            if geometry.start_coords and geometry.end_coords:
+                start_point = Point(start_coords, color="blue")
+                end_point = Point(end_coords, color="red")
+                self.graphics_scene.addItem(start_point)
+                self.graphics_scene.addItem(end_point)
 
             self.finalized_splines[self.contour_key(ct)] = spline
 
@@ -516,17 +522,18 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         Sets the active contour type, clears previous data for this frame,
         and switches to contour drawing mode (leaves temporary data in main_window.tmp_contours).
         """
+        print(f"receiver contour type: {contour_type}")
         if contour_type is not None:
             self.set_active_contour_type(contour_type)
 
         self.drawing_mode = True
-        self.active_contour_type = contour_type
 
         # save the current state of the contour to the tmp storage
         key = self.contour_key(contour_type)
         current_spline = self.get_current_spline()
-        current_full_contour = current_spline.geometry.full_contour
-        self.main_window.tmp_contours[key] = current_full_contour
+        if current_spline is not None:
+            current_full_contour = current_spline.geometry.full_contour
+            self.main_window.tmp_contours[key] = current_full_contour
 
         self.active_segmentation_tool = segmentation_tool if segmentation_tool else self.active_segmentation_tool
 
@@ -806,7 +813,6 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             # Store for windowing/leveling or context menus
             self.mouse_x = event.position().x()
             self.mouse_y = event.position().y()
-
         super().mousePressEvent(event)
 
     def _attempt_contour_switch(self, pos):
@@ -897,57 +903,62 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             self.window_width += (event.position().y() - self.mouse_y) * self.windowing_sensitivity
             self.display_image(update_image=True)
             self.setMouseTracking(False)
+        super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:  # for some reason event.buttons() does not work here
+        if event.button() == Qt.MouseButton.LeftButton:
             if self.active_point_index is not None:
                 self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
-                item = self.active_point
-                item.reset_color()
+                self.active_point.reset_color()
+
+                geom = self.working_spline.geometry
+                if self.active_point_index == 0 or (geom.is_closed and self.active_point_index == len(geom.knot_points_x)-1):
+                    if geom.start_coords:
+                        geom.start_coords = (geom.knot_points_x[0], geom.knot_points_y[0])
+                
+                # Check if this point matches the end_coords proximity
+                if geom.end_coords:
+                    dist = math.hypot(geom.knot_points_x[self.active_point_index] - geom.end_coords[0], 
+                                      geom.knot_points_y[self.active_point_index] - geom.end_coords[1])
+                    if dist < 1.0: # If we moved the end point knot
+                        geom.end_coords = (geom.knot_points_x[self.active_point_index], geom.knot_points_y[self.active_point_index])
 
                 key = self.contour_key(self.active_contour_type)
+                self.main_window.data[key][0][self.frame] = [p / self.scaling_factor for p in geom.knot_points_x]
+                self.main_window.data[key][1][self.frame] = [p / self.scaling_factor for p in geom.knot_points_y]
+                
+                if geom.start_coords:
+                    self.main_window.data[f"{key}_start"][self.frame] = (geom.start_coords[0]/self.scaling_factor, geom.start_coords[1]/self.scaling_factor)
+                if geom.end_coords:
+                    self.main_window.data[f"{key}_end"][self.frame] = (geom.end_coords[0]/self.scaling_factor, geom.end_coords[1]/self.scaling_factor)
 
-                self.main_window.data[key][0][self.frame] = [
-                    point / self.scaling_factor for point in self.working_spline.knot_points[0]
-                ]
-                self.main_window.data[key][1][self.frame] = [
-                    point / self.scaling_factor for point in self.working_spline.knot_points[1]
-                ]
-                contour_for_frame = self.working_spline.geometry.full_contour
                 self.display_image(update_contours=True)
-                try:
-                    self.main_window.longitudinal_view.lview_contour(self.frame, contour_for_frame, update=True)
-                except Exception as e:
-                    logger.debug(f"Could not update longitudinal view after mouse release for frame {self.frame}: {e}")
                 self.active_point_index = None
+        super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
+            print(self.active_contour_type)
             if not self.drawing_mode:
                 pos = self.mapToScene(event.pos())
                 current_spline = self.get_current_spline()
+                
                 if current_spline and current_spline.on_path(pos) is not None:
-
-                    self.active_end_coords_flag = not self.active_end_coords_flag
+                    scaled_coords = (pos.x(), pos.y())
+                    orig_coords = (pos.x() / self.scaling_factor, pos.y() / self.scaling_factor)
+                    
                     key = self.contour_key(self.active_contour_type)
+                    
                     if self.active_end_coords_flag:
-                        orig_x = pos.x() / self.scaling_factor
-                        orig_y = pos.y() / self.scaling_factor
-                        current_spline.geometry.end_coords = (orig_x, orig_y)
-                        self.main_window.data[f"{key}_end"][self.frame] = (orig_x, orig_y)
-                        if self.working_spline is not None:
-                            self.working_spline.geometry.end_coords = (orig_x, orig_y)
+                        current_spline.geometry.end_coords = scaled_coords
+                        self.main_window.data[f"{key}_end"][self.frame] = orig_coords
                     else:
-                        current_spline.geometry.start_coords = (orig_x, orig_y, orig_y)
-                        self.main_window.data[f"{key}_start"][self.frame] = (orig_x, orig_y, orig_y)
-                        if self.working_spline is not None:
-                            self.working_spline.geometry.start_coords = (orig_x, orig_y, orig_y)
-                    print(f"Current spline: {current_spline}")
-                    print(f"Lumen spline: {self.lumen_spline}")
-                    print(f"New spline: {self.working_spline}")
-                    print(f"Contour Mode: {self.contour_mode}")
-                    print(f"End coords flag: {self.active_end_coords_flag}")
-                    print(f"Main window data: {self.main_window.data}")
-            else:
-                pass
+                        current_spline.geometry.start_coords = scaled_coords
+                        self.main_window.data[f"{key}_start"][self.frame] = orig_coords
+                    
+                    self.active_end_coords_flag = not self.active_end_coords_flag
+                    
+                    current_spline.geometry._ensure_start_end_coords()
+                    current_spline._rebuild_path()
+                    self.update_display()
         super().mouseDoubleClickEvent(event)

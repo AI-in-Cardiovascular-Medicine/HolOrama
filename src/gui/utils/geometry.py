@@ -41,19 +41,35 @@ class SplineGeometry:
                 f"is_closed={self.is_closed})")
 
     def _ensure_start_end_coords(self):
-        """Ensure start and end coordinates are included as knot poitns if specified."""
+        """Sync start/end coords with existing knots. Enforces pins exactly."""
+        if not self.knot_points_x:
+            return
+
         if self.start_coords:
-            if (self.start_coords[0] not in self.knot_points_x or 
-                self.start_coords[1] not in self.knot_points_y):
-                self.knot_points_x.insert(0, self.start_coords[0])
-                self.knot_points_y.insert(0, self.start_coords[1])
+            idx = self._get_closest_knot_index(self.start_coords[0], self.start_coords[1])
+            self.knot_points_x[idx] = self.start_coords[0]
+            self.knot_points_y[idx] = self.start_coords[1]
+            # Ensure closing point matches if we moved the head
+            if self.is_closed and idx == 0:
+                self.knot_points_x[-1] = self.start_coords[0]
+                self.knot_points_y[-1] = self.start_coords[1]
 
         if self.end_coords:
-            if (self.end_coords[0] not in self.knot_points_x or 
-                self.end_coords[1] not in self.knot_points_y):
-                insert_idx = -1 if (self.is_closed and len(self.knot_points_x) > 0) else len(self.knot_points_x)
-                self.knot_points_x.insert(insert_idx, self.end_coords[0])
-                self.knot_points_y.insert(insert_idx, self.end_coords[1])
+            idx = self._get_closest_knot_index(self.end_coords[0], self.end_coords[1])
+            self.knot_points_x[idx] = self.end_coords[0]
+            self.knot_points_y[idx] = self.end_coords[1]
+            # If end is the same as start, and it's closed, update the other end too
+            if self.is_closed and (idx == 0 or idx == len(self.knot_points_x) - 1):
+                self.knot_points_x[0] = self.end_coords[0]
+                self.knot_points_x[-1] = self.end_coords[0]
+                self.knot_points_y[0] = self.end_coords[1]
+                self.knot_points_y[-1] = self.end_coords[1]
+
+    def _get_closest_knot_index(self, x: float, y: float) -> int:
+        """Helper to find which knot index is physically closest to a coordinate."""
+        distances = [np.sqrt((kx - x)**2 + (ky - y)**2) 
+                    for kx, ky in zip(self.knot_points_x, self.knot_points_y)]
+        return np.argmin(distances)
 
     def _ensure_closed(self):
         """Ensure first and last points match for closed splines."""
@@ -184,6 +200,32 @@ class SplineGeometry:
         else:
             return ([x / scaling_factor for x in self.knot_points_x],
                 [y / scaling_factor for y in self.knot_points_y])
+        
+    def get_split_interpolated_points(self):
+        """Logic: If no end_coords, the whole spline is the 'main' solid segment."""
+        full_x, full_y = self.interpolate()
+        
+        # If no end point is defined, there is no 'tail' (dotted part)
+        if self.end_coords is None:
+            return (full_x, full_y), (np.array([]), np.array([]))
+
+        # Find the index in the interpolated array closest to start and end
+        start_idx = 0
+        if self.start_coords:
+            start_idx = np.argmin(np.sqrt((full_x - self.start_coords[0])**2 + (full_y - self.start_coords[1])**2))
+            
+        end_idx = np.argmin(np.sqrt((full_x - self.end_coords[0])**2 + (full_y - self.end_coords[1])**2))
+
+        # Rotate the array so it logically begins at the start_idx
+        if self.is_closed:
+            full_x = np.roll(full_x, -start_idx)
+            full_y = np.roll(full_y, -start_idx)
+            end_idx = (end_idx - start_idx) % len(full_x)
+
+        main_seg = (full_x[:end_idx + 1], full_y[:end_idx + 1])
+        tail_seg = (full_x[end_idx:], full_y[end_idx:])
+        
+        return main_seg, tail_seg
 
 
 class Point(QGraphicsEllipseItem):
