@@ -104,6 +104,8 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.contour_thickness: int = config.display.contour_thickness
         self.point_thickness: int = config.display.point_thickness
         self.point_radius: int = config.display.point_radius
+        self.start_color: str = config.display.color_start_point
+        self.end_color: str = config.display.color_end_point
 
         self.color_contour = getattr(config.display, "color_contour", (255, 255, 255))
         self.alpha_contour = getattr(config.display, "alpha_contour", 255)  # config uses 0..255
@@ -276,10 +278,13 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 curr_x = geometry.knot_points_x[i]
                 curr_y = geometry.knot_points_y[i]
                 knot_color = color
+                brush = False
                 if start_coords and math.hypot(curr_x - start_coords[0], curr_y - start_coords[1]) < SENSITIVITY:
-                    knot_color="yellow"
+                    knot_color=self.start_color
+                    brush = True
                 if end_coords and math.hypot(curr_x - end_coords[0], curr_y - end_coords[1]) < SENSITIVITY:
-                    knot_color="red"
+                    knot_color=self.end_color
+                    brush = True
                 knot_point = Point(
                         (curr_x, curr_y),
                         self.point_thickness,
@@ -287,6 +292,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                         i,
                         knot_color,
                         alpha,
+                        brush,
                     )
                 knot_points.append(knot_point)
 
@@ -806,7 +812,17 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 self._handle_item_interaction(pos, event.pos())
 
         elif event.button() == Qt.MouseButton.RightButton:
-            # Store for windowing/leveling or context menus
+            # Check if we clicked on a knot point to delete it
+            self._attempt_contour_switch(pos)
+
+            items = self.items(event.pos())
+            point_item = next((i for i in items if isinstance(i, Point)), None)
+
+            if point_item and point_item in self.points_to_draw:
+                self._delete_point(point_item)
+                return  # Stop here so we don't trigger windowing/leveling drag
+
+            # Original windowing/leveling logic
             self.mouse_x = event.position().x()
             self.mouse_y = event.position().y()
         super().mousePressEvent(event)
@@ -880,6 +896,23 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.graphics_scene.addItem(self.active_point)
         self.active_point.update_color()
 
+    def _delete_point(self, point_item):
+        """Removes a knot point from the scene and the data model."""
+        try:
+            idx = self.points_to_draw.index(point_item)
+        except ValueError:
+            return
+
+        self.graphics_scene.removeItem(point_item)
+        self.points_to_draw.pop(idx)
+
+        key = self.contour_key(self.active_contour_type)
+        if key in self.main_window.data:
+            self.main_window.data[key][0][self.frame].pop(idx)
+            self.main_window.data[key][1][self.frame].pop(idx)
+
+        self.display_image(update_contours=True)
+
     def mouseMoveEvent(self, event):
         if event.buttons() == Qt.MouseButton.LeftButton:
             if self.active_point_index is not None:
@@ -910,9 +943,9 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 new_pos = (geom.knot_points_x[self.active_point_index],
                            geom.knot_points_y[self.active_point_index])
                 
-                if self.active_point.color == "blue":
+                if self.active_point.color == self.start_color:
                     geom.start_coords = new_pos
-                elif self.active_point.color == "red":
+                elif self.active_point.color == self.end_color:
                     geom.end_coords = new_pos
 
                 self.main_window.data[key][0][self.frame] = [p / self.scaling_factor for p in geom.knot_points_x]

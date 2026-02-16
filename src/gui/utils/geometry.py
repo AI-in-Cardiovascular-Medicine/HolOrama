@@ -230,7 +230,15 @@ class SplineGeometry:
 class Point(QGraphicsEllipseItem):
     """Qt-specific point drawing class - only handles Qt interaction"""
     
-    def __init__(self, pos, line_thickness=1, point_radius=10, index=0, color=None, transparency=255):
+    def __init__(
+            self, 
+            pos, 
+            line_thickness=1, 
+            point_radius=10, 
+            index=0, 
+            color=None, 
+            transparency=255,
+            brush: bool = False):
         super().__init__()
         self.line_thickness = line_thickness
         self.point_radius = point_radius
@@ -242,8 +250,11 @@ class Point(QGraphicsEllipseItem):
         self.default_color = get_qt_pen(color, line_thickness, transparency)
         self.setPen(self.default_color)
 
-        self.default_brush = QBrush(self.default_color.color())
-        self.setBrush(self.default_brush)
+        if brush:
+            self.default_brush = QBrush(self.default_color.color())
+            self.setBrush(self.default_brush)
+        else:
+            self.default_brush = None
 
         self._update_qt_rect()
     
@@ -277,7 +288,8 @@ class Point(QGraphicsEllipseItem):
     def reset_color(self):
         """Reset to default appearance"""
         self.setPen(self.default_color)
-        self.setBrush(self.default_brush)
+        if self.default_brush is not None:
+            self.setBrush(self.default_brush)
 
 
 class Spline(QGraphicsPathItem):
@@ -426,7 +438,6 @@ class Spline(QGraphicsPathItem):
 def get_qt_pen(color, thickness, transparency=255):
     """Create a QPen with the specified color, thickness, and transparency"""
     if isinstance(color, str):
-        # Try to get color from Qt.GlobalColor
         try:
             color_enum = getattr(Qt.GlobalColor, color.lower())
             pen_color = QColor(color_enum)
