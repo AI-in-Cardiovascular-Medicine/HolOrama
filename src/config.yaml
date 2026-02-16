@@ -24,6 +24,7 @@ display:
   color_branch: 'green' # 20 predefined colors in PyQt5 (https://doc.qt.io/qt-6/qcolor.html)
   color_start_point: 'yellow'
   color_end_point: 'red'
+  color_angle: '#ffa500'
   alpha_contour: 100 # 0-255
 
 gating:

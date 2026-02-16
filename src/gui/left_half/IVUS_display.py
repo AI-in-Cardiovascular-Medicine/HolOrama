@@ -106,6 +106,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.point_radius: int = config.display.point_radius
         self.start_color: str = config.display.color_start_point
         self.end_color: str = config.display.color_end_point
+        self.color_angle: str = config.display.color_angle
 
         self.color_contour = getattr(config.display, "color_contour", (255, 255, 255))
         self.alpha_contour = getattr(config.display, "alpha_contour", 255)  # config uses 0..255
@@ -846,7 +847,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         center_val = self.image_size / 2
         center = QPointF(center_val, center_val)
         
-        pen = get_qt_pen("#ffa500", self.point_thickness)
+        pen = get_qt_pen(self.color_angle, self.point_thickness)
 
         for pt_coords in angle_data:
             target_pt = QPointF(pt_coords[0] * self.scaling_factor, pt_coords[1] * self.scaling_factor)
@@ -862,8 +863,9 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             point_marker = Point(
                 (target_pt.x(), target_pt.y()), 
                 self.point_thickness, 
-                self.point_radius, 
-                "#ffa500"
+                self.point_radius,
+                0,
+                self.color_angle,
             )
             self.graphics_scene.addItem(point_marker)
 
