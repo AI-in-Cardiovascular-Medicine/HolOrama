@@ -383,8 +383,6 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
 
         self.display_image(update_contours=True, update_image=False, update_phase=False)
 
-    # saftey checks
-
     # image data handling methods
     def display_image(self, update_image=False, update_contours=False, update_phase=False):
         image_types = (QGraphicsPixmapItem, Marker)
@@ -737,10 +735,10 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
 
     def start_measure(self, index: int):
-        if self.contour_mode:
+        if self.drawing_mode:
             self.stop_contour()
         self.main_window.data['measures'][self.frame][index] = None
-        self.main_window.setCursor(Qt.CrossCursor)
+        self.main_window.setCursor(Qt.CursorShape.CrossCursor)
         self.measure_index = index
         self.display_image(update_contours=True)
 
@@ -848,7 +846,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             self._add_new_point_to_spline(scene_pos)
 
     def _select_existing_point(self, point_item):
-        self.main_window.setCursor(Qt.CursorShape.BlankCursor)  # remove cursor for precise contour changes
+        # self.main_window.setCursor(Qt.CursorShape.BlankCursor)  # remove cursor for precise contour changes
         # https://stackoverflow.com/questions/53627056/how-to-get-cursor-click-position-in-qgraphicsitem-coordinate-system
         try:
             self.active_point_index = self.points_to_draw.index(point_item)

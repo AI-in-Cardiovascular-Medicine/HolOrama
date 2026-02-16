@@ -2,7 +2,7 @@ import cv2
 
 import numpy as np
 from loguru import logger
-from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsLineItem
+from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsLineItem, QSizePolicy
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QImage, QColor, QPen
 
@@ -19,6 +19,10 @@ class LongitudinalView(QGraphicsView):
         self.main_window = main_window
         self.lview_contour_size = 2
         self.graphics_scene = QGraphicsScene()
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, 
+            QSizePolicy.Policy.Expanding
+        )
 
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -66,14 +70,27 @@ class LongitudinalView(QGraphicsView):
             q_format
         )
         
-        image = QGraphicsPixmapItem(QPixmap.fromImage(longitudinal_image))
-        self.graphics_scene.addItem(image)
+        pixmap_item = QGraphicsPixmapItem(QPixmap.fromImage(longitudinal_image))
+        self.graphics_scene.addItem(pixmap_item)
+
+        self.setSceneRect(pixmap_item.boundingRect())
 
         for frame, contour in enumerate(contours):
             self.lview_contour(frame, contour)
 
-        # Scale the view to fit the scene contents
-        self.fitInView(self.graphics_scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        self.stretch_to_fit()
+
+    def stretch_to_fit(self):
+        if self.graphics_scene.items():
+            self.fitInView(
+                self.sceneRect(), 
+                Qt.AspectRatioMode.IgnoreAspectRatio
+            )
+
+    def resizeEvent(self, event):
+        """Ensure the image restretches whenever the window is resized."""
+        super().resizeEvent(event)
+        self.stretch_to_fit()
 
     def update_marker(self, frame):
         for item in self.graphics_scene.items():
