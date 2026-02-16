@@ -25,13 +25,14 @@ class ContourType(Enum):
     MEASUREMENT_1 = "measurement_1"
     MEASUREMENT_2 = "measurement_2"
     REFERENCE = "reference"
+    WIRE = "wire"
 
 
 class SegmentationTool(Enum):
     CLOSED_SPLINE = "closed_spline"
     OPEN_SPLINE = "open_spline"
     BRUSH = "brush"
-    RECTANGLE = "rectangle"
+    ANGLE = "angle"
     LINE = "line"
     POINT = "point"
 
@@ -276,7 +277,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 curr_y = geometry.knot_points_y[i]
                 knot_color = color
                 if start_coords and math.hypot(curr_x - start_coords[0], curr_y - start_coords[1]) < SENSITIVITY:
-                    knot_color="blue"
+                    knot_color="yellow"
                 if end_coords and math.hypot(curr_x - end_coords[0], curr_y - end_coords[1]) < SENSITIVITY:
                     knot_color="red"
                 knot_point = Point(

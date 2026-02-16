@@ -5,7 +5,7 @@ from loguru import logger
 from scipy.interpolate import splprep, splev
 from PyQt6.QtWidgets import QGraphicsEllipseItem, QGraphicsPathItem
 from PyQt6.QtCore import Qt, QPointF
-from PyQt6.QtGui import QPen, QPainterPath, QColor
+from PyQt6.QtGui import QPen, QPainterPath, QColor, QBrush
 from dataclasses import dataclass, field
 from typing import Tuple, List, Optional, Any
 
@@ -235,13 +235,16 @@ class Point(QGraphicsEllipseItem):
         self.line_thickness = line_thickness
         self.point_radius = point_radius
         self.transparency = transparency
-        
         self.color = color
         self.x, self.y = pos[0], pos[1]
         self.index = index
         
         self.default_color = get_qt_pen(color, line_thickness, transparency)
         self.setPen(self.default_color)
+
+        self.default_brush = QBrush(self.default_color.color())
+        self.setBrush(self.default_brush)
+
         self._update_qt_rect()
     
     def get_coords(self):
@@ -274,6 +277,7 @@ class Point(QGraphicsEllipseItem):
     def reset_color(self):
         """Reset to default appearance"""
         self.setPen(self.default_color)
+        self.setBrush(self.default_brush)
 
 
 class Spline(QGraphicsPathItem):
