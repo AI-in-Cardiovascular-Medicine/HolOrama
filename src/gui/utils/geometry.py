@@ -161,25 +161,24 @@ class SplineGeometry:
             return np.argmin(distances)
         return None
     
-    def find_best_insertion_index(self, contour_index: int,
-                                interpolated_x: np.ndarray,
-                                interpolated_y: np.ndarray) -> int:
+    def _find_best_insertion_index(self, path_index: int) -> int:
         """Find the best index to insert a new point based on contour position."""
         if not self.knot_points_x:
             return 0
         
-        # Slice off the last point if closed to avoid duplicate-index confusion
-        kx = self.knot_points_x[:-1]
-        ky = self.knot_points_y[:-1]
-        
-        path_indices = []
-        for i in range(len(kx)):
-            distances = np.sqrt((kx[i] - interpolated_x) ** 2 + (ky[i] - interpolated_y) ** 2)
-            path_indices.append(np.argmin(distances))
-        
-        # Find position using bisect
-        idx = bisect.bisect_left(path_indices, contour_index)
-        return idx
+        knot_path_indices = []
+        # Use [:-1] if closed to avoid the duplicate end point confusing the search
+        search_x = self.knot_points_x[:-1] if self.is_closed else self.knot_points_x
+        search_y = self.knot_points_y[:-1] if self.is_closed else self.knot_points_y
+
+        for kx, ky in zip(search_x, search_y):
+            dist = np.sqrt((self.full_contour[0] - kx)**2 + (self.full_contour[1] - ky)**2)
+            knot_path_indices.append(np.argmin(dist))
+
+        # Use bisect to find where the new path_index fits among the knot indices
+        import bisect
+        insertion_idx = bisect.bisect_left(knot_path_indices, path_index)
+        return insertion_idx
 
     def scale(self, factor: float) -> 'SplineGeometry':
         """Return a scaled version of the spline."""
@@ -237,6 +236,7 @@ class Point(QGraphicsEllipseItem):
         self.point_radius = point_radius
         self.transparency = transparency
         
+        self.color = color
         self.x, self.y = pos[0], pos[1]
         self.index = index
         
@@ -388,10 +388,9 @@ class Spline(QGraphicsPathItem):
         """
         if path_index is not None:
             # Adding a new point
-            interpolated_x, interpolated_y = self.geometry.interpolate()
+            new_knot_idx = self.geometry._find_best_insertion_index(path_index)
+            new_idx = self.geometry.insert_point(pos.x(), pos.y(), new_knot_idx)
             self.geometry._ensure_start_end_coords()
-            new_idx = self.geometry.insert_point(pos.x(), pos.y(), 
-                        self.geometry.find_best_insertion_index(path_index, interpolated_x, interpolated_y))
             self._rebuild_path()
             return new_idx
         else:

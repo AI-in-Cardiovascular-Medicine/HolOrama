@@ -2,7 +2,6 @@ from gui.popup_windows.message_boxes import ErrorMessage
 from gui.left_half.IVUS_display import ContourType
 
 def new_contour(main_window, contour_type: ContourType):
-    print(f"DEBUG: Shortcut triggered for {contour_type}")
     if not main_window.image_displayed:
         ErrorMessage(main_window, 'Cannot create manual contour before reading input file')
         return

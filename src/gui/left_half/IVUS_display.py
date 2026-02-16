@@ -245,19 +245,17 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
 
         ct = contour_type
         cfg = self.contour_configs.get(ct, None)
-        thickness = cfg.thickness if cfg else self.contour_thickness
         color = cfg.color if cfg else self.color_contour
         alpha = cfg.alpha if cfg else self.alpha_contour
+        thickness = cfg.thickness if cfg else self.contour_thickness
 
         key = self.contour_key(ct)
-        start_coords = self.main_window.data.get(f"{key}_start", None)[self.frame]
-        end_coords = self.main_window.data.get(f"{key}_end", None)[self.frame]
+        raw_start = self.main_window.data.get(f"{key}_start", {})[self.frame]
+        raw_end = self.main_window.data.get(f"{key}_end", {})[self.frame]
 
-        if start_coords is not None:
-            start_coords = (start_coords[0] * self.scaling_factor, start_coords[1] * self.scaling_factor)
-        if end_coords is not None:
-            end_coords = (end_coords[0] * self.scaling_factor, end_coords[1] * self.scaling_factor)
-        
+        start_coords = (raw_start[0] * self.scaling_factor, raw_start[1] * self.scaling_factor) if raw_start else None
+        end_coords = (raw_end[0] * self.scaling_factor, raw_end[1] * self.scaling_factor) if raw_end else None
+
         if start_coords is None and lumen_x:
             start_coords = (lumen_x[0], lumen_y[0])
 
@@ -268,31 +266,33 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             start_coords, 
             end_coords,
         )
-        _, _ = geometry.interpolate()
+        geometry._ensure_start_end_coords()
+        geometry.interpolate()
 
         if geometry.full_contour[0] is not None:
-            knot_points = [
-                Point(
-                    (geometry.knot_points_x[i], geometry.knot_points_y[i]),
-                    self.point_thickness,
-                    self.point_radius,
-                    i,
-                    color,
-                    alpha,
-                )
-                for i in range(len(geometry.knot_points_x) - 1)
-            ]
+            knot_points = []
+            for i in range(len(geometry.knot_points_x) - 1):
+                curr_x = geometry.knot_points_x[i]
+                curr_y = geometry.knot_points_y[i]
+                knot_color = color
+                if start_coords and math.hypot(curr_x - start_coords[0], curr_y - start_coords[1]) < SENSITIVITY:
+                    knot_color="blue"
+                if end_coords and math.hypot(curr_x - end_coords[0], curr_y - end_coords[1]) < SENSITIVITY:
+                    knot_color="red"
+                knot_point = Point(
+                        (curr_x, curr_y),
+                        self.point_thickness,
+                        self.point_radius,
+                        i,
+                        knot_color,
+                        alpha,
+                    )
+                knot_points.append(knot_point)
 
             for p in knot_points:
                 self.graphics_scene.addItem(p)
             spline = Spline(geometry, color, thickness, alpha)
             self.graphics_scene.addItem(spline)
-
-            if geometry.start_coords and geometry.end_coords:
-                start_point = Point(start_coords, color="blue")
-                end_point = Point(end_coords, color="red")
-                self.graphics_scene.addItem(start_point)
-                self.graphics_scene.addItem(end_point)
 
             self.finalized_splines[self.contour_key(ct)] = spline
 
@@ -522,12 +522,10 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         Sets the active contour type, clears previous data for this frame,
         and switches to contour drawing mode (leaves temporary data in main_window.tmp_contours).
         """
-        print(f"receiver contour type: {contour_type}")
         if contour_type is not None:
             self.set_active_contour_type(contour_type)
 
-        self.drawing_mode = True
-
+        self.drawing_mode = True        
         # save the current state of the contour to the tmp storage
         key = self.contour_key(contour_type)
         current_spline = self.get_current_spline()
@@ -787,7 +785,6 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.reference_mode = False
         self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
         self.display_image(update_contours=True)
-
     ################################################################################################
 
     ######################
@@ -871,6 +868,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             return
 
         self.main_window.setCursor(Qt.CursorShape.BlankCursor)
+        self.active_point_index = self.working_spline.update(pos, -1, path_index)
 
         cfg = self.contour_configs.get(self.active_contour_type)
         self.active_point = Point(
@@ -881,9 +879,6 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             cfg.alpha if cfg else self.alpha_contour,
         )
         self.graphics_scene.addItem(self.active_point)
-        self.active_point_index = self.working_spline.update(pos, -1, path_index)
-        self.points_to_draw.insert(self.active_point_index, self.active_point)
-
         self.active_point.update_color()
 
     def mouseMoveEvent(self, event):
@@ -907,30 +902,33 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            if self.active_point_index is not None:
+            if self.active_point_index is not None and self.working_spline:
                 self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
                 self.active_point.reset_color()
 
                 geom = self.working_spline.geometry
-                if self.active_point_index == 0 or (geom.is_closed and self.active_point_index == len(geom.knot_points_x)-1):
-                    if geom.start_coords:
-                        geom.start_coords = (geom.knot_points_x[0], geom.knot_points_y[0])
-                
-                # Check if this point matches the end_coords proximity
-                if geom.end_coords:
-                    dist = math.hypot(geom.knot_points_x[self.active_point_index] - geom.end_coords[0], 
-                                      geom.knot_points_y[self.active_point_index] - geom.end_coords[1])
-                    if dist < 1.0: # If we moved the end point knot
-                        geom.end_coords = (geom.knot_points_x[self.active_point_index], geom.knot_points_y[self.active_point_index])
-
                 key = self.contour_key(self.active_contour_type)
+                new_pos = (geom.knot_points_x[self.active_point_index],
+                           geom.knot_points_y[self.active_point_index])
+                
+                if self.active_point.color == "blue":
+                    geom.start_coords = new_pos
+                elif self.active_point.color == "red":
+                    geom.end_coords = new_pos
+
                 self.main_window.data[key][0][self.frame] = [p / self.scaling_factor for p in geom.knot_points_x]
                 self.main_window.data[key][1][self.frame] = [p / self.scaling_factor for p in geom.knot_points_y]
                 
                 if geom.start_coords:
-                    self.main_window.data[f"{key}_start"][self.frame] = (geom.start_coords[0]/self.scaling_factor, geom.start_coords[1]/self.scaling_factor)
+                    self.main_window.data[f"{key}_start"][self.frame] = (
+                        geom.start_coords[0]/self.scaling_factor, 
+                        geom.start_coords[1]/self.scaling_factor,
+                        )
                 if geom.end_coords:
-                    self.main_window.data[f"{key}_end"][self.frame] = (geom.end_coords[0]/self.scaling_factor, geom.end_coords[1]/self.scaling_factor)
+                    self.main_window.data[f"{key}_end"][self.frame] = (
+                        geom.end_coords[0]/self.scaling_factor, 
+                        geom.end_coords[1]/self.scaling_factor,
+                        )
 
                 self.display_image(update_contours=True)
                 self.active_point_index = None
@@ -938,7 +936,6 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            print(self.active_contour_type)
             if not self.drawing_mode:
                 pos = self.mapToScene(event.pos())
                 current_spline = self.get_current_spline()
