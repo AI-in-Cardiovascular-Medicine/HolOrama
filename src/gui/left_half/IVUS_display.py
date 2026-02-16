@@ -142,6 +142,8 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.initial_window_width: int = 256  # window width is the range of pixel values that are displayed
         self.window_level: int = self.initial_window_level
         self.window_width: int = self.initial_window_width
+        self.mouse_x: float = 0.0
+        self.mouse_y: float = 0.0
 
         self.frame: int = 0
         self.points_to_draw: list[Point] = []
