@@ -82,6 +82,7 @@ def init_menu(main_window):
     measure_2 = edit_menu.addAction('Measurement 2', partial(new_measure, main_window, index=1))
     measure_2.setShortcut('2')
     angle_wire = edit_menu.addAction('Angle Wire Shadow', partial(new_angle, main_window, ContourType.WIRE))
+    angle_wire.setShortcut('3')
 
     view_menu = main_window.menu_bar.addMenu('View')
     hide_contours_action = view_menu.addAction('Hide Contours', partial(hide_contours, main_window))

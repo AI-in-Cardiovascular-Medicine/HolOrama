@@ -142,6 +142,8 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.initial_window_width: int = 256  # window width is the range of pixel values that are displayed
         self.window_level: int = self.initial_window_level
         self.window_width: int = self.initial_window_width
+        self.mouse_x: float = 0.0
+        self.mouse_y: float = 0.0
 
         self.frame: int = 0
         self.points_to_draw: list[Point] = []
@@ -163,6 +165,8 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.measure_index: int = None  # wtf is this legacy crap
         self.measure_colors = self.main_window.measure_colors
         self.reference_mode: bool = False
+        self.angle_mode: bool = False
+        self.angle_clicks: list[QPointF] = []
         #####################################################################################################
 
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
@@ -431,6 +435,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 self._draw_contours_frame()
                 self._draw_measure()
                 self._draw_reference()
+                self._draw_angles()
 
                 self._maybe_compute_metrics(lumen_contour, eem_contour)
             else:
@@ -790,10 +795,77 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.reference_mode = False
         self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
         self.display_image(update_contours=True)
-
-    def start_angle(self, contour_type: ContourType):
-        pass
     ################################################################################################
+
+    def start_angle(self):
+        """Initializes the angle measurement mode."""
+        if self.drawing_mode:
+            self.stop_contour()
+
+        if 'angles' not in self.main_window.data:
+            num_frames = self.main_window.metadata.get('num_frames', 0)
+            self.main_window.data['angles'] = [[None, None] for _ in range(num_frames)]
+        
+        self.angle_mode = True
+        self.angle_clicks = []
+        self.main_window.setCursor(Qt.CursorShape.CrossCursor)
+        # Ensure the data structure exists for this frame
+        self.main_window.data['angles'][self.frame] = [None, None]
+        
+        self.display_image(update_contours=True)
+
+    def _handle_angle_placement(self, pos: QPointF):
+        """Handles the two clicks required to define an angle."""
+        self.angle_clicks.append(pos)
+        
+        # Store original coordinates (unscaled)
+        original_point = [pos.x() / self.scaling_factor, pos.y() / self.scaling_factor]
+        
+        if len(self.angle_clicks) == 1:
+            # Save first point and refresh to show feedback
+            self.main_window.data['angles'][self.frame] = [original_point]
+            self.display_image(update_contours=True)
+        
+        elif len(self.angle_clicks) == 2:
+            # Save second point and exit mode
+            self.main_window.data['angles'][self.frame].append(original_point)
+            self.angle_mode = False
+            self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
+            self.display_image(update_contours=True)
+
+    def _draw_angles(self):
+        """Draws lines from center through the stored angle points."""
+        try:
+            angle_data = self.main_window.data['angles'][self.frame]
+        except (IndexError, TypeError):
+            return
+
+        if angle_data is None or all(pt is None for pt in angle_data):
+            return
+
+        center_val = self.image_size / 2
+        center = QPointF(center_val, center_val)
+        
+        pen = get_qt_pen("#ffa500", self.point_thickness)
+
+        for pt_coords in angle_data:
+            target_pt = QPointF(pt_coords[0] * self.scaling_factor, pt_coords[1] * self.scaling_factor)
+            
+            # Create a line from center to the point
+            # To draw 'through' the point to the edge, we can use a large multiplier
+            line = QLineF(center, target_pt)
+            line.setLength(self.image_size) # Extends line to image boundary
+            
+            self.graphics_scene.addLine(line, pen)
+            
+            # Optional: Add a small point marker at the click location
+            point_marker = Point(
+                (target_pt.x(), target_pt.y()), 
+                self.point_thickness, 
+                self.point_radius, 
+                "#ffa500"
+            )
+            self.graphics_scene.addItem(point_marker)
 
     ######################
     # Mouse click events #
@@ -808,6 +880,8 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 self.add_measure(pos)
             elif self.reference_mode:
                 self._handle_reference_placement(pos)
+            elif self.angle_mode:
+                self._handle_angle_placement(pos)
             else:
                 # First, try to switch active contour if user clicked near another one
                 self._attempt_contour_switch(pos)

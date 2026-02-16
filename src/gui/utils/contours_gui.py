@@ -37,4 +37,4 @@ def new_angle(main_window, contour_type: ContourType):
         ErrorMessage(main_window, 'Cannot create manual angle before reading input file')
         return
 
-    main_window.display.start_angle(contour_type)
+    main_window.display.start_angle()
