@@ -859,7 +859,6 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             
             self.graphics_scene.addLine(line, pen)
             
-            # Optional: Add a small point marker at the click location
             point_marker = Point(
                 (target_pt.x(), target_pt.y()), 
                 self.point_thickness, 
