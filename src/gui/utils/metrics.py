@@ -94,30 +94,26 @@ class MetricsMixin:
         active_type = self.active_contour_type
         config = self.contour_configs.get(active_type)
         
+        old_text = getattr(self, "active_contour_text", None)
+        if old_text and old_text.scene() == self.graphics_scene:
+            self.graphics_scene.removeItem(old_text)
+        
         text = active_type.value.upper()
+        self.active_contour_text = QGraphicsTextItem(text)
         
         if isinstance(config.color, str):
             color = QColor(config.color)
-        elif isinstance(config.color, tuple):
+        elif isinstance(config.color, (tuple, list)):
             color = QColor(*config.color)
         else:
-            color = QColor(Qt.GlobalColor.white)
-
-        active_contour_text = getattr(self, "active_contour_text", None)
-        if active_contour_text:
-            try:
-                self.graphics_scene.removeItem(active_contour_text)
-            except Exception:
-                pass
-
-        self.active_contour_text = QGraphicsTextItem(text)
+            color = Qt.GlobalColor.white
+            
         self.active_contour_text.setDefaultTextColor(color)
         
-        font_size = int(self.image_size / 50)
+        font_size = max(8, int(self.image_size / 45))
         self.active_contour_text.setFont(QFont("Helvetica", font_size, QFont.Weight.Bold))
         
-        padding = font_size * 2
-        self.active_contour_text.setPos(10, self.image_size - padding)
+        self.active_contour_text.setPos(10, self.image_size - (font_size * 2.5))
         
         self.graphics_scene.addItem(self.active_contour_text)
 
