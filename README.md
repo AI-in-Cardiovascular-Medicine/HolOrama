@@ -63,6 +63,13 @@ sudo apt install nvidia-cuda-toolkit
 ```
 Potentially extra steps are needed.
 
+### Precompiled version
+Find a precompiled version pinned to release (compiled with `nuitka`).
+If you want to compile the project on your own, use the following command:
+```bash
+python -m nuitka --standalone --plugin-enable=pyqt6 --include-package=pydicom --include-package=scipy --include-package=numpy --follow-imports --show-progress main.py
+```
+
 ## Functionalities
 
 This application is designed for IVUS images in DICOM or NIfTi format and offers the following functionalities:

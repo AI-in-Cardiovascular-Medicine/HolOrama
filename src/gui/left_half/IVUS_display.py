@@ -834,28 +834,72 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
             self.display_image(update_contours=True)
 
+    # def _draw_angles(self):
+    #     """Draws lines from center through the stored angle points."""
+    #     try:
+    #         angle_data = self.main_window.data['angles'][self.frame]
+    #     except (IndexError, TypeError):
+    #         return
+
+    #     if not angle_data or all(pt is None for pt in angle_data):
+    #         return
+
+    #     center_val = self.image_size / 2
+    #     center = QPointF(center_val, center_val)
+        
+    #     pen = get_qt_pen(self.color_angle, self.point_thickness)
+
+    #     for pt_coords in angle_data:
+    #         target_pt = QPointF(pt_coords[0] * self.scaling_factor, pt_coords[1] * self.scaling_factor)
+            
+    #         # Create a line from center to the point
+    #         # To draw 'through' the point to the edge, we can use a large multiplier
+    #         line = QLineF(center, target_pt)
+    #         line.setLength(self.image_size) # Extends line to image boundary
+            
+    #         self.graphics_scene.addLine(line, pen)
+            
+    #         point_marker = Point(
+    #             (target_pt.x(), target_pt.y()), 
+    #             self.point_thickness, 
+    #             self.point_radius,
+    #             0,
+    #             self.color_angle,
+    #         )
+    #         self.graphics_scene.addItem(point_marker)
     def _draw_angles(self):
-        """Draws lines from center through the stored angle points."""
+        """Draws lines from center through the stored angle points, stopping at image edges."""
         try:
             angle_data = self.main_window.data['angles'][self.frame]
-        except (IndexError, TypeError):
+        except (IndexError, TypeError, KeyError):
             return
 
-        if angle_data is None or all(pt is None for pt in angle_data):
+        if not angle_data or all(pt is None for pt in angle_data):
             return
 
-        center_val = self.image_size / 2
-        center = QPointF(center_val, center_val)
+        # Center point of the square image
+        half_size = self.image_size / 2
+        center = QPointF(half_size, half_size)
         
         pen = get_qt_pen(self.color_angle, self.point_thickness)
 
         for pt_coords in angle_data:
             target_pt = QPointF(pt_coords[0] * self.scaling_factor, pt_coords[1] * self.scaling_factor)
             
-            # Create a line from center to the point
-            # To draw 'through' the point to the edge, we can use a large multiplier
-            line = QLineF(center, target_pt)
-            line.setLength(self.image_size) # Extends line to image boundary
+            # 2. Determine the direction vector from center to click
+            dx = target_pt.x() - center.x()
+            dy = target_pt.y() - center.y()
+
+            # Avoid division by zero if clicking exactly on the center
+            if dx == 0 and dy == 0:
+                continue
+
+            t_x = abs(half_size / dx) if dx != 0 else float('inf')
+            t_y = abs(half_size / dy) if dy != 0 else float('inf')
+            t = min(t_x, t_y)
+
+            edge_pt = QPointF(center.x() + t * dx, center.y() + t * dy)
+            line = QLineF(center, edge_pt)
             
             self.graphics_scene.addLine(line, pen)
             
@@ -863,7 +907,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 (target_pt.x(), target_pt.y()), 
                 self.point_thickness, 
                 self.point_radius,
-                0,
+                0, # Assuming this is an index or type ID for your Point class
                 self.color_angle,
             )
             self.graphics_scene.addItem(point_marker)

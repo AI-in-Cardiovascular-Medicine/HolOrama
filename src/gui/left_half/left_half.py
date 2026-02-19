@@ -36,7 +36,7 @@ class LeftHalf:
         main_window.hide_contours_box.setChecked(False)
         main_window.hide_contours_box.stateChanged[int].connect(self.toggle_hide_contours)
         
-        main_window.hide_special_points_box = QCheckBox('Hide farthest and closest points')
+        main_window.hide_special_points_box = QCheckBox('&Hide Metrics')
         main_window.hide_special_points_box.setChecked(False)
         main_window.hide_special_points_box.stateChanged[int].connect(self.toggle_hide_special_points)
         
