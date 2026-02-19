@@ -63,7 +63,7 @@ class MetricsMixin:
             ell = (longest_d / shortest_d) if shortest_d else 0
             self.build_frame_metrics_text(lumen_area, lumen_circumf, ell, longest_d, shortest_d, eem_area, pct, update_phase=False)
 
-    def _update_phase_text(self):
+    def update_phase_text(self):
         code = self.main_window.data["phases"][self.frame]
         if code == "D":
             text = "Diastole"
@@ -89,6 +89,37 @@ class MetricsMixin:
         self.phase_text.setX(self.image_size - self.image_size / 3.75)
         self.phase_text.setFont(QFont("Helvetica", int(self.image_size / 50), QFont.Weight.Bold))
         self.graphics_scene.addItem(self.phase_text)
+
+    def update_active_contour(self):
+        active_type = self.active_contour_type
+        config = self.contour_configs.get(active_type)
+        
+        text = active_type.value.upper()
+        
+        if isinstance(config.color, str):
+            color = QColor(config.color)
+        elif isinstance(config.color, tuple):
+            color = QColor(*config.color)
+        else:
+            color = QColor(Qt.GlobalColor.white)
+
+        active_contour_text = getattr(self, "active_contour_text", None)
+        if active_contour_text:
+            try:
+                self.graphics_scene.removeItem(active_contour_text)
+            except Exception:
+                pass
+
+        self.active_contour_text = QGraphicsTextItem(text)
+        self.active_contour_text.setDefaultTextColor(color)
+        
+        font_size = int(self.image_size / 50)
+        self.active_contour_text.setFont(QFont("Helvetica", font_size, QFont.Weight.Bold))
+        
+        padding = font_size * 2
+        self.active_contour_text.setPos(10, self.image_size - padding)
+        
+        self.graphics_scene.addItem(self.active_contour_text)
 
     def compute_eem_and_percent_stenosis(self, frame: int, lumen_area: float, eem_full: Tuple[float, float] | None = None):
         """

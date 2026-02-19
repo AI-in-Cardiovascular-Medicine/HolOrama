@@ -38,3 +38,6 @@ def new_angle(main_window, contour_type: ContourType):
         return
 
     main_window.display.start_angle()
+
+def set_tool(main_window):
+    pass

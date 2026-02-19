@@ -22,6 +22,8 @@ class ContourType(Enum):
     EEM = "eem"
     CALCIUM = "calcium"
     BRANCH = "branch"
+    LIPID = "lipid"
+    MACROPHAGE = "macrophage"
     MEASUREMENT_1 = "measurement_1"
     MEASUREMENT_2 = "measurement_2"
     REFERENCE = "reference"
@@ -58,9 +60,20 @@ ALLOWED_TOOLS = {
         SegmentationTool.CLOSED_SPLINE,
         SegmentationTool.BRUSH,
     },
+    ContourType.LIPID: {
+        SegmentationTool.OPEN_SPLINE,
+        SegmentationTool.CLOSED_SPLINE,
+        SegmentationTool.BRUSH,
+    },
+    ContourType.MACROPHAGE: {
+        SegmentationTool.OPEN_SPLINE,
+        SegmentationTool.CLOSED_SPLINE,
+        SegmentationTool.BRUSH,
+    },
     ContourType.MEASUREMENT_1: {SegmentationTool.LINE},
     ContourType.MEASUREMENT_2: {SegmentationTool.LINE},
     ContourType.REFERENCE: {SegmentationTool.POINT},
+    ContourType.WIRE: {SegmentationTool.ANGLE}
 }
 
 
@@ -191,7 +204,14 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         if not hasattr(self.main_window, "data") or self.main_window.data is None:
             self.main_window.data = {}
 
-        for ct in [ContourType.LUMEN, ContourType.EEM, ContourType.CALCIUM, ContourType.BRANCH]:
+        for ct in [
+            ContourType.LUMEN, 
+            ContourType.EEM, 
+            ContourType.CALCIUM, 
+            ContourType.BRANCH, 
+            ContourType.LIPID,
+            ContourType.MACROPHAGE,
+            ]:
             self._init_main_window_data(num_frames, ct.value)
 
         self.finalized_splines = {ct.value: None for ct in ContourType}
@@ -439,12 +459,13 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 self._draw_angles()
 
                 self._maybe_compute_metrics(lumen_contour, eem_contour)
+                self.update_active_contour()
             else:
                 for it in old_overlays:
                     self.graphics_scene.addItem(it)
 
         if update_phase:
-            self._update_phase_text()
+            self.update_phase_text()
 
     def update_display(self):
         """Syntax sugar method to update the entire display after changes to contours or image."""

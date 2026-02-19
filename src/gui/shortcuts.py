@@ -12,7 +12,7 @@ from PyQt6.QtCore import Qt, QUrl
 from gui.popup_windows.frame_range_dialog import FrameRangeDialog
 from gui.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 from gui.popup_windows.video_player import VideoPlayer
-from gui.utils.contours_gui import new_contour, new_measure, new_angle
+from gui.utils.contours_gui import new_contour, new_measure, new_angle, set_tool
 from input_output.metadata import MetadataWindow
 from input_output.read_image import read_image
 from input_output.contours_io import write_contours, save_gated_images
@@ -70,9 +70,13 @@ def init_menu(main_window):
     manual_eem_contour = edit_menu.addAction('Manual EEM Contour', partial(new_contour, main_window, ContourType.EEM))
     manual_eem_contour.setShortcut('Q')
     manual_calc_contour = edit_menu.addAction('Manual Calcium Contour', partial(new_contour, main_window, ContourType.CALCIUM))
-    manual_calc_contour.setShortcut('Y')
+    manual_calc_contour.setShortcut('U')
     manual_branch_contour = edit_menu.addAction('Manual Branch Contour', partial(new_contour, main_window, ContourType.BRANCH))
-    manual_branch_contour.setShortcut('X')
+    manual_branch_contour.setShortcut('I')
+    manual_lipid_contour = edit_menu.addAction('Manual Lipid Contour', partial(new_contour, main_window, ContourType.BRANCH))
+    manual_lipid_contour.setShortcut('O')
+    manual_macroph_contour = edit_menu.addAction('Manual Macrophage Contour', partial(new_contour, main_window, ContourType.BRANCH))
+    manual_macroph_contour.setShortcut('P')
     edit_menu.addAction('Remove Contours', partial(remove_contours, main_window))
     edit_menu.addSeparator()
     edit_menu.addAction('Reset Phases', partial(reset_phases, main_window))
@@ -83,6 +87,12 @@ def init_menu(main_window):
     measure_2.setShortcut('2')
     angle_wire = edit_menu.addAction('Angle Wire Shadow', partial(new_angle, main_window, ContourType.WIRE))
     angle_wire.setShortcut('3')
+    closed_spline = edit_menu.addAction('Closed Spline', partial(set_tool, main_window))
+    closed_spline.setShortcut('4')
+    open_spline = edit_menu.addAction('Open Spline', partial(set_tool, main_window))
+    open_spline.setShortcut('5')
+    # brush = edit_menu.addAction('Brush', partial(new_angle, main_window, ContourType.WIRE))
+    # brush.setShortcut('6')
 
     view_menu = main_window.menu_bar.addMenu('View')
     hide_contours_action = view_menu.addAction('Hide Contours', partial(hide_contours, main_window))
