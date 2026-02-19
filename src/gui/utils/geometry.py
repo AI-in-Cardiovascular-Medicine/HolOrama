@@ -466,3 +466,40 @@ def get_qt_pen(color, thickness, transparency=255):
 
     pen_color.setAlpha(transparency)
     return QPen(pen_color, thickness)
+
+class OpenSplineGeometry(SplineGeometry):
+    """A SplineGeometry that defaults to is_closed=False"""
+    def __init__(self, knot_points_x, knot_points_y, n_interpolated_points, 
+                 start_coords=None, end_coords=None, dashed=False):
+        super().__init__(
+            knot_points_x=knot_points_x,
+            knot_points_y=knot_points_y,
+            n_interpolated_points=n_interpolated_points,
+            start_coords=start_coords,
+            end_coords=end_coords,
+            is_closed=False, # Enforced
+            dashed=dashed
+        )
+
+class OpenSpline(Spline):
+    """A Spline Item that uses OpenSplineGeometry and ignores 'tail' logic"""
+    def __init__(self, geometry: OpenSplineGeometry, **kwargs):
+        # Force geometry to be open if it isn't already
+        geometry.is_closed = False 
+        super().__init__(geometry, **kwargs)
+        
+        # For open splines, the tail_item is usually unnecessary 
+        # unless you want a dotted preview of a 'potential' closure.
+        self.tail_item.setVisible(False) 
+
+    def _rebuild_path(self):
+        """Overrides rebuild to simplify for open paths if needed"""
+        # If it's an open spline, we just draw the main interpolation
+        x_new, y_new = self.geometry.interpolate()
+        path = QPainterPath()
+        if len(x_new) > 0:
+            path.moveTo(QPointF(x_new[0], y_new[0]))
+            for x, y in zip(x_new[1:], y_new[1:]):
+                path.lineTo(QPointF(x, y))
+        self.setPath(path)
+        self.tail_item.setVisible(False)

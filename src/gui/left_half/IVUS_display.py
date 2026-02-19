@@ -623,7 +623,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             transparency=alpha,
         )
 
-    def _update_or_create_spline(self):
+    def _update_or_create_spline(self, is_closed=True):
         """Logic to draw the curve between knot points."""
         xs = [p.get_coords()[0] for p in self.points_to_draw]
         ys = [p.get_coords()[1] for p in self.points_to_draw]
@@ -637,7 +637,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 n_interpolated_points=self.n_points_contour,
                 start_coords=start_coords,
                 end_coords=None,
-                is_closed=True,
+                is_closed=is_closed,
             )
             self.working_spline = Spline(geometry, cfg.color, self.contour_thickness, cfg.alpha)
             self.graphics_scene.addItem(self.working_spline)
@@ -855,39 +855,6 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
             self.display_image(update_contours=True)
 
-    # def _draw_angles(self):
-    #     """Draws lines from center through the stored angle points."""
-    #     try:
-    #         angle_data = self.main_window.data['angles'][self.frame]
-    #     except (IndexError, TypeError):
-    #         return
-
-    #     if not angle_data or all(pt is None for pt in angle_data):
-    #         return
-
-    #     center_val = self.image_size / 2
-    #     center = QPointF(center_val, center_val)
-        
-    #     pen = get_qt_pen(self.color_angle, self.point_thickness)
-
-    #     for pt_coords in angle_data:
-    #         target_pt = QPointF(pt_coords[0] * self.scaling_factor, pt_coords[1] * self.scaling_factor)
-            
-    #         # Create a line from center to the point
-    #         # To draw 'through' the point to the edge, we can use a large multiplier
-    #         line = QLineF(center, target_pt)
-    #         line.setLength(self.image_size) # Extends line to image boundary
-            
-    #         self.graphics_scene.addLine(line, pen)
-            
-    #         point_marker = Point(
-    #             (target_pt.x(), target_pt.y()), 
-    #             self.point_thickness, 
-    #             self.point_radius,
-    #             0,
-    #             self.color_angle,
-    #         )
-    #         self.graphics_scene.addItem(point_marker)
     def _draw_angles(self):
         """Draws lines from center through the stored angle points, stopping at image edges."""
         try:
