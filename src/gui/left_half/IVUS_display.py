@@ -345,7 +345,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
 
         self.display_image(update_image=True, update_contours=True, update_phase=True)
 
-    def get_full_contour_list(self, contour_type: ContourType = None, unscaled: bool = False):
+    def get_full_contour_list(self, contour_type: ContourType = None, unscaled: bool = False) -> List[Tuple[List[float], List[float]]] | None:
         """
         Return the list-of-frame full_contours for a contour type.
         Expects self.main_window.data[key] to be [ [x_frames], [y_frames] ]
@@ -1078,6 +1078,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
+            print(self.main_window.data)
             if not self.drawing_mode:
                 pos = self.mapToScene(event.pos())
                 current_spline = self.get_current_spline()

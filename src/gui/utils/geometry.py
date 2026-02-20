@@ -467,6 +467,7 @@ def get_qt_pen(color, thickness, transparency=255):
     pen_color.setAlpha(transparency)
     return QPen(pen_color, thickness)
 
+
 class OpenSplineGeometry(SplineGeometry):
     """A SplineGeometry that defaults to is_closed=False"""
     def __init__(self, knot_points_x, knot_points_y, n_interpolated_points, 
@@ -480,6 +481,7 @@ class OpenSplineGeometry(SplineGeometry):
             is_closed=False, # Enforced
             dashed=dashed
         )
+
 
 class OpenSpline(Spline):
     """A Spline Item that uses OpenSplineGeometry and ignores 'tail' logic"""
