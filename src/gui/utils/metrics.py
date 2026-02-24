@@ -64,7 +64,8 @@ class MetricsMixin:
             self.build_frame_metrics_text(lumen_area, lumen_circumf, ell, longest_d, shortest_d, eem_area, pct, update_phase=False)
 
     def update_phase_text(self):
-        code = self.main_window.data["phases"][self.frame]
+        fd = self.main_window.data.get(self.frame)
+        code = fd.phase if fd else '-'
         if code == "D":
             text = "Diastole"
             color = QColor(*self.main_window.diastole_color)

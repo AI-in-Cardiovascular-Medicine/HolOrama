@@ -1,11 +1,11 @@
 # import os
 
-# import numpy as np
+import numpy as np
 # import SimpleITK as sitk
 # from loguru import logger
 # from PyQt5.QtWidgets import QProgressDialog, QApplication
 # from PyQt5.QtCore import Qt
-# from skimage.draw import polygon2mask
+from skimage.draw import polygon2mask
 
 # from gui.popup_windows.message_boxes import ErrorMessage
 
@@ -88,47 +88,47 @@
 #     pass
 
 
-# def contours_to_mask(images, contoured_frames, contours, contour_type: str = "lumen"):
-#     """
-#     Convert IVUS contours to numpy mask.
+def contours_to_mask(images, contoured_frames, contours, contour_type: str = "lumen"):
+    """
+    Convert IVUS contours to numpy mask.
 
-#     Parameters
-#     ----------
-#     images : ndarray
-#         Image stack that you want masks for. Shape expected (n_selected_frames, H, W) or (N, H, W).
-#     contoured_frames : list[int]
-#         List of frame indices (in the original/full timeline) corresponding to the slices in `images`.
-#         This function will produce mask[i,:,:] from contours[contoured_frames[i]].
-#     contours : list OR dict
-#         - legacy: list-like where contours[frame] -> (xs, ys) or None
-#         - new: dict where contours['lumen'] -> list-of-frames ; pass the dict produced by IVUSDisplay.full_contours
-#     contour_type : str
-#         If `contours` is a dict, use this key (default 'lumen').
-#     """
-#     image_shape = images.shape[1:3]
-#     mask = np.zeros_like(images, dtype=np.uint8)
+    Parameters
+    ----------
+    images : ndarray
+        Image stack that you want masks for. Shape expected (n_selected_frames, H, W) or (N, H, W).
+    contoured_frames : list[int]
+        List of frame indices (in the original/full timeline) corresponding to the slices in `images`.
+        This function will produce mask[i,:,:] from contours[contoured_frames[i]].
+    contours : list OR dict
+        - legacy: list-like where contours[frame] -> (xs, ys) or None
+        - new: dict where contours['lumen'] -> list-of-frames ; pass the dict produced by IVUSDisplay.full_contours
+    contour_type : str
+        If `contours` is a dict, use this key (default 'lumen').
+    """
+    image_shape = images.shape[1:3]
+    mask = np.zeros_like(images, dtype=np.uint8)
 
-#     if isinstance(contours, dict):
-#         per_frame_contours = contours.get(contour_type)
-#         if per_frame_contours is None:
-#             return mask
-#     else:
-#         per_frame_contours = contours
+    if isinstance(contours, dict):
+        per_frame_contours = contours.get(contour_type)
+        if per_frame_contours is None:
+            return mask
+    else:
+        per_frame_contours = contours
 
-#     # contoured_frames maps each output slice index i -> original frame index `frame`
-#     for i, frame in enumerate(contoured_frames):
-#         try:
-#             # per_frame_contours[frame] should be either None or (xs, ys) or similar
-#             cont = per_frame_contours[frame]
-#             if not cont:
-#                 continue
-#             xs = cont[0]
-#             ys = cont[1]
-#             lumen_polygon = [[x, y] for x, y in zip(ys, xs)]
-#             mask[i, :, :] = np.maximum(mask[i, :, :], polygon2mask(image_shape, lumen_polygon).astype(np.uint8))
-#         except (TypeError, ValueError, IndexError, KeyError):
-#             # frame missing or malformed -> skip
-#             continue
+    # contoured_frames maps each output slice index i -> original frame index `frame`
+    for i, frame in enumerate(contoured_frames):
+        try:
+            # per_frame_contours[frame] should be either None or (xs, ys) or similar
+            cont = per_frame_contours[frame]
+            if not cont:
+                continue
+            xs = cont[0]
+            ys = cont[1]
+            lumen_polygon = [[x, y] for x, y in zip(ys, xs)]
+            mask[i, :, :] = np.maximum(mask[i, :, :], polygon2mask(image_shape, lumen_polygon).astype(np.uint8))
+        except (TypeError, ValueError, IndexError, KeyError):
+            # frame missing or malformed -> skip
+            continue
 
-#     mask = np.clip(mask, a_min=0, a_max=1)  # enforce correct value range
-#     return mask
+    mask = np.clip(mask, a_min=0, a_max=1)  # enforce correct value range
+    return mask

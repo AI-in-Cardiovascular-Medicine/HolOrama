@@ -4,188 +4,250 @@ import glob
 
 import numpy as np
 from loguru import logger
+from dataclasses import dataclass, field, asdict
+from typing import List, Tuple, Optional, Dict
 
 from version import version_file_str
 from gui.popup_windows.message_boxes import ErrorMessage
-from input_output.read_xml import read_xml
-from input_output.write_xml import write_xml
 
 
-def read_contours(main_window, file_name=None):
-    """Reads contours saved in json/xml format and displays the contours in the graphics scene"""
-    success = False
-    json_files = glob.glob(f'{file_name}_contours*.json')
-    xml_files = glob.glob(f'{file_name}_contours*.xml')
+# ---------------------------------------------------------------------------
+# Dataclasses
+# ---------------------------------------------------------------------------
 
-    if not main_window.config.save.use_xml_files and json_files:  # json files have priority over xml unless desired
-        newest_json = max(json_files)  # find file with most recent version
-        logger.info(f'Current version is {version_file_str}, file found with most recent version is {newest_json}')
-        with open(newest_json, 'r') as in_file:
-            main_window.data = json.load(in_file)
-        if 'measures' not in main_window.data:  # added in version 0.4.5
-            main_window.data['measures'] = [[None, None] for _ in range(main_window.metadata['num_frames'])]
-        if 'reference' not in main_window.data:  # added in version 0.7.3
-            main_window.data['reference'] = [None] * main_window.metadata['num_frames']
-        if 'gating_signal' not in main_window.data:  # added in version 0.7.4
-            main_window.data['gating_signal'] = {}
-        if 'angles' not in main_window.data: # added in version 1.1.2
-            main_window.data['angles'] = [[None, None] for _ in range(main_window.metadata['num_frames'])]
-        success = True
+@dataclass
+class Measurements:
+    area: Optional[float] = None
+    circumference: Optional[float] = None
+    major_axis: Optional[float] = None
+    minor_axis: Optional[float] = None
+    elliptic_ratio: Optional[float] = None
 
-    elif xml_files:
-        newest_xml = max(xml_files)  # find file with most recent version
-        logger.info(f'Current version is {version_file_str}, file found with most recent version is {newest_xml}')
-        read_xml(main_window, newest_xml)
-        main_window.data['lumen'] = map_to_list(main_window.data['lumen'])
-        for key in [
-            'lumen_area',
-            'lumen_circumf',
-            'longest_distance',
-            'shortest_distance',
-            'elliptic_ratio',
-            'vector_length',
-            'vector_angle',
-        ]:
-            main_window.data[key] = [0] * main_window.metadata[
-                'num_frames'
-            ]  # initialise empty containers for data not stored in xml
-        for key in ['lumen_centroid', 'farthest_point', 'nearest_point']:
-            main_window.data[key] = (
-                [[] for _ in range(main_window.metadata['num_frames'])],
-                [[] for _ in range(main_window.metadata['num_frames'])],
-            )  # initialise empty containers for data not stored in xml
-        success = True
 
-    if success:
-        main_window.contours_drawn = True
-        contour_type = getattr(main_window, "ContourType", "lumen")
-        if contour_type in main_window.data:
-            main_window.display.set_data(main_window.data[contour_type], main_window.images)
-        else:
-            main_window.display.set_data(main_window.data['lumen'], main_window.images)
-        main_window.hide_contours_box.setChecked(False)
+@dataclass
+class Contour:
+    contours: List[Tuple[List[float], List[float]]] = field(default_factory=list)
+    measurements: Measurements = field(default_factory=Measurements)
+    closed: List[bool] = field(default_factory=list)
+    start_coords: List[Tuple[Tuple[float, ...], Tuple[float, ...]]] = field(default_factory=list)
+    end_coords: List[Tuple[Tuple[float, ...], Tuple[float, ...]]] = field(default_factory=list)
 
-    return success
 
+@dataclass
+class Measure:
+    points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
+    length: Optional[float] = None
+
+
+@dataclass
+class FrameData:
+    phase: str = '-'
+    lumen: Contour = field(default_factory=Contour)
+    eem: Contour = field(default_factory=Contour)
+    calcium: Contour = field(default_factory=Contour)
+    branch: Contour = field(default_factory=Contour)
+    lipid: Contour = field(default_factory=Contour)
+    macrophage: Contour = field(default_factory=Contour)
+    measurement_1: Optional[Measure] = None
+    measurement_2: Optional[Measure] = None
+    reference: Optional[Tuple[float, float]] = None
+    wire: Optional[Tuple[Tuple[float, float], ...]] = None
+    centroid: Optional[Tuple[float, float]] = None
+    closest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
+    farthest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
+    gating_signal: Dict = field(default_factory=dict)
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
 def _to_serializable(obj):
-    """Simple helper passed to json.dump to handle numpy types."""
+    """Fallback serializer for json.dump to handle numpy types."""
     if isinstance(obj, np.generic):
         return obj.item()
     if isinstance(obj, np.ndarray):
         return obj.tolist()
-    # fallback
     try:
         return str(obj)
     except Exception:
         return None
 
 
-def write_contours(main_window):
-    """Writes contours to a json/xml file.
+def _is_legacy(raw: dict) -> bool:
+    """Detect legacy flat format by checking if 'lumen' is a list/tuple
+    rather than a dict (current format produced by asdict)."""
+    lumen = raw.get('lumen')
+    return isinstance(lumen, (list, tuple))
 
-    - If main_window.config.save.use_xml_files is True: write legacy XML for lumen
-      (keeps compatibility) AND write a JSON sidecar that contains all contour layers.
-    - Otherwise: write a JSON containing all of main_window.data (serialized).
+
+def _build_contour_legacy(raw: dict, key: str, i: int) -> Contour:
+    """Reconstruct a Contour from the old flat tuple-of-lists format.
+
+    Legacy format stored contours as:
+        data['lumen'] = ([x0, x1, ...], [y0, y1, ...])
+    where each xN/yN is a list of floats for frame N.
     """
-    if not main_window.image_displayed:
-        ErrorMessage(main_window, "Cannot write contours before reading input file")
-        return
+    raw_contour = raw.get(key)
+    if not raw_contour:
+        return Contour()
+
+    if isinstance(raw_contour, (list, tuple)) and len(raw_contour) == 2:
+        x_frames, y_frames = raw_contour
+        x = x_frames[i] if i < len(x_frames) else []
+        y = y_frames[i] if i < len(y_frames) else []
+        contours = [(x, y)] if (x or y) else []
+        return Contour(contours=contours)
+
+    return Contour()
+
+
+def _build_contour(raw: Optional[dict]) -> Contour:
+    """Reconstruct a Contour from the current nested dict format (produced by asdict)."""
+    if not raw:
+        return Contour()
+    return Contour(
+        contours=raw.get('contours', []),
+        measurements=Measurements(**raw.get('measurements', {})),
+        closed=raw.get('closed', []),
+        start_coords=raw.get('start_coords', []),
+        end_coords=raw.get('end_coords', []),
+    )
+
+
+def _build_measure(raw: Optional[dict]) -> Optional[Measure]:
+    if not raw:
+        return None
+    return Measure(
+        points=raw.get('points'),
+        length=raw.get('length'),
+    )
+
+
+def _build_frame_data_legacy(raw: dict, num_frames: int) -> Dict[int, FrameData]:
+    """Convert legacy flat JSON format into Dict[int, FrameData].
+
+    Legacy keys handled:
+        phases, lumen, eem, calcium, branch, lipid, macrophage,
+        measures, reference, gating_signal
+    """
+    logger.info('Detected legacy JSON format, converting to FrameData...')
+
+    phases = raw.get('phases', ['-'] * num_frames)
+    reference = raw.get('reference', [None] * num_frames)
+    gating_signal = raw.get('gating_signal', {})
+    # legacy: [[m1, m2], ...] per frame, where m1/m2 were dicts or None
+    measures = raw.get('measures', [[None, None]] * num_frames)
+
+    frames = {}
+    for i in range(num_frames):
+        m1_raw, m2_raw = measures[i] if i < len(measures) else (None, None)
+        frames[i] = FrameData(
+            phase=phases[i] if i < len(phases) else '-',
+            lumen=_build_contour_legacy(raw, 'lumen', i),
+            eem=_build_contour_legacy(raw, 'eem', i),
+            calcium=_build_contour_legacy(raw, 'calcium', i),
+            branch=_build_contour_legacy(raw, 'branch', i),
+            lipid=_build_contour_legacy(raw, 'lipid', i),
+            macrophage=_build_contour_legacy(raw, 'macrophage', i),
+            measurement_1=_build_measure(m1_raw),
+            measurement_2=_build_measure(m2_raw),
+            reference=reference[i] if i < len(reference) else None,
+            gating_signal=gating_signal,
+        )
+    return frames
+
+
+def _build_frame_data(raw: dict) -> Dict[int, FrameData]:
+    """Convert current JSON format (produced by asdict) into Dict[int, FrameData]."""
+    frames = {}
+    for key, frame_raw in raw.items():
+        i = int(key)
+        frames[i] = FrameData(
+            phase=frame_raw.get('phase', '-'),
+            lumen=_build_contour(frame_raw.get('lumen')),
+            eem=_build_contour(frame_raw.get('eem')),
+            calcium=_build_contour(frame_raw.get('calcium')),
+            branch=_build_contour(frame_raw.get('branch')),
+            lipid=_build_contour(frame_raw.get('lipid')),
+            macrophage=_build_contour(frame_raw.get('macrophage')),
+            measurement_1=_build_measure(frame_raw.get('measurement_1')),
+            measurement_2=_build_measure(frame_raw.get('measurement_2')),
+            reference=frame_raw.get('reference'),
+            wire=frame_raw.get('wire'),
+            centroid=frame_raw.get('centroid'),
+            closest_points=frame_raw.get('closest_points'),
+            farthest_points=frame_raw.get('farthest_points'),
+            gating_signal=frame_raw.get('gating_signal', {}),
+        )
+    return frames
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def read_contours(main_window, file_name=None) -> bool:
+    """Read contours from the most recent JSON file and populate
+    main_window.data as Dict[int, FrameData]. Returns True on success."""
+    json_files = glob.glob(f'{file_name}_contours*.json')
+    if not json_files:
+        logger.info('No contour JSON files found.')
+        return False
+
+    newest = max(json_files)
+    logger.info(f'Current version: {version_file_str} | Loading: {newest}')
 
     try:
-        base = os.path.splitext(main_window.file_name)[0]
-    except Exception:
-        base = getattr(main_window, "file_name", "contours_output")
-        base = os.path.splitext(base)[0]
+        with open(newest, 'r') as f:
+            raw = json.load(f)
+    except Exception as e:
+        logger.exception(f'Failed to read {newest}: {e}')
+        return False
 
-    version_str = globals().get("version_file_str", version_file_str)
-    json_out_path = f"{base}_contours_{version_str}.json"
+    num_frames = main_window.metadata['num_frames']
 
-    # Ensure main_window.data exists and keys are in sensible form
-    data = getattr(main_window, "data", {}) or {}
-
-    if main_window.config.save.use_xml_files:
-        # Legacy XML export for lumen (keeps previous behaviour)
-        # Build x,y lists frame-by-frame from lumen data (defensive)
-        num_frames = main_window.metadata.get("num_frames", 0)
-        x = []
-        y = []
-        lumen_data = data.get("lumen", [[], []])
-        lx = lumen_data[0] if len(lumen_data) > 0 else []
-        ly = lumen_data[1] if len(lumen_data) > 1 else []
-
-        for frame in range(num_frames):
-            if frame < len(lx):
-                new_x_lumen = lx[frame] or []
-            else:
-                new_x_lumen = []
-            if frame < len(ly):
-                new_y_lumen = ly[frame] or []
-            else:
-                new_y_lumen = []
-
-            x.append(new_x_lumen)
-            y.append(new_y_lumen)
-
-        try:
-            write_xml(
-                x,
-                y,
-                main_window.images.shape,
-                main_window.metadata.get("resolution"),
-                getattr(main_window, "ivusPullbackRate", None),
-                data.get("phases"),
-                main_window.file_name,
-            )
-            logger.info(f"Wrote legacy XML for lumen to {main_window.file_name} (and sidecar JSON)")
-        except Exception as e:
-            logger.exception(f"Failed to write XML contours: {e}")
-
-        try:
-            with open(json_out_path, "w") as out_file:
-                json.dump(data, out_file, default=_to_serializable, indent=2)
-            logger.info(f"Wrote contours JSON sidecar to: {json_out_path}")
-        except Exception as e:
-            logger.exception(f"Failed to write contours JSON sidecar: {e}")
-
+    if _is_legacy(raw):
+        main_window.data = _build_frame_data_legacy(raw, num_frames)
     else:
-        # Write the whole main_window.data to JSON (better safe than sorry)
-        try:
-            with open(json_out_path, "w") as out_file:
-                json.dump(data, out_file, default=_to_serializable, indent=2)
-            logger.info(f"Wrote contours JSON to: {json_out_path}")
-        except Exception as e:
-            logger.exception(f"Failed to write contours JSON: {e}")
+        main_window.data = _build_frame_data(raw)
+
+    main_window.contours_drawn = True
+    main_window.hide_contours_box.setChecked(False)
+    logger.info(f'Loaded {len(main_window.data)} frames from {newest}')
+    return True
 
 
-def map_to_list(contours):
-    """Converts map to list"""
-    x, y = contours
-    x = [list(x[i]) for i in range(len(x))]
-    y = [list(y[i]) for i in range(len(y))]
+def write_contours(main_window) -> None:
+    """Serialize main_window.data (Dict[int, FrameData]) to JSON."""
+    if not main_window.image_displayed:
+        ErrorMessage(main_window, 'Cannot write contours before reading input file.')
+        return
 
-    return (x, y)
+    base = os.path.splitext(main_window.file_name)[0]
+    out_path = f'{base}_contours_{version_file_str}.json'
+
+    try:
+        serializable = {str(i): asdict(frame) for i, frame in main_window.data.items()}
+        with open(out_path, 'w') as f:
+            json.dump(serializable, f, default=_to_serializable, indent=2)
+        logger.info(f'Wrote contours to {out_path}')
+    except Exception as e:
+        logger.exception(f'Failed to write contours: {e}')
 
 
-def save_gated_images(main_window, file_name=None):
-    """Saves diastolic and systolic images as a 3D numpy array"""
+def save_gated_images(main_window) -> None:
+    """Save diastolic and systolic frames as separate .npy arrays."""
     if not main_window.image_displayed:
         ErrorMessage(main_window, 'Cannot save gated images before reading the input file.')
         return
 
-    diastolic_images = []
-    systolic_images = []
+    diastolic, systolic = [], []
+    for i, frame in main_window.data.items():
+        if frame.phase == 'D':
+            diastolic.append(main_window.images[i])
+        elif frame.phase == 'S':
+            systolic.append(main_window.images[i])
 
-    for frame in range(main_window.metadata['num_frames']):
-        if main_window.data['phases'][frame] == 'D':
-            diastolic_images.append(main_window.images[frame])
-        elif main_window.data['phases'][frame] == 'S':
-            systolic_images.append(main_window.images[frame])
-
-    diastolic_images = np.array(diastolic_images)
-    systolic_images = np.array(systolic_images)
-
-    out_path_diastolic = os.path.splitext(main_window.file_name)[0] + '_diastolic.npy'
-    out_path_systolic = os.path.splitext(main_window.file_name)[0] + '_systolic.npy'
-    np.save(out_path_diastolic, diastolic_images)
-    np.save(out_path_systolic, systolic_images)
+    base = os.path.splitext(main_window.file_name)[0]
+    np.save(f'{base}_diastolic.npy', np.array(diastolic))
+    np.save(f'{base}_systolic.npy', np.array(systolic))
+    logger.info(f'Saved {len(diastolic)} diastolic and {len(systolic)} systolic frames.')

@@ -15,6 +15,7 @@ from gui.utils.geometry import Point, Spline, SplineGeometry, get_qt_pen
 from gui.utils.metrics import MetricsMixin
 from gui.right_half.longitudinal_view import Marker
 from segmentation.segment import downsample
+from input_output.contours_io import Measure
 
 
 class ContourType(Enum):
@@ -178,6 +179,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.active_point_index: int = None # wtf is this legacy crap
         self.measure_index: int = None  # wtf is this legacy crap
         self.measure_colors = self.main_window.measure_colors
+        self.pending_measure_points: list = [None, None]  # first-click-only state per measure index
         self.reference_mode: bool = False
         self.angle_mode: bool = False
         self.angle_clicks: list[QPointF] = []
@@ -187,32 +189,11 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
     # initialize data from main_window data
-    def set_data(self, lumen, images):
-        """
-        Initialize display data. 'lumen' is the legacy argument (first contour),
-        but we create entries for all ContourType members in main_window.data
-        and prepare self.full_contours dict with per-frame placeholders.
-        """
+    def set_data(self, images):
+        """Initialize display data from main_window.data (Dict[int, FrameData])."""
         self.images = images
-        num_frames = images.shape[0]
         self.image_width = images.shape[1]
-        self.scaling_factor = self.image_size / images.shape[1]  # image_size in config
-
-        # for legacy reasons we still expect  'lumen argument'
-        self.main_window.data[ContourType.LUMEN.value] = lumen
-
-        if not hasattr(self.main_window, "data") or self.main_window.data is None:
-            self.main_window.data = {}
-
-        for ct in [
-            ContourType.LUMEN, 
-            ContourType.EEM, 
-            ContourType.CALCIUM, 
-            ContourType.BRANCH, 
-            ContourType.LIPID,
-            ContourType.MACROPHAGE,
-            ]:
-            self._init_main_window_data(num_frames, ct.value)
+        self.scaling_factor = self.image_size / images.shape[1]
 
         self.finalized_splines = {ct.value: None for ct in ContourType}
 
@@ -221,35 +202,6 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         contours = self.get_full_contour_list(self.active_contour_type)
         self.main_window.longitudinal_view.set_data(self.images, contours)
         self.display_image(update_image=True, update_contours=True, update_phase=True)
-
-    def _init_main_window_data(self, num_frames: int, key: str = None):
-        """
-        Ensure every contour type has a [ [x per frame], [y per frame] ] structure
-        initialize with number of frames
-        """
-        if key not in self.main_window.data:
-            self.main_window.data[key] = [[] for _ in range(2)]
-            self.main_window.data[key][0] = [[] for _ in range(num_frames)]
-            self.main_window.data[key][1] = [[] for _ in range(num_frames)]
-        else:
-            # make sure existing entries have per-frame lists of correct length (defensive)
-            try:
-                if len(self.main_window.data[key][0]) < num_frames:
-                    missing = num_frames - len(self.main_window.data[key][0])
-                    self.main_window.data[key][0].extend([[] for _ in range(missing)])
-                if len(self.main_window.data[key][1]) < num_frames:
-                    missing = num_frames - len(self.main_window.data[key][1])
-                    self.main_window.data[key][1].extend([[] for _ in range(missing)])
-            except Exception:
-                self.main_window.data[key] = [[] for _ in range(2)]
-                self.main_window.data[key][0] = [[] for _ in range(num_frames)]
-                self.main_window.data[key][1] = [[] for _ in range(num_frames)]
-        if f"{key}_start" not in self.main_window.data:
-            self.main_window.data[f"{key}_start"] = [
-            None
-            ] * num_frames  # initialize start/end point storage for all contour types
-        if f"{key}_end" not in self.main_window.data:
-            self.main_window.data[f"{key}_end"] = [None] * num_frames
 
     def _draw_contours_frame(self):
         # other contours
@@ -278,8 +230,10 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         thickness = cfg.thickness if cfg else self.contour_thickness
 
         key = self.contour_key(ct)
-        raw_start = self.main_window.data.get(f"{key}_start", {})[self.frame]
-        raw_end = self.main_window.data.get(f"{key}_end", {})[self.frame]
+        fd = self.main_window.data.get(self.frame)
+        contour_obj = getattr(fd, key, None) if fd else None
+        raw_start = contour_obj.start_coords[0] if (contour_obj and contour_obj.start_coords) else None
+        raw_end = contour_obj.end_coords[0] if (contour_obj and contour_obj.end_coords) else None
 
         start_coords = (raw_start[0] * self.scaling_factor, raw_start[1] * self.scaling_factor) if raw_start else None
         end_coords = (raw_end[0] * self.scaling_factor, raw_end[1] * self.scaling_factor) if raw_end else None
@@ -345,42 +299,38 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
 
         self.display_image(update_image=True, update_contours=True, update_phase=True)
 
-    def get_full_contour_list(self, contour_type: ContourType = None, unscaled: bool = False) -> List[Tuple[List[float], List[float]]] | None:
+    def get_full_contour_list(self, contour_type: ContourType = None, unscaled: bool = False) -> List | None:
         """
-        Return the list-of-frame full_contours for a contour type.
-        Expects self.main_window.data[key] to be [ [x_frames], [y_frames] ]
+        Return a list of length num_frames with interpolated contours (or None per frame).
+        Reads from main_window.data (Dict[int, FrameData]).
         """
         key = self.contour_key(contour_type)
-        
-        if key in self.main_window.data:
-            full_contours = []
-            # Correctly access the x and y lists from the data structure
-            x_frames_list = self.main_window.data[key][0]
-            y_frames_list = self.main_window.data[key][1]
+        num_frames = self.images.shape[0] if self.images is not None else 0
+        full_contours = [None] * num_frames
 
-            for x_coords, y_coords in zip(x_frames_list, y_frames_list):
-                # Initialize geometry (Ensure parameters match your SplineGeometry signature)
-                if len(x_coords) > 1:
-                    spline_geo = SplineGeometry(
-                        knot_points_x=x_coords,
-                        knot_points_y=y_coords,
-                        n_interpolated_points=self.n_interactive_points,
-                        start_coords=None,
-                        end_coords=None
-                    )
+        for frame_idx in range(num_frames):
+            fd = self.main_window.data.get(frame_idx)
+            if fd is None:
+                continue
+            contour_obj = getattr(fd, key, None)
+            if contour_obj is None or not contour_obj.contours or not contour_obj.contours[0]:
+                continue
+            x_coords = contour_obj.contours[0][0]
+            y_coords = contour_obj.contours[0][1]
 
-                    # Handle scaling if necessary
-                    if unscaled and hasattr(self, 'scaling_factor'):
-                        spline_geo = spline_geo.scale(self.scaling_factor)
+            if len(x_coords) > 1:
+                spline_geo = SplineGeometry(
+                    knot_points_x=x_coords,
+                    knot_points_y=y_coords,
+                    n_interpolated_points=self.n_interactive_points,
+                    start_coords=None,
+                    end_coords=None,
+                )
+                if unscaled and hasattr(self, 'scaling_factor'):
+                    spline_geo = spline_geo.scale(self.scaling_factor)
+                full_contours[frame_idx] = spline_geo.interpolate()
 
-                    interpolated_coords = spline_geo.interpolate()
-                    full_contours.append(interpolated_coords)
-                else:
-                    continue
-
-            return full_contours
-        
-        return None
+        return full_contours
 
     def contour_key(self, contour_type: ContourType = None) -> str:
         """Return the string key for the given contour type (defaults to active)."""
@@ -393,14 +343,22 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             return self.finalized_splines[key]
         return None
 
-    def _get_contour_data(self, contour_type: ContourType = None, frame: int | None = None) -> list[list[Any], list[Any]] | Tuple[List[float], List[float]]:
-        """Return main_window.data[...] for the given/the active contour type (or None)."""
+    def _get_contour_data(self, contour_type: ContourType = None, frame: int | None = None):
+        """
+        Return (x_list, y_list) for the given contour type at the given frame,
+        or ([], []) if absent. Reads from main_window.data (Dict[int, FrameData]).
+        """
         key = self.contour_key(contour_type)
         if frame is None:
-            return self.main_window.data.get(key, None)
-        else:
-            data = self.main_window.data.get(key, None)
-            return (data[0][self.frame], data[1][self.frame])
+            frame = self.frame
+        fd = self.main_window.data.get(frame)
+        if fd is None:
+            return ([], [])
+        contour_obj = getattr(fd, key, None)
+        if contour_obj is None or not contour_obj.contours or not contour_obj.contours[0]:
+            return ([], [])
+        c = contour_obj.contours[0]
+        return (c[0] if c else []), (c[1] if len(c) > 1 else [])
 
     def set_active_contour_type(self, contour_type: ContourType):
         """Set active contour type and refresh transient state for editing that contour."""
@@ -574,10 +532,12 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.active_end_coords_flag = True
         self.main_window.setCursor(Qt.CursorShape.CrossCursor)
 
-        self.main_window.data[key][0][self.frame] = []
-        self.main_window.data[key][1][self.frame] = []
-        self.main_window.data[f"{key}_start"][self.frame] = None
-        self.main_window.data[f"{key}_end"][self.frame] = None
+        fd = self.main_window.data[self.frame]
+        contour_obj = getattr(fd, key)
+        contour_obj.contours = []
+        contour_obj.start_coords = []
+        contour_obj.end_coords = []
+        contour_obj.closed = []
         self.display_image(update_contours=True)
 
     def add_contour(self, click_pos, segmentation_tool: SegmentationTool = SegmentationTool.CLOSED_SPLINE):
@@ -665,8 +625,11 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 self.n_interactive_points,
             )
             key = self.contour_key(self.active_contour_type)
-            self.main_window.data[key][0][self.frame] = [point / self.scaling_factor for point in downsampled[0]]
-            self.main_window.data[key][1][self.frame] = [point / self.scaling_factor for point in downsampled[1]]
+            x_list = [point / self.scaling_factor for point in downsampled[0]]
+            y_list = [point / self.scaling_factor for point in downsampled[1]]
+            contour_obj = getattr(self.main_window.data[self.frame], key)
+            contour_obj.contours = [[x_list, y_list]]
+            contour_obj.closed = [True]
 
         self.stop_contour()
 
@@ -680,6 +643,8 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         if self.main_window.image_displayed:
             self.drawing_mode = False
             key = self.contour_key(self.active_contour_type)
+            fd = self.main_window.data[self.frame]
+            contour_obj = getattr(fd, key)
 
             if self.working_spline is not None:
                 downsampled = downsample(
@@ -689,34 +654,29 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                     ),
                     self.n_interactive_points,
                 )
-                xs_sparse_display = downsampled[0]
-                ys_sparse_display = downsampled[1]
+                xs_sparse_origin = [x / self.scaling_factor for x in downsampled[0]]
+                ys_sparse_origin = [y / self.scaling_factor for y in downsampled[1]]
 
-                xs_sparse_origin = [ x / self.scaling_factor for x in xs_sparse_display]
-                ys_sparse_origin = [ y / self.scaling_factor for y in ys_sparse_display]
-                
-                self.main_window.data[key][0][self.frame] = xs_sparse_origin
-                self.main_window.data[key][1][self.frame] = ys_sparse_origin
+                contour_obj.contours = [[xs_sparse_origin, ys_sparse_origin]]
 
                 start = self.working_spline.geometry.start_coords
                 end = self.working_spline.geometry.end_coords
                 if start:
-                    self.main_window.data[f"{key}_start"][self.frame] = (
-                        start[0] / self.scaling_factor,
-                        start[1] / self.scaling_factor,
-                    )
+                    contour_obj.start_coords = [(start[0] / self.scaling_factor, start[1] / self.scaling_factor)]
                 if end:
-                    self.main_window.data[f"{key}_end"][self.frame] = (
-                        end[0] / self.scaling_factor,
-                        end[1] / self.scaling_factor,
-                    )
+                    contour_obj.end_coords = [(end[0] / self.scaling_factor, end[1] / self.scaling_factor)]
                 self.finalized_splines[key] = self.working_spline
 
             self._interrupt_drawing_mode()
 
+            saved_contours = contour_obj.contours
+            if saved_contours and saved_contours[0]:
+                xs_saved, ys_saved = saved_contours[0][0], saved_contours[0][1]
+            else:
+                xs_saved, ys_saved = [], []
             contour_for_frame: Tuple[np.array, np.array] = (
-                np.array(self.main_window.data[key][0][self.frame]),
-                np.array(self.main_window.data[key][1][self.frame]),
+                np.array(xs_saved),
+                np.array(ys_saved),
             )
             try:
                 self.main_window.longitudinal_view.lview_contour(self.frame, contour_for_frame, update=True)
@@ -724,46 +684,58 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 logger.debug(f"Could not update longitudinal view for frame {self.frame}: {e}")
 
     ################################################################################################
-    # later to be refactored into countour manipulation methods (measure and reference point)
+    # later to be refactored into contour manipulation methods (measure and reference point)
     def _draw_measure(self):
-        for index in range(2):
-            if (
-                self.main_window.data['measures'][self.frame][index] is not None
-                and len(self.main_window.data['measures'][self.frame][index]) == 4
-            ):
-                first_point = QPointF(
-                    self.main_window.data['measures'][self.frame][index][0],
-                    self.main_window.data['measures'][self.frame][index][1],
+        fd = self.main_window.data.get(self.frame)
+        if fd is None:
+            return
+        for index, attr in enumerate(['measurement_1', 'measurement_2']):
+            measure = getattr(fd, attr)
+            if measure is None or measure.points is None:
+                continue
+            (x1, y1), (x2, y2) = measure.points
+            p1 = QPointF(x1 * self.scaling_factor, y1 * self.scaling_factor)
+            p2 = QPointF(x2 * self.scaling_factor, y2 * self.scaling_factor)
+            self.graphics_scene.addItem(Point((p1.x(), p1.y()), self.point_thickness, self.point_radius, self.measure_colors[index]))
+            self.graphics_scene.addItem(Point((p2.x(), p2.y()), self.point_thickness, self.point_radius, self.measure_colors[index]))
+            self.graphics_scene.addLine(QLineF(p1, p2), get_qt_pen(self.measure_colors[index], self.point_thickness))
+            length_text = QGraphicsTextItem(f'{measure.length} mm')
+            length_text.setPos(p2.x(), p2.y())
+            self.graphics_scene.addItem(length_text)
+        # Draw any pending first-click-only points
+        for index, pending in enumerate(self.pending_measure_points):
+            if pending is not None:
+                px, py = pending
+                self.graphics_scene.addItem(
+                    Point((px * self.scaling_factor, py * self.scaling_factor),
+                          self.point_thickness, self.point_radius, self.measure_colors[index])
                 )
-                second_point = QPointF(
-                    self.main_window.data['measures'][self.frame][index][2],
-                    self.main_window.data['measures'][self.frame][index][3],
-                )
-                self.main_window.data['measures'][self.frame][index] = None
-                self.add_measure(first_point, index=index, new=False)
-                self.add_measure(second_point, index=index, new=False)
 
     def add_measure(self, point, index=None, new=True):
         index = index if index is not None else self.measure_index
-        new_point = Point((point.x(), point.y()), self.point_thickness, self.point_radius, self.measure_colors[index])
-        self.graphics_scene.addItem(new_point)
-
-        if self.main_window.data['measures'][self.frame][index] is None:
-            self.main_window.data['measures'][self.frame][index] = [point.x(), point.y()]
-        else:  # second point
-            self.main_window.data['measures'][self.frame][index] += [point.x(), point.y()]
-            line = QLineF(
-                self.main_window.data['measures'][self.frame][index][0],
-                self.main_window.data['measures'][self.frame][index][1],
-                self.main_window.data['measures'][self.frame][index][2],
-                self.main_window.data['measures'][self.frame][index][3],
-            )
+        orig_x = point.x() / self.scaling_factor
+        orig_y = point.y() / self.scaling_factor
+        self.graphics_scene.addItem(
+            Point((point.x(), point.y()), self.point_thickness, self.point_radius, self.measure_colors[index])
+        )
+        if self.pending_measure_points[index] is None:
+            # First click — store as pending
+            self.pending_measure_points[index] = (orig_x, orig_y)
+        else:
+            # Second click — complete the measure
+            p1_orig = self.pending_measure_points[index]
+            p1 = QPointF(p1_orig[0] * self.scaling_factor, p1_orig[1] * self.scaling_factor)
+            p2 = QPointF(orig_x * self.scaling_factor, orig_y * self.scaling_factor)
+            line = QLineF(p1, p2)
             length = round(line.length() * self.main_window.metadata["resolution"] / self.scaling_factor, 2)
-            self.main_window.data['measure_lengths'][self.frame][index] = length
+            attr = f'measurement_{index + 1}'
+            setattr(self.main_window.data[self.frame], attr,
+                    Measure(points=(p1_orig, (orig_x, orig_y)), length=length))
+            self.pending_measure_points[index] = None
+            self.graphics_scene.addLine(line, get_qt_pen(self.measure_colors[index], self.point_thickness))
             length_text = QGraphicsTextItem(f'{length} mm')
             length_text.setPos(point.x(), point.y())
             self.graphics_scene.addItem(length_text)
-            self.graphics_scene.addLine(line, get_qt_pen(self.measure_colors[index], self.point_thickness))
             if new:
                 self.measure_index = None
                 self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
@@ -771,49 +743,48 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
     def start_measure(self, index: int):
         if self.drawing_mode:
             self.stop_contour()
-        self.main_window.data['measures'][self.frame][index] = None
+        fd = self.main_window.data.get(self.frame)
+        if fd:
+            setattr(fd, f'measurement_{index + 1}', None)
+        self.pending_measure_points[index] = None
         self.main_window.setCursor(Qt.CursorShape.CrossCursor)
         self.measure_index = index
         self.display_image(update_contours=True)
 
     def stop_measure(self, index):
         if self.main_window.image_displayed:
+            self.pending_measure_points[index] = None
             self.measure_index = None
             self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
             self.display_image(update_contours=True)
-            self.main_window.longitudinal_view.update_measure(
-                self.frame, index, self.main_window['measures'][self.frame][index]
-            )
 
     def _draw_reference(self):
-        if self.main_window.data['reference'][self.frame] is not None:
-            reference_point = self.main_window.data['reference'][self.frame]
-            # Convert original coordinates to scaled display coordinates
-            scaled_x = reference_point[0] * self.scaling_factor
-            scaled_y = reference_point[1] * self.scaling_factor
-            reference = Point(
-                (scaled_x, scaled_y),
-                self.point_thickness,
-                self.point_radius,
-                self.main_window.reference_color,
-            )
-            self.graphics_scene.addItem(reference)
-            text = QGraphicsTextItem('Reference')
-            text.setPos(scaled_x, scaled_y)  # Position text at scaled coordinates
-            self.graphics_scene.addItem(text)
+        fd = self.main_window.data.get(self.frame)
+        if fd is None or fd.reference is None:
+            return
+        scaled_x = fd.reference[0] * self.scaling_factor
+        scaled_y = fd.reference[1] * self.scaling_factor
+        self.graphics_scene.addItem(
+            Point((scaled_x, scaled_y), self.point_thickness, self.point_radius, self.main_window.reference_color)
+        )
+        text = QGraphicsTextItem('Reference')
+        text.setPos(scaled_x, scaled_y)
+        self.graphics_scene.addItem(text)
 
     def start_reference(self):
         self.reference_mode = True
         self.main_window.setCursor(Qt.CursorShape.CrossCursor)
-        self.main_window.data['reference'][self.frame] = None
+        fd = self.main_window.data.get(self.frame)
+        if fd:
+            fd.reference = None
         self.display_image(update_contours=True)
 
     def _handle_reference_placement(self, pos):
         """Saves the reference point and exits reference mode."""
-        original_x = pos.x() / self.scaling_factor
-        original_y = pos.y() / self.scaling_factor
-        self.main_window.data['reference'][self.frame] = [original_x, original_y]
-
+        self.main_window.data[self.frame].reference = (
+            pos.x() / self.scaling_factor,
+            pos.y() / self.scaling_factor,
+        )
         self.reference_mode = False
         self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
         self.display_image(update_contours=True)
@@ -823,82 +794,51 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         """Initializes the angle measurement mode."""
         if self.drawing_mode:
             self.stop_contour()
-
-        if 'angles' not in self.main_window.data:
-            num_frames = self.main_window.metadata.get('num_frames', 0)
-            self.main_window.data['angles'] = [[None, None] for _ in range(num_frames)]
-        
         self.angle_mode = True
         self.angle_clicks = []
         self.main_window.setCursor(Qt.CursorShape.CrossCursor)
-        # Ensure the data structure exists for this frame
-        self.main_window.data['angles'][self.frame] = [None, None]
-        
+        self.main_window.data[self.frame].wire = None
         self.display_image(update_contours=True)
 
     def _handle_angle_placement(self, pos: QPointF):
         """Handles the two clicks required to define an angle."""
         self.angle_clicks.append(pos)
-        
-        # Store original coordinates (unscaled)
-        original_point = [pos.x() / self.scaling_factor, pos.y() / self.scaling_factor]
-        
+        original_point = (pos.x() / self.scaling_factor, pos.y() / self.scaling_factor)
+        fd = self.main_window.data[self.frame]
+
         if len(self.angle_clicks) == 1:
-            # Save first point and refresh to show feedback
-            self.main_window.data['angles'][self.frame] = [original_point]
+            fd.wire = (original_point,)
             self.display_image(update_contours=True)
-        
         elif len(self.angle_clicks) == 2:
-            # Save second point and exit mode
-            self.main_window.data['angles'][self.frame].append(original_point)
+            fd.wire = (fd.wire[0], original_point)
             self.angle_mode = False
             self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
             self.display_image(update_contours=True)
 
     def _draw_angles(self):
-        """Draws lines from center through the stored angle points, stopping at image edges."""
-        try:
-            angle_data = self.main_window.data['angles'][self.frame]
-        except (IndexError, TypeError, KeyError):
+        """Draws lines from center through the stored wire/angle points, stopping at image edges."""
+        fd = self.main_window.data.get(self.frame)
+        if fd is None or not fd.wire:
             return
 
-        if not angle_data or all(pt is None for pt in angle_data):
-            return
-
-        # Center point of the square image
         half_size = self.image_size / 2
         center = QPointF(half_size, half_size)
-        
         pen = get_qt_pen(self.color_angle, self.point_thickness)
 
-        for pt_coords in angle_data:
+        for pt_coords in fd.wire:
             target_pt = QPointF(pt_coords[0] * self.scaling_factor, pt_coords[1] * self.scaling_factor)
-            
-            # 2. Determine the direction vector from center to click
             dx = target_pt.x() - center.x()
             dy = target_pt.y() - center.y()
-
-            # Avoid division by zero if clicking exactly on the center
             if dx == 0 and dy == 0:
                 continue
-
             t_x = abs(half_size / dx) if dx != 0 else float('inf')
             t_y = abs(half_size / dy) if dy != 0 else float('inf')
             t = min(t_x, t_y)
-
             edge_pt = QPointF(center.x() + t * dx, center.y() + t * dy)
-            line = QLineF(center, edge_pt)
-            
-            self.graphics_scene.addLine(line, pen)
-            
-            point_marker = Point(
-                (target_pt.x(), target_pt.y()), 
-                self.point_thickness, 
-                self.point_radius,
-                0, # Assuming this is an index or type ID for your Point class
-                self.color_angle,
+            self.graphics_scene.addLine(QLineF(center, edge_pt), pen)
+            self.graphics_scene.addItem(
+                Point((target_pt.x(), target_pt.y()), self.point_thickness, self.point_radius, 0, self.color_angle)
             )
-            self.graphics_scene.addItem(point_marker)
 
     ######################
     # Mouse click events #
@@ -944,11 +884,9 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
 
         closed_contour_types = {ct for ct in ContourType if SegmentationTool.CLOSED_SPLINE in ALLOWED_TOOLS.get(ct, set())}
         for ct in closed_contour_types:
-            contour_data = self._get_contour_data(ct)
-            if not contour_data or not contour_data[0][self.frame]:
+            xs, ys = self._get_contour_data(ct, self.frame)
+            if not xs:
                 continue
-
-            xs, ys = contour_data[0][self.frame], contour_data[1][self.frame]
             for x_orig, y_orig in zip(xs, ys):
                 dist = math.hypot(pos.x() - (x_orig * self.scaling_factor), pos.y() - (y_orig * self.scaling_factor))
                 if dist < min_dist:
@@ -1017,9 +955,13 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.points_to_draw.pop(idx)
 
         key = self.contour_key(self.active_contour_type)
-        if key in self.main_window.data:
-            self.main_window.data[key][0][self.frame].pop(idx)
-            self.main_window.data[key][1][self.frame].pop(idx)
+        fd = self.main_window.data.get(self.frame)
+        if fd:
+            contour_obj = getattr(fd, key, None)
+            if contour_obj and contour_obj.contours and contour_obj.contours[0]:
+                contour_obj.contours[0][0].pop(idx)
+                if len(contour_obj.contours[0]) > 1:
+                    contour_obj.contours[0][1].pop(idx)
 
         self.display_image(update_contours=True)
 
@@ -1058,19 +1000,16 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 elif self.active_point.color == self.end_color:
                     geom.end_coords = new_pos
 
-                self.main_window.data[key][0][self.frame] = [p / self.scaling_factor for p in geom.knot_points_x]
-                self.main_window.data[key][1][self.frame] = [p / self.scaling_factor for p in geom.knot_points_y]
-                
+                x_list = [p / self.scaling_factor for p in geom.knot_points_x]
+                y_list = [p / self.scaling_factor for p in geom.knot_points_y]
+                contour_obj = getattr(self.main_window.data[self.frame], key)
+                contour_obj.contours = [[x_list, y_list]]
                 if geom.start_coords:
-                    self.main_window.data[f"{key}_start"][self.frame] = (
-                        geom.start_coords[0]/self.scaling_factor, 
-                        geom.start_coords[1]/self.scaling_factor,
-                        )
+                    contour_obj.start_coords = [(geom.start_coords[0] / self.scaling_factor,
+                                                 geom.start_coords[1] / self.scaling_factor)]
                 if geom.end_coords:
-                    self.main_window.data[f"{key}_end"][self.frame] = (
-                        geom.end_coords[0]/self.scaling_factor, 
-                        geom.end_coords[1]/self.scaling_factor,
-                        )
+                    contour_obj.end_coords = [(geom.end_coords[0] / self.scaling_factor,
+                                               geom.end_coords[1] / self.scaling_factor)]
 
                 self.display_image(update_contours=True)
                 self.active_point_index = None
@@ -1088,13 +1027,14 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                     orig_coords = (pos.x() / self.scaling_factor, pos.y() / self.scaling_factor)
                     
                     key = self.contour_key(self.active_contour_type)
-                    
+                    contour_obj = getattr(self.main_window.data[self.frame], key)
+
                     if self.active_end_coords_flag:
                         current_spline.geometry.end_coords = scaled_coords
-                        self.main_window.data[f"{key}_end"][self.frame] = orig_coords
+                        contour_obj.end_coords = [orig_coords]
                     else:
                         current_spline.geometry.start_coords = scaled_coords
-                        self.main_window.data[f"{key}_start"][self.frame] = orig_coords
+                        contour_obj.start_coords = [orig_coords]
                     
                     self.active_end_coords_flag = not self.active_end_coords_flag
                     

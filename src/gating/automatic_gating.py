@@ -123,7 +123,8 @@ class AutomaticGating:
             )
 
             # reset all phases
-            self.main_window.data['phases'] == '-'
+            for fd in self.main_window.data.values():
+                fd.phase = '-'
             self.main_window.gated_frames_dia = []
             self.main_window.gated_frames_sys = []
             self.main_window.diastolic_frame_box.setChecked(False)
@@ -141,9 +142,9 @@ class AutomaticGating:
                 self.main_window.gated_frames_sys.sort()
 
             for frame in self.main_window.gated_frames_dia:
-                self.main_window.data['phases'][frame] = 'D'
+                self.main_window.data[frame].phase = 'D'
             for frame in self.main_window.gated_frames_sys:
-                self.main_window.data['phases'][frame] = 'S'
+                self.main_window.data[frame].phase = 'S'
 
 def _write_csv_signals(image_signal, contour_signal, image_indices, contour_indices, combined_indices):
     import pandas as pd

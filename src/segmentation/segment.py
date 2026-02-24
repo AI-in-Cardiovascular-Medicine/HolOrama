@@ -34,30 +34,25 @@ from gui.popup_windows.frame_range_dialog import FrameRangeDialog
 
 
 def mask_to_contours(main_window, masks, lower_limit, upper_limit, config=None):
-    """Extracts contours from masked images. Returns x and y coordinates"""
+    """Extracts contours from masked images. Writes directly to main_window.data[frame].lumen."""
     if main_window is None:
-        lumen = (
-                [[] for _ in range(upper_limit - lower_limit)],
-                [[] for _ in range(upper_limit - lower_limit)],
-            )
-    else:
-        lumen = main_window.data['lumen']
-        config = main_window.config
+        return
+    config = main_window.config
     num_points = config.display.n_interactive_points
     image_shape = masks.shape[1:3]
     counter = 0
     for frame in range(lower_limit, upper_limit):
+        fd = main_window.data.get(frame)
+        if fd is None:
+            continue
         if np.sum(masks[frame, :, :]) > 0:
             counter += 1
             contours_frame = label_contours(masks[frame, :, :])
             keep_lumen_x, keep_lumen_y = downsample(keep_largest_contour(contours_frame, image_shape), num_points)
-            lumen[0][frame] = keep_lumen_x
-            lumen[1][frame] = keep_lumen_y
+            fd.lumen.contours = [[keep_lumen_x, keep_lumen_y]]
         else:
-            lumen[0][frame] = []
-            lumen[1][frame] = []
+            fd.lumen.contours = []
     logger.info(f'Found contours in {counter} frames')
-    return lumen
 
 
 def label_contours(image):

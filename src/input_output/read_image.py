@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import QFileDialog
 
 from gui.popup_windows.message_boxes import ErrorMessage
 from input_output.metadata import parse_dicom
-from input_output.contours_io import read_contours
+from input_output.contours_io import read_contours, FrameData
 
 
 def read_image(main_window):
@@ -57,49 +57,26 @@ def read_image(main_window):
         main_window.metadata['num_frames'] = main_window.images.shape[0]
         main_window.display_slider.setMaximum(main_window.metadata['num_frames'] - 1)
 
+        num_frames = main_window.metadata['num_frames']
         success = read_contours(main_window, main_window.file_name)
         if success:
+            # Fill any frames absent from the JSON with empty FrameData
+            for i in range(num_frames):
+                if i not in main_window.data:
+                    main_window.data[i] = FrameData()
             main_window.segmentation = True
-            try:
-                main_window.gated_frames_dia = [
-                    frame
-                    for frame in range(main_window.metadata['num_frames'])
-                    if main_window.data['phases'][frame] == 'D'
-                ]
-                main_window.gated_frames_sys = [
-                    frame
-                    for frame in range(main_window.metadata['num_frames'])
-                    if main_window.data['phases'][frame] == 'S'
-                ]
-                main_window.gated_frames = main_window.gated_frames_dia
-            except KeyError:  # old contour files may not have phases attribute
-                pass
+            main_window.gated_frames_dia = [
+                frame for frame in range(num_frames)
+                if main_window.data[frame].phase == 'D'
+            ]
+            main_window.gated_frames_sys = [
+                frame for frame in range(num_frames)
+                if main_window.data[frame].phase == 'S'
+            ]
+            main_window.gated_frames = main_window.gated_frames_dia
         else:  # initialise empty containers
-            for key in [
-                'plaque_frames',
-                'lumen_area',
-                'lumen_circumf',
-                'longest_distance',
-                'shortest_distance',
-                'elliptic_ratio',
-                'vector_length',
-                'vector_angle',
-                'eem_area',
-                'percent_stenosis_text'
-            ]:
-                main_window.data[key] = [0] * main_window.metadata['num_frames']
-            main_window.data['phases'] = ['-'] * main_window.metadata['num_frames']
-            for key in ['lumen_centroid', 'farthest_point', 'nearest_point', 'lumen', 'eem', 'calcium', 'branch']:
-                main_window.data[key] = (
-                    [[] for _ in range(main_window.metadata['num_frames'])],
-                    [[] for _ in range(main_window.metadata['num_frames'])],
-                )
-            main_window.data['measures'] = [[None, None] for _ in range(main_window.metadata['num_frames'])]
-            main_window.data['measure_lengths'] = [[None, None] for _ in range(main_window.metadata['num_frames'])]
-            main_window.data['reference'] = [None] * main_window.metadata['num_frames']
-            main_window.data['angles'] = [[None, None] for _ in range(main_window.metadata['num_frames'])]
-            main_window.data['gating_signal'] = {}
-            main_window.display.set_data(main_window.data['lumen'], main_window.images)
+            main_window.data = {i: FrameData() for i in range(num_frames)}
+        main_window.display.set_data(main_window.images)
 
         main_window.image_displayed = True
         main_window.display_slider.setValue(main_window.metadata['num_frames'] - 1)

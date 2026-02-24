@@ -27,7 +27,10 @@ def report(main_window, lower_limit=None, upper_limit=None, suppress_messages=Fa
         frame_range = range(lower_limit, upper_limit)
     else:
         frame_range = range(main_window.metadata['num_frames'])
-    contoured_frames = [frame for frame in frame_range if main_window.data['lumen'][0][frame]]
+    contoured_frames = [
+        frame for frame in frame_range
+        if frame in main_window.data and main_window.data[frame].lumen.contours
+    ]
     if not contoured_frames:
         if not suppress_messages:
             ErrorMessage(main_window, 'Cannot write report before drawing contours')
@@ -96,24 +99,46 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
         progress.setWindowTitle('Writing report...')
         progress.show()
 
-    longest_distance = main_window.data['longest_distance']
-    farthest_x = main_window.data['farthest_point'][0]
-    farthest_y = main_window.data['farthest_point'][1]
-    shortest_distance = main_window.data['shortest_distance']
-    nearest_x = main_window.data['nearest_point'][0]
-    nearest_y = main_window.data['nearest_point'][1]
-    lumen_area = main_window.data['lumen_area']
-    lumen_circumf = main_window.data['lumen_circumf']
-    centroid_x = main_window.data['lumen_centroid'][0]
-    centroid_y = main_window.data['lumen_centroid'][1]
-    try:  # these entries were added later -> might be missing in older data dicts
-        elliptic_ratio = main_window.data['elliptic_ratio']
-        vector_length = main_window.data['vector_length']
-        vector_angle = main_window.data['vector_angle']
-    except KeyError:
-        elliptic_ratio = [0] * main_window.metadata['num_frames']
-        vector_length = [0] * main_window.metadata['num_frames']
-        vector_angle = [0] * main_window.metadata['num_frames']
+    n_frames = main_window.metadata['num_frames']
+    longest_distance = [None] * n_frames
+    farthest_x = [None] * n_frames
+    farthest_y = [None] * n_frames
+    shortest_distance = [None] * n_frames
+    nearest_x = [None] * n_frames
+    nearest_y = [None] * n_frames
+    lumen_area = [None] * n_frames
+    lumen_circumf = [None] * n_frames
+    centroid_x = [None] * n_frames
+    centroid_y = [None] * n_frames
+    elliptic_ratio = [None] * n_frames
+    vector_length = [None] * n_frames
+    vector_angle = [None] * n_frames
+
+    # Pre-fill from stored per-frame measurements
+    for frame in contoured_frames:
+        fd = main_window.data.get(frame)
+        if fd is None:
+            continue
+        m = fd.lumen.measurements
+        if m.area is not None:
+            lumen_area[frame] = m.area
+        if m.circumference is not None:
+            lumen_circumf[frame] = m.circumference
+        if fd.centroid:
+            centroid_x[frame] = fd.centroid[0]
+            centroid_y[frame] = fd.centroid[1]
+        if m.major_axis is not None:
+            longest_distance[frame] = m.major_axis
+        if fd.farthest_points:
+            farthest_x[frame] = [fd.farthest_points[0][0], fd.farthest_points[1][0]]
+            farthest_y[frame] = [fd.farthest_points[0][1], fd.farthest_points[1][1]]
+        if m.minor_axis is not None:
+            shortest_distance[frame] = m.minor_axis
+        if fd.closest_points:
+            nearest_x[frame] = [fd.closest_points[0][0], fd.closest_points[1][0]]
+            nearest_y[frame] = [fd.closest_points[0][1], fd.closest_points[1][1]]
+        if m.elliptic_ratio is not None:
+            elliptic_ratio[frame] = m.elliptic_ratio
 
     # helper to fetch per-type full_contours defensively
     def _get_full_list_by_name(name):
@@ -157,18 +182,14 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
     calc_x, calc_y = build_xy_lists(calc_full_list)
     branch_x, branch_y = build_xy_lists(branch_full_list)
 
-    # Ensure main_window.data has an 'eem_area' list to write into (defensive)
-    n_frames = main_window.metadata.get('num_frames', len(lumen_x) if lumen_x is not None else 0)
-    if 'eem_area' not in main_window.data or len(main_window.data['eem_area']) < n_frames:
-        main_window.data.setdefault('eem_area', [0] * n_frames)
-
     for frame in contoured_frames:
         # skip frames already computed (defensive check)
-        if lumen_area[frame] and elliptic_ratio[frame] != 0:
+        if lumen_area[frame] and elliptic_ratio[frame] is not None and elliptic_ratio[frame] != 0:
             # compute EEM area if not present
-            if eem_x and eem_x[frame] is not None and (not main_window.data['eem_area'][frame]):
+            fd = main_window.data.get(frame)
+            if eem_x and eem_x[frame] is not None and fd and not fd.eem.measurements.area:
                 area = _safe_polygon_area(eem_x[frame], eem_y[frame], frame=frame, contour_name="eem", main_window=main_window)
-                main_window.data['eem_area'][frame] = area
+                fd.eem.measurements.area = area
             continue
 
         # dmake sure lumen contour exists
@@ -194,7 +215,9 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
         # Compute EEM area for this frame if EEM contour exists
         if eem_x and eem_x[frame] is not None:
             area = _safe_polygon_area(eem_x[frame], eem_y[frame], frame=frame, contour_name="eem", main_window=main_window)
-            main_window.data['eem_area'][frame] = area
+            fd_eem = main_window.data.get(frame)
+            if fd_eem:
+                fd_eem.eem.measurements.area = area
 
         if not suppress_messages:
             progress.setValue(frame)
@@ -213,7 +236,7 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
     else:
         report_data['position'] = [main_window.metadata['pullback_length'][frame] for frame in contoured_frames]
     report_data['position'] = report_data['position'].apply(lambda x: max(x, 0))
-    report_data['phase'] = [main_window.data['phases'][frame] for frame in contoured_frames]
+    report_data['phase'] = [main_window.data[frame].phase for frame in contoured_frames]
     report_data['lumen_area'] = [lumen_area[frame] for frame in contoured_frames]
     report_data['lumen_circumf'] = [lumen_circumf[frame] for frame in contoured_frames]
     report_data['longest_distance'] = [longest_distance[frame] for frame in contoured_frames]
@@ -221,14 +244,27 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
     report_data['elliptic_ratio'] = [elliptic_ratio[frame] for frame in contoured_frames]
     report_data['vector_length'] = [vector_length[frame] for frame in contoured_frames]
     report_data['vector_angle'] = [vector_angle[frame] for frame in contoured_frames]
-    report_data['measurement_1'] = [main_window.data['measure_lengths'][frame][0] for frame in contoured_frames]
-    report_data['measurement_2'] = [main_window.data['measure_lengths'][frame][1] for frame in contoured_frames]
+    report_data['measurement_1'] = [
+        main_window.data[frame].measurement_1.length if main_window.data[frame].measurement_1 else None
+        for frame in contoured_frames
+    ]
+    report_data['measurement_2'] = [
+        main_window.data[frame].measurement_2.length if main_window.data[frame].measurement_2 else None
+        for frame in contoured_frames
+    ]
 
-    report_data['eem_area'] = [main_window.data.get('eem_area', [0] * n_frames)[frame] for frame in contoured_frames]
+    report_data['eem_area'] = [
+        main_window.data[frame].eem.measurements.area or 0
+        for frame in contoured_frames
+    ]
 
-    main_window.data['elliptic_ratio'] = elliptic_ratio
-    main_window.data['vector_length'] = vector_length
-    main_window.data['vector_angle'] = vector_angle
+    # Write computed metrics back into per-frame measurements
+    for frame in contoured_frames:
+        fd = main_window.data.get(frame)
+        if fd is None:
+            continue
+        if elliptic_ratio[frame] is not None:
+            fd.lumen.measurements.elliptic_ratio = elliptic_ratio[frame]
 
     # Save CSVs for lumen (diastolic/systolic) and for other contours if present
     if save_as_csv:
@@ -318,10 +354,11 @@ def compute_polygon_metrics(main_window, polygon, frame):
     lumen_circumf = polygon.length * main_window.metadata['resolution']
     centroid_x = polygon.centroid.x
     centroid_y = polygon.centroid.y
-    main_window.data['lumen_area'][frame] = lumen_area
-    main_window.data['lumen_circumf'][frame] = lumen_circumf
-    main_window.data['lumen_centroid'][0][frame] = centroid_x
-    main_window.data['lumen_centroid'][1][frame] = centroid_y
+    fd = main_window.data.get(frame)
+    if fd:
+        fd.lumen.measurements.area = lumen_area
+        fd.lumen.measurements.circumference = lumen_circumf
+        fd.centroid = (centroid_x, centroid_y)
 
     return lumen_area, lumen_circumf, centroid_x, centroid_y
 
@@ -370,9 +407,13 @@ def farthest_points(main_window, exterior_coords, frame):
         farthest_point_y = [0, 0]
         longest_distance = 0
 
-    main_window.data['longest_distance'][frame] = longest_distance
-    main_window.data['farthest_point'][0][frame] = farthest_point_x
-    main_window.data['farthest_point'][1][frame] = farthest_point_y
+    fd = main_window.data.get(frame)
+    if fd:
+        fd.lumen.measurements.major_axis = longest_distance
+        fd.farthest_points = (
+            (farthest_point_x[0], farthest_point_y[0]),
+            (farthest_point_x[1], farthest_point_y[1]),
+        )
 
     return longest_distance, farthest_point_x, farthest_point_y
 
@@ -411,9 +452,13 @@ def closest_points(main_window, polygon, frame):
         closest_point_y = [0, 0]
         shortest_distance = 0
 
-    main_window.data['shortest_distance'][frame] = shortest_distance
-    main_window.data['nearest_point'][0][frame] = closest_point_x
-    main_window.data['nearest_point'][1][frame] = closest_point_y
+    fd = main_window.data.get(frame)
+    if fd:
+        fd.lumen.measurements.minor_axis = shortest_distance
+        fd.closest_points = (
+            (closest_point_x[0], closest_point_y[0]),
+            (closest_point_x[1], closest_point_y[1]),
+        )
 
     return shortest_distance, closest_point_x, closest_point_y
 
@@ -446,12 +491,14 @@ def save_csv_files(main_window, lumen_x, lumen_y, name, frames):
         with open(os.path.join(csv_out_dir, ref_file_name), 'w', newline='') as reference_file:
             reference_writer = csv.writer(reference_file, delimiter='\t')
             for frame in frames:
-                if main_window.data['reference'][frame] is not None:
+                fd = main_window.data.get(frame)
+                ref = fd.reference if fd else None
+                if ref is not None:
                     reference_writer.writerow(
                         [
                             frame + 1,
-                            main_window.data['reference'][frame][0] * main_window.metadata['resolution'],
-                            abs(main_window.data['reference'][frame][1] * main_window.metadata['resolution'] - img_dim_mm),
+                            ref[0] * main_window.metadata['resolution'],
+                            abs(ref[1] * main_window.metadata['resolution'] - img_dim_mm),
                             main_window.metadata['pullback_length'][frame] - distance_offset,
                         ]
                     )

@@ -59,7 +59,7 @@ def init_menu(main_window):
     save_report = file_menu.addAction('Save Report', partial(report, main_window))
     save_report.setShortcut('Ctrl+R')
     file_menu.addAction('Save Video Pullback', partial(save_video_pullback, main_window))
-    file_menu.addAction('Save Gated Images', partial(save_gated_images, main_window, main_window.file_name))
+    file_menu.addAction('Save Gated Images', partial(save_gated_images, main_window))
     file_menu.addSeparator()
     exit_action = file_menu.addAction('Exit', main_window.close)
     exit_action.setShortcut('Ctrl+Q')
@@ -145,8 +145,11 @@ def remove_contours(main_window):
             lower_limit, upper_limit = dialog.getInputs()
             key = main_window.display.contour_key()
             for frame in range(lower_limit, upper_limit):
-                main_window.data[key][0][frame] = []
-                main_window.data[key][1][frame] = []
+                fd = main_window.data.get(frame)
+                if fd:
+                    contour_obj = getattr(fd, key, None)
+                    if contour_obj:
+                        contour_obj.contours = []
             main_window.longitudinal_view.remove_contours(lower_limit, upper_limit)
             main_window.display.update_display()
             main_window.status_bar.showMessage(main_window.waiting_status)
@@ -160,13 +163,16 @@ def reset_phases(main_window):
             main_window.status_bar.showMessage('Resetting phases...')
             lower_limit, upper_limit = dialog.getInputs()
             for frame in range(lower_limit, upper_limit):
-                if main_window.data['phases'][frame] == 'D':
+                fd = main_window.data.get(frame)
+                if fd is None:
+                    continue
+                if fd.phase == 'D':
                     main_window.gated_frames_dia.remove(frame)
                     main_window.diastolic_frame_box.setChecked(False)
-                elif main_window.data['phases'][frame] == 'S':
+                elif fd.phase == 'S':
                     main_window.gated_frames_sys.remove(frame)
                     main_window.systolic_frame_box.setChecked(False)
-                main_window.data['phases'][frame] = '-'
+                fd.phase = '-'
             main_window.gated_frames = main_window.gated_frames_dia + main_window.gated_frames_sys
             main_window.gated_frames.sort()
             main_window.gated_frames_dia.sort()
@@ -196,14 +202,17 @@ def switch_phases(main_window):
             main_window.status_bar.showMessage('Switching phases...')
             lower_limit, upper_limit = dialog.getInputs()
             for frame in range(lower_limit, upper_limit):
-                if main_window.data['phases'][frame] == 'D':
-                    main_window.data['phases'][frame] = 'S'
+                fd = main_window.data.get(frame)
+                if fd is None:
+                    continue
+                if fd.phase == 'D':
+                    fd.phase = 'S'
                     main_window.gated_frames_dia.remove(frame)
                     main_window.gated_frames_sys.append(frame)
                     main_window.diastolic_frame_box.setChecked(False)
                     main_window.systolic_frame_box.setChecked(True)
-                elif main_window.data['phases'][frame] == 'S':
-                    main_window.data['phases'][frame] = 'D'
+                elif fd.phase == 'S':
+                    fd.phase = 'D'
                     main_window.gated_frames_sys.remove(frame)
                     main_window.gated_frames_dia.append(frame)
                     main_window.diastolic_frame_box.setChecked(True)
@@ -288,25 +297,18 @@ def delete_contour(main_window):
             main_window.tmp_contours = {}
 
         frame = main_window.display.frame
-        contour_data = main_window.data.get(key, [[], []])
-        
-        # Ensure the frame data exists
-        if len(contour_data[0]) <= frame:
-            # Extend the lists if needed
-            contour_data[0].extend([[]] * (frame - len(contour_data[0]) + 1))
-            contour_data[1].extend([[]] * (frame - len(contour_data[1]) + 1))
-        
-        xlist = contour_data[0][frame] if frame < len(contour_data[0]) else []
-        ylist = contour_data[1][frame] if frame < len(contour_data[1]) else []
-        
-        main_window.tmp_contours[key] = (xlist.copy(), ylist.copy())
+        fd = main_window.data.get(frame)
+        if fd:
+            contour_obj = getattr(fd, key, None)
+            if contour_obj and contour_obj.contours and contour_obj.contours[0]:
+                xlist = list(contour_obj.contours[0][0]) if contour_obj.contours[0][0] else []
+                ylist = list(contour_obj.contours[0][1]) if len(contour_obj.contours[0]) > 1 else []
+            else:
+                xlist, ylist = [], []
+            main_window.tmp_contours[key] = (xlist, ylist)
+            if contour_obj:
+                contour_obj.contours = []
 
-        # Clear the contour for this frame
-        if frame < len(contour_data[0]):
-            contour_data[0][frame] = []
-        if frame < len(contour_data[1]):
-            contour_data[1][frame] = []
-            
         main_window.display.display_image(update_contours=True)
 
 
@@ -315,18 +317,13 @@ def undo_delete(main_window):
         key = main_window.display.contour_key()
         if hasattr(main_window, 'tmp_contours') and key in main_window.tmp_contours:
             xlist, ylist = main_window.tmp_contours.pop(key)
-            
             frame = main_window.display.frame
-            contour_data = main_window.data[key]
-            
-            # Ensure the frame data exists
-            if len(contour_data[0]) <= frame:
-                contour_data[0].extend([[]] * (frame - len(contour_data[0]) + 1))
-                contour_data[1].extend([[]] * (frame - len(contour_data[1]) + 1))
-            
-            contour_data[0][frame] = xlist
-            contour_data[1][frame] = ylist
-            
+            fd = main_window.data.get(frame)
+            if fd:
+                contour_obj = getattr(fd, key, None)
+                if contour_obj is not None:
+                    contour_obj.contours = [[xlist, ylist]]
+
             main_window.display.display_image(update_contours=True)
 
 

@@ -116,7 +116,7 @@ def toggle_diastolic_frame(main_window, state_true, drag=False):
             use_diastolic(main_window)
             if frame not in main_window.gated_frames_dia:
                 bisect.insort_left(main_window.gated_frames_dia, frame)
-                main_window.data['phases'][frame] = 'D'
+                main_window.data[frame].phase = 'D'
                 main_window.contour_based_gating.update_color(main_window.diastole_color_plt)
                 main_window.contour_based_gating.current_phase = 'D'
                 plt.draw()
@@ -129,9 +129,9 @@ def toggle_diastolic_frame(main_window, state_true, drag=False):
                 main_window.gated_frames_dia.remove(frame)
                 main_window.contour_based_gating.current_phase = None
                 if (
-                    main_window.data['phases'][frame] == 'D'
+                    main_window.data[frame].phase == 'D'
                 ):  # do not reset when function is called from toggle_systolic_frame
-                    main_window.data['phases'][frame] = '-'
+                    main_window.data[frame].phase = '-'
                     if not drag:
                         main_window.contour_based_gating.update_color()
             except ValueError:
@@ -148,7 +148,7 @@ def toggle_systolic_frame(main_window, state_true, drag=False):
             use_diastolic(main_window)
             if frame not in main_window.gated_frames_sys:
                 bisect.insort_left(main_window.gated_frames_sys, frame)
-                main_window.data['phases'][frame] = 'S'
+                main_window.data[frame].phase = 'S'
                 main_window.contour_based_gating.update_color(main_window.systole_color_plt)
                 main_window.contour_based_gating.current_phase = 'S'
             try:  # frame cannot be diastolic and systolic at the same time
@@ -160,9 +160,9 @@ def toggle_systolic_frame(main_window, state_true, drag=False):
                 main_window.gated_frames_sys.remove(frame)
                 main_window.contour_based_gating.current_phase = None
                 if (
-                    main_window.data['phases'][frame] == 'S'
+                    main_window.data[frame].phase == 'S'
                 ):  # do not reset when function is called from toggle_diastolic_frame
-                    main_window.data['phases'][frame] = '-'
+                    main_window.data[frame].phase = '-'
                     if not drag:
                         main_window.contour_based_gating.update_color()
             except ValueError:
