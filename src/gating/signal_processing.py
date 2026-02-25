@@ -20,7 +20,7 @@ def timing_decorator(func):
 def prepare_data(main_window, frames, report_data, x1=50, x2=450, y1=50, y2=450):
     """Prepares data for plotting."""
     try:
-        gating_signal = main_window.data['gating_signal']
+        gating_signal = main_window.gating_signal
         if not gating_signal:  # skip if empty
             raise KeyError
         if gating_signal['gating_config'] == main_window.config.gating and len(
@@ -71,7 +71,7 @@ def prepare_data(main_window, frames, report_data, x1=50, x2=450, y1=50, y2=450)
     contour_based_gating = combined_signal(main_window, [shortest_dist, vector_angle, vector_length], maxima_only=False)
     contour_based_gating_filtered = combined_signal(main_window, signal_contour_based_filtered, maxima_only=False)
 
-    main_window.data['gating_signal'] = {
+    main_window.gating_signal = {
         'image_based_gating': list(image_based_gating),
         'contour_based_gating': list(contour_based_gating),
         'image_based_gating_filtered': list(image_based_gating_filtered),

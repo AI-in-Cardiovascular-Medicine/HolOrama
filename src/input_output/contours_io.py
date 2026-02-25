@@ -55,7 +55,6 @@ class FrameData:
     centroid: Optional[Tuple[float, float]] = None
     closest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
     farthest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
-    gating_signal: Dict = field(default_factory=dict)
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -147,7 +146,6 @@ def _build_frame_data_legacy(raw: dict, num_frames: int, scaling_factor: float =
 
     phases = raw.get('phases', ['-'] * num_frames)
     reference = raw.get('reference', [None] * num_frames)
-    gating_signal = raw.get('gating_signal', {})
     # legacy: [[m1, m2], ...] per frame, where m1/m2 were dicts or None
     measures = raw.get('measures', [[None, None]] * num_frames)
 
@@ -165,15 +163,17 @@ def _build_frame_data_legacy(raw: dict, num_frames: int, scaling_factor: float =
             measurement_1=_build_measure(m1_raw, scaling_factor),
             measurement_2=_build_measure(m2_raw, scaling_factor),
             reference=reference[i] if i < len(reference) else None,
-            gating_signal=gating_signal,
         )
     return frames
 
 
 def _build_frame_data(raw: dict) -> Dict[int, FrameData]:
-    """Convert current JSON format (produced by asdict) into Dict[int, FrameData]."""
+    """Convert current JSON format (produced by asdict) into Dict[int, FrameData].
+    Top-level non-integer keys (e.g. 'gating_signal') are skipped here."""
     frames = {}
     for key, frame_raw in raw.items():
+        if not key.lstrip('-').isdigit():
+            continue
         i = int(key)
         frames[i] = FrameData(
             phase=frame_raw.get('phase', '-'),
@@ -190,7 +190,6 @@ def _build_frame_data(raw: dict) -> Dict[int, FrameData]:
             centroid=frame_raw.get('centroid'),
             closest_points=frame_raw.get('closest_points'),
             farthest_points=frame_raw.get('farthest_points'),
-            gating_signal=frame_raw.get('gating_signal', {}),
         )
     return frames
 
@@ -221,8 +220,10 @@ def read_contours(main_window, file_name=None) -> bool:
     if _is_legacy(raw):
         scaling_factor = main_window.display.image_size / main_window.images.shape[1]
         main_window.data = _build_frame_data_legacy(raw, num_frames, scaling_factor)
+        main_window.gating_signal = raw.get('gating_signal', {})
     else:
         main_window.data = _build_frame_data(raw)
+        main_window.gating_signal = raw.get('gating_signal', {})
 
     main_window.contours_drawn = True
     main_window.hide_contours_box.setChecked(False)
@@ -241,6 +242,7 @@ def write_contours(main_window) -> None:
 
     try:
         serializable = {str(i): asdict(frame) for i, frame in main_window.data.items()}
+        serializable['gating_signal'] = main_window.gating_signal
         with open(out_path, 'w') as f:
             json.dump(serializable, f, default=_to_serializable, indent=2)
         logger.info(f'Wrote contours to {out_path}')

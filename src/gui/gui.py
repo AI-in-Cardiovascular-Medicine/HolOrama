@@ -38,6 +38,7 @@ class Master(QMainWindow):
         self.gated_frames_dia = []
         self.gated_frames_sys = []
         self.data = {}  # container to be saved in JSON file later, includes contours, etc.
+        self.gating_signal = {}  # global gating signal, saved separately from per-frame data
         self.metadata = {}  # metadata used outside of read_image (not saved to JSON file)
         self.images = None
         self.diastole_color = (39, 69, 219)

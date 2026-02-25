@@ -144,6 +144,8 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             ContourType.EEM: getattr(config.display, "color_eem", "red"),
             ContourType.CALCIUM: getattr(config.display, "color_calcium", "white"),
             ContourType.BRANCH: getattr(config.display, "color_branch", "green"),
+            ContourType.LIPID: getattr(config.display, "color_lipid", "yellow"),
+            ContourType.MACROPHAGE: getattr(config.display, "color_macrophage", "blue")
         }
 
         self.contour_configs = {}
@@ -433,7 +435,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         if self.main_window.hide_contours:
             self.main_window.longitudinal_view.hide_lview_contours()
         else:
-            if update_contours and not self.mask_mode:
+            if update_contours:
                 lumen_key = self.contour_key(ContourType.LUMEN)
                 eem_key = self.contour_key(ContourType.EEM)
                 lumen_contour = None
@@ -452,8 +454,6 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
 
                 self._maybe_compute_metrics(lumen_contour, eem_contour)
                 self.update_active_contour()
-            elif self.mask_mode:
-                pass
             else:
                 for it in old_overlays:
                     self.graphics_scene.addItem(it)
