@@ -55,4 +55,11 @@ def set_tool(main_window, segmentation_tool: SegmentationTool):
     main_window.display.active_segmentation_tool = segmentation_tool
 
 def new_contour_append(main_window, contour_type: ContourType):
-    pass
+    if not main_window.image_displayed:
+        ErrorMessage(main_window, 'Cannot create manual contour before reading input file')
+        return
+
+    main_window.display.set_active_contour_type(contour_type)
+    main_window.display.start_contour(contour_type=contour_type, append=True)
+    main_window.hide_contours_box.setChecked(False)
+    main_window.contours_drawn = True
