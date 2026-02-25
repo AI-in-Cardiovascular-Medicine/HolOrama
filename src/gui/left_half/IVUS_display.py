@@ -427,6 +427,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 self._draw_measure()
                 self._draw_reference()
                 self._draw_angles()
+                self._draw_open_spline_edge_lines()
 
                 self._maybe_compute_metrics(lumen_contour, eem_contour)
                 self.update_active_contour()
@@ -929,6 +930,62 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             self.graphics_scene.addItem(
                 Point((target_pt.x(), target_pt.y()), self.point_thickness, self.point_radius, 0, self.color_angle)
             )
+
+    def _draw_open_spline_edge_lines(self):
+        """Draw lines from open spline start/end points to image edge, in direction away from contour centroid."""
+        fd = self.main_window.data.get(self.frame)
+        if fd is None:
+            return
+
+        half_size = self.image_size / 2
+        image_center = QPointF(half_size, half_size)
+
+        open_spline_types = {ct for ct in ContourType if SegmentationTool.OPEN_SPLINE in ALLOWED_TOOLS.get(ct, set())}
+        for ct in open_spline_types:
+            key = ct.value
+            contour_obj = getattr(fd, key, None)
+            if contour_obj is None:
+                continue
+            is_closed = contour_obj.closed[0] if contour_obj.closed else True
+            if is_closed:
+                continue
+
+            raw_start = contour_obj.start_coords[0] if contour_obj.start_coords else None
+            raw_end = contour_obj.end_coords[0] if contour_obj.end_coords else None
+            if raw_start is None and raw_end is None:
+                continue
+
+            # Use lumen centroid if available, fall back to image center
+            centroid = image_center
+            if fd.centroid:
+                centroid = QPointF(fd.centroid[0] * self.scaling_factor, fd.centroid[1] * self.scaling_factor)
+
+            cfg = self.contour_configs.get(ct)
+            color = cfg.color if cfg else self.color_contour
+            pen = get_qt_pen(color, self.point_thickness)
+
+            for raw_coord in [raw_start, raw_end]:
+                if raw_coord is None:
+                    continue
+                endpoint = QPointF(raw_coord[0] * self.scaling_factor, raw_coord[1] * self.scaling_factor)
+                dx = endpoint.x() - centroid.x()
+                dy = endpoint.y() - centroid.y()
+                if dx == 0 and dy == 0:
+                    continue
+                t_vals = []
+                if dx > 0:
+                    t_vals.append((self.image_size - endpoint.x()) / dx)
+                elif dx < 0:
+                    t_vals.append(-endpoint.x() / dx)
+                if dy > 0:
+                    t_vals.append((self.image_size - endpoint.y()) / dy)
+                elif dy < 0:
+                    t_vals.append(-endpoint.y() / dy)
+                if not t_vals:
+                    continue
+                t = min(t_vals)
+                edge_pt = QPointF(endpoint.x() + t * dx, endpoint.y() + t * dy)
+                self.graphics_scene.addLine(QLineF(endpoint, edge_pt), pen)
 
     ######################
     # Mouse click events #
