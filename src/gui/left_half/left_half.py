@@ -40,7 +40,7 @@ class LeftHalf:
         self.closed_spline_btn.setToolTip("Set drawing mode to closed spline")
         self.closed_spline_btn.clicked.connect(partial(set_tool, main_window, SegmentationTool.CLOSED_SPLINE))
 
-        self.open_spline_btn = QPushButton('➿Open Spline')
+        self.open_spline_btn = QPushButton('➰Open Spline')
         self.open_spline_btn.setCheckable(True)
         self.open_spline_btn.setToolTip("Set drawing mode to open spline")
         self.open_spline_btn.clicked.connect(partial(set_tool, main_window, SegmentationTool.OPEN_SPLINE))

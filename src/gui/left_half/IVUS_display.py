@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, 
 from PyQt6.QtCore import Qt, QLineF, QPointF
 from PyQt6.QtGui import QPixmap, QImage
 
-from gui.utils.geometry import Point, Spline, SplineGeometry, get_qt_pen
+from gui.utils.geometry import Point, Spline, SplineGeometry, OpenSplineGeometry, OpenSpline, get_qt_pen
 from gui.utils.metrics import MetricsMixin
 from gui.right_half.longitudinal_view import Marker
 from segmentation.segment import downsample
@@ -238,19 +238,34 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         if start_coords is None and lumen_x:
             start_coords = (lumen_x[0], lumen_y[0])
 
-        geometry = SplineGeometry(
-            lumen_x, 
-            lumen_y, 
-            self.n_points_contour, 
-            start_coords, 
-            end_coords,
-        )
-        geometry._ensure_start_end_coords()
-        geometry.interpolate()
+        is_closed = contour_obj.closed[0] if (contour_obj and contour_obj.closed) else True
+
+        if is_closed:
+            geometry = SplineGeometry(
+                lumen_x,
+                lumen_y,
+                self.n_points_contour,
+                start_coords,
+                end_coords,
+            )
+            geometry._ensure_start_end_coords()
+            geometry.interpolate()
+            spline_cls = Spline
+        else:
+            geometry = OpenSplineGeometry(
+                knot_points_x=lumen_x,
+                knot_points_y=lumen_y,
+                n_interpolated_points=self.n_points_contour,
+                start_coords=start_coords,
+                end_coords=end_coords,
+            )
+            geometry.interpolate()
+            spline_cls = OpenSpline
 
         if geometry.full_contour[0] is not None:
             knot_points = []
-            for i in range(len(geometry.knot_points_x) - 1):
+            knot_range = range(len(geometry.knot_points_x) - 1) if is_closed else range(len(geometry.knot_points_x))
+            for i in knot_range:
                 curr_x = geometry.knot_points_x[i]
                 curr_y = geometry.knot_points_y[i]
                 knot_color = color
@@ -274,7 +289,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
 
             for p in knot_points:
                 self.graphics_scene.addItem(p)
-            spline = Spline(geometry, color, thickness, alpha)
+            spline = spline_cls(geometry, color=color, line_thickness=thickness, transparency=alpha)
             self.graphics_scene.addItem(spline)
 
             self.finalized_splines[self.contour_key(ct)] = spline
@@ -501,7 +516,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.display_image(update_contours=True)
 
     def start_contour(
-        self, contour_type: ContourType = ContourType.LUMEN, segmentation_tool: SegmentationTool = SegmentationTool.CLOSED_SPLINE
+        self, contour_type: ContourType = ContourType.LUMEN, segmentation_tool: SegmentationTool = None
     ):
         """
         Start drawing a new contour of the specified type and with the specified tool.
@@ -521,6 +536,12 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             self.main_window.tmp_contours[key] = current_full_contour
 
         self.active_segmentation_tool = segmentation_tool if segmentation_tool else self.active_segmentation_tool
+
+        # Fall back to CLOSED_SPLINE if the active tool is not allowed for this contour type
+        ct = contour_type or self.active_contour_type
+        if self.active_segmentation_tool not in ALLOWED_TOOLS.get(ct, set()):
+            self.active_segmentation_tool = SegmentationTool.CLOSED_SPLINE
+            self.main_window.left_half.closed_spline_btn.setChecked(True)
 
         self.measure_index = None
         self.working_spline = None
@@ -559,6 +580,14 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             if len(self.points_to_draw) >= 3:
                 self._update_or_create_spline()
 
+        elif segmentation_tool == SegmentationTool.OPEN_SPLINE:
+            new_point = self._create_knot_point(click_pos)
+            self.points_to_draw.append(new_point)
+            self.graphics_scene.addItem(new_point)
+
+            if len(self.points_to_draw) >= 2:
+                self._update_or_create_spline(is_closed=False)
+
     def _is_drawing_valid(self) -> bool:
         """Checks if the first point is valid; returns False if drawing was interrupted."""
         if not self.points_to_draw:
@@ -588,15 +617,25 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         if self.working_spline is None:
             cfg = self.contour_configs[self.active_contour_type]
             start_coords = (xs[0], ys[0])
-            geometry = SplineGeometry(
-                knot_points_x=xs,
-                knot_points_y=ys,
-                n_interpolated_points=self.n_points_contour,
-                start_coords=start_coords,
-                end_coords=None,
-                is_closed=is_closed,
-            )
-            self.working_spline = Spline(geometry, cfg.color, self.contour_thickness, cfg.alpha)
+            if is_closed:
+                geometry = SplineGeometry(
+                    knot_points_x=xs,
+                    knot_points_y=ys,
+                    n_interpolated_points=self.n_points_contour,
+                    start_coords=start_coords,
+                    end_coords=None,
+                    is_closed=True,
+                )
+                self.working_spline = Spline(geometry, cfg.color, self.contour_thickness, cfg.alpha)
+            else:
+                geometry = OpenSplineGeometry(
+                    knot_points_x=xs,
+                    knot_points_y=ys,
+                    n_interpolated_points=self.n_points_contour,
+                    start_coords=start_coords,
+                    end_coords=None,
+                )
+                self.working_spline = OpenSpline(geometry, color=cfg.color, line_thickness=self.contour_thickness, transparency=cfg.alpha)
             self.graphics_scene.addItem(self.working_spline)
         elif self.working_spline.scene() is not None:
             self.working_spline.geometry.knot_points_x = xs
@@ -627,6 +666,28 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             contour_obj = getattr(self.main_window.data[self.frame], key)
             contour_obj.contours = [[x_list, y_list]]
             contour_obj.closed = [True]
+
+        self.stop_contour()
+
+    def _finish_open_spline(self):
+        """Finish drawing an open spline on double-click and save it as open (closed=False).
+
+        Qt fires a mousePressEvent just before mouseDoubleClickEvent, so one extra point
+        is added at the double-click position. We discard that last point here.
+        """
+        # Remove the spurious last point added by the preceding mousePressEvent
+        if self.points_to_draw:
+            last_point = self.points_to_draw.pop()
+            if last_point.scene() is not None:
+                self.graphics_scene.removeItem(last_point)
+
+        if self.working_spline is None or len(self.points_to_draw) < 2:
+            self._interrupt_drawing_mode()
+            return
+
+        key = self.contour_key(self.active_contour_type)
+        contour_obj = getattr(self.main_window.data[self.frame], key)
+        contour_obj.closed = [False]
 
         self.stop_contour()
 
@@ -693,8 +754,8 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             (x1, y1), (x2, y2) = measure.points
             p1 = QPointF(x1 * self.scaling_factor, y1 * self.scaling_factor)
             p2 = QPointF(x2 * self.scaling_factor, y2 * self.scaling_factor)
-            self.graphics_scene.addItem(Point((p1.x(), p1.y()), self.point_thickness, self.point_radius, self.measure_colors[index]))
-            self.graphics_scene.addItem(Point((p2.x(), p2.y()), self.point_thickness, self.point_radius, self.measure_colors[index]))
+            self.graphics_scene.addItem(Point((p1.x(), p1.y()), self.point_thickness, self.point_radius, 0, self.measure_colors[index]))
+            self.graphics_scene.addItem(Point((p2.x(), p2.y()), self.point_thickness, self.point_radius, 1, self.measure_colors[index]))
             self.graphics_scene.addLine(QLineF(p1, p2), get_qt_pen(self.measure_colors[index], self.point_thickness))
             length_text = QGraphicsTextItem(f'{measure.length} mm')
             length_text.setPos(p2.x(), p2.y())
@@ -704,8 +765,12 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             if pending is not None:
                 px, py = pending
                 self.graphics_scene.addItem(
-                    Point((px * self.scaling_factor, py * self.scaling_factor),
-                          self.point_thickness, self.point_radius, self.measure_colors[index])
+                    Point(
+                        pos=(px * self.scaling_factor, py * self.scaling_factor),
+                        line_thickness=self.point_thickness, 
+                        point_radius=self.point_radius,
+                        index=0,
+                        color=self.measure_colors[index])
                 )
 
     def add_measure(self, point, index=None, new=True):
@@ -713,7 +778,12 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         orig_x = point.x() / self.scaling_factor
         orig_y = point.y() / self.scaling_factor
         self.graphics_scene.addItem(
-            Point((point.x(), point.y()), self.point_thickness, self.point_radius, self.measure_colors[index])
+            Point(
+                pos=(point.x(), point.y()), 
+                line_thickness=self.point_thickness, 
+                point_radius=self.point_radius, 
+                index=index, 
+                color=self.measure_colors[index])
         )
         if self.pending_measure_points[index] is None:
             # First click — store as pending
@@ -768,7 +838,12 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         scaled_x = fd.reference[0] * self.scaling_factor
         scaled_y = fd.reference[1] * self.scaling_factor
         self.graphics_scene.addItem(
-            Point((scaled_x, scaled_y), self.point_thickness, self.point_radius, self.main_window.reference_color)
+            Point(
+                pos=(scaled_x, scaled_y), 
+                line_thickness=self.point_thickness, 
+                point_radius=self.point_radius,
+                index=0,
+                color=self.main_window.reference_color)
         )
         text = QGraphicsTextItem('Reference')
         text.setPos(scaled_x, scaled_y)
@@ -863,7 +938,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
 
         if event.button() == Qt.MouseButton.LeftButton:
             if self.drawing_mode:
-                self.add_contour(pos)
+                self.add_contour(pos, self.active_segmentation_tool)
             elif self.measure_index is not None:
                 self.add_measure(pos)
             elif self.reference_mode:
@@ -1031,6 +1106,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event):
+        print(self.active_segmentation_tool)
         if event.button() == Qt.MouseButton.LeftButton:
             if not self.drawing_mode:
                 pos = self.mapToScene(event.pos())
@@ -1056,5 +1132,6 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                     current_spline._rebuild_path()
                     self.update_display()
             else:
-                print(self.main_window.data)
+                if self.active_segmentation_tool == SegmentationTool.OPEN_SPLINE:
+                    self._finish_open_spline()
         super().mouseDoubleClickEvent(event)
