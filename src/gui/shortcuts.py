@@ -12,7 +12,7 @@ from PyQt6.QtCore import Qt, QUrl
 from gui.popup_windows.frame_range_dialog import FrameRangeDialog
 from gui.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 from gui.popup_windows.video_player import VideoPlayer
-from gui.utils.contours_gui import new_contour, new_measure, new_angle, set_tool
+from gui.utils.contours_gui import new_contour, new_contour_append, new_measure, new_angle, set_tool
 from input_output.metadata import MetadataWindow
 from input_output.read_image import read_image
 from input_output.contours_io import write_contours, save_gated_images
@@ -73,10 +73,19 @@ def init_menu(main_window):
     manual_calc_contour.setShortcut('U')
     manual_branch_contour = edit_menu.addAction('Manual Branch Contour', partial(new_contour, main_window, ContourType.BRANCH))
     manual_branch_contour.setShortcut('I')
-    manual_lipid_contour = edit_menu.addAction('Manual Lipid Contour', partial(new_contour, main_window, ContourType.BRANCH))
+    manual_lipid_contour = edit_menu.addAction('Manual Lipid Contour', partial(new_contour, main_window, ContourType.LIPID))
     manual_lipid_contour.setShortcut('O')
-    manual_macroph_contour = edit_menu.addAction('Manual Macrophage Contour', partial(new_contour, main_window, ContourType.BRANCH))
+    manual_macroph_contour = edit_menu.addAction('Manual Macrophage Contour', partial(new_contour, main_window, ContourType.MACROPHAGE))
     manual_macroph_contour.setShortcut('P')
+    edit_menu.addSeparator()
+    add_calc_contour = edit_menu.addAction('Add Calcium Contour', partial(new_contour_append, main_window, ContourType.CALCIUM))
+    add_calc_contour.setShortcut('Ctrl+U')
+    add_branch_contour = edit_menu.addAction('Add Branch Contour', partial(new_contour_append, main_window, ContourType.BRANCH))
+    add_branch_contour.setShortcut('Ctrl+I')
+    add_lipid_contour = edit_menu.addAction('Add Lipid Contour', partial(new_contour_append, main_window, ContourType.LIPID))
+    add_lipid_contour.setShortcut('Ctrl+O')
+    add_macroph_contour = edit_menu.addAction('Add Macrophage Contour', partial(new_contour_append, main_window, ContourType.MACROPHAGE))
+    add_macroph_contour.setShortcut('Ctrl+P')
     edit_menu.addAction('Remove Contours', partial(remove_contours, main_window))
     edit_menu.addSeparator()
     edit_menu.addAction('Reset Phases', partial(reset_phases, main_window))

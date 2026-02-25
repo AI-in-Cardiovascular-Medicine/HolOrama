@@ -3,7 +3,7 @@
 - [] brush when in mask mode, can also use a brush to perfect borders
 
 # Modes
-- [] mask mode showing the actual masks with an alpha value
+- [x] mask mode showing the actual masks with an alpha value
 - [x] showing the current contour on the window
 
 # GUI

@@ -53,3 +53,6 @@ def set_tool(main_window, segmentation_tool: SegmentationTool):
         return
 
     main_window.display.active_segmentation_tool = segmentation_tool
+
+def new_contour_append(main_window, contour_type: ContourType):
+    pass
