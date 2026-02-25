@@ -1192,3 +1192,9 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 if self.active_segmentation_tool == SegmentationTool.OPEN_SPLINE:
                     self._finish_open_spline()
         super().mouseDoubleClickEvent(event)
+
+    def wheelEvent(self, event):
+        zoom_factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.scale(zoom_factor, zoom_factor)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
