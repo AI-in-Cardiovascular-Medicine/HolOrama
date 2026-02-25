@@ -22,7 +22,7 @@ from report.report import report
 
 
 from gui.popup_windows.results_plot import ResultsPlot
-from gui.left_half.IVUS_display import ContourType
+from gui.left_half.IVUS_display import ContourType, SegmentationTool
 
 def init_shortcuts(main_window):
     # General
@@ -87,17 +87,17 @@ def init_menu(main_window):
     measure_2.setShortcut('2')
     angle_wire = edit_menu.addAction('Angle Wire Shadow', partial(new_angle, main_window, ContourType.WIRE))
     angle_wire.setShortcut('3')
-    closed_spline = edit_menu.addAction('Closed Spline', partial(set_tool, main_window))
+    closed_spline = edit_menu.addAction('Closed Spline', partial(set_tool, main_window, SegmentationTool.CLOSED_SPLINE))
     closed_spline.setShortcut('4')
-    open_spline = edit_menu.addAction('Open Spline', partial(set_tool, main_window))
+    open_spline = edit_menu.addAction('Open Spline', partial(set_tool, main_window, SegmentationTool.OPEN_SPLINE))
     open_spline.setShortcut('5')
-    # brush = edit_menu.addAction('Brush', partial(new_angle, main_window, ContourType.WIRE))
-    # brush.setShortcut('6')
+    brush = edit_menu.addAction('Brush', partial(set_tool, main_window, SegmentationTool.BRUSH))
+    brush.setShortcut('6')
 
     view_menu = main_window.menu_bar.addMenu('View')
     hide_contours_action = view_menu.addAction('Hide Contours', partial(hide_contours, main_window))
     hide_contours_action.setShortcut('H')
-    hide_special_points_action = view_menu.addAction('Hide Special Points', partial(hide_special_points, main_window))
+    hide_special_points_action = view_menu.addAction('Hide Measurements', partial(hide_special_points, main_window))
     hide_special_points_action.setShortcut('G')
     view_menu.addSeparator()
     reset_windowing_action = view_menu.addAction('Reset Windowing', partial(reset_windowing, main_window))
@@ -153,7 +153,6 @@ def remove_contours(main_window):
             main_window.longitudinal_view.remove_contours(lower_limit, upper_limit)
             main_window.display.update_display()
             main_window.status_bar.showMessage(main_window.waiting_status)
-
 
 
 def reset_phases(main_window):

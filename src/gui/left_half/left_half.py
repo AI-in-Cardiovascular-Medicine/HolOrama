@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from gui.left_half.IVUS_display import IVUSDisplay, ContourType
+from gui.left_half.IVUS_display import IVUSDisplay, ContourType, SegmentationTool
 from gui.utils.slider import Slider, Communicate
 from gui.utils.contours_gui import new_measure, new_reference, new_angle, new_contour, set_tool
 
@@ -35,6 +35,20 @@ class LeftHalf:
         self.display_button_group = QButtonGroup()
         self.display_button_group.setExclusive(True)
 
+        self.closed_spline_btn = QPushButton('⭕Closed Spline')
+        self.closed_spline_btn.setCheckable(True)
+        self.closed_spline_btn.setToolTip("Set drawing mode to closed spline")
+        self.closed_spline_btn.clicked.connect(partial(set_tool, main_window, SegmentationTool.CLOSED_SPLINE))
+
+        self.open_spline_btn = QPushButton('➿Open Spline')
+        self.open_spline_btn.setCheckable(True)
+        self.open_spline_btn.setToolTip("Set drawing mode to open spline")
+        self.open_spline_btn.clicked.connect(partial(set_tool, main_window, SegmentationTool.OPEN_SPLINE))
+
+        self.brush_btn = QPushButton('🖌️Brush')
+        self.brush_btn.setCheckable(True)
+        self.brush_btn.setToolTip("Set drawing mode to brush")
+        self.brush_btn.clicked.connect(partial(set_tool, main_window, SegmentationTool.BRUSH))
 
         self.reference_btn = QPushButton('🟡Reference')
         self.reference_btn.setCheckable(True)
@@ -57,26 +71,12 @@ class LeftHalf:
         self.angle_btn = QPushButton('📐Angle Wire')
         self.angle_btn.setCheckable(True)
         self.angle_btn.setToolTip("Set angle between two points for wire shadow")
+        self.angle_btn.setStyleSheet(f'border-color: {main_window.display.color_angle}')
         self.angle_btn.clicked.connect(partial(new_angle, main_window, ContourType.WIRE))
 
-        self.closed_spline_btn = QPushButton('⭕Closed Spline')
-        self.closed_spline_btn.setCheckable(True)
-        self.closed_spline_btn.setToolTip("Set drawing mode to closed spline")
-        self.closed_spline_btn.clicked.connect(partial(set_tool, main_window))
-
-        self.open_spline_btn = QPushButton('➿Open Spline')
-        self.open_spline_btn.setCheckable(True)
-        self.open_spline_btn.setToolTip("Set drawing mode to open spline")
-        self.open_spline_btn.clicked.connect(partial(set_tool, main_window))
-
-        self.brush_btn = QPushButton('🖌️Brush')
-        self.brush_btn.setCheckable(True)
-        self.brush_btn.setToolTip("Set drawing mode to brush")
-        self.brush_btn.clicked.connect(partial(set_tool, main_window))
-
         self.display_buttons = [
-            self.reference_btn, self.measure_btn_1, self.measure_btn_2, self.angle_btn,
             self.closed_spline_btn, self.open_spline_btn, self.brush_btn,
+            self.reference_btn, self.measure_btn_1, self.measure_btn_2, self.angle_btn,
         ]
         for btn in self.display_buttons:
             self.display_button_group.addButton(btn)

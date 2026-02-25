@@ -9,7 +9,6 @@ from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QSplitter, QPushButton, QC
 from gui.right_half.gating_display import GatingDisplay
 from gui.right_half.longitudinal_view import LongitudinalView
 from gui.popup_windows.small_display import SmallDisplay
-from gui.utils.contours_gui import new_measure, new_reference
 # from segmentation.segment import segment
 
 

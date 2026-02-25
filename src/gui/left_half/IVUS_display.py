@@ -42,12 +42,10 @@ class SegmentationTool(Enum):
 
 ALLOWED_TOOLS = {
     ContourType.LUMEN: {
-        SegmentationTool.OPEN_SPLINE,
         SegmentationTool.CLOSED_SPLINE,
         SegmentationTool.BRUSH,
     },
     ContourType.EEM: {
-        SegmentationTool.OPEN_SPLINE,
         SegmentationTool.CLOSED_SPLINE,
         SegmentationTool.BRUSH,
     },
@@ -57,7 +55,6 @@ ALLOWED_TOOLS = {
         SegmentationTool.BRUSH,
     },
     ContourType.BRANCH: {
-        SegmentationTool.OPEN_SPLINE,
         SegmentationTool.CLOSED_SPLINE,
         SegmentationTool.BRUSH,
     },
@@ -750,6 +747,12 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.main_window.setCursor(Qt.CursorShape.CrossCursor)
         self.measure_index = index
         self.display_image(update_contours=True)
+        if self.active_segmentation_tool == SegmentationTool.OPEN_SPLINE:
+            self.main_window.left_half.open_spline_btn.setChecked(True)
+        elif self.active_segmentation_tool == SegmentationTool.BRUSH:
+            self.main_window.left_half.brush_btn.setChecked(True)
+        else:
+            self.main_window.left_half.closed_spline_btn.setChecked(True)
 
     def stop_measure(self, index):
         if self.main_window.image_displayed:
@@ -778,6 +781,12 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         if fd:
             fd.reference = None
         self.display_image(update_contours=True)
+        if self.active_segmentation_tool == SegmentationTool.OPEN_SPLINE:
+            self.main_window.left_half.open_spline_btn.setChecked(True)
+        elif self.active_segmentation_tool == SegmentationTool.BRUSH:
+            self.main_window.left_half.brush_btn.setChecked(True)
+        else:
+            self.main_window.left_half.closed_spline_btn.setChecked(True)
 
     def _handle_reference_placement(self, pos):
         """Saves the reference point and exits reference mode."""
@@ -799,6 +808,12 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.main_window.setCursor(Qt.CursorShape.CrossCursor)
         self.main_window.data[self.frame].wire = None
         self.display_image(update_contours=True)
+        if self.active_segmentation_tool == SegmentationTool.OPEN_SPLINE:
+            self.main_window.left_half.open_spline_btn.setChecked(True)
+        elif self.active_segmentation_tool == SegmentationTool.BRUSH:
+            self.main_window.left_half.brush_btn.setChecked(True)
+        else:
+            self.main_window.left_half.closed_spline_btn.setChecked(True)
 
     def _handle_angle_placement(self, pos: QPointF):
         """Handles the two clicks required to define an angle."""

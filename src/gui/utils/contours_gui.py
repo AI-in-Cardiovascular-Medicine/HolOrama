@@ -1,5 +1,5 @@
 from gui.popup_windows.message_boxes import ErrorMessage
-from gui.left_half.IVUS_display import ContourType
+from gui.left_half.IVUS_display import ContourType, SegmentationTool
 
 def new_contour(main_window, contour_type: ContourType):
     if not main_window.image_displayed:
@@ -47,5 +47,9 @@ def new_angle(main_window, contour_type: ContourType):
 
     main_window.display.start_angle()
 
-def set_tool(main_window):
-    pass
+def set_tool(main_window, segmentation_tool: SegmentationTool):
+    if not main_window.image_displayed:
+        ErrorMessage(main_window, 'Cannot set tool before reading input file')
+        return
+
+    main_window.display.active_segmentation_tool = segmentation_tool

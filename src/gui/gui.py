@@ -62,7 +62,8 @@ class Master(QMainWindow):
         self.status_bar.showMessage(self.waiting_status)
 
         main_window_splitter = QSplitter()
-        main_window_splitter.addWidget(LeftHalf(self)())
+        self.left_half = LeftHalf(self)
+        main_window_splitter.addWidget(self.left_half())
         main_window_splitter.addWidget(RightHalf(self)())
 
         self.setWindowTitle('AIVUS-OCT Software')
