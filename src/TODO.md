@@ -10,3 +10,7 @@
 # GUI
 - [] add buttons on top of the image to switch the tool
 (- [] add buttons on the side to choose contour type)
+
+# Bugs
+- [] lumen area and circumference have substantially different values when saving to json but not in report
+- [x] write report crashes

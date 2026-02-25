@@ -1017,7 +1017,6 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            print(self.main_window.data)
             if not self.drawing_mode:
                 pos = self.mapToScene(event.pos())
                 current_spline = self.get_current_spline()
@@ -1041,4 +1040,6 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                     current_spline.geometry._ensure_start_end_coords()
                     current_spline._rebuild_path()
                     self.update_display()
+            else:
+                print(self.main_window.data)
         super().mouseDoubleClickEvent(event)

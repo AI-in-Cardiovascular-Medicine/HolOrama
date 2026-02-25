@@ -138,7 +138,7 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
             nearest_x[frame] = [fd.closest_points[0][0], fd.closest_points[1][0]]
             nearest_y[frame] = [fd.closest_points[0][1], fd.closest_points[1][1]]
         if m.elliptic_ratio is not None:
-            elliptic_ratio[frame] = m.elliptic_ratio
+            elliptic_ratio[frame] = longest_distance[frame] / shortest_distance[frame]
 
     # helper to fetch per-type full_contours defensively
     def _get_full_list_by_name(name):
@@ -470,6 +470,7 @@ def save_csv_files(main_window, lumen_x, lumen_y, name, frames):
     csv_out_dir = os.path.join(main_window.file_name + '_csv_files')
     logger.info(f'Saving {name} contours to {csv_out_dir}')
     os.makedirs(csv_out_dir, exist_ok=True)
+    print(main_window.metadata)
     img_dim_mm = main_window.metadata['dimension'] * main_window.metadata['resolution']
 
     with open(os.path.join(csv_out_dir, f'{name}_contours.csv'), 'w', newline='') as contours_file:

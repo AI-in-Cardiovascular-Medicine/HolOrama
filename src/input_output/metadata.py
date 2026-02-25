@@ -162,7 +162,7 @@ def parse_ivus(main_window):
 def parse_ivus_oct(main_window):
     """Parses DICOM metadata for both IVUS and OCT modalities"""
     ds = main_window.dicom
-    
+
     patient_name = str(ds.get('PatientName', 'Unknown'))
     birth_date = str(ds.get('PatientBirthDate', 'Unknown'))
     gender = str(ds.get('PatientSex', 'Unknown'))
@@ -171,6 +171,8 @@ def parse_ivus_oct(main_window):
     manufacturer = ds.get('Manufacturer', 'Unknown')
     model = ds.get('ManufacturerModelName', 'Unknown')
     rows = ds.get('Rows', main_window.images.shape[1])
+
+    main_window.metadata['dimension'] = rows
 
     # 3. Pullback Rate (mm/s)
     if ds.get('IVUSPullbackRate'):
