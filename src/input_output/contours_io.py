@@ -86,6 +86,7 @@ def _build_contour_legacy(raw: dict, key: str, i: int) -> Contour:
     Legacy format stored contours as:
         data['lumen'] = ([x0, x1, ...], [y0, y1, ...])
     where each xN/yN is a list of floats for frame N.
+    Closed splines in legacy data have a duplicate closing point at the end — strip it.
     """
     raw_contour = raw.get(key)
     if not raw_contour:
@@ -95,6 +96,10 @@ def _build_contour_legacy(raw: dict, key: str, i: int) -> Contour:
         x_frames, y_frames = raw_contour
         x = x_frames[i] if i < len(x_frames) else []
         y = y_frames[i] if i < len(y_frames) else []
+        # Legacy closed splines stored with a duplicate closing point — remove it
+        if x and y:
+            x = x[:-1]
+            y = y[:-1]
         contours = [(x, y)] if (x or y) else []
         return Contour(contours=contours)
 
@@ -114,16 +119,24 @@ def _build_contour(raw: Optional[dict]) -> Contour:
     )
 
 
-def _build_measure(raw: Optional[dict]) -> Optional[Measure]:
+def _build_measure(raw, scaling_factor: float = 1.0) -> Optional[Measure]:
     if not raw:
         return None
+    # Oldest legacy format: [x1, y1, x2, y2] stored in display coordinates — unscale
+    if isinstance(raw, list):
+        if len(raw) == 4:
+            pts = ((raw[0] / scaling_factor, raw[1] / scaling_factor),
+                   (raw[2] / scaling_factor, raw[3] / scaling_factor))
+        else:
+            pts = None
+        return Measure(points=pts)
     return Measure(
         points=raw.get('points'),
         length=raw.get('length'),
     )
 
 
-def _build_frame_data_legacy(raw: dict, num_frames: int) -> Dict[int, FrameData]:
+def _build_frame_data_legacy(raw: dict, num_frames: int, scaling_factor: float = 1.0) -> Dict[int, FrameData]:
     """Convert legacy flat JSON format into Dict[int, FrameData].
 
     Legacy keys handled:
@@ -149,8 +162,8 @@ def _build_frame_data_legacy(raw: dict, num_frames: int) -> Dict[int, FrameData]
             branch=_build_contour_legacy(raw, 'branch', i),
             lipid=_build_contour_legacy(raw, 'lipid', i),
             macrophage=_build_contour_legacy(raw, 'macrophage', i),
-            measurement_1=_build_measure(m1_raw),
-            measurement_2=_build_measure(m2_raw),
+            measurement_1=_build_measure(m1_raw, scaling_factor),
+            measurement_2=_build_measure(m2_raw, scaling_factor),
             reference=reference[i] if i < len(reference) else None,
             gating_signal=gating_signal,
         )
@@ -206,7 +219,8 @@ def read_contours(main_window, file_name=None) -> bool:
     num_frames = main_window.metadata['num_frames']
 
     if _is_legacy(raw):
-        main_window.data = _build_frame_data_legacy(raw, num_frames)
+        scaling_factor = main_window.display.image_size / main_window.images.shape[1]
+        main_window.data = _build_frame_data_legacy(raw, num_frames, scaling_factor)
     else:
         main_window.data = _build_frame_data(raw)
 
