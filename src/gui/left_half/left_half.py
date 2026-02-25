@@ -5,6 +5,7 @@ from loguru import logger
 from functools import partial
 from PyQt6.QtWidgets import (
     QPushButton,
+    QButtonGroup,
     QStyle,
     QApplication,
     QLabel,
@@ -16,8 +17,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from gui.left_half.IVUS_display import IVUSDisplay
+from gui.left_half.IVUS_display import IVUSDisplay, ContourType
 from gui.utils.slider import Slider, Communicate
+from gui.utils.contours_gui import new_measure, new_reference, new_angle, new_contour, set_tool
 
 
 class LeftHalf:
@@ -28,6 +30,59 @@ class LeftHalf:
         main_window.display = IVUSDisplay(main_window)
         main_window.display_frame_comms = Communicate()
         main_window.display_frame_comms.updateBW[int].connect(main_window.display.set_frame)
+
+        display_buttons_hbox = QHBoxLayout()
+        self.display_button_group = QButtonGroup()
+        self.display_button_group.setExclusive(True)
+
+
+        self.reference_btn = QPushButton('🟡Reference')
+        self.reference_btn.setCheckable(True)
+        self.reference_btn.setToolTip("Set a reference point")
+        self.reference_btn.setStyleSheet(f'border-color: {main_window.reference_color}')
+        self.reference_btn.clicked.connect(partial(new_reference, main_window))
+
+        self.measure_btn_1 = QPushButton('📏Measurement 1')
+        self.measure_btn_1.setCheckable(True)
+        self.measure_btn_1.setToolTip("Measure distance between two points")
+        self.measure_btn_1.setStyleSheet(f'border-color: {main_window.measure_colors[0]}')
+        self.measure_btn_1.clicked.connect(partial(new_measure, main_window, 0))
+
+        self.measure_btn_2 = QPushButton('📏Measurement 2')
+        self.measure_btn_2.setCheckable(True)
+        self.measure_btn_2.setToolTip("Measure distance between two points")
+        self.measure_btn_2.setStyleSheet(f'border-color: {main_window.measure_colors[1]}')
+        self.measure_btn_2.clicked.connect(partial(new_measure, main_window, 1))
+
+        self.angle_btn = QPushButton('📐Angle Wire')
+        self.angle_btn.setCheckable(True)
+        self.angle_btn.setToolTip("Set angle between two points for wire shadow")
+        self.angle_btn.clicked.connect(partial(new_angle, main_window, ContourType.WIRE))
+
+        self.closed_spline_btn = QPushButton('⭕Closed Spline')
+        self.closed_spline_btn.setCheckable(True)
+        self.closed_spline_btn.setToolTip("Set drawing mode to closed spline")
+        self.closed_spline_btn.clicked.connect(partial(set_tool, main_window))
+
+        self.open_spline_btn = QPushButton('➿Open Spline')
+        self.open_spline_btn.setCheckable(True)
+        self.open_spline_btn.setToolTip("Set drawing mode to open spline")
+        self.open_spline_btn.clicked.connect(partial(set_tool, main_window))
+
+        self.brush_btn = QPushButton('🖌️Brush')
+        self.brush_btn.setCheckable(True)
+        self.brush_btn.setToolTip("Set drawing mode to brush")
+        self.brush_btn.clicked.connect(partial(set_tool, main_window))
+
+        self.display_buttons = [
+            self.reference_btn, self.measure_btn_1, self.measure_btn_2, self.angle_btn,
+            self.closed_spline_btn, self.open_spline_btn, self.brush_btn,
+        ]
+        for btn in self.display_buttons:
+            self.display_button_group.addButton(btn)
+            display_buttons_hbox.addWidget(btn)
+        left_vbox.addLayout(display_buttons_hbox)
+
         left_vbox.addWidget(main_window.display)
 
         left_lower_grid = QGridLayout()
