@@ -19,7 +19,8 @@ from PyQt6.QtCore import Qt
 
 from gui.left_half.IVUS_display import IVUSDisplay, ContourType, SegmentationTool
 from gui.utils.slider import Slider, Communicate
-from gui.utils.contours_gui import new_measure, new_reference, new_angle, new_contour, set_tool
+from gui.utils.contours_gui import new_measure, new_reference, new_angle, set_tool
+from segmentation.save_as_nifti import contours_to_mask
 
 
 class LeftHalf:
@@ -94,9 +95,14 @@ class LeftHalf:
         main_window.hide_special_points_box = QCheckBox('&Hide Metrics')
         main_window.hide_special_points_box.setChecked(False)
         main_window.hide_special_points_box.stateChanged[int].connect(self.toggle_hide_special_points)
-        
+
+        main_window.mask_mode_box = QCheckBox('&Mask mode')
+        main_window.mask_mode_box.setChecked(False)
+        main_window.mask_mode_box.stateChanged[int].connect(self.toggle_mask_mode)
+
         hide_checkboxes.addWidget(main_window.hide_contours_box)
         hide_checkboxes.addWidget(main_window.hide_special_points_box)
+        hide_checkboxes.addWidget(main_window.mask_mode_box)
         left_lower_grid.addLayout(hide_checkboxes, 0, 0)
 
         self.play_button = QPushButton()
@@ -179,4 +185,8 @@ class LeftHalf:
     def toggle_hide_special_points(self, value):
         if self.main_window.image_displayed:
             self.main_window.hide_special_points = bool(value)
+            self.main_window.display.update_display()
+
+    def toggle_mask_mode(self, _):
+        if self.main_window.image_displayed:
             self.main_window.display.update_display()

@@ -15,7 +15,24 @@ from gui.utils.geometry import Point, Spline, SplineGeometry, OpenSplineGeometry
 from gui.utils.metrics import MetricsMixin
 from gui.right_half.longitudinal_view import Marker
 from segmentation.segment import downsample
+from segmentation.save_as_nifti import contours_to_mask
 from input_output.contours_io import Measure
+
+
+# RGB colour for each mask label (index = label value).
+# Label 0 (background) is intentionally skipped during blending.
+_MASK_OVERLAY_COLORS = np.array([
+    [0,   0,   0  ],   # 0 – background  (unused)
+    [0,   180, 255],   # 1 – lumen        cyan-blue
+    [0,   200, 80 ],   # 2 – EEM wall     green
+    [255, 215, 0  ],   # 3 – calcium      gold
+    [255, 100, 0  ],   # 4 – lipid        orange
+    [200, 0,   220],   # 5 – macrophage   violet
+    [220, 80,  80 ],   # 6 – adventitia   rose
+    [0,   180, 255],   # 7 – branch       cyan-blue (same as lumen)
+], dtype=np.float32)
+
+_MASK_ALPHA = 0.45   # overlay opacity (0 = transparent, 1 = opaque)
 
 
 class ContourType(Enum):
@@ -168,6 +185,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.active_contour_type: ContourType = ContourType.LUMEN
         self.active_segmentation_tool: SegmentationTool = SegmentationTool.CLOSED_SPLINE
         self.drawing_mode: bool = False
+        self.mask_mode: bool = False
         self.active_point: Point = None
         self.active_end_coords_flag = True  # Flag to switch, which point double click sets
 
@@ -399,6 +417,9 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             display_data, h, w, bpl, qfmt = self._prepare_display_data()
             display_data, bpl, qfmt = self._apply_colormap_if_enabled(display_data, w)
 
+            if getattr(self.main_window, 'mask_mode_box', None) and self.main_window.mask_mode_box.isChecked():
+                display_data, bpl, qfmt = self._apply_mask_overlay(display_data, w)
+
             q_image = QImage(display_data.data, w, h, bpl, qfmt).scaled(
                 self.image_size,
                 self.image_size,
@@ -412,7 +433,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         if self.main_window.hide_contours:
             self.main_window.longitudinal_view.hide_lview_contours()
         else:
-            if update_contours:
+            if update_contours and not self.mask_mode:
                 lumen_key = self.contour_key(ContourType.LUMEN)
                 eem_key = self.contour_key(ContourType.EEM)
                 lumen_contour = None
@@ -431,6 +452,8 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
 
                 self._maybe_compute_metrics(lumen_contour, eem_contour)
                 self.update_active_contour()
+            elif self.mask_mode:
+                pass
             else:
                 for it in old_overlays:
                     self.graphics_scene.addItem(it)
@@ -482,6 +505,42 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             cmap = cv2.applyColorMap(img, cv2.COLORMAP_COOL)
         rgb = cv2.cvtColor(cmap, cv2.COLOR_BGR2RGB)
         return rgb, width * 3, QImage.Format.Format_RGB888
+
+    def _apply_mask_overlay(self, display_data, w):
+        """
+        Alpha-blend per-label segmentation colours into the display image array.
+        Returns (rgb_array, bytes_per_line, QImage_format).
+        """
+        try:
+            frame_mask = contours_to_mask(
+                self.images[self.frame:self.frame + 1],
+                [self.frame],
+                self.main_window.data,
+                self.main_window.metadata,
+            )[0]  # (H, W) uint8
+        except Exception as e:
+            logger.warning(f'Mask overlay failed for frame {self.frame}: {e}')
+            if display_data.ndim == 2:
+                return display_data, w, QImage.Format.Format_Grayscale8
+            return display_data, w * 3, QImage.Format.Format_RGB888
+
+        # Ensure RGB base
+        if display_data.ndim == 2:
+            rgb = np.stack([display_data, display_data, display_data], axis=-1).astype(np.float32)
+        else:
+            rgb = display_data.astype(np.float32)
+
+        for label_idx in range(1, len(_MASK_OVERLAY_COLORS)):
+            pixels = frame_mask == label_idx
+            if not pixels.any():
+                continue
+            rgb[pixels] = (
+                rgb[pixels] * (1.0 - _MASK_ALPHA)
+                + _MASK_OVERLAY_COLORS[label_idx] * _MASK_ALPHA
+            )
+
+        result = np.clip(rgb, 0, 255).astype(np.uint8)
+        return np.ascontiguousarray(result), w * 3, QImage.Format.Format_RGB888
 
     def _add_center_marker(self, height):
         cx = int((self.image_width // 2) * self.scaling_factor)
