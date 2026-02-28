@@ -484,14 +484,14 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                         lumen_contour = first.get_unscaled_contour(self.scaling_factor)
 
                 eem_contour = None
-                eem = self.finalized_splines.get(lumen_key)
+                eem = self.finalized_splines.get(eem_key)
                 if eem:
                     if isinstance(eem, list):
                         first = eem[0] if len(eem) > 0 else None
                     else:
                         first = eem
                     if first is not None:
-                        lumen_contour = first.get_unscaled_contour(self.scaling_factor)
+                        eem_contour = first.get_unscaled_contour(self.scaling_factor)
                 
                 self._draw_contours_frame()
                 self._draw_measure()
