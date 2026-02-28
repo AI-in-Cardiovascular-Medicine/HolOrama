@@ -332,7 +332,7 @@ def undo_delete(main_window):
                 if contour_obj is not None:
                     contour_obj.contours = [[xlist, ylist]]
 
-            main_window.display.display_image(update_contours=True)
+            main_window.display.update_display()
 
 
 def reset_windowing(main_window):

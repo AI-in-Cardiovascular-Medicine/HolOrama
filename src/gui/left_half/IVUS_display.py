@@ -616,8 +616,6 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.active_point = None
         self.active_contour_type = ContourType.LUMEN
 
-        self.main_window.tmp_contours = {}
-
     def _interrupt_drawing_mode(self):
         """Handles safe exit of drawing mode, returning to initial state."""
         self.cleanup_temporary_drawing()
@@ -646,10 +644,15 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
 
         # save the current state of the contour to the tmp storage
         key = self.contour_key(contour_type)
-        current_spline = self.get_current_spline()
-        if current_spline is not None:
-            current_full_contour = current_spline.geometry.full_contour
-            self.main_window.tmp_contours[key] = current_full_contour
+        if not hasattr(self.main_window, 'tmp_contours'):
+            self.main_window.tmp_contours = {}
+        fd = self.main_window.data.get(self.frame)
+        if fd:
+            contour_obj = getattr(fd, key, None)
+            if contour_obj and contour_obj.contours and contour_obj.contours[0]:
+                xlist = list(contour_obj.contours[0][0]) if contour_obj.contours[0][0] else []
+                ylist = list(contour_obj.contours[0][1]) if len(contour_obj.contours[0]) > 1 else []
+                self.main_window.tmp_contours[key] = (xlist, ylist)
 
         self.active_segmentation_tool = segmentation_tool if segmentation_tool else self.active_segmentation_tool
 
