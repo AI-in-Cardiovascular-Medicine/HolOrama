@@ -19,6 +19,7 @@ def read_image(main_window):
     Reads the DICOM/NIfTi images and metadata. Places metatdata in a table.
     Images are displayed in the graphics scene.
     """
+    main_window.reset_state()
     main_window.status_bar.showMessage('Reading image file...')
     file_name, _ = QFileDialog.getOpenFileName(
         main_window, 

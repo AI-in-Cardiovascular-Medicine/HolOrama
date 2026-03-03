@@ -78,3 +78,22 @@ class Master(QMainWindow):
     def auto_save(self):
         if self.image_displayed:
             write_contours(self)
+
+    def reset_state(self):
+        self.file_name = None
+        self.image_displayed = False
+        self.segmentation = False
+        self.contours_drawn = False
+        self.hide_contours = False
+        self.hide_special_points = False
+        self.colormap_enabled = False
+        self.filter = None
+        self.tmp_contours = {}
+        self.gated_frames = []
+        self.gated_frames_dia = []
+        self.gated_frames_sys = []
+        self.data = {}
+        self.gating_signal = {}
+        self.metadata = {}
+        self.images = None
+        self.images_display = None
