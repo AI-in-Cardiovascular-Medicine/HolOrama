@@ -61,14 +61,14 @@ class TestLeftHalfFinal:
     
     def test_left_half_creation(self):
         """Test that LeftHalf can be created with proper signal mocking"""
-        with patch('PyQt5.QtWidgets.QWidget') as MockWidget, \
-             patch('PyQt5.QtWidgets.QVBoxLayout') as MockVBox, \
-             patch('PyQt5.QtWidgets.QHBoxLayout') as MockHBox, \
-             patch('PyQt5.QtWidgets.QGridLayout') as MockGrid, \
-             patch('PyQt5.QtWidgets.QPushButton') as MockButton, \
-             patch('PyQt5.QtWidgets.QLabel') as MockLabel, \
-             patch('PyQt5.QtWidgets.QCheckBox') as MockCheckBox, \
-             patch('PyQt5.QtCore.Qt'), \
+        with patch('PyQt6.QtWidgets.QWidget') as MockWidget, \
+             patch('PyQt6.QtWidgets.QVBoxLayout') as MockVBox, \
+             patch('PyQt6.QtWidgets.QHBoxLayout') as MockHBox, \
+             patch('PyQt6.QtWidgets.QGridLayout') as MockGrid, \
+             patch('PyQt6.QtWidgets.QPushButton') as MockButton, \
+             patch('PyQt6.QtWidgets.QLabel') as MockLabel, \
+             patch('PyQt6.QtWidgets.QCheckBox') as MockCheckBox, \
+             patch('PyQt6.QtCore.Qt'), \
              patch('gui.left_half.left_half.IVUSDisplay') as MockIVUSDisplay, \
              patch('gui.left_half.left_half.Slider') as MockSlider, \
              patch('gui.left_half.left_half.Communicate'):

@@ -65,7 +65,7 @@ class TestShortcuts:
         )
 
     @patch('time.sleep')
-    @patch('PyQt5.QtWidgets.QApplication.processEvents')
+    @patch('PyQt6.QtWidgets.QApplication.processEvents')
     def test_jiggle_frame_shortcut(self, mock_process_events, mock_sleep):
         """Test jiggle frame shortcut"""
         from gui.shortcuts import jiggle_frame
