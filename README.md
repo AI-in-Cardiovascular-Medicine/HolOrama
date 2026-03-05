@@ -1,7 +1,7 @@
 <p align="center">
-  <a href="https://github.com/yungselm/AIVUS-OCT.jpg">
+  <a href="https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA.jpg">
     <img
-      src="https://raw.githubusercontent.com/yungselm/AIVUS-OCT/main/media/logo_oct_inclusive.png"
+      src="https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/AIVUS-OCT/main/media/logo_oct_inclusive.png"
       alt="aivus-caa logo"
     >
   </a>
@@ -9,8 +9,10 @@
 
 
 
-# AIVUS-OCT (Automated IntraVascular UltraSound Image Processing and Quantification of Optical Coherence Tomography) <!-- omit in toc -->
-[![version](https://img.shields.io/badge/version-v1.1.1-yellow)](https://github.com/yungselm/AAOCASeg/releases/tag/v1.1.1)
+# AIVUS (Automated IntraVascular UltraSound Image Processing) <!-- omit in toc -->
+# AIVUS-CAA (Quantification of Coronary Artery Anomalies)
+# AIVUS-OCT (Quantification of Optical Coherence Tomography)
+[![version](https://img.shields.io/badge/version-v1.2.0-yellow)](https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/releases/tag/v1.2.0)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Docs](https://img.shields.io/readthedocs/aivus-caa)](https://aivus-caa.readthedocs.io)
 [![DOI](https://img.shields.io/badge/DOI-10.1016%2Fj.cmpb.2025.109065-blue)](https://doi.org/10.1016/j.cmpb.2025.109065)
