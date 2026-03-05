@@ -62,19 +62,33 @@ def mask_to_contours(main_window, masks, lower_limit, upper_limit, config=None):
         logger.info(f'Found contours in {counter} frames')
         return data
 
+    resolution = main_window.metadata.get('resolution', 0.1)  # mm/pixel
+    fallback_radius_px = 0.5 / resolution
+
     for frame in range(lower_limit, upper_limit):
         fd = main_window.data.get(frame)
         if fd is None:
             continue
+        keep_lumen_x, keep_lumen_y = [], []
         if np.sum(masks[frame, :, :]) > 0:
-            counter += 1
             contours_frame = label_contours(masks[frame, :, :])
             keep_lumen_x, keep_lumen_y = downsample(keep_largest_contour(contours_frame, image_shape), num_points)
             keep_lumen_x, keep_lumen_y = keep_lumen_x[:-1], keep_lumen_y[:-1]
+        if keep_lumen_x:
+            counter += 1
             fd.lumen.contours = [[keep_lumen_x, keep_lumen_y]]
         else:
-            fd.lumen.contours = []
+            fd.lumen.contours = [_catheter_fallback_contour(image_shape, fallback_radius_px, num_points)]
     logger.info(f'Found contours in {counter} frames')
+
+
+def _catheter_fallback_contour(image_shape, radius_px, num_points):
+    """Circle at image centre — used when segmentation fails for a frame."""
+    cy, cx = image_shape[0] / 2.0, image_shape[1] / 2.0
+    angles = np.linspace(0, 2 * np.pi, num_points, endpoint=False)
+    x = (cx + radius_px * np.cos(angles)).tolist()
+    y = (cy + radius_px * np.sin(angles)).tolist()
+    return [x, y]
 
 
 def label_contours(image):
