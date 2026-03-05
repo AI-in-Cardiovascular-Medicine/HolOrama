@@ -3,14 +3,50 @@
 Usage
 =====
 
-After installation, the AIVUS-CAA GUI provides the following functionality:
+After the config file is set up properly, run the application with:
 
-- **Open Data:** Press :kbd:`Ctrl+O` or use the menu to load an IVUS image series in DICOM or NIfTI format. 
-- **Navigate Frames:** Use the :kbd:`A` (previous) and :kbd:`D` (next) keys to move frame-by-frame. If gating is enabled, use :kbd:`W`/ :kbd:`S` to move between diastolic and systolic frames.
-- **Draw Contours:** Click on the IVUS image to add draggable control points on the lumen wall. Press :kbd:`Enter` to finalize the contour. The lumen area and perimeter are updated in real-time.
-- **Gating:** If enabled, the application will automatically segment the signal to identify cardiac cycles. The user can also manually tag frames as systolic or diastolic.
-- **Measurements:** Use the tools to draw up to two distance lines per frame. These distances (e.g. stent length) are recorded in the report.
-- **Saving:** Contours, tags, and measurements are auto-saved by default. You can also manually save the session via the `Save` button.
-- **Export:** Save the current segmentation as a NIfTI file, or export measured values to CSV for further analysis.
+.. code-block:: bash
 
-Refer to the interactive help within the GUI for additional shortcuts and tips.
+   python3 src/main.py
+
+This opens the graphical user interface (GUI) providing access to all functionalities described in :doc:`key_features`.
+
+Keyboard Shortcuts
+------------------
+
+v1.0.0 (Base module)
+~~~~~~~~~~~~~~~~~~~~~
+
+- :kbd:`Ctrl+O` — Open a DICOM/NIfTI file
+- :kbd:`A` / :kbd:`D` — Move through frames (previous/next)
+- :kbd:`W` / :kbd:`S` — Move through gated (diastolic/systolic) frames (select phase via the corresponding button: blue = diastolic, red = systolic)
+- :kbd:`E` — Draw a new lumen contour
+- :kbd:`Ctrl+Z` — Undo (e.g. restore an accidentally deleted contour)
+- :kbd:`1` / :kbd:`2` — Draw measurement 1 and 2, respectively
+- :kbd:`RMB` (hold) — Windowing; :kbd:`R` to reset
+- :kbd:`C` — Toggle color mode
+- :kbd:`H` — Hide all contours
+- :kbd:`J` — Jiggle around the current frame
+- :kbd:`Ctrl+S` — Manually save contours (auto-save is enabled by default)
+- :kbd:`Ctrl+R` — Generate report file
+- :kbd:`Ctrl+Q` — Close the program
+- :kbd:`Alt+P` — Plot results for gated frames (area difference systole/diastole by distance)
+- :kbd:`Alt+Delete` — Define a range of frames to remove gating
+- :kbd:`Alt+S` — Define a range of frames to switch systole and diastole in gated frames
+
+v1.1.0 and higher
+~~~~~~~~~~~~~~~~~~
+
+Additional shortcuts available from version 1.1.0:
+
+- :kbd:`RMB` on a knot point — Remove that point
+- :kbd:`MW` (scroll) — Zoom in/out at the current mouse position
+- :kbd:`Q` — Draw an ``external elastic membrane`` (EEM) contour
+- :kbd:`7` — Draw a ``calcification`` contour
+- :kbd:`Ctrl+7` — Add an additional ``calcification`` contour in the current active spline tool (open or closed)
+- :kbd:`8` — Draw a ``side branch`` contour
+- :kbd:`Ctrl+8` — Add an additional ``side branch`` contour in the current active spline tool (open or closed)
+- :kbd:`9` — Draw a ``lipid`` contour (open spline only)
+- :kbd:`Ctrl+9` — Add an additional ``lipid`` contour
+- :kbd:`0` — Draw a ``macrophage`` contour (open spline only)
+- :kbd:`Ctrl+0` — Add an additional ``macrophage`` contour

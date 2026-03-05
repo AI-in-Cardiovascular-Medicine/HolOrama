@@ -17,7 +17,7 @@ def simple_config():
 @pytest.fixture(scope='session')
 def qt_app():
     """Provide QApplication instance for the test session"""
-    from PyQt5.QtWidgets import QApplication
+    from PyQt6.QtWidgets import QApplication
     app = QApplication.instance()
     if app is None:
         app = QApplication([])

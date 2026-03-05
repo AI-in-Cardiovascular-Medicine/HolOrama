@@ -1,3 +1,4 @@
+import os
 from loguru import logger
 # Change 1: Updated namespace to PyQt6
 from PyQt6.QtWidgets import (
@@ -8,6 +9,7 @@ from PyQt6.QtWidgets import (
     QStatusBar,
 )
 from PyQt6.QtCore import QTimer  # Change 2: Updated namespace
+from PyQt6.QtGui import QIcon
 
 from gui.left_half.left_half import LeftHalf
 from gui.right_half.right_half import RightHalf
@@ -68,6 +70,8 @@ class Master(QMainWindow):
         main_window_splitter.addWidget(RightHalf(self)())
 
         self.setWindowTitle('AIVUS-OCT Software')
+        icon_path = os.path.join(os.path.dirname(__file__), '..', '..', 'media', 'desktop_img.ico')
+        self.setWindowIcon(QIcon(icon_path))
         self.setCentralWidget(main_window_splitter)
         self.showMaximized()
 

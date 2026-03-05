@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aivus"  # Updated name
-version = "1.2.0"
+version = "1.2.1"
 description = "AIVUS: AIVUS-CAA (coronary artery anomalies) AIVUS-OCT (optical coherence tomography)"
 authors = ["yungselm", "cardionaut", "Pooya Mohammadi Kazaj"]
 
@@ -25,9 +25,12 @@ pyqtdarktheme = "^2.1.0"
 shapely = "*"
 SimpleITK = "*"
 opencv-python-headless = "^4.9.0.80"
-tensorflow = "2.15.0"
+tensorflow = "^2.17.0"
 torch = { version = "2.4.0", source = "pytorch_cpu" }
 torchvision = { version = "0.19.0", source = "pytorch_cpu" }
+# # Windows with CUDA: see README Windows section for manual torch replacement
+# torch = { version = "2.4.0+cu118", source = "pytorch_cu118" }
+# torchvision = { version = "0.19.0+cu118", source = "pytorch_cu118" }
 
 [tool.poetry.group.dev.dependencies]
 autohooks = "^23.1.0"
@@ -56,6 +59,6 @@ skip-string-normalization = true
 profile = "black"
 
 [[tool.poetry.source]]
-name = "pytorch_cpu"
-url = "https://download.pytorch.org/whl/cpu"
+name = "pytorch_cu118"
+url = "https://download.pytorch.org/whl/cu118"
 priority = "explicit"

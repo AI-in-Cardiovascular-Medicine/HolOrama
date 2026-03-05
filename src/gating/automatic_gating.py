@@ -80,7 +80,7 @@ class AutomaticGating:
         - contour_based_signal (numpy.ndarray): The signal containing contour measurements (filtered).
         """
         dialog = GatingMethodDialog(self.main_window)
-        if dialog.exec_():
+        if dialog.exec():
             image_method, contour_method = dialog.get_methods()
             if image_method == "maxima":
                 temp_indices = identify_extrema(self.main_window, image_based_signal)

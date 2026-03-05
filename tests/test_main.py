@@ -15,7 +15,7 @@ def test_main_initializes_master(monkeypatch, simple_config):
             self.argv = argv
         def setApplicationVersion(self, v):
             pass
-        def exec_(self):
+        def exec(self):
             return 0
 
     # Patch heavy/Qt-y things so the entrypoint doesn't try to access the real GUI

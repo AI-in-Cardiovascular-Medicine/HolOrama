@@ -51,20 +51,10 @@ save:
   save_dicom: True
 
 segmentation:
-  # model_file: '/home/sebalzer/Documents/Projects/AAOCASeg/models/u2net_2d_MINMAX_512_best.h5'
+  # model_file: './models/old/u2net_2d_MINMAX_512_best.h5'
   model_file: './models/nnUNetTrainerU2NetP__nnUNetResEncUNetLPlans__2d'
   model_fold: 0
   normalize: False # When working with tensorflow models set this to True
   input_dir: /home/sebalzer/Documents/Projects/AAOCASeg/IVUSimages  # only needed for segment_files.py
   batch_size: 16
   conserve_memory: True  # set to True for devices with less than 32 GB RAM (increases inference times)
-
-filters:
-  plot: True
-  nonlocal_means: 
-    patch_size: 2
-    patch_distance: 2
-    h: 1
-    fast_mode: True
-    sigma: 0.0
-    preserve_range: False

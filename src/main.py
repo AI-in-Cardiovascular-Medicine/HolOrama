@@ -1,5 +1,8 @@
+import os
 import sys
 import hydra
+
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 import qdarktheme
 
 from omegaconf import DictConfig

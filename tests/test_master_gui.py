@@ -1,6 +1,6 @@
 import importlib
 import pytest
-from PyQt5.QtWidgets import QWidget
+from PyQt6.QtWidgets import QWidget
 
 def test_master_widget_constructs_and_shows(qtbot, monkeypatch, simple_config):
     """
