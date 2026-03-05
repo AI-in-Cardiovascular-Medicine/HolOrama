@@ -14,7 +14,7 @@ from gui.right_half.right_half import RightHalf
 from gui.shortcuts import init_shortcuts, init_menu
 from input_output.contours_io import write_contours
 from gating.contour_based_gating import ContourBasedGating
-# from segmentation.predict import Predict
+from segmentation.predict import Predict
 
 
 class Master(QMainWindow):
@@ -26,7 +26,7 @@ class Master(QMainWindow):
         self.file_name = None
         self.autosave_interval = config.save.autosave_interval
         self.contour_based_gating = ContourBasedGating(self)
-        # self.predictor = Predict(self)
+        self.predictor = Predict(self)
         self.image_displayed = False
         self.contours_drawn = False
         self.hide_contours = False

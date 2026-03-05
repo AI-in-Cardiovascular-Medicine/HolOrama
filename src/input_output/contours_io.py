@@ -109,8 +109,16 @@ def _build_contour(raw: Optional[dict]) -> Contour:
     """Reconstruct a Contour from the current nested dict format (produced by asdict)."""
     if not raw:
         return Contour()
+    # Strip duplicate closing points that may have been persisted by SplineGeometry._ensure_closed
+    stripped = []
+    for entry in raw.get('contours', []):
+        x = list(entry[0]) if entry else []
+        y = list(entry[1]) if len(entry) > 1 else []
+        if x and y and x[0] == x[-1] and y[0] == y[-1]:
+            x, y = x[:-1], y[:-1]
+        stripped.append([x, y])
     return Contour(
-        contours=raw.get('contours', []),
+        contours=stripped,
         measurements=Measurements(**raw.get('measurements', {})),
         closed=raw.get('closed', []),
         start_coords=raw.get('start_coords', []),

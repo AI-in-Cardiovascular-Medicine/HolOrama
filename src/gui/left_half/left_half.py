@@ -20,7 +20,6 @@ from PyQt6.QtCore import Qt
 from gui.left_half.IVUS_display import IVUSDisplay, ContourType, SegmentationTool
 from gui.utils.slider import Slider, Communicate
 from gui.utils.contours_gui import new_measure, new_reference, new_angle, set_tool
-from segmentation.save_as_nifti import contours_to_mask
 
 
 class LeftHalf:

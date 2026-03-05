@@ -16,8 +16,8 @@ from gui.utils.contours_gui import new_contour, new_contour_append, new_measure,
 from input_output.metadata import MetadataWindow
 from input_output.read_image import read_image
 from input_output.contours_io import write_contours, save_gated_images
-# from segmentation.save_as_nifti import save_as_nifti
-# from segmentation.segment import segment
+from segmentation.save_as_nifti import save_as_nifti
+from segmentation.segment import segment
 from report.report import report
 
 
@@ -52,10 +52,10 @@ def init_menu(main_window):
     file_menu.addSeparator()
     save_contours = file_menu.addAction('Save Contours', partial(write_contours, main_window))
     save_contours.setShortcut('Ctrl+S')
-    # nifti_menu = file_menu.addMenu('Save NIfTis')
-    # nifti_menu.addAction('Contoured Frames', partial(save_as_nifti, main_window, mode='contoured'))
-    # nifti_menu.addAction('Gated Frames', partial(save_as_nifti, main_window, mode='gated'))
-    # nifti_menu.addAction('All Frames', partial(save_as_nifti, main_window, mode='all'))
+    nifti_menu = file_menu.addMenu('Save NIfTis')
+    nifti_menu.addAction('Contoured Frames', partial(save_as_nifti, main_window, mode='contoured'))
+    nifti_menu.addAction('Gated Frames', partial(save_as_nifti, main_window, mode='gated'))
+    nifti_menu.addAction('All Frames', partial(save_as_nifti, main_window, mode='all'))
     save_report = file_menu.addAction('Save Report', partial(report, main_window))
     save_report.setShortcut('Ctrl+R')
     file_menu.addAction('Save Video Pullback', partial(save_video_pullback, main_window))
@@ -70,22 +70,22 @@ def init_menu(main_window):
     manual_eem_contour = edit_menu.addAction('Manual EEM Contour', partial(new_contour, main_window, ContourType.EEM))
     manual_eem_contour.setShortcut('Q')
     manual_calc_contour = edit_menu.addAction('Manual Calcium Contour', partial(new_contour, main_window, ContourType.CALCIUM))
-    manual_calc_contour.setShortcut('U')
+    manual_calc_contour.setShortcut('7')
     manual_branch_contour = edit_menu.addAction('Manual Branch Contour', partial(new_contour, main_window, ContourType.BRANCH))
-    manual_branch_contour.setShortcut('I')
+    manual_branch_contour.setShortcut('8')
     manual_lipid_contour = edit_menu.addAction('Manual Lipid Contour', partial(new_contour, main_window, ContourType.LIPID))
-    manual_lipid_contour.setShortcut('O')
+    manual_lipid_contour.setShortcut('9')
     manual_macroph_contour = edit_menu.addAction('Manual Macrophage Contour', partial(new_contour, main_window, ContourType.MACROPHAGE))
-    manual_macroph_contour.setShortcut('P')
+    manual_macroph_contour.setShortcut('0')
     edit_menu.addSeparator()
     add_calc_contour = edit_menu.addAction('Add Calcium Contour', partial(new_contour_append, main_window, ContourType.CALCIUM))
-    add_calc_contour.setShortcut('Ctrl+U')
+    add_calc_contour.setShortcut('Ctrl+7')
     add_branch_contour = edit_menu.addAction('Add Branch Contour', partial(new_contour_append, main_window, ContourType.BRANCH))
-    add_branch_contour.setShortcut('Ctrl+I')
+    add_branch_contour.setShortcut('Ctrl+8')
     add_lipid_contour = edit_menu.addAction('Add Lipid Contour', partial(new_contour_append, main_window, ContourType.LIPID))
-    add_lipid_contour.setShortcut('Ctrl+O')
+    add_lipid_contour.setShortcut('Ctrl+9')
     add_macroph_contour = edit_menu.addAction('Add Macrophage Contour', partial(new_contour_append, main_window, ContourType.MACROPHAGE))
-    add_macroph_contour.setShortcut('Ctrl+P')
+    add_macroph_contour.setShortcut('Ctrl+0')
     edit_menu.addAction('Remove Contours', partial(remove_contours, main_window))
     edit_menu.addSeparator()
     edit_menu.addAction('Reset Phases', partial(reset_phases, main_window))

@@ -1,7 +1,7 @@
 <p align="center">
   <a href="https://github.com/yungselm/AIVUS-OCT.jpg">
     <img
-      src="https://raw.githubusercontent.com/yungselm/AIVUS-OCT/main/media/logo.png"
+      src="https://raw.githubusercontent.com/yungselm/AIVUS-OCT/main/media/logo_oct_inclusive.png"
       alt="aivus-caa logo"
     >
   </a>
@@ -72,16 +72,20 @@ python -m nuitka --standalone --plugin-enable=pyqt6 --include-package=pydicom --
 
 ## Functionalities
 
-This application is designed for IVUS images in DICOM or NIfTi format and offers the following functionalities:
+This application is designed for IVUS and OCT images in DICOM or NIfTi format and offers the following functionalities:
 
-- Inspect IVUS images frame-by-frame and display DICOM metadata
-- Manually **draw lumen contours** with automatic calculation of lumen area, circumference and elliptic ratio
-- **Automatic segmentation** of lumen for all frames (work in progress)
-- **Automatic gating** with extraction of diastolic/systolic frames
+- Inspect IVUS/OCT images frame-by-frame and display DICOM metadata
+- Manually **draw one or several contours** (lumen, eem, calcium, side branch, macrophage, lipid) with automatic calculation of several measurements
+- Either draw closed spline, open spline or a closed spline with an uncertain region indicated by start- and end point
+- **Automatic segmentation** of (currently only IVUS) lumen for all frames
+- **Automatic gating** with extraction of diastolic/systolic frames if in IVUS mode
 - Manually tag diastolic/systolic frames
 - Ability to measure up to two distances per frame which will be stored in the report
+- Indicate the wire shadow using an angle
+- Create automatic masks from contour with predefined rulesets
 - **Auto-save** of contours and tags enabled by default with user-definable interval
 - Generation of report file containing detailed metrics for each frame
+- Save coordinate data as csv files
 - Ability to save images and segmentations as **NIfTi files**, e.g. to train a machine learning model
 
 ## Configuration
@@ -126,7 +130,6 @@ In the current state, these cannot be changed by the user (at least not without 
 - Press <kbd>E</kbd> to manually draw a new lumen contour\
   In case you accidentally delete a contour, you can use <kbd>Ctrl</kbd> + <kbd>Z</kbd> to undo
 - Use <kbd>1</kbd>, <kbd>2</kbd> to draw measurements 1 and 2, respectively
-- Use <kbd>3</kbd>, <kbd>4</kbd> or <kbd>5</kbd> to apply image filters
 - Hold the right mouse button <kbd>RMB</kbd> for windowing (can be reset by pressing <kbd>R</kbd>)
 - Press <kbd>C</kbd> to toggle color mode
 - Press <kbd>H</kbd> to hide all contours
@@ -139,9 +142,17 @@ In the current state, these cannot be changed by the user (at least not without 
 - Press <kbd>Alt</kbd> + <kbd>S</kbd> to define a range of frames to switch systole and diastole in gated frames
 
 ### v1.1.0 and higher
-- Press <kbd>Q</kbd> to manually draw an external elastic membrane (EEM) contour
-- Press <kbd>Y</kbd> to manually draw a calcification contour
-- Press <kbd>X</kbd> to manually draw a side branch contour
+Additionally:
+- Press <kbd>RMB</kbd> on an existing knot point to remove it
+- Press <kbd>Q</kbd> to manually draw an ``external elastic membrane`` (EEM) contour
+- Press <kbd>7</kbd> to manually draw a ``calcification `` contour
+- Press <kbd>Ctrl</kbd> + <kbd>7</kbd> to draw an additional ``calcification`` contour in the current active spline tool (open or closed)
+- Press <kbd>8</kbd> to manually draw a ``side branch`` contour
+- Press <kbd>Ctrl</kbd> + <kbd>8</kbd> to draw an additional ``side branch`` contour in the current active spline tool (open or closed)
+- Press <kbd>9</kbd> to manually draw a ``lipid`` contour (only open spline)
+- Press <kbd>Ctrl</kbd> + <kbd>9</kbd> to draw an additional ``lipid`` contour
+- Press <kbd>0</kbd> to manually draw a ``macrophage`` contour (only open spline)
+- Press <kbd>Ctrl</kbd> + <kbd>0</kbd> to draw an additional ``macrophage`` contour
 
 ## Tutorial (v1.0.0 - Base module)
 An example case is provided under "/test_cases/patient_example", allowing to follow along.
@@ -175,9 +186,13 @@ Movement patterns may vary between datasets; consequently, the final frame selec
 Version 1.1.0 and higher offer the additional possibility to segment the EEM, calcification and side branches. This works in the same style as for the base contours. Clicking on any contour in the image automatically sets it as the active contour.
 
 > [!NOTE]
-> The segmentation models are currently only trained for lumen contours. In the future, we will implement additional models for EEM segmentation and calcium segmentation.
+> The segmentation models are currently only trained for lumen contours. In the future, we will implement additional models for all contour types and OCT images.
 
 ![Demo](media/v1.1.0update.gif)
+
+Since version 1.2.0 additionally it is possible to read in OCT images and performe additional contouring functionalities.
+
+![Demo](media/v1.2.0update.gif)
 
 # Citation
 Please kindly cite the following paper if you use this repository.

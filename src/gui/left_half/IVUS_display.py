@@ -362,8 +362,8 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             contour_obj = getattr(fd, key, None)
             if contour_obj is None or not contour_obj.contours or not contour_obj.contours[0]:
                 continue
-            x_coords = contour_obj.contours[0][0]
-            y_coords = contour_obj.contours[0][1]
+            x_coords = list(contour_obj.contours[0][0])
+            y_coords = list(contour_obj.contours[0][1])
 
             if len(x_coords) > 1:
                 spline_geo = SplineGeometry(

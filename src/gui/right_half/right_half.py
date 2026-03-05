@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QSplitter, QPushButton, QC
 from gui.right_half.gating_display import GatingDisplay
 from gui.right_half.longitudinal_view import LongitudinalView
 from gui.popup_windows.small_display import SmallDisplay
-# from segmentation.segment import segment
+from segmentation.segment import segment
 
 
 class RightHalf:
@@ -61,7 +61,7 @@ class RightHalf:
         right_lower_vbox = QVBoxLayout()
         segment_button = QPushButton('Automatic Segmentation')
         segment_button.setToolTip('Run deep learning based segmentation of lumen')
-        # segment_button.clicked.connect(partial(segment, main_window))
+        segment_button.clicked.connect(partial(segment, main_window))
         gating_button = QPushButton('Extract Diastolic and Systolic Frames')
         gating_button.setToolTip('Extract diastolic and systolic images from pullback')
         gating_button.clicked.connect(main_window.contour_based_gating)
