@@ -1,8 +1,7 @@
-import cv2
 import numpy as np
 from loguru import logger
-from PyQt5.QtWidgets import QProgressDialog
-from PyQt5.QtCore import Qt
+from PyQt6.QtWidgets import QProgressDialog
+from PyQt6.QtCore import Qt
 from gui.popup_windows.message_boxes import ErrorMessage
 import gc
 

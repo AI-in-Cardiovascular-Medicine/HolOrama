@@ -5,7 +5,14 @@ from loguru import logger
 from gating.signal_processing import identify_extrema
 from gui.popup_windows.frame_range_dialog import StartFramesDialog
 
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QGroupBox, QRadioButton, QDialogButtonBox
+from PyQt6.QtWidgets import (
+    QDialog, 
+    QVBoxLayout, 
+    QGroupBox, 
+    QRadioButton, 
+    QDialogButtonBox
+)
+
 
 class  GatingMethodDialog(QDialog):
     def __init__(self, main_window):
@@ -36,7 +43,7 @@ class  GatingMethodDialog(QDialog):
         
         # Buttons
         self.buttons = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
@@ -116,7 +123,8 @@ class AutomaticGating:
             )
 
             # reset all phases
-            self.main_window.data['phases'] == '-'
+            for fd in self.main_window.data.values():
+                fd.phase = '-'
             self.main_window.gated_frames_dia = []
             self.main_window.gated_frames_sys = []
             self.main_window.diastolic_frame_box.setChecked(False)
@@ -134,9 +142,9 @@ class AutomaticGating:
                 self.main_window.gated_frames_sys.sort()
 
             for frame in self.main_window.gated_frames_dia:
-                self.main_window.data['phases'][frame] = 'D'
+                self.main_window.data[frame].phase = 'D'
             for frame in self.main_window.gated_frames_sys:
-                self.main_window.data['phases'][frame] = 'S'
+                self.main_window.data[frame].phase = 'S'
 
 def _write_csv_signals(image_signal, contour_signal, image_indices, contour_indices, combined_indices):
     import pandas as pd

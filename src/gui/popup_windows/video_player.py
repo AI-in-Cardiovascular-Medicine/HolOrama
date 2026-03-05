@@ -1,10 +1,10 @@
 import os
 
 from loguru import logger
-from PyQt5.QtWidgets import QMainWindow
-from PyQt5.QtMultimediaWidgets import QVideoWidget
-from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
-from PyQt5.QtCore import QUrl
+from PyQt6.QtWidgets import QMainWindow
+from PyQt6.QtMultimediaWidgets import QVideoWidget
+from PyQt6.QtMultimedia import QMediaPlayer
+from PyQt6.QtCore import QUrl
 
 
 class VideoPlayer(QMainWindow):
@@ -21,15 +21,16 @@ class VideoPlayer(QMainWindow):
     def play(self, video_path, local_file=True):
         if local_file:
             path = os.path.dirname(os.path.abspath(__file__))
-            video_path = os.path.join(path, '..', '..', video_path)
-            media_content = QUrl.fromLocalFile(video_path)
+            video_path = os.path.abspath(os.path.join(path, '..', '..', video_path))
+            media_source = QUrl.fromLocalFile(video_path)
         else:
-            media_content = QUrl(video_path)
+            media_source = QUrl(video_path)
+            
         self.show()
-        self.media_player.setMedia(QMediaContent(media_content))
-        self.media_player.setPosition(0)  # start from the beginning of the video
+        self.media_player.setSource(media_source)
+        self.media_player.setPosition(0)
         self.media_player.play()
 
     def media_ended(self, status):
-        if status == QMediaPlayer.EndOfMedia:
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
             self.close()

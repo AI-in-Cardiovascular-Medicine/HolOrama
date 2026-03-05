@@ -1,10 +1,10 @@
 import numpy as np
 from loguru import logger
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QSlider,
     QSizePolicy,
 )
-from PyQt5.QtCore import QObject, Qt, pyqtSignal, QSize
+from PyQt6.QtCore import QObject, Qt, pyqtSignal, QSize
 
 
 class Communicate(QObject):
@@ -20,15 +20,22 @@ class Slider(QSlider):
         self.main_window = main_window
         self.setOrientation(orientation)
         self.setRange(0, 0)
-        self.setFocusPolicy(Qt.StrongFocus)
+        
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        
         size_policy = QSizePolicy()
-        size_policy.setHorizontalPolicy(QSizePolicy.Fixed)
-        size_policy.setVerticalPolicy(QSizePolicy.Fixed)
+        size_policy.setHorizontalPolicy(QSizePolicy.Policy.Fixed)
+        size_policy.setVerticalPolicy(QSizePolicy.Policy.Fixed)
+        
         self.setSizePolicy(size_policy)
         self.setMinimumSize(QSize(200, 25))
         self.setMaximumSize(QSize(1000, 25))
 
     def set_value(self, value, reset_highlights=True):
+        if hasattr(self.main_window, 'display'):
+            # clean up the scene to avoid potential Qt conflicts for the next frame
+            self.main_window.display.cleanup_temporary_drawing()
+
         self.setValue(value)
         try:  # small display
             next_gated = self.next_gated_frame(set=False)

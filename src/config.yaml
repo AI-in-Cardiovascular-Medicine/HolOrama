@@ -14,15 +14,18 @@ display:
   lview_display_stretch: 1
   windowing_sensitivity: 0.03  # 1 for default, below 1 for slower, above 1 for faster
   n_interactive_points: 10
-  n_points_contour: 500  # ideally choose a multiple of 100 (for calculation of closest points)
+  n_points_contour: 200  # ideally choose a multiple of 100 (for calculation of closest points)
   contour_thickness: 3
   point_thickness: 1
   point_radius: 10
   color_contour: 'green'
-  color_eem: 'red'
+  color_eem: '#03b1fc'
   color_calcium: 'white'
   color_branch: 'green' # 20 predefined colors in PyQt5 (https://doc.qt.io/qt-6/qcolor.html)
-  alpha_contour: 128 # 0-255
+  color_start_point: 'yellow'
+  color_end_point: 'red'
+  color_angle: '#ffa500'
+  alpha_contour: 100 # 0-255
 
 gating:
   normalize_step: 100
@@ -41,7 +44,6 @@ report:
 
 save:
   autosave_interval: 10000  # in ms
-  use_xml_files: False  # set True to use .xml files instead of .json to save contours, etc.
   nifti_dir: './models/app_niftis'
   save_niftis: 'none'  # 'contoured', 'all', 'none' (which frames to save as NIfTi)
   save_2d: False

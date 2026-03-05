@@ -5,7 +5,7 @@ import json
 
 import pydicom as dcm
 import SimpleITK as sitk
-import numpy as np
+from dataclasses import asdict
 from omegaconf import DictConfig
 from loguru import logger
 from tqdm import tqdm
@@ -43,31 +43,13 @@ def segment_files(config: DictConfig) -> None:
             masks = predictor(image, lower_limit, upper_limit)
         except:
             continue
-        contours = mask_to_contours(None, masks, lower_limit, upper_limit, config=config)
+        frame_data = mask_to_contours(None, masks, lower_limit, upper_limit, config=config)
+        if frame_data is None:
+            continue
 
-        data = {}
-        for key in [
-            'lumen_area',
-            'lumen_circumf',
-            'longest_distance',
-            'shortest_distance',
-            'elliptic_ratio',
-            'vector_length',
-            'vector_angle',
-        ]:
-            data[key] = [0] * image.shape[0]
-        for key in ['lumen_centroid', 'farthest_point', 'nearest_point']:
-            data[key] = (
-                [[] for _ in range(image.shape[0])],
-                [[] for _ in range(image.shape[0])],
-            )
-        data['lumen'] = contours
-        data['phases'] = ['-'] * image.shape[0]
-        data['measures'] = [[None, None] for _ in range(image.shape[0])]
-        data['measure_lengths'] = [[np.nan, np.nan] for _ in range(image.shape[0])]
-
+        serializable = {str(i): asdict(fd) for i, fd in frame_data.items()}
         with open(os.path.join(input_dir, f'{file}_contours_{version_file_str}.json'), 'w') as out_file:
-            json.dump(data, out_file)
+            json.dump(serializable, out_file)
 
 
 if __name__ == '__main__':

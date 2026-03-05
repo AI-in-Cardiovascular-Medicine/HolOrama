@@ -1,8 +1,10 @@
+import cv2
+
 import numpy as np
 from loguru import logger
-from PyQt5.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsLineItem
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPixmap, QImage, QColor, QPen
+from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsLineItem, QSizePolicy
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPixmap, QImage, QColor, QPen
 
 from gui.utils.geometry import Point
 
@@ -15,46 +17,105 @@ class LongitudinalView(QGraphicsView):
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
-        self.image_size = main_window.config.display.image_size
         self.lview_contour_size = 2
         self.graphics_scene = QGraphicsScene()
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, 
+            QSizePolicy.Policy.Expanding
+        )
 
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setScene(self.graphics_scene)
 
-    def set_data(self, images, contours):
+    def set_data(
+            self, 
+            images, 
+            contours):
         self.graphics_scene.clear()
         self.num_frames = images.shape[0]
-        self.points_on_marker = [None] * self.num_frames
         self.image_height = images.shape[1]
+        self.points_on_marker = [None] * self.num_frames
 
-        slice = images[:, :, self.image_height // 2]
-        slice = np.transpose(slice, (1, 0)).copy()  # need .copy() to avoid QImage TypeError
+        if hasattr(self.main_window, 'images_display') and self.main_window.images_display is not None:
+            # RGB Path: Extract center slice from (Frames, H, W, 3)
+            slice_data = self.main_window.dicom.pixel_array[:, :, self.image_height // 2, :]
+            slice_data = np.transpose(slice_data, (1, 0, 2)).copy()
+            q_format = QImage.Format.Format_RGB888
+            bytes_per_line = self.num_frames * 3
+        else:
+            # Grayscale Path: Extract center slice from (Frames, H, W)
+            slice_data = images[:, :, self.image_height // 2]
+            slice_data = np.transpose(slice_data, (1, 0)).copy()
+            q_format = QImage.Format.Format_Grayscale8
+            bytes_per_line = self.num_frames
+
+        if self.main_window.colormap_enabled:
+            # If data is RGB, convert to Gray for OpenCV's applyColorMap
+            if len(slice_data.shape) == 3:
+                gray_temp = cv2.cvtColor(slice_data, cv2.COLOR_RGB2GRAY)
+                slice_data = cv2.applyColorMap(gray_temp, cv2.COLORMAP_COOL)
+            else:
+                slice_data = cv2.applyColorMap(slice_data, cv2.COLORMAP_COOL)
+            
+            slice_data = cv2.cvtColor(slice_data, cv2.COLOR_BGR2RGB)
+            q_format = QImage.Format.Format_RGB888
+            bytes_per_line = self.num_frames * 3
+
         longitudinal_image = QImage(
-            slice.data, self.num_frames, self.image_height, self.num_frames, QImage.Format_Grayscale8
+            slice_data.data, 
+            self.num_frames, 
+            self.image_height, 
+            bytes_per_line, 
+            q_format
         )
-        image = QGraphicsPixmapItem(QPixmap.fromImage(longitudinal_image))
-        self.graphics_scene.addItem(image)
+        
+        pixmap_item = QGraphicsPixmapItem(QPixmap.fromImage(longitudinal_image))
+        self.graphics_scene.addItem(pixmap_item)
+
+        self.setSceneRect(pixmap_item.boundingRect())
 
         for frame, contour in enumerate(contours):
             self.lview_contour(frame, contour)
 
+        self.stretch_to_fit()
+
+    def stretch_to_fit(self):
+        if self.graphics_scene.items():
+            self.fitInView(
+                self.sceneRect(), 
+                Qt.AspectRatioMode.IgnoreAspectRatio
+            )
+
+    def resizeEvent(self, event):
+        """Ensure the image restretches whenever the window is resized."""
+        super().resizeEvent(event)
+        self.stretch_to_fit()
+
     def update_marker(self, frame):
-        [self.graphics_scene.removeItem(item) for item in self.graphics_scene.items() if isinstance(item, Marker)]
+        for item in self.graphics_scene.items():
+            if isinstance(item, Marker):
+                if item.scene() == self.graphics_scene:
+                    self.graphics_scene.removeItem(item)
+        
         marker = Marker(frame, 0, frame, self.image_height)
         self.graphics_scene.addItem(marker)
 
     def lview_contour(self, frame, contour, update=False):
         index = None
-        if self.points_on_marker[frame] is not None:  # remove previous points
+
+        if self.points_on_marker[frame] is not None:
             for point in self.points_on_marker[frame]:
-                self.graphics_scene.removeItem(point)
+                # ONLY remove if the point actually belongs to the current scene
+                if point and point.scene() == self.graphics_scene:
+                    self.graphics_scene.removeItem(point)
 
         if contour is None:  # skip frames without contour (but still remove previous points)
+            self.points_on_marker[frame] = None
             return
         else:
-            contour_x, contour_y = contour
+            contour_x = np.array(contour[0])
+            contour_y = np.array(contour[1])
 
         if update or self.points_on_marker[frame] is None:  # need to find the two closest points to the marker
             distances = contour_x - self.image_height // 2
@@ -84,10 +145,14 @@ class LongitudinalView(QGraphicsView):
                 ),
             )
         for point in self.points_on_marker[frame]:
-            self.graphics_scene.addItem(point)
+                if point.scene() is None:
+                    self.graphics_scene.addItem(point)
 
     def hide_lview_contours(self):
-        [self.graphics_scene.removeItem(item) for item in self.graphics_scene.items() if isinstance(item, Point)]
+        for item in self.graphics_scene.items():
+            if isinstance(item, Point):
+                if item.scene() == self.graphics_scene:
+                    self.graphics_scene.removeItem(item)
 
     def show_lview_contours(self):
         for point in self.points_on_marker:
@@ -101,12 +166,14 @@ class LongitudinalView(QGraphicsView):
         for frame in range(lower_limit, upper_limit):
             if self.points_on_marker[frame] is not None:
                 for point in self.points_on_marker[frame]:
-                    self.graphics_scene.removeItem(point)
+                    if point and point.scene() == self.graphics_scene:
+                        self.graphics_scene.removeItem(point)
+                
                 self.points_on_marker[frame] = None
 
 
 class Marker(QGraphicsLineItem):
-    def __init__(self, x1, y1, x2, y2, color=Qt.white):
+    def __init__(self, x1, y1, x2, y2, color=Qt.GlobalColor.white):
         super().__init__()
         pen = QPen(QColor(color), 1)
         pen.setDashPattern([1, 6])

@@ -1,12 +1,13 @@
 from loguru import logger
-from PyQt5.QtWidgets import (
+# Change 1: Updated namespace to PyQt6
+from PyQt6.QtWidgets import (
     QMainWindow,
     QMenuBar,
     QSplitter,
     QTableWidget,
     QStatusBar,
 )
-from PyQt5.QtCore import QTimer
+from PyQt6.QtCore import QTimer  # Change 2: Updated namespace
 
 from gui.left_half.left_half import LeftHalf
 from gui.right_half.right_half import RightHalf
@@ -37,6 +38,7 @@ class Master(QMainWindow):
         self.gated_frames_dia = []
         self.gated_frames_sys = []
         self.data = {}  # container to be saved in JSON file later, includes contours, etc.
+        self.gating_signal = {}  # global gating signal, saved separately from per-frame data
         self.metadata = {}  # metadata used outside of read_image (not saved to JSON file)
         self.images = None
         self.diastole_color = (39, 69, 219)
@@ -61,10 +63,11 @@ class Master(QMainWindow):
         self.status_bar.showMessage(self.waiting_status)
 
         main_window_splitter = QSplitter()
-        main_window_splitter.addWidget(LeftHalf(self)())
+        self.left_half = LeftHalf(self)
+        main_window_splitter.addWidget(self.left_half())
         main_window_splitter.addWidget(RightHalf(self)())
 
-        self.setWindowTitle('AIVUS-CAA Software')
+        self.setWindowTitle('AIVUS-OCT Software')
         self.setCentralWidget(main_window_splitter)
         self.showMaximized()
 
@@ -75,3 +78,22 @@ class Master(QMainWindow):
     def auto_save(self):
         if self.image_displayed:
             write_contours(self)
+
+    def reset_state(self):
+        self.file_name = None
+        self.image_displayed = False
+        self.segmentation = False
+        self.contours_drawn = False
+        self.hide_contours = False
+        self.hide_special_points = False
+        self.colormap_enabled = False
+        self.filter = None
+        self.tmp_contours = {}
+        self.gated_frames = []
+        self.gated_frames_dia = []
+        self.gated_frames_sys = []
+        self.data = {}
+        self.gating_signal = {}
+        self.metadata = {}
+        self.images = None
+        self.images_display = None

@@ -1,7 +1,7 @@
 from loguru import logger
-from PyQt5.QtWidgets import QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsLineItem
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPixmap, QImage, QPen
+from PyQt6.QtWidgets import QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsLineItem
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPixmap, QImage, QPen
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -118,7 +118,12 @@ class ResultsPlot(QMainWindow):
         # Save the plot to a QImage
         fig.canvas.draw()
         width, height = fig.canvas.get_width_height()
-        img = QImage(fig.canvas.buffer_rgba(), width, height, QImage.Format_ARGB32)
+        img = QImage(
+            fig.canvas.buffer_rgba(), 
+            width, 
+            height, 
+            QImage.Format.Format_ARGB32
+        )
 
         self.scene.addPixmap(QPixmap.fromImage(img))
 

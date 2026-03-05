@@ -1,13 +1,13 @@
 import numpy as np
 
 from loguru import logger
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QMainWindow,
     QInputDialog,
     QLineEdit,
     QTableWidgetItem,
 )
-from PyQt5.QtCore import Qt
+from PyQt6.QtCore import Qt
 
 
 class MetadataWindow(QMainWindow):
@@ -25,6 +25,15 @@ class MetadataWindow(QMainWindow):
         self.setFixedSize(x, y)
 
 def parse_dicom(main_window):
+    modality = main_window.dicom['Modality'].value
+    main_window.metadata['modality'] = modality
+    if modality == 'OCT':
+        parse_ivus_oct(main_window)
+    else:
+        parse_ivus(main_window)
+
+
+def parse_ivus(main_window):
     """Parses DICOM metadata"""
     if len(main_window.dicom.PatientName.encode('ascii')) > 0:
         patient_name = main_window.dicom.PatientName.original_string.decode('utf-8')
@@ -51,7 +60,7 @@ def parse_dicom(main_window):
             main_window,
             'Pullback Speed',
             'No pullback speed found, please enter pullback speed (mm/s)',
-            QLineEdit.Normal,
+            QLineEdit.EchoMode.Normal,
             '0.5',
         )
         pullback_rate = float(pullback_rate)
@@ -82,7 +91,7 @@ def parse_dicom(main_window):
             main_window,
             'Pixel Spacing',
             'No pixel spacing info found, please enter pixel spacing (mm)',
-            QLineEdit.Normal,
+            QLineEdit.EchoMode.Normal,
             '',
         )
         resolution = float(resolution)
@@ -113,7 +122,7 @@ def parse_dicom(main_window):
             main_window,
             'Pullback Start Frame',
             'No pullback start frame found, please enter the start frame number',
-            QLineEdit.Normal,
+            QLineEdit.EchoMode.Normal,
             '0',
         )
         pullback_start_frame = int(pullback_start_frame)
@@ -146,5 +155,108 @@ def parse_dicom(main_window):
     main_window.metadata_table.verticalHeader().hide()
     main_window.metadata_table.resizeColumnsToContents()
     main_window.metadata_table.resizeRowsToContents()
-    main_window.metadata_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-    main_window.metadata_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+    main_window.metadata_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    main_window.metadata_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+
+def parse_ivus_oct(main_window):
+    """Parses DICOM metadata for both IVUS and OCT modalities"""
+    ds = main_window.dicom
+
+    patient_name = str(ds.get('PatientName', 'Unknown'))
+    birth_date = str(ds.get('PatientBirthDate', 'Unknown'))
+    gender = str(ds.get('PatientSex', 'Unknown'))
+
+    modality = ds.get('Modality', 'Unknown')
+    manufacturer = ds.get('Manufacturer', 'Unknown')
+    model = ds.get('ManufacturerModelName', 'Unknown')
+    rows = ds.get('Rows', main_window.images.shape[1])
+
+    main_window.metadata['dimension'] = rows
+
+    # 3. Pullback Rate (mm/s)
+    if ds.get('IVUSPullbackRate'):
+        pullback_rate = float(ds.IVUSPullbackRate)
+    elif ds.get(0x000B1001):  # Boston Private Tag
+        pullback_rate = float(ds[0x000B1001].value)
+    else:
+        val, ok = QInputDialog.getText(
+            main_window, 'Pullback Speed',
+            f'No speed found for {modality}, enter mm/s:',
+            QLineEdit.EchoMode.Normal, '0.5'
+        )
+        pullback_rate = float(val) if ok else 0.5
+    
+    main_window.metadata['pullback_speed'] = pullback_rate
+
+    num_frames = main_window.images.shape[0]
+    
+    if ds.get('FrameTimeVector'):
+        # Variable frame rate (Common in IVUS)
+        frame_time_vector = [float(f) for f in ds.FrameTimeVector]
+        pullback_time = np.cumsum(frame_time_vector) / 1000.0  # ms to s
+        pullback_length = pullback_time * pullback_rate
+    elif ds.get('FrameTime'):
+        # Constant frame rate (Common in OCT)
+        frame_time = float(ds.FrameTime)
+        pullback_time = (np.arange(num_frames) * frame_time) / 1000.0
+        pullback_length = pullback_time * pullback_rate
+    else:
+        # Fallback
+        pullback_length = np.zeros((num_frames,))
+
+    main_window.metadata['pullback_length'] = pullback_length
+
+    # 5. Resolution (Pixel Spacing)
+    if ds.get('SequenceOfUltrasoundRegions'):
+        region = ds.SequenceOfUltrasoundRegions[0]
+        # PhysicalUnits 3 = cm, convert PhysicalDelta (cm/pixel) to mm/pixel
+        unit_multiplier = 10 if region.PhysicalUnitsXDirection == 3 else 1
+        resolution = float(region.PhysicalDeltaX) * unit_multiplier
+    elif ds.get('PixelSpacing'):
+        resolution = float(ds.PixelSpacing[0])
+    else:
+        val, ok = QInputDialog.getText(
+            main_window, 'Pixel Spacing',
+            'Enter pixel spacing (mm):', QLineEdit.EchoMode.Normal, '0.01'
+        )
+        resolution = float(val) if ok else 0.01
+
+    main_window.metadata['resolution'] = resolution
+
+    if ds.get('IVUSPullbackStartFrameNumber'):
+        start_frame = int(ds.IVUSPullbackStartFrameNumber)
+    else:
+        # OCT/Standard DICOM might not have this; default to 0
+        start_frame = 0
+
+    main_window.metadata['pullback_start_frame'] = start_frame
+    
+    # Frame Rate (Cine Rate or Recommended Display)
+    main_window.metadata['frame_rate'] = ds.get('CineRate', ds.get('RecommendedDisplayFrameRate', 30))
+
+    # Update UI Table
+    metadata_items = [
+        ('Modality', modality),
+        ('Patient Name', patient_name),
+        ('Date of Birth', birth_date),
+        ('Gender', gender),
+        ('Pullback Speed', f"{pullback_rate} mm/s"),
+        ('Resolution', f"{resolution:.4f} mm"),
+        ('Dimensions', f"{rows}x{ds.get('Columns', rows)}"),
+        ('Manufacturer', f"{manufacturer} ({model})"),
+        ('Start Frame', str(start_frame))
+    ]
+
+    main_window.metadata_table.setRowCount(len(metadata_items))
+    main_window.metadata_table.setColumnCount(2)
+    
+    for i, (label, value) in enumerate(metadata_items):
+        main_window.metadata_table.setItem(i, 0, QTableWidgetItem(label))
+        main_window.metadata_table.setItem(i, 1, QTableWidgetItem(str(value)))
+
+    # Table Formatting
+    main_window.metadata_table.horizontalHeader().hide()
+    main_window.metadata_table.verticalHeader().hide()
+    main_window.metadata_table.resizeColumnsToContents()
+    main_window.metadata_table.resizeRowsToContents()

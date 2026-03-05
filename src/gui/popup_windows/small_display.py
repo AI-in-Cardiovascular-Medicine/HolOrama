@@ -1,10 +1,10 @@
 from loguru import logger
-from PyQt5.QtWidgets import QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsLineItem, QGraphicsTextItem
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPixmap, QImage, QPen
+from PyQt6.QtWidgets import QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsLineItem, QGraphicsTextItem
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPixmap, QImage, QPen
 from shapely.geometry import Polygon
 
-from gui.utils.geometry import Spline, Point
+from gui.utils.geometry import SplineGeometry, Spline, Point
 from report.report import farthest_points, closest_points
 import numpy as np
 
@@ -22,19 +22,20 @@ class SmallDisplay(QMainWindow):
         self.window_to_image_ratio = 1.5
         self.window_size = int(self.image_size / self.window_to_image_ratio)
         self.resize(self.window_size, self.window_size)
+
         self.setWindowFlags(
-            Qt.Window
-            | Qt.WindowStaysOnTopHint
-            | Qt.WindowDoesNotAcceptFocus
-            | Qt.CustomizeWindowHint
-            | Qt.WindowTitleHint
-            | Qt.WindowCloseButtonHint
-            | Qt.WindowMinimizeButtonHint
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.WindowDoesNotAcceptFocus
+            | Qt.WindowType.CustomizeWindowHint
+            | Qt.WindowType.WindowTitleHint
+            | Qt.WindowType.WindowCloseButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
         )
 
         self.scene = QGraphicsScene()
         self.view = QGraphicsView(self.scene)
-        self.view.setDragMode(QGraphicsView.ScrollHandDrag)
+        self.view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.setCentralWidget(self.view)
         self.pixmap = QGraphicsPixmapItem()
         self.scene.addItem(self.pixmap)
@@ -71,11 +72,13 @@ class SmallDisplay(QMainWindow):
 
     def update_frame(self, frame, update_image=False, update_contours=False, update_text=False):
         if update_image:
-
             if frame is None:
                 self.pixmap.setPixmap(QPixmap())
                 self.setWindowTitle("No Frame to Display")
-                [self.scene.removeItem(item) for item in self.scene.items() if not isinstance(item, QGraphicsPixmapItem)]
+                items = [item for item in self.scene.items() if not isinstance(item, QGraphicsPixmapItem)]
+                for item in items:
+                    if item.scene() == self.scene:
+                        self.scene.removeItem(item)
                 return
             
             self.pixmap.setPixmap(
@@ -85,23 +88,43 @@ class SmallDisplay(QMainWindow):
                         self.main_window.images[frame].shape[1],
                         self.main_window.images[frame].shape[0],
                         self.main_window.images[frame].shape[1],
-                        QImage.Format_Grayscale8,
-                    ).scaled(self.image_size, self.image_size, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+                        QImage.Format.Format_Grayscale8,
+                    ).scaled(
+                        self.image_size, 
+                        self.image_size, 
+                        Qt.AspectRatioMode.IgnoreAspectRatio, 
+                        Qt.TransformationMode.SmoothTransformation
+                    )
                 )
             )
 
         if update_contours:
-            contour_types = (Spline, Point, QGraphicsLineItem)  # types of items to remove from scene
-            [self.scene.removeItem(item) for item in self.scene.items() if isinstance(item, contour_types)]
+            contour_types = (Spline, Point, QGraphicsLineItem)
+            items = [item for item in self.scene.items() if isinstance(item, contour_types)]
+            for item in items:
+                if item.scene() == self.scene:
+                    self.scene.removeItem(item)
 
             key = self.main_window.display.contour_key()
             contour_data = self.main_window.data.get(key)
             if contour_data and contour_data[0][frame] and not self.main_window.hide_contours:
                 lumen_x = [point * self.scaling_factor for point in contour_data[0][frame]]
                 lumen_y = [point * self.scaling_factor for point in contour_data[1][frame]]
-                current_contour = Spline([lumen_x, lumen_y], self.n_points_contour, self.contour_thickness, 'green')
+                geometry = SplineGeometry(
+                    lumen_x,
+                    lumen_y,
+                    self.n_points_contour,
+                    None,
+                    None,
+                )
+                geometry.interpolate()
+                current_contour = Spline(
+                    geometry,
+                    'green',
+                    self.contour_thickness,
+                )
 
-                if current_contour.full_contour[0] is not None:
+                if current_contour.geometry.full_contour[0] is not None:
                     self.contour_points = [
                         Point(
                             (current_contour.knot_points[0][i], current_contour.knot_points[1][i]),
@@ -114,7 +137,7 @@ class SmallDisplay(QMainWindow):
                     [self.scene.addItem(point) for point in self.contour_points]
                     self.scene.addItem(current_contour)
                     polygon = Polygon(
-                        [(x, y) for x, y in zip(current_contour.full_contour[0], current_contour.full_contour[1])]
+                        [(x, y) for x, y in zip(current_contour.geometry.full_contour[0], current_contour.geometry.full_contour[1])]
                     )
                     self.view.centerOn(polygon.centroid.x, polygon.centroid.y)
                     _, farthest_x, farthest_y = farthest_points(self.main_window, polygon.exterior.coords, frame)
@@ -124,14 +147,14 @@ class SmallDisplay(QMainWindow):
                         farthest_y[0],
                         farthest_x[1],
                         farthest_y[1],
-                        QPen(Qt.yellow, self.point_thickness * 2),
+                        QPen(Qt.GlobalColor.yellow, self.point_thickness * 2),
                     )
                     self.scene.addLine(
                         closest_x[0],
                         closest_y[0],
                         closest_x[1],
                         closest_y[1],
-                        QPen(Qt.yellow, self.point_thickness * 2),
+                        QPen(Qt.GlobalColor.yellow, self.point_thickness * 2),
                     )
 
         current_phase = 'Diastolic' if self.main_window.use_diastolic_button.isChecked() else 'Systolic'
@@ -141,7 +164,8 @@ class SmallDisplay(QMainWindow):
             # Remove previous correlation text items
             text_items = [item for item in self.scene.items() if isinstance(item, QGraphicsTextItem)]
             for item in text_items:
-                self.scene.removeItem(item)
+                if item.scene() == self.scene:
+                    self.scene.removeItem(item)
             
             # Calculate correlation for this frame
             correlations, frame_indices = self.calculate_correlation(frame)
@@ -156,12 +180,12 @@ class SmallDisplay(QMainWindow):
 
             # Create and position the text item centered at the top of the view
             text_item = self.scene.addText(text)
-            text_item.setDefaultTextColor(Qt.white)
+            text_item.setDefaultTextColor(Qt.GlobalColor.white)
             font = text_item.font()
-            font.setPointSize(font.pointSize() * 2)  # Double the font size
+            font.setPointSize(font.pointSize() * 2)
             text_item.setFont(font)
             
             # Calculate centered position
             text_item_width = text_item.boundingRect().width()
             text_item_height = text_item.boundingRect().height()
-            text_item.setPos((self.image_size - text_item_width) / 2, (self.image_size - text_item_height) / 2)  # Center horizontally and vertically
+            text_item.setPos((self.image_size - text_item_width) / 2, (self.image_size - text_item_height) / 2)

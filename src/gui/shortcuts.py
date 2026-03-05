@@ -5,14 +5,14 @@ import numpy as np
 
 from loguru import logger
 from functools import partial
-from PyQt5.QtGui import QKeySequence, QDesktopServices
-from PyQt5.QtWidgets import QShortcut, QApplication
-from PyQt5.QtCore import Qt, QUrl
+from PyQt6.QtGui import QKeySequence, QDesktopServices, QShortcut, QAction
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import Qt, QUrl
 
 from gui.popup_windows.frame_range_dialog import FrameRangeDialog
 from gui.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 from gui.popup_windows.video_player import VideoPlayer
-from gui.utils.contours_gui import new_contour, new_measure
+from gui.utils.contours_gui import new_contour, new_contour_append, new_measure, new_angle, set_tool
 from input_output.metadata import MetadataWindow
 from input_output.read_image import read_image
 from input_output.contours_io import write_contours, save_gated_images
@@ -22,7 +22,7 @@ from report.report import report
 
 
 from gui.popup_windows.results_plot import ResultsPlot
-from gui.left_half.IVUS_display import ContourType
+from gui.left_half.IVUS_display import ContourType, SegmentationTool
 
 def init_shortcuts(main_window):
     # General
@@ -36,13 +36,13 @@ def init_shortcuts(main_window):
     QShortcut(QKeySequence('Alt+S'), main_window, partial(switch_phases, main_window))
     # Traverse frames
     QShortcut(QKeySequence('W'), main_window, main_window.display_slider.next_gated_frame)
-    QShortcut(QKeySequence(Qt.Key_Up), main_window, main_window.display_slider.next_gated_frame)
+    QShortcut(QKeySequence(Qt.Key.Key_Up), main_window, main_window.display_slider.next_gated_frame)
     QShortcut(QKeySequence('A'), main_window, main_window.display_slider.last_frame)
-    QShortcut(QKeySequence(Qt.Key_Left), main_window, main_window.display_slider.last_frame)
+    QShortcut(QKeySequence(Qt.Key.Key_Left), main_window, main_window.display_slider.last_frame)
     QShortcut(QKeySequence('S'), main_window, main_window.display_slider.last_gated_frame)
-    QShortcut(QKeySequence(Qt.Key_Down), main_window, main_window.display_slider.last_gated_frame)
+    QShortcut(QKeySequence(Qt.Key.Key_Down), main_window, main_window.display_slider.last_gated_frame)
     QShortcut(QKeySequence('D'), main_window, main_window.display_slider.next_frame)
-    QShortcut(QKeySequence(Qt.Key_Right), main_window, main_window.display_slider.next_frame)
+    QShortcut(QKeySequence(Qt.Key.Key_Right), main_window, main_window.display_slider.next_frame)
 
 
 def init_menu(main_window):
@@ -59,7 +59,7 @@ def init_menu(main_window):
     save_report = file_menu.addAction('Save Report', partial(report, main_window))
     save_report.setShortcut('Ctrl+R')
     file_menu.addAction('Save Video Pullback', partial(save_video_pullback, main_window))
-    file_menu.addAction('Save Gated Images', partial(save_gated_images, main_window, main_window.file_name))
+    file_menu.addAction('Save Gated Images', partial(save_gated_images, main_window))
     file_menu.addSeparator()
     exit_action = file_menu.addAction('Exit', main_window.close)
     exit_action.setShortcut('Ctrl+Q')
@@ -70,9 +70,22 @@ def init_menu(main_window):
     manual_eem_contour = edit_menu.addAction('Manual EEM Contour', partial(new_contour, main_window, ContourType.EEM))
     manual_eem_contour.setShortcut('Q')
     manual_calc_contour = edit_menu.addAction('Manual Calcium Contour', partial(new_contour, main_window, ContourType.CALCIUM))
-    manual_calc_contour.setShortcut('Y')
+    manual_calc_contour.setShortcut('7')
     manual_branch_contour = edit_menu.addAction('Manual Branch Contour', partial(new_contour, main_window, ContourType.BRANCH))
-    manual_branch_contour.setShortcut('X')
+    manual_branch_contour.setShortcut('8')
+    manual_lipid_contour = edit_menu.addAction('Manual Lipid Contour', partial(new_contour, main_window, ContourType.LIPID))
+    manual_lipid_contour.setShortcut('9')
+    manual_macroph_contour = edit_menu.addAction('Manual Macrophage Contour', partial(new_contour, main_window, ContourType.MACROPHAGE))
+    manual_macroph_contour.setShortcut('0')
+    edit_menu.addSeparator()
+    add_calc_contour = edit_menu.addAction('Add Calcium Contour', partial(new_contour_append, main_window, ContourType.CALCIUM))
+    add_calc_contour.setShortcut('Ctrl+7')
+    add_branch_contour = edit_menu.addAction('Add Branch Contour', partial(new_contour_append, main_window, ContourType.BRANCH))
+    add_branch_contour.setShortcut('Ctrl+8')
+    add_lipid_contour = edit_menu.addAction('Add Lipid Contour', partial(new_contour_append, main_window, ContourType.LIPID))
+    add_lipid_contour.setShortcut('Ctrl+9')
+    add_macroph_contour = edit_menu.addAction('Add Macrophage Contour', partial(new_contour_append, main_window, ContourType.MACROPHAGE))
+    add_macroph_contour.setShortcut('Ctrl+0')
     edit_menu.addAction('Remove Contours', partial(remove_contours, main_window))
     edit_menu.addSeparator()
     edit_menu.addAction('Reset Phases', partial(reset_phases, main_window))
@@ -81,11 +94,19 @@ def init_menu(main_window):
     measure_1.setShortcut('1')
     measure_2 = edit_menu.addAction('Measurement 2', partial(new_measure, main_window, index=1))
     measure_2.setShortcut('2')
+    angle_wire = edit_menu.addAction('Angle Wire Shadow', partial(new_angle, main_window, ContourType.WIRE))
+    angle_wire.setShortcut('3')
+    closed_spline = edit_menu.addAction('Closed Spline', partial(set_tool, main_window, SegmentationTool.CLOSED_SPLINE))
+    closed_spline.setShortcut('4')
+    open_spline = edit_menu.addAction('Open Spline', partial(set_tool, main_window, SegmentationTool.OPEN_SPLINE))
+    open_spline.setShortcut('5')
+    brush = edit_menu.addAction('Brush', partial(set_tool, main_window, SegmentationTool.BRUSH))
+    brush.setShortcut('6')
 
     view_menu = main_window.menu_bar.addMenu('View')
     hide_contours_action = view_menu.addAction('Hide Contours', partial(hide_contours, main_window))
     hide_contours_action.setShortcut('H')
-    hide_special_points_action = view_menu.addAction('Hide Special Points', partial(hide_special_points, main_window))
+    hide_special_points_action = view_menu.addAction('Hide Measurements', partial(hide_special_points, main_window))
     hide_special_points_action.setShortcut('G')
     view_menu.addSeparator()
     reset_windowing_action = view_menu.addAction('Reset Windowing', partial(reset_windowing, main_window))
@@ -93,16 +114,10 @@ def init_menu(main_window):
     toggle_color_action = view_menu.addAction('Toggle Color', partial(toggle_color, main_window))
     toggle_color_action.setShortcut('C')
     view_menu.addSeparator()
-    filter_1 = view_menu.addAction('Apply Median Blur', partial(toggle_filter, main_window, index=0))
-    filter_1.setShortcut('3')
-    filter_2 = view_menu.addAction('Apply Gaussian Blur', partial(toggle_filter, main_window, index=1))
-    filter_2.setShortcut('4')
-    filter_3 = view_menu.addAction('Apply Bilateral Filter', partial(toggle_filter, main_window, index=2))
-    filter_3.setShortcut('5')
 
     run_menu = main_window.menu_bar.addMenu('Run')
     run_menu.addAction('Extract Diastolic and Systolic Frames', main_window.contour_based_gating)
-    run_menu.addAction('Automatic Segmentation', partial(segment, main_window))
+    # run_menu.addAction('Automatic Segmentation', partial(segment, main_window))
 
     metadata_menu = main_window.menu_bar.addMenu('Metadata')
     metadata_menu.addAction('Show Metadata', partial(show_metadata, main_window))
@@ -138,14 +153,15 @@ def remove_contours(main_window):
             main_window.status_bar.showMessage('Removing contours...')
             lower_limit, upper_limit = dialog.getInputs()
             key = main_window.display.contour_key()
-            main_window.display._ensure_main_window_contour_structure(key)
             for frame in range(lower_limit, upper_limit):
-                main_window.data[key][0][frame] = []
-                main_window.data[key][1][frame] = []
+                fd = main_window.data.get(frame)
+                if fd:
+                    contour_obj = getattr(fd, key, None)
+                    if contour_obj:
+                        contour_obj.contours = []
             main_window.longitudinal_view.remove_contours(lower_limit, upper_limit)
             main_window.display.update_display()
             main_window.status_bar.showMessage(main_window.waiting_status)
-
 
 
 def reset_phases(main_window):
@@ -155,13 +171,16 @@ def reset_phases(main_window):
             main_window.status_bar.showMessage('Resetting phases...')
             lower_limit, upper_limit = dialog.getInputs()
             for frame in range(lower_limit, upper_limit):
-                if main_window.data['phases'][frame] == 'D':
+                fd = main_window.data.get(frame)
+                if fd is None:
+                    continue
+                if fd.phase == 'D':
                     main_window.gated_frames_dia.remove(frame)
                     main_window.diastolic_frame_box.setChecked(False)
-                elif main_window.data['phases'][frame] == 'S':
+                elif fd.phase == 'S':
                     main_window.gated_frames_sys.remove(frame)
                     main_window.systolic_frame_box.setChecked(False)
-                main_window.data['phases'][frame] = '-'
+                fd.phase = '-'
             main_window.gated_frames = main_window.gated_frames_dia + main_window.gated_frames_sys
             main_window.gated_frames.sort()
             main_window.gated_frames_dia.sort()
@@ -191,14 +210,17 @@ def switch_phases(main_window):
             main_window.status_bar.showMessage('Switching phases...')
             lower_limit, upper_limit = dialog.getInputs()
             for frame in range(lower_limit, upper_limit):
-                if main_window.data['phases'][frame] == 'D':
-                    main_window.data['phases'][frame] = 'S'
+                fd = main_window.data.get(frame)
+                if fd is None:
+                    continue
+                if fd.phase == 'D':
+                    fd.phase = 'S'
                     main_window.gated_frames_dia.remove(frame)
                     main_window.gated_frames_sys.append(frame)
                     main_window.diastolic_frame_box.setChecked(False)
                     main_window.systolic_frame_box.setChecked(True)
-                elif main_window.data['phases'][frame] == 'S':
-                    main_window.data['phases'][frame] = 'D'
+                elif fd.phase == 'S':
+                    fd.phase = 'D'
                     main_window.gated_frames_sys.remove(frame)
                     main_window.gated_frames_dia.append(frame)
                     main_window.diastolic_frame_box.setChecked(True)
@@ -232,9 +254,9 @@ def show_metadata(main_window):
 
 def open_url(main_window, description=None):
     if description == 'github':
-        url = 'https://github.com/cardionaut/AAOCASeg'
+        url = 'https://github.com/yungselm/AIVUS-OCT'
     elif description == 'keyboard_shortcuts':
-        url = 'https://github.com/cardionaut/AAOCASeg?tab=readme-ov-file#keyboard-shortcuts'
+        url = 'https://github.com/yungselm/AIVUS-OCT?tab=readme-ov-file#keyboard-shortcuts'
     else:
         video_player = VideoPlayer(main_window)
         video_player.play('media/about.mp4')
@@ -270,15 +292,6 @@ def jiggle_frame(main_window):
         QApplication.processEvents()
 
 
-def toggle_filter(main_window, index):
-    if main_window.image_displayed:
-        if main_window.filter == index:
-            main_window.filter = None
-        else:
-            main_window.filter = index
-        main_window.display.display_image(update_image=True)
-
-
 def stop_all(main_window):
     main_window.display.stop_contour()
     main_window.display.measure_index = None
@@ -287,31 +300,23 @@ def stop_all(main_window):
 def delete_contour(main_window):
     if main_window.image_displayed:
         key = main_window.display.contour_key()
-        main_window.display._ensure_main_window_contour_structure(key)
 
         if not hasattr(main_window, 'tmp_contours'):
             main_window.tmp_contours = {}
 
         frame = main_window.display.frame
-        contour_data = main_window.data.get(key, [[], []])
-        
-        # Ensure the frame data exists
-        if len(contour_data[0]) <= frame:
-            # Extend the lists if needed
-            contour_data[0].extend([[]] * (frame - len(contour_data[0]) + 1))
-            contour_data[1].extend([[]] * (frame - len(contour_data[1]) + 1))
-        
-        xlist = contour_data[0][frame] if frame < len(contour_data[0]) else []
-        ylist = contour_data[1][frame] if frame < len(contour_data[1]) else []
-        
-        main_window.tmp_contours[key] = (xlist.copy(), ylist.copy())
+        fd = main_window.data.get(frame)
+        if fd:
+            contour_obj = getattr(fd, key, None)
+            if contour_obj and contour_obj.contours and contour_obj.contours[0]:
+                xlist = list(contour_obj.contours[0][0]) if contour_obj.contours[0][0] else []
+                ylist = list(contour_obj.contours[0][1]) if len(contour_obj.contours[0]) > 1 else []
+            else:
+                xlist, ylist = [], []
+            main_window.tmp_contours[key] = (xlist, ylist)
+            if contour_obj:
+                contour_obj.contours = []
 
-        # Clear the contour for this frame
-        if frame < len(contour_data[0]):
-            contour_data[0][frame] = []
-        if frame < len(contour_data[1]):
-            contour_data[1][frame] = []
-            
         main_window.display.display_image(update_contours=True)
 
 
@@ -320,20 +325,14 @@ def undo_delete(main_window):
         key = main_window.display.contour_key()
         if hasattr(main_window, 'tmp_contours') and key in main_window.tmp_contours:
             xlist, ylist = main_window.tmp_contours.pop(key)
-            main_window.display._ensure_main_window_contour_structure(key)
-            
             frame = main_window.display.frame
-            contour_data = main_window.data[key]
-            
-            # Ensure the frame data exists
-            if len(contour_data[0]) <= frame:
-                contour_data[0].extend([[]] * (frame - len(contour_data[0]) + 1))
-                contour_data[1].extend([[]] * (frame - len(contour_data[1]) + 1))
-            
-            contour_data[0][frame] = xlist
-            contour_data[1][frame] = ylist
-            
-            main_window.display.display_image(update_contours=True)
+            fd = main_window.data.get(frame)
+            if fd:
+                contour_obj = getattr(fd, key, None)
+                if contour_obj is not None:
+                    contour_obj.contours = [[xlist, ylist]]
+
+            main_window.display.update_display()
 
 
 def reset_windowing(main_window):

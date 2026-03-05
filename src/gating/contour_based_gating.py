@@ -54,7 +54,7 @@ class ContourBasedGating:
 
     def define_roi(self):
         dialog = FrameRangeDialog(self.main_window)
-        if dialog.exec_():
+        if dialog.exec():
             lower_limit, upper_limit = dialog.getInputs()
             self.report_data = report(
                 self.main_window, lower_limit, upper_limit, suppress_messages=True

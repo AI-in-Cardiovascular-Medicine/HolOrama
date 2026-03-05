@@ -1,5 +1,5 @@
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QDialog, QLineEdit, QDialogButtonBox, QFormLayout
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QDialog, QLineEdit, QDialogButtonBox, QFormLayout
 
 class FrameRangeDialog(QDialog):
     def __init__(self, main_window):
@@ -9,7 +9,11 @@ class FrameRangeDialog(QDialog):
         self.lower_limit.setText('1')
         self.upper_limit = QLineEdit(self)
         self.upper_limit.setText(str(main_window.images.shape[0]))
-        buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+
+        buttonBox = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, 
+            self
+        )
 
         layout = QFormLayout(self)
         layout.addRow('Lower limit', self.lower_limit)
@@ -38,8 +42,11 @@ class StartFramesDialog(QDialog):
         self.diastolic_start = QLineEdit(self)
         self.systolic_start = QLineEdit(self)
 
-        buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
-
+        buttonBox = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, 
+            self
+        )
+        
         layout = QFormLayout(self)
         layout.addRow(label1, self.diastolic_start)
         layout.addRow(label2, self.systolic_start)
@@ -49,7 +56,7 @@ class StartFramesDialog(QDialog):
         buttonBox.rejected.connect(self.reject)
 
         # Set non-modal mode
-        self.setWindowModality(Qt.NonModal)
+        self.setWindowModality(Qt.WindowModality.NonModal)
 
     def getInputs(self):
         # Retrieve and return input values

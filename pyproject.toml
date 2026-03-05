@@ -1,37 +1,33 @@
 [tool.poetry]
-name = "aivus-caa"
-version = "1.1.0"
-description = ""
+name = "aivus"  # Updated name
+version = "1.2.0"
+description = "AIVUS: AIVUS-CAA (coronary artery anomalies) AIVUS-OCT (optical coherence tomography)"
 authors = ["yungselm", "cardionaut", "Pooya Mohammadi Kazaj"]
-# package-mode = false
 
 [tool.poetry.dependencies]
 python = ">=3.10, <3.12"
 loguru = "*"
 tqdm = "*"
-openpyxl = "*"
 matplotlib = "*"
+pandas ="*"
+scipy = "*"
+scikit-image = "*"
 seaborn = "*"
 pylint = "*"
 hydra-core = "*"
 omegaconf = "*"
 numpy = "1.26.4"
-tensorflow = "2.15.0"
-protobuf = ">=3.20.3"
-monai = "*"
-scikit-image = "*"
 pydicom = "2.4.4"
-customtkinter = "*"
 pylibjpeg = "*"
 pylibjpeg-libjpeg = "*"
-pyqt5 = "5.15.2"
-pyqtdarktheme = "2.1.0"
+PyQt6 = "^6.10.2"
+pyqtdarktheme = "^2.1.0"
 shapely = "*"
 SimpleITK = "*"
-opencv-python-headless = "4.9.0.80"
+opencv-python-headless = "^4.9.0.80"
+tensorflow = "2.15.0"
 torch = { version = "2.4.0", source = "pytorch_cpu" }
 torchvision = { version = "0.19.0", source = "pytorch_cpu" }
-# nnunetv2 = {git = "https://github.com/AI-in-Cardiovascular-Medicine/nnUZoo", rev = "main"}
 
 [tool.poetry.group.dev.dependencies]
 autohooks = "^23.1.0"
