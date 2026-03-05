@@ -1,6 +1,7 @@
 import os
 import json
 import glob
+import math
 
 import numpy as np
 from loguru import logger
@@ -126,7 +127,7 @@ def _build_contour(raw: Optional[dict]) -> Contour:
     )
 
 
-def _build_measure(raw, scaling_factor: float = 1.0) -> Optional[Measure]:
+def _build_measure(raw, scaling_factor: float = 1.0, length: Optional[float] = None) -> Optional[Measure]:
     if not raw:
         return None
     # Oldest legacy format: [x1, y1, x2, y2] stored in display coordinates — unscale
@@ -136,10 +137,10 @@ def _build_measure(raw, scaling_factor: float = 1.0) -> Optional[Measure]:
                    (raw[2] / scaling_factor, raw[3] / scaling_factor))
         else:
             pts = None
-        return Measure(points=pts)
+        return Measure(points=pts, length=length)
     return Measure(
         points=raw.get('points'),
-        length=raw.get('length'),
+        length=raw.get('length', length),
     )
 
 
@@ -156,10 +157,15 @@ def _build_frame_data_legacy(raw: dict, num_frames: int, scaling_factor: float =
     reference = raw.get('reference', [None] * num_frames)
     # legacy: [[m1, m2], ...] per frame, where m1/m2 were dicts or None
     measures = raw.get('measures', [[None, None]] * num_frames)
+    # legacy: [[len1, len2], ...] per frame (may be nan for absent measurements)
+    measure_lengths = raw.get('measure_lengths', [[None, None]] * num_frames)
 
     frames = {}
     for i in range(num_frames):
         m1_raw, m2_raw = measures[i] if i < len(measures) else (None, None)
+        ml1, ml2 = measure_lengths[i] if i < len(measure_lengths) else (None, None)
+        ml1 = None if ml1 is None or (isinstance(ml1, float) and math.isnan(ml1)) else ml1
+        ml2 = None if ml2 is None or (isinstance(ml2, float) and math.isnan(ml2)) else ml2
         frames[i] = FrameData(
             phase=phases[i] if i < len(phases) else '-',
             lumen=_build_contour_legacy(raw, 'lumen', i),
@@ -168,8 +174,8 @@ def _build_frame_data_legacy(raw: dict, num_frames: int, scaling_factor: float =
             branch=_build_contour_legacy(raw, 'branch', i),
             lipid=_build_contour_legacy(raw, 'lipid', i),
             macrophage=_build_contour_legacy(raw, 'macrophage', i),
-            measurement_1=_build_measure(m1_raw, scaling_factor),
-            measurement_2=_build_measure(m2_raw, scaling_factor),
+            measurement_1=_build_measure(m1_raw, scaling_factor, ml1),
+            measurement_2=_build_measure(m2_raw, scaling_factor, ml2),
             reference=reference[i] if i < len(reference) else None,
         )
     return frames

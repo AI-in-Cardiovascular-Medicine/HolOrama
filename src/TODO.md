@@ -14,4 +14,5 @@
 # Bugs
 - [] lumen area and circumference have substantially different values when saving to json but not in report
 - [x] write report crashes
-- [] When drawing a second contour and the first was closed and the second is open, the double click sets end point to both contours
+- [x] When drawing a second contour and the first was closed and the second is open, the double click sets end point to both contours
+- [x] Legacy measurements are read in as None

@@ -145,7 +145,9 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             ContourType.CALCIUM: getattr(config.display, "color_calcium", "white"),
             ContourType.BRANCH: getattr(config.display, "color_branch", "green"),
             ContourType.LIPID: getattr(config.display, "color_lipid", "yellow"),
-            ContourType.MACROPHAGE: getattr(config.display, "color_macrophage", "blue")
+            ContourType.MACROPHAGE: getattr(config.display, "color_macrophage", "blue"),
+            ContourType.WIRE: getattr(config.display, "color_angle", "#ffa500"),
+            ContourType.REFERENCE: getattr(config.display, "color_reference", "yellow"),
         }
 
         self.contour_configs = {}
@@ -848,10 +850,12 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                         contour_obj.contours.append([xs_sparse_origin, ys_sparse_origin])
                     start = self.working_spline.geometry.start_coords
                     end = self.working_spline.geometry.end_coords
-                    if start:
-                        contour_obj.start_coords.append((start[0] / self.scaling_factor, start[1] / self.scaling_factor))
-                    if end:
-                        contour_obj.end_coords.append((end[0] / self.scaling_factor, end[1] / self.scaling_factor))
+                    contour_obj.start_coords.append(
+                        (start[0] / self.scaling_factor, start[1] / self.scaling_factor) if start else None
+                    )
+                    contour_obj.end_coords.append(
+                        (end[0] / self.scaling_factor, end[1] / self.scaling_factor) if end else None
+                    )
                     self.active_contour_index = len(contour_obj.contours) - 1
                 else:
                     contour_obj.contours = [[xs_sparse_origin, ys_sparse_origin]]
@@ -896,7 +900,10 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             self.graphics_scene.addItem(Point((p1.x(), p1.y()), self.point_thickness, self.point_radius, 0, self.measure_colors[index]))
             self.graphics_scene.addItem(Point((p2.x(), p2.y()), self.point_thickness, self.point_radius, 1, self.measure_colors[index]))
             self.graphics_scene.addLine(QLineF(p1, p2), get_qt_pen(self.measure_colors[index], self.point_thickness))
-            length_text = QGraphicsTextItem(f'{measure.length} mm')
+            length = measure.length
+            if length is None:
+                length = round(QLineF(p1, p2).length() * self.main_window.metadata["resolution"] / self.scaling_factor, 2)
+            length_text = QGraphicsTextItem(f'{length} mm')
             length_text.setPos(p2.x(), p2.y())
             self.graphics_scene.addItem(length_text)
         # Draw any pending first-click-only points
@@ -1369,6 +1376,11 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                     pos = self.mapToScene(event.pos())
                     if self.working_spline is not None:
                         self.working_spline.geometry.end_coords = (pos.x(), pos.y())
+                    if self.append_contour_mode:
+                        key = self.contour_key(self.active_contour_type)
+                        contour_obj = getattr(self.main_window.data[self.frame], key)
+                        while len(contour_obj.end_coords) < len(contour_obj.contours):
+                            contour_obj.end_coords.append(None)
                     self._finish_open_spline()
                     return  # prevent super() re-delivering event after drawing_mode is cleared
         super().mouseDoubleClickEvent(event)
