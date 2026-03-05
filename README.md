@@ -1,7 +1,7 @@
 <p align="center">
   <a href="https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA.jpg">
     <img
-      src="https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/AIVUS-OCT/main/media/logo_oct_inclusive.png"
+      src="https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/main/media/logo_oct_inclusive.png"
       alt="aivus-caa logo"
     >
   </a>
@@ -10,8 +10,9 @@
 
 
 # AIVUS (Automated IntraVascular UltraSound Image Processing) <!-- omit in toc -->
-# AIVUS-CAA (Quantification of Coronary Artery Anomalies)
-# AIVUS-OCT (Quantification of Optical Coherence Tomography)
+- AIVUS-CAA (Quantification of Coronary Artery Anomalies)
+- AIVUS-OCT (Quantification of Optical Coherence Tomography)
+
 [![version](https://img.shields.io/badge/version-v1.2.0-yellow)](https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/releases/tag/v1.2.0)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Docs](https://img.shields.io/readthedocs/aivus-caa)](https://aivus-caa.readthedocs.io)
