@@ -1,7 +1,7 @@
 <p align="center">
   <a href="https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA.jpg">
     <img
-      src="https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/AIVUS-OCT/main/media/logo_oct_inclusive.png"
+      src="https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/main/media/logo_oct_inclusive.png"
       alt="aivus-caa logo"
     >
   </a>
@@ -10,8 +10,9 @@
 
 
 # AIVUS (Automated IntraVascular UltraSound Image Processing) <!-- omit in toc -->
-# AIVUS-CAA (Quantification of Coronary Artery Anomalies)
-# AIVUS-OCT (Quantification of Optical Coherence Tomography)
+- AIVUS-CAA (Quantification of Coronary Artery Anomalies)
+- AIVUS-OCT (Quantification of Optical Coherence Tomography)
+
 [![version](https://img.shields.io/badge/version-v1.2.0-yellow)](https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/releases/tag/v1.2.0)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Docs](https://img.shields.io/readthedocs/aivus-caa)](https://aivus-caa.readthedocs.io)
@@ -202,7 +203,7 @@ In the current state, these cannot be changed by the user (at least not without 
 ### v1.1.0 and higher
 Additionally:
 - Press <kbd>RMB</kbd> on an existing knot point to remove it
-- Scroll <kbd>MW<kbd> to zoom in/out the current mouse position
+- Scroll <kbd>MW</kbd> to zoom in/out the current mouse position
 - Press <kbd>Q</kbd> to manually draw an ``external elastic membrane`` (EEM) contour
 - Press <kbd>7</kbd> to manually draw a ``calcification `` contour
 - Press <kbd>Ctrl</kbd> + <kbd>7</kbd> to draw an additional ``calcification`` contour in the current active spline tool (open or closed)
@@ -254,11 +255,11 @@ Here first adding a catheter angle from the tools above, then adding a lumen con
 
 ![Demo](media/explanation_software_part4.gif)
 
-Here in a next step an open spline is created for calcium (if the spline is open it automatically calculates two an angle from the lumen center to start and end point of the open spline). Points are then removed using <kbd>RMB</kbd> and using <kbd>Ctrl</kbd> + <kbd>7</kbd> and chosing closed spline a second calcium contour is drawn. In a last step a side branch contour is drawn.
+Here in a next step an open spline is created for calcium (if the spline is open it automatically calculates two an angle from the lumen center to start and end point of the open spline). Points are then removed using <kbd>RMB</kbd> and using <kbd>Ctrl</kbd> + <kbd>7</kbd> and choosing closed spline a second calcium contour is drawn. In a last step a side branch contour is drawn.
 
 ![Demo](media/explanation_software_part5.gif)
 
-The display can change between mask mode (with preapplied logic of contour layering). Additionally can the contours also be hidden.
+The display can change between mask mode (with pre-applied logic of contour layering). Additionally can the contours also be hidden.
 
 ![Demo](media/explanation_software_part6.gif)
 
