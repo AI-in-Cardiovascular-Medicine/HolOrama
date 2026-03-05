@@ -65,6 +65,62 @@ sudo apt install nvidia-cuda-toolkit
 ```
 Potentially extra steps are needed.
 
+### Windows
+
+Windows requires several manual fixes after installation due to packaging issues with PyTorch and library conflicts.
+
+#### 1. Install Visual C++ Redistributable
+
+Download and install the [Visual C++ Redistributable 2022 (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe) if not already present.
+
+#### 2. Fix missing LLVM OpenMP runtime (`libomp140.x86_64.dll`)
+
+PyTorch 2.4.0 on Windows depends on `libomp140.x86_64.dll` which is not bundled in the pip wheel. Run this once after installation:
+
+```python
+import urllib.request, tarfile, io, os, sys
+
+url = 'https://conda.anaconda.org/conda-forge/win-64/llvm-openmp-14.0.0-h2d74725_0.tar.bz2'
+data = urllib.request.urlopen(url).read()
+dest = os.path.join(sys.prefix, 'Lib', 'site-packages', 'torch', 'lib', 'libomp140.x86_64.dll')
+
+with tarfile.open(fileobj=io.BytesIO(data), mode='r:bz2') as t:
+    f = t.extractfile('Library/bin/libomp.dll')
+    with open(dest, 'wb') as out:
+        out.write(f.read())
+print('Done:', dest)
+```
+
+> **Note:** This file will be lost if torch is reinstalled — re-run the script afterwards.
+
+#### 3. Fix `optree` version incompatibility
+
+`optree >= 0.14` is incompatible with `torch 2.4.0` and causes a C-level access violation. Downgrade it:
+
+```bash
+pip install "optree==0.13.1"
+```
+
+#### 4. Fix torch + tensorflow DLL conflict
+
+When both torch and tensorflow are loaded in the same process, their OpenMP runtimes conflict on Windows. The fix is already applied in `src/main.py` via:
+
+```python
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+```
+
+This must appear before any torch or tensorflow imports.
+
+#### 5. GPU acceleration (CUDA)
+
+Install the CUDA-enabled torch build matching your driver. With CUDA driver ≤ 12.0 (check with `nvidia-smi`), use the CUDA 11.8 build:
+
+```bash
+pip install "torch==2.4.0+cu118" "torchvision==0.19.0+cu118" --index-url https://download.pytorch.org/whl/cu118
+```
+
+After installing the CUDA build, re-run the `libomp140.x86_64.dll` script from step 2. And uncomment the torch and torchvision in ``pyproject.toml`` (default is using cpu).
+
 ### Precompiled version
 Find a precompiled version pinned to release (compiled with `nuitka`).
 If you want to compile the project on your own, use the following command:
@@ -146,6 +202,7 @@ In the current state, these cannot be changed by the user (at least not without 
 ### v1.1.0 and higher
 Additionally:
 - Press <kbd>RMB</kbd> on an existing knot point to remove it
+- Scroll <kbd>MW<kbd> to zoom in/out the current mouse position
 - Press <kbd>Q</kbd> to manually draw an ``external elastic membrane`` (EEM) contour
 - Press <kbd>7</kbd> to manually draw a ``calcification `` contour
 - Press <kbd>Ctrl</kbd> + <kbd>7</kbd> to draw an additional ``calcification`` contour in the current active spline tool (open or closed)
@@ -188,13 +245,22 @@ Movement patterns may vary between datasets; consequently, the final frame selec
 Version 1.1.0 and higher offer the additional possibility to segment the EEM, calcification and side branches. This works in the same style as for the base contours. Clicking on any contour in the image automatically sets it as the active contour.
 
 > [!NOTE]
-> The segmentation models are currently only trained for lumen contours. In the future, we will implement additional models for all contour types and OCT images.
-
-![Demo](media/v1.1.0update.gif)
+> The segmentation models are currently only trained for lumen contours. In the future, we will implement additional models for all contour types.
 
 Since version 1.2.0 additionally it is possible to read in OCT images and performe additional contouring functionalities.
 
-![Demo](media/v1.2.0update.gif)
+### Example v1.2.0 with OCT
+Here first adding a catheter angle from the tools above, then adding a lumen contour (closed spline) and lastly adding a EEM contour (closed spline) but then setting an uncertain region between start point (yellow) and end point (red) by double clicking. Since this version also zoom in can be performed by mouse scroll on the current mouse position. Measurements are currently hidden, see Checkbox bottom.
+
+![Demo](media/explanation_software_part4.gif)
+
+Here in a next step an open spline is created for calcium (if the spline is open it automatically calculates two an angle from the lumen center to start and end point of the open spline). Points are then removed using <kbd>RMB</kbd> and using <kbd>Ctrl</kbd> + <kbd>7</kbd> and chosing closed spline a second calcium contour is drawn. In a last step a side branch contour is drawn.
+
+![Demo](media/explanation_software_part5.gif)
+
+The display can change between mask mode (with preapplied logic of contour layering). Additionally can the contours also be hidden.
+
+![Demo](media/explanation_software_part6.gif)
 
 # Citation
 Please kindly cite the following paper if you use this repository.
