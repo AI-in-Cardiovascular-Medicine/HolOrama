@@ -149,7 +149,7 @@ def is_gating_display_active(main_window):
 def remove_contours(main_window):
     if main_window.image_displayed:
         dialog = FrameRangeDialog(main_window)
-        if dialog.exec_():
+        if dialog.exec():
             main_window.status_bar.showMessage('Removing contours...')
             lower_limit, upper_limit = dialog.getInputs()
             key = main_window.display.contour_key()
@@ -167,7 +167,7 @@ def remove_contours(main_window):
 def reset_phases(main_window):
     if main_window.image_displayed:
         dialog = FrameRangeDialog(main_window)
-        if dialog.exec_():
+        if dialog.exec():
             main_window.status_bar.showMessage('Resetting phases...')
             lower_limit, upper_limit = dialog.getInputs()
             for frame in range(lower_limit, upper_limit):
@@ -206,7 +206,7 @@ def switch_phases(main_window):
 
     if main_window.image_displayed:
         dialog = FrameRangeDialog(main_window)
-        if dialog.exec_():
+        if dialog.exec():
             main_window.status_bar.showMessage('Switching phases...')
             lower_limit, upper_limit = dialog.getInputs()
             for frame in range(lower_limit, upper_limit):
