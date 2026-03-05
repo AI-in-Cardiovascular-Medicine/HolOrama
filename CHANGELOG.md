@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] - 2026-03-05
+Now runs on PyQt6
+
+### Added
+- Set up for Windows using GPU acceleration
+- A segmentation clean up function, that adds a contour around the catheter if segmentation could not produce one.
+
+### Changed
+- updated tests to PyQt6 (not working yet)
+- updated README.md
+
 ## [1.2.0] - 2026-03-05
 Now runs on PyQt6
 
