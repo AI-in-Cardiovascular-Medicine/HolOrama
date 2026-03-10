@@ -17,7 +17,7 @@ def main(config: DictConfig) -> None:
     app.setApplicationVersion(__version__)
     
     qdarktheme.setup_theme('dark') # switch to auto to recognize system mode
-    Master(config)
+    _window = Master(config)
     
     sys.exit(app.exec())
 
