@@ -125,6 +125,8 @@ def init_menu(main_window):
     help_menu = main_window.menu_bar.addMenu('Help')
     help_menu.addAction('GitHub Page', partial(open_url, main_window, description='github'))
     help_menu.addAction('Keyboard Shortcuts', partial(open_url, main_window, description='keyboard_shortcuts'))
+    help_menu.addAction('Report a Problem', partial(open_url, main_window, description='issue'))
+    help_menu.addAction('Request a Feature', partial(open_url, main_window, description='feature'))
     help_menu.addSeparator()
     help_menu.addAction('About', partial(open_url, main_window))
 
@@ -257,9 +259,13 @@ def open_url(main_window, description=None):
         url = 'https://github.com/yungselm/AIVUS-OCT'
     elif description == 'keyboard_shortcuts':
         url = 'https://github.com/yungselm/AIVUS-OCT?tab=readme-ov-file#keyboard-shortcuts'
+    elif description == 'issue':
+        url = 'https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/issues/new?template=bug_report.md'
+    elif description == 'feature':
+        url = 'https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/issues/new?template=feature_request.md'
     else:
         video_player = VideoPlayer(main_window)
-        video_player.play('media/about.mp4')
+        video_player.play('../media/about.mp4')
         video_player.move(main_window.x() + main_window.width() // 2, main_window.y() + main_window.height() // 2)
         return
     if not QDesktopServices.openUrl(QUrl(url)):
