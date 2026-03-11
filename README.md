@@ -13,7 +13,7 @@
 - AIVUS-CAA (Quantification of Coronary Artery Anomalies)
 - AIVUS-OCT (Quantification of Optical Coherence Tomography)
 
-[![version](https://img.shields.io/badge/version-v1.2.1-yellow)](https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/releases/tag/v1.2.1)
+[![version](https://img.shields.io/github/v/release/AI-in-Cardiovascular-Medicine/AIVUS-CAA)](https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Docs](https://img.shields.io/readthedocs/aivus-caa)](https://aivus-caa.readthedocs.io)
 [![DOI](https://img.shields.io/badge/DOI-10.1016%2Fj.cmpb.2025.109065-blue)](https://doi.org/10.1016/j.cmpb.2025.109065)
