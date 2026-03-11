@@ -5,16 +5,10 @@ from loguru import logger
 from gating.signal_processing import identify_extrema
 from gui.popup_windows.frame_range_dialog import StartFramesDialog
 
-from PyQt6.QtWidgets import (
-    QDialog, 
-    QVBoxLayout, 
-    QGroupBox, 
-    QRadioButton, 
-    QDialogButtonBox
-)
+from PyQt6.QtWidgets import QDialog, QVBoxLayout, QGroupBox, QRadioButton, QDialogButtonBox
 
 
-class  GatingMethodDialog(QDialog):
+class GatingMethodDialog(QDialog):
     def __init__(self, main_window):
         super().__init__(main_window)
         self.main_window = main_window
@@ -30,7 +24,7 @@ class  GatingMethodDialog(QDialog):
         image_layout.addWidget(self.image_maxima)
         image_layout.addWidget(self.image_extrema)
         self.image_group.setLayout(image_layout)
-        
+
         # Contour-based signal options
         self.contour_group = QGroupBox("Contour-based Signal")
         self.contour_maxima = QRadioButton("Maxima")
@@ -40,14 +34,12 @@ class  GatingMethodDialog(QDialog):
         contour_layout.addWidget(self.contour_maxima)
         contour_layout.addWidget(self.contour_extrema)
         self.contour_group.setLayout(contour_layout)
-        
+
         # Buttons
-        self.buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
+        self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
-        
+
         layout.addWidget(self.image_group)
         layout.addWidget(self.contour_group)
         layout.addWidget(self.buttons)
@@ -99,10 +91,10 @@ class AutomaticGating:
             # print(f"Image based indices: {image_indices}")
             # print(f"Contour based indices: {contour_indices}")
             # print(f"Combined indices: {final_indices}")
-            # _write_csv_signals(image_based_signal, 
-            #                   contour_based_signal, 
-            #                   image_indices, 
-            #                   contour_indices, 
+            # _write_csv_signals(image_based_signal,
+            #                   contour_based_signal,
+            #                   image_indices,
+            #                   contour_indices,
             #                   final_indices)
             # start by initializing every second
             first_half = final_indices[::2].tolist()
@@ -146,16 +138,20 @@ class AutomaticGating:
             for frame in self.main_window.gated_frames_sys:
                 self.main_window.data[frame].phase = 'S'
 
+
 def _write_csv_signals(image_signal, contour_signal, image_indices, contour_indices, combined_indices):
     import pandas as pd
-    df = pd.DataFrame({
-        'frame': np.arange(len(image_signal)),
-        'image_signal': image_signal,
-        'contour_signal': contour_signal,
-        'image_indices': np.zeros(len(image_signal)),
-        'contour_indices': np.zeros(len(image_signal)),
-        'combined_indices': np.zeros(len(image_signal)),
-    })
+
+    df = pd.DataFrame(
+        {
+            'frame': np.arange(len(image_signal)),
+            'image_signal': image_signal,
+            'contour_signal': contour_signal,
+            'image_indices': np.zeros(len(image_signal)),
+            'contour_indices': np.zeros(len(image_signal)),
+            'combined_indices': np.zeros(len(image_signal)),
+        }
+    )
     # replace the 0 with ones if frame is in image_indices, contour_indices, combined_indices
     df.loc[df['frame'].isin(image_indices), 'image_indices'] = 1
     df.loc[df['frame'].isin(contour_indices), 'contour_indices'] = 1

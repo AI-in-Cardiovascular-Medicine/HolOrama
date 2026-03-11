@@ -28,8 +28,7 @@ def report(main_window, lower_limit=None, upper_limit=None, suppress_messages=Fa
     else:
         frame_range = range(main_window.metadata['num_frames'])
     contoured_frames = [
-        frame for frame in frame_range
-        if frame in main_window.data and main_window.data[frame].lumen.contours
+        frame for frame in frame_range if frame in main_window.data and main_window.data[frame].lumen.contours
     ]
     if not contoured_frames:
         if not suppress_messages:
@@ -64,12 +63,12 @@ def report(main_window, lower_limit=None, upper_limit=None, suppress_messages=Fa
 
 
 def _safe_polygon_area(x_coords, y_coords, frame, contour_name, main_window):
-    """Build polygon from coordinate lists and return area in mm². 
+    """Build polygon from coordinate lists and return area in mm².
     On revocerable errors return 0 and log full exception + context."""
     if x_coords is None or y_coords is None or len(x_coords) == 0 or len(y_coords) == 0:
         logger.warning(f'Empty coordinates for {contour_name} contour at frame {frame}, returning area 0.')
         return 0
-    
+
     try:
         poly = Polygon([(x, y) for x, y in zip(x_coords, y_coords)])
         return poly.area * main_window.metadata['resolution'] ** 2
@@ -157,6 +156,7 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
     if lumen_full_list is None:
         try:
             from gui.left_half.IVUS_display import ContourType
+
             lumen_full_list = main_window.display.get_full_contour_list(ContourType.LUMEN)
         except (ImportError, AttributeError) as e:
             logger.bind(file=main_window.file_name).warning(
@@ -188,7 +188,9 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
             # compute EEM area if not present
             fd = main_window.data.get(frame)
             if eem_x and eem_x[frame] is not None and fd and not fd.eem.measurements.area:
-                area = _safe_polygon_area(eem_x[frame], eem_y[frame], frame=frame, contour_name="eem", main_window=main_window)
+                area = _safe_polygon_area(
+                    eem_x[frame], eem_y[frame], frame=frame, contour_name="eem", main_window=main_window
+                )
                 fd.eem.measurements.area = area
             continue
 
@@ -214,7 +216,9 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
 
         # Compute EEM area for this frame if EEM contour exists
         if eem_x and eem_x[frame] is not None:
-            area = _safe_polygon_area(eem_x[frame], eem_y[frame], frame=frame, contour_name="eem", main_window=main_window)
+            area = _safe_polygon_area(
+                eem_x[frame], eem_y[frame], frame=frame, contour_name="eem", main_window=main_window
+            )
             fd_eem = main_window.data.get(frame)
             if fd_eem:
                 fd_eem.eem.measurements.area = area
@@ -253,10 +257,7 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
         for frame in contoured_frames
     ]
 
-    report_data['eem_area'] = [
-        main_window.data[frame].eem.measurements.area or 0
-        for frame in contoured_frames
-    ]
+    report_data['eem_area'] = [main_window.data[frame].eem.measurements.area or 0 for frame in contoured_frames]
 
     # Write computed metrics back into per-frame measurements
     for frame in contoured_frames:
@@ -279,7 +280,9 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
             save_csv_files(main_window, calc_x, calc_y, name='calcium_diastolic', frames=main_window.gated_frames_dia)
             save_csv_files(main_window, calc_x, calc_y, name='calcium_systolic', frames=main_window.gated_frames_sys)
         if branch_x is not None and any(elem is not None for elem in branch_x):
-            save_csv_files(main_window, branch_x, branch_y, name='branch_diastolic', frames=main_window.gated_frames_dia)
+            save_csv_files(
+                main_window, branch_x, branch_y, name='branch_diastolic', frames=main_window.gated_frames_dia
+            )
             save_csv_files(main_window, branch_x, branch_y, name='branch_systolic', frames=main_window.gated_frames_sys)
 
     if not suppress_messages:

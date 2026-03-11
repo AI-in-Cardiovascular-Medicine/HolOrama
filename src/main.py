@@ -15,6 +15,7 @@ from PyQt6.QtCore import qInstallMessageHandler, QtMsgType
 from version import __version__
 from gui.gui import Master
 
+
 LOG_DIR = Path("logs")
 LOG_DIR.mkdir(exist_ok=True)
 LOG_FILE = LOG_DIR / f"app_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
@@ -25,7 +26,7 @@ logging.basicConfig(
     handlers=[
         logging.FileHandler(LOG_FILE, encoding="utf-8"),
         logging.StreamHandler(sys.stdout),
-    ]
+    ],
 )
 log = logging.getLogger(__name__)
 
@@ -56,7 +57,8 @@ qInstallMessageHandler(qt_message_handler)
 
 
 def _print_banner():
-    print(r"""
+    print(
+        r"""
       {_       {__{__         {__{__     {__  {__ __
      {_ __     {__ {__       {__ {__     {__{__    {__
     {_  {__    {__  {__     {__  {__     {__ {__
@@ -64,7 +66,8 @@ def _print_banner():
   {______ {__  {__    {__ {__    {__     {__      {__
  {__       {__ {__     {____     {__     {__{__    {__
 {__         {__{__      {__        {_____     {__ __
-""")
+"""
+    )
     print(f"  version  : {__version__}")
     print(f"  docs     : https://aivus-caa.readthedocs.io")
     print(f"  license  : MIT\n")

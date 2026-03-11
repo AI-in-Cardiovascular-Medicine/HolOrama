@@ -1,5 +1,12 @@
 from loguru import logger
-from PyQt6.QtWidgets import QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsLineItem, QGraphicsTextItem
+from PyQt6.QtWidgets import (
+    QMainWindow,
+    QGraphicsView,
+    QGraphicsScene,
+    QGraphicsPixmapItem,
+    QGraphicsLineItem,
+    QGraphicsTextItem,
+)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QImage, QPen
 from shapely.geometry import Polygon
@@ -46,7 +53,7 @@ class SmallDisplay(QMainWindow):
         frame_indices = []
         start_frame = max(0, frame - 30)
         end_frame = max(0, frame - 5)
-        
+
         for i in range(start_frame, end_frame):
             corr = np.corrcoef(self.main_window.images[frame].ravel(), self.main_window.images[i].ravel())[0, 1]
             correlations.append(corr)
@@ -80,7 +87,7 @@ class SmallDisplay(QMainWindow):
                     if item.scene() == self.scene:
                         self.scene.removeItem(item)
                 return
-            
+
             self.pixmap.setPixmap(
                 QPixmap.fromImage(
                     QImage(
@@ -90,10 +97,10 @@ class SmallDisplay(QMainWindow):
                         self.main_window.images[frame].shape[1],
                         QImage.Format.Format_Grayscale8,
                     ).scaled(
-                        self.image_size, 
-                        self.image_size, 
-                        Qt.AspectRatioMode.IgnoreAspectRatio, 
-                        Qt.TransformationMode.SmoothTransformation
+                        self.image_size,
+                        self.image_size,
+                        Qt.AspectRatioMode.IgnoreAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
                     )
                 )
             )
@@ -137,7 +144,12 @@ class SmallDisplay(QMainWindow):
                     [self.scene.addItem(point) for point in self.contour_points]
                     self.scene.addItem(current_contour)
                     polygon = Polygon(
-                        [(x, y) for x, y in zip(current_contour.geometry.full_contour[0], current_contour.geometry.full_contour[1])]
+                        [
+                            (x, y)
+                            for x, y in zip(
+                                current_contour.geometry.full_contour[0], current_contour.geometry.full_contour[1]
+                            )
+                        ]
                     )
                     self.view.centerOn(polygon.centroid.x, polygon.centroid.y)
                     _, farthest_x, farthest_y = farthest_points(self.main_window, polygon.exterior.coords, frame)
@@ -166,7 +178,7 @@ class SmallDisplay(QMainWindow):
             for item in text_items:
                 if item.scene() == self.scene:
                     self.scene.removeItem(item)
-            
+
             # Calculate correlation for this frame
             correlations, frame_indices = self.calculate_correlation(frame)
             best_frame_index, best_correlation = self.find_best_correlation(correlations, frame_indices)
@@ -174,7 +186,9 @@ class SmallDisplay(QMainWindow):
             # Update window title with correlation information
             if best_frame_index is not None:
                 distance = frame - self.main_window.display.frame
-                text = f"Frame {frame + 1} (+{distance})\n Correlation Frame: {best_frame_index} ({best_correlation:.2f})"
+                text = (
+                    f"Frame {frame + 1} (+{distance})\n Correlation Frame: {best_frame_index} ({best_correlation:.2f})"
+                )
             else:
                 text = f"Frame {frame + 1} \n No Previous Frames Available"
 
@@ -184,7 +198,7 @@ class SmallDisplay(QMainWindow):
             font = text_item.font()
             font.setPointSize(font.pointSize() * 2)
             text_item.setFont(font)
-            
+
             # Calculate centered position
             text_item_width = text_item.boundingRect().width()
             text_item_height = text_item.boundingRect().height()

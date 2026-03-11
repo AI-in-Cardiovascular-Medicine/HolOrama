@@ -18,17 +18,17 @@ class RightHalf:
         self.right_widget = QWidget()
         right_vbox = QVBoxLayout()
         checkboxes = QHBoxLayout()
-        
+
         self.main_window.diastolic_frame_box = QCheckBox('Diastolic Frame')
         self.main_window.diastolic_frame_box.setChecked(False)
         self.main_window.diastolic_frame_box.stateChanged.connect(partial(toggle_diastolic_frame, main_window))
         checkboxes.addWidget(self.main_window.diastolic_frame_box)
-        
+
         self.main_window.systolic_frame_box = QCheckBox('Systolic Frame')
         self.main_window.systolic_frame_box.setChecked(False)
         self.main_window.systolic_frame_box.stateChanged.connect(partial(toggle_systolic_frame, main_window))
         checkboxes.addWidget(self.main_window.systolic_frame_box)
-        
+
         self.main_window.use_diastolic_button = QPushButton('Diastolic Frames')
         self.main_window.use_diastolic_button.setStyleSheet(f'background-color: rgb{self.main_window.diastole_color}')
         self.main_window.use_diastolic_button.setCheckable(True)
@@ -36,22 +36,22 @@ class RightHalf:
         self.main_window.use_diastolic_button.clicked.connect(partial(use_diastolic, main_window))
         self.main_window.use_diastolic_button.setToolTip('Press button to switch between diastolic and systolic frames')
         checkboxes.addWidget(self.main_window.use_diastolic_button)
-        
+
         small_display_button = QPushButton('Compare Frames')
         small_display_button.setToolTip('Open a small display to compare two frames')
         small_display_button.clicked.connect(partial(open_small_display, main_window))
         checkboxes.addWidget(small_display_button)
-        
+
         main_window.gating_display = GatingDisplay(main_window)
         checkboxes.addWidget(main_window.gating_display.toolbar)
         right_vbox.addLayout(checkboxes)
-        
+
         # Change 2: Scoped Orientation Enum
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.addWidget(main_window.gating_display)
         main_window.longitudinal_view = LongitudinalView(main_window)
         splitter.addWidget(main_window.longitudinal_view)
-        
+
         gating_display_size = main_window.gating_display.sizeHint().height()
         splitter.setSizes([gating_display_size, gating_display_size])
         splitter.setStretchFactor(0, main_window.config.display.gating_display_stretch)
@@ -72,7 +72,7 @@ class RightHalf:
         measures = QHBoxLayout()
         right_lower_vbox.addLayout(measures)
         right_vbox.addLayout(right_lower_vbox)
-        
+
         self.right_widget.setLayout(right_vbox)
 
     def __call__(self):
@@ -86,9 +86,7 @@ def open_small_display(main_window):
             main_window.x() + main_window.width() // 2, main_window.y() + main_window.height() // 2
         )
         next_gated = main_window.display_slider.next_gated_frame(set=False)
-        main_window.small_display.update_frame(
-            next_gated, update_image=True, update_contours=True, update_text=True
-        )
+        main_window.small_display.update_frame(next_gated, update_image=True, update_contours=True, update_text=True)
         main_window.small_display.show()
 
 
@@ -168,6 +166,8 @@ def use_diastolic(main_window):
 
         try:
             next_gated = main_window.display_slider.next_gated_frame(set=False)
-            main_window.small_display.update_frame(next_gated, update_image=True, update_contours=True, update_text=True)  # update small display
+            main_window.small_display.update_frame(
+                next_gated, update_image=True, update_contours=True, update_text=True
+            )  # update small display
         except AttributeError:
             pass

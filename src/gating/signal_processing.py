@@ -51,7 +51,7 @@ def prepare_data(main_window, frames, report_data, x1=50, x2=450, y1=50, y2=450)
     shortest_dist = normalize_data(np.roll(report_data['shortest_distance'], 1), step)
     vector_angle = normalize_data(np.roll(report_data['vector_angle'], 1), step)
     vector_length = normalize_data(np.roll(report_data['vector_length'], 1), step)
-    
+
     # Set first frame to 0 (no previous frame)
     shortest_dist[0] = 0
     vector_angle[0] = 0
@@ -206,10 +206,11 @@ def combined_signal(
     inverse_variability = [(1 / var) for var in variability]
     weights = [inv_var / sum(inverse_variability) for inv_var in inverse_variability]
 
-
     # print the chosen weights per variable
     if len(signal_list) == 3:
-        logger.info(f"Signal weights: Shortest distance: {weights[0]:.2f}, Vector angle: {weights[1]:.2f}, Vector length: {weights[2]:.2f}")
+        logger.info(
+            f"Signal weights: Shortest distance: {weights[0]:.2f}, Vector angle: {weights[1]:.2f}, Vector length: {weights[2]:.2f}"
+        )
     elif len(signal_list) == 2:
         logger.info(f"Signal weights: Correlation: {weights[0]:.2f}, Blurring: {weights[1]:.2f}")
 
@@ -226,7 +227,7 @@ def identify_extrema(main_window, signal):
 
     # Remove NaN and infinite values from the signal
     signal = np.nan_to_num(signal, nan=0.0, posinf=0.0, neginf=0.0)
-    
+
     # Dynamically calculate prominence based on the signal's characteristics
     min_height = np.percentile(signal, extrema_y_lim)  # Only consider peaks above the median
 

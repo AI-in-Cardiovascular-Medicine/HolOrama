@@ -14,6 +14,7 @@ import pydicom
 from pydicom.dataset import Dataset
 from pydicom.uid import generate_uid
 
+
 def save_as_nifti(main_window, mode=None):
     main_window.status_bar.showMessage('Saving frames as NIfTi files...')
     if not main_window.image_displayed:
@@ -23,14 +24,16 @@ def save_as_nifti(main_window, mode=None):
     out_path = os.path.join(main_window.config.save.nifti_dir, f'{mode}_frames')
     if mode == 'contoured':
         frames_to_save = [
-            frame for frame in range(main_window.metadata['num_frames'])
+            frame
+            for frame in range(main_window.metadata['num_frames'])
             if main_window.data.get(frame) and main_window.data[frame].lumen.contours
         ]
     elif mode == 'gated':
         frames_to_save = [
             frame
             for frame in range(main_window.metadata['num_frames'])
-            if main_window.data.get(frame) and main_window.data[frame].lumen.contours
+            if main_window.data.get(frame)
+            and main_window.data[frame].lumen.contours
             and main_window.data[frame].phase in ['D', 'S']
         ]
     elif mode == 'all':
@@ -42,7 +45,9 @@ def save_as_nifti(main_window, mode=None):
         main_window.status_bar.showMessage('Saving frames as NIfTi files...')
         file_name = os.path.splitext(os.path.basename(main_window.file_name))[0]  # remove file extension
         os.makedirs(out_path, exist_ok=True)
-        mask = contours_to_mask(main_window.images[frames_to_save], frames_to_save, main_window.data, main_window.metadata)
+        mask = contours_to_mask(
+            main_window.images[frames_to_save], frames_to_save, main_window.data, main_window.metadata
+        )
 
         progress = QProgressDialog()
         progress.setWindowFlags(Qt.Dialog)
@@ -60,7 +65,9 @@ def save_as_nifti(main_window, mode=None):
                 QApplication.processEvents()
                 if progress.wasCanceled():
                     break
-                if main_window.data.get(frame) and main_window.data[frame].lumen.contours:  # only save mask if contour exists
+                if (
+                    main_window.data.get(frame) and main_window.data[frame].lumen.contours
+                ):  # only save mask if contour exists
                     sitk.WriteImage(
                         sitk.GetImageFromArray(mask[i, :, :]),
                         os.path.join(out_path, f'{file_name}_frame_{frame}_seg.nii.gz'),
@@ -70,7 +77,9 @@ def save_as_nifti(main_window, mode=None):
                     os.path.join(out_path, f'{file_name}_frame_{frame}_img.nii.gz'),
                 )
         if main_window.config.save.save_3d:
-            if any(main_window.data.get(f) and main_window.data[f].lumen.contours for f in frames_to_save):  # only save mask if any contour exists
+            if any(
+                main_window.data.get(f) and main_window.data[f].lumen.contours for f in frames_to_save
+            ):  # only save mask if any contour exists
                 sitk.WriteImage(sitk.GetImageFromArray(mask), os.path.join(out_path, f'{file_name}_seg.nii.gz'))
             sitk.WriteImage(
                 sitk.GetImageFromArray(main_window.images[frames_to_save]),
@@ -95,23 +104,24 @@ def convert_nifti_to_dicom(main_window, out_path, file_name, frames_to_save):
 # Label constants
 # ---------------------------------------------------------------------------
 
-LABEL_BACKGROUND  = 0  # catheter zone, wire shadow, outside 4.75 mm
-LABEL_LUMEN       = 1
-LABEL_EEM_WALL    = 2  # between lumen and EEM
-LABEL_CALCIUM     = 3
-LABEL_LIPID       = 4
-LABEL_MACROPHAGE  = 5
-LABEL_ADVENTITIA  = 6  # outside EEM, within 4.75 mm
-LABEL_BRANCH      = 7  # side-branch lumen
+LABEL_BACKGROUND = 0  # catheter zone, wire shadow, outside 4.75 mm
+LABEL_LUMEN = 1
+LABEL_EEM_WALL = 2  # between lumen and EEM
+LABEL_CALCIUM = 3
+LABEL_LIPID = 4
+LABEL_MACROPHAGE = 5
+LABEL_ADVENTITIA = 6  # outside EEM, within 4.75 mm
+LABEL_BRANCH = 7  # side-branch lumen
 
 _CATHETER_MM = 0.45
 _MAX_VESSEL_MM = 4.75
-_N_INTERP = 500   # dense interpolation points for smooth polygon boundaries
+_N_INTERP = 500  # dense interpolation points for smooth polygon boundaries
 
 
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
+
 
 def _smooth_contour(xs, ys, is_closed=True):
     """
@@ -152,14 +162,14 @@ def _open_outer_sector_mask(xs, ys, centroid_x, centroid_y, image_shape):
     pixel_angles = np.arctan2(yy.astype(float) - centroid_y, xx.astype(float) - centroid_x)
 
     # Determine which CCW/CW angular direction contains the arc midpoint
-    x0, y0 = xs_s[0],               ys_s[0]
-    xN, yN = xs_s[-1],              ys_s[-1]
+    x0, y0 = xs_s[0], ys_s[0]
+    xN, yN = xs_s[-1], ys_s[-1]
     xm, ym = xs_s[len(xs_s) // 2], ys_s[len(ys_s) // 2]
     a_start = np.arctan2(y0 - centroid_y, x0 - centroid_x)
-    a_end   = np.arctan2(yN - centroid_y, xN - centroid_x)
-    a_mid   = np.arctan2(ym - centroid_y, xm - centroid_x)
+    a_end = np.arctan2(yN - centroid_y, xN - centroid_x)
+    a_mid = np.arctan2(ym - centroid_y, xm - centroid_x)
 
-    ccw_size   = (a_end - a_start) % (2 * np.pi)
+    ccw_size = (a_end - a_start) % (2 * np.pi)
     mid_in_ccw = ((a_mid - a_start) % (2 * np.pi)) <= ccw_size
 
     if mid_in_ccw:
@@ -170,9 +180,9 @@ def _open_outer_sector_mask(xs, ys, centroid_x, centroid_y, image_shape):
 
     # Inner polygon: centroid → arc → centroid (the lumen-side region to subtract)
     inner_poly_yx = np.empty((len(xs_s) + 2, 2))
-    inner_poly_yx[0]    = (centroid_y, centroid_x)
+    inner_poly_yx[0] = (centroid_y, centroid_x)
     inner_poly_yx[1:-1] = np.column_stack([ys_s, xs_s])
-    inner_poly_yx[-1]   = (centroid_y, centroid_x)
+    inner_poly_yx[-1] = (centroid_y, centroid_x)
     inner_mask = polygon2mask(image_shape, inner_poly_yx)
 
     return full_sector & ~inner_mask
@@ -238,6 +248,7 @@ def _wire_shadow_mask(wire, image_shape, center_y, center_x):
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def contours_to_mask(images, contoured_frames, data, metadata):
     """
     Convert IVUS contours to a multi-label numpy mask.
@@ -268,16 +279,16 @@ def contours_to_mask(images, contoured_frames, data, metadata):
     H, W = image_shape
     mask = np.zeros((len(contoured_frames), H, W), dtype=np.uint8)
 
-    resolution   = metadata['resolution']           # mm / pixel
-    catheter_r   = _CATHETER_MM  / resolution       # pixels
-    outer_r      = _MAX_VESSEL_MM / resolution      # pixels
+    resolution = metadata['resolution']  # mm / pixel
+    catheter_r = _CATHETER_MM / resolution  # pixels
+    outer_r = _MAX_VESSEL_MM / resolution  # pixels
 
     center_y, center_x = H / 2.0, W / 2.0
 
-    yy, xx   = np.mgrid[0:H, 0:W]
-    dist_sq  = (xx.astype(float) - center_x) ** 2 + (yy.astype(float) - center_y) ** 2
-    catheter_zone  = dist_sq <= catheter_r ** 2
-    outside_vessel = dist_sq >  outer_r ** 2
+    yy, xx = np.mgrid[0:H, 0:W]
+    dist_sq = (xx.astype(float) - center_x) ** 2 + (yy.astype(float) - center_y) ** 2
+    catheter_zone = dist_sq <= catheter_r**2
+    outside_vessel = dist_sq > outer_r**2
 
     for i, frame in enumerate(contoured_frames):
         fd = data.get(frame)
@@ -287,7 +298,7 @@ def contours_to_mask(images, contoured_frames, data, metadata):
         # Lumen centroid for open-spline wedge direction (stored unscaled)
         cx, cy = fd.centroid if fd.centroid is not None else (center_x, center_y)
 
-        eem_mask   = _contour_obj_to_mask(fd.eem,   cx, cy, image_shape)
+        eem_mask = _contour_obj_to_mask(fd.eem, cx, cy, image_shape)
         lumen_mask = _contour_obj_to_mask(fd.lumen, cx, cy, image_shape)
 
         fm = np.zeros(image_shape, dtype=np.uint8)
@@ -304,8 +315,8 @@ def contours_to_mask(images, contoured_frames, data, metadata):
 
         # Plaques: clipped to EEM when EEM exists
         for label, contour_obj in (
-            (LABEL_CALCIUM,    fd.calcium),
-            (LABEL_LIPID,      fd.lipid),
+            (LABEL_CALCIUM, fd.calcium),
+            (LABEL_LIPID, fd.lipid),
             (LABEL_MACROPHAGE, fd.macrophage),
         ):
             if not contour_obj.contours:
@@ -313,7 +324,7 @@ def contours_to_mask(images, contoured_frames, data, metadata):
             plaque = _contour_obj_to_mask(contour_obj, cx, cy, image_shape)
             if fd.eem.contours:
                 plaque &= eem_mask
-            plaque &= ~lumen_mask   # never inside lumen
+            plaque &= ~lumen_mask  # never inside lumen
             fm[plaque] = label
 
         # Branch: side-branch lumen, not clipped to EEM

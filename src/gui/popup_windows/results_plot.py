@@ -118,12 +118,7 @@ class ResultsPlot(QMainWindow):
         # Save the plot to a QImage
         fig.canvas.draw()
         width, height = fig.canvas.get_width_height()
-        img = QImage(
-            fig.canvas.buffer_rgba(), 
-            width, 
-            height, 
-            QImage.Format.Format_ARGB32
-        )
+        img = QImage(fig.canvas.buffer_rgba(), width, height, QImage.Format.Format_ARGB32)
 
         self.scene.addPixmap(QPixmap.fromImage(img))
 

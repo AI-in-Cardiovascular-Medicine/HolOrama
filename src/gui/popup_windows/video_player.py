@@ -25,7 +25,7 @@ class VideoPlayer(QMainWindow):
             media_source = QUrl.fromLocalFile(video_path)
         else:
             media_source = QUrl(video_path)
-            
+
         self.show()
         self.media_player.setSource(media_source)
         self.media_player.setPosition(0)

@@ -24,6 +24,7 @@ class MetadataWindow(QMainWindow):
         y = sum([self.table.rowHeight(i) for i in range(self.table.rowCount())])
         self.setFixedSize(x, y)
 
+
 def parse_dicom(main_window):
     modality = main_window.dicom['Modality'].value
     main_window.metadata['modality'] = modality
@@ -64,7 +65,7 @@ def parse_ivus(main_window):
             '0.5',
         )
         pullback_rate = float(pullback_rate)
-    
+
     main_window.metadata['pullback_speed'] = pullback_rate
 
     if main_window.dicom.get('FrameTimeVector'):
@@ -181,16 +182,18 @@ def parse_ivus_oct(main_window):
         pullback_rate = float(ds[0x000B1001].value)
     else:
         val, ok = QInputDialog.getText(
-            main_window, 'Pullback Speed',
+            main_window,
+            'Pullback Speed',
             f'No speed found for {modality}, enter mm/s:',
-            QLineEdit.EchoMode.Normal, '0.5'
+            QLineEdit.EchoMode.Normal,
+            '0.5',
         )
         pullback_rate = float(val) if ok else 0.5
-    
+
     main_window.metadata['pullback_speed'] = pullback_rate
 
     num_frames = main_window.images.shape[0]
-    
+
     if ds.get('FrameTimeVector'):
         # Variable frame rate (Common in IVUS)
         frame_time_vector = [float(f) for f in ds.FrameTimeVector]
@@ -217,8 +220,7 @@ def parse_ivus_oct(main_window):
         resolution = float(ds.PixelSpacing[0])
     else:
         val, ok = QInputDialog.getText(
-            main_window, 'Pixel Spacing',
-            'Enter pixel spacing (mm):', QLineEdit.EchoMode.Normal, '0.01'
+            main_window, 'Pixel Spacing', 'Enter pixel spacing (mm):', QLineEdit.EchoMode.Normal, '0.01'
         )
         resolution = float(val) if ok else 0.01
 
@@ -231,7 +233,7 @@ def parse_ivus_oct(main_window):
         start_frame = 0
 
     main_window.metadata['pullback_start_frame'] = start_frame
-    
+
     # Frame Rate (Cine Rate or Recommended Display)
     main_window.metadata['frame_rate'] = ds.get('CineRate', ds.get('RecommendedDisplayFrameRate', 30))
 
@@ -245,12 +247,12 @@ def parse_ivus_oct(main_window):
         ('Resolution', f"{resolution:.4f} mm"),
         ('Dimensions', f"{rows}x{ds.get('Columns', rows)}"),
         ('Manufacturer', f"{manufacturer} ({model})"),
-        ('Start Frame', str(start_frame))
+        ('Start Frame', str(start_frame)),
     ]
 
     main_window.metadata_table.setRowCount(len(metadata_items))
     main_window.metadata_table.setColumnCount(2)
-    
+
     for i, (label, value) in enumerate(metadata_items):
         main_window.metadata_table.setItem(i, 0, QTableWidgetItem(label))
         main_window.metadata_table.setItem(i, 1, QTableWidgetItem(str(value)))

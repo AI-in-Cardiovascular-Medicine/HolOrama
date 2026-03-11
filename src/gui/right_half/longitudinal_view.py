@@ -19,19 +19,13 @@ class LongitudinalView(QGraphicsView):
         self.main_window = main_window
         self.lview_contour_size = 2
         self.graphics_scene = QGraphicsScene()
-        self.setSizePolicy(
-            QSizePolicy.Policy.Expanding, 
-            QSizePolicy.Policy.Expanding
-        )
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setScene(self.graphics_scene)
 
-    def set_data(
-            self, 
-            images, 
-            contours):
+    def set_data(self, images, contours):
         self.graphics_scene.clear()
         self.num_frames = images.shape[0]
         self.image_height = images.shape[1]
@@ -57,19 +51,13 @@ class LongitudinalView(QGraphicsView):
                 slice_data = cv2.applyColorMap(gray_temp, cv2.COLORMAP_COOL)
             else:
                 slice_data = cv2.applyColorMap(slice_data, cv2.COLORMAP_COOL)
-            
+
             slice_data = cv2.cvtColor(slice_data, cv2.COLOR_BGR2RGB)
             q_format = QImage.Format.Format_RGB888
             bytes_per_line = self.num_frames * 3
 
-        longitudinal_image = QImage(
-            slice_data.data, 
-            self.num_frames, 
-            self.image_height, 
-            bytes_per_line, 
-            q_format
-        )
-        
+        longitudinal_image = QImage(slice_data.data, self.num_frames, self.image_height, bytes_per_line, q_format)
+
         pixmap_item = QGraphicsPixmapItem(QPixmap.fromImage(longitudinal_image))
         self.graphics_scene.addItem(pixmap_item)
 
@@ -82,10 +70,7 @@ class LongitudinalView(QGraphicsView):
 
     def stretch_to_fit(self):
         if self.graphics_scene.items():
-            self.fitInView(
-                self.sceneRect(), 
-                Qt.AspectRatioMode.IgnoreAspectRatio
-            )
+            self.fitInView(self.sceneRect(), Qt.AspectRatioMode.IgnoreAspectRatio)
 
     def resizeEvent(self, event):
         """Ensure the image restretches whenever the window is resized."""
@@ -97,7 +82,7 @@ class LongitudinalView(QGraphicsView):
             if isinstance(item, Marker):
                 if item.scene() == self.graphics_scene:
                     self.graphics_scene.removeItem(item)
-        
+
         marker = Marker(frame, 0, frame, self.image_height)
         self.graphics_scene.addItem(marker)
 
@@ -123,8 +108,7 @@ class LongitudinalView(QGraphicsView):
             point_indices = np.argpartition(np.abs(distances), num_points_to_collect)[:num_points_to_collect]
             for i in range(len(point_indices)):
                 if (
-                    np.abs(contour_y[point_indices[0]] - contour_y[point_indices[i]])
-                    > self.image_height / 10
+                    np.abs(contour_y[point_indices[0]] - contour_y[point_indices[i]]) > self.image_height / 10
                 ):  # ensure the two points are from different sides of the contour
                     index = i
                     break
@@ -145,8 +129,8 @@ class LongitudinalView(QGraphicsView):
                 ),
             )
         for point in self.points_on_marker[frame]:
-                if point.scene() is None:
-                    self.graphics_scene.addItem(point)
+            if point.scene() is None:
+                self.graphics_scene.addItem(point)
 
     def hide_lview_contours(self):
         for item in self.graphics_scene.items():
@@ -168,7 +152,7 @@ class LongitudinalView(QGraphicsView):
                 for point in self.points_on_marker[frame]:
                     if point and point.scene() == self.graphics_scene:
                         self.graphics_scene.removeItem(point)
-                
+
                 self.points_on_marker[frame] = None
 
 

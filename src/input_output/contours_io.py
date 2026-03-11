@@ -16,6 +16,7 @@ from gui.popup_windows.message_boxes import ErrorMessage
 # Dataclasses
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class Measurements:
     area: Optional[float] = None
@@ -57,9 +58,11 @@ class FrameData:
     closest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
     farthest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
 
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _to_serializable(obj):
     """Fallback serializer for json.dump to handle numpy types."""
@@ -133,8 +136,10 @@ def _build_measure(raw, scaling_factor: float = 1.0, length: Optional[float] = N
     # Oldest legacy format: [x1, y1, x2, y2] stored in display coordinates — unscale
     if isinstance(raw, list):
         if len(raw) == 4:
-            pts = ((raw[0] / scaling_factor, raw[1] / scaling_factor),
-                   (raw[2] / scaling_factor, raw[3] / scaling_factor))
+            pts = (
+                (raw[0] / scaling_factor, raw[1] / scaling_factor),
+                (raw[2] / scaling_factor, raw[3] / scaling_factor),
+            )
         else:
             pts = None
         return Measure(points=pts, length=length)
@@ -207,9 +212,11 @@ def _build_frame_data(raw: dict) -> Dict[int, FrameData]:
         )
     return frames
 
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def read_contours(main_window, file_name=None) -> bool:
     """Read contours from the most recent JSON file and populate

@@ -37,7 +37,7 @@ class LeftHalf:
 
         self.closed_spline_btn = QPushButton('⭕Closed Spline')
         self.closed_spline_btn.setCheckable(True)
-        self.closed_spline_btn.setChecked(True) # this is the default button
+        self.closed_spline_btn.setChecked(True)  # this is the default button
         self.closed_spline_btn.setToolTip("Set drawing mode to closed spline")
         self.closed_spline_btn.clicked.connect(partial(set_tool, main_window, SegmentationTool.CLOSED_SPLINE))
 
@@ -76,8 +76,13 @@ class LeftHalf:
         self.angle_btn.clicked.connect(partial(new_angle, main_window, ContourType.WIRE))
 
         self.display_buttons = [
-            self.closed_spline_btn, self.open_spline_btn, self.brush_btn,
-            self.reference_btn, self.measure_btn_1, self.measure_btn_2, self.angle_btn,
+            self.closed_spline_btn,
+            self.open_spline_btn,
+            self.brush_btn,
+            self.reference_btn,
+            self.measure_btn_1,
+            self.measure_btn_2,
+            self.angle_btn,
         ]
         for btn in self.display_buttons:
             self.display_button_group.addButton(btn)
@@ -91,7 +96,7 @@ class LeftHalf:
         main_window.hide_contours_box = QCheckBox('&Hide Contours')
         main_window.hide_contours_box.setChecked(False)
         main_window.hide_contours_box.stateChanged[int].connect(self.toggle_hide_contours)
-        
+
         main_window.hide_special_points_box = QCheckBox('&Hide Metrics')
         main_window.hide_special_points_box.setChecked(False)
         main_window.hide_special_points_box.stateChanged[int].connect(self.toggle_hide_special_points)
@@ -108,15 +113,15 @@ class LeftHalf:
         self.play_button = QPushButton()
         self.play_icon = main_window.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay)
         self.pause_icon = main_window.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause)
-        
+
         self.play_button.setIcon(self.play_icon)
         self.play_button.setMaximumWidth(30)
         self.play_button.clicked.connect(partial(self.play, main_window))
         self.paused = True
-        
+
         main_window.display_slider = Slider(main_window, Qt.Orientation.Horizontal)
         main_window.display_slider.valueChanged[int].connect(self.change_value)
-        
+
         slider_hbox = QHBoxLayout()
         slider_hbox.addWidget(self.play_button)
         slider_hbox.addWidget(main_window.display_slider)
@@ -125,7 +130,7 @@ class LeftHalf:
         self.frame_number_label = QLabel()
         self.frame_number_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.frame_number_label.setText(f'Frame {main_window.display_slider.value() + 1}')
-        
+
         frame_num_hbox = QHBoxLayout()
         frame_num_hbox.addWidget(self.frame_number_label)
         left_lower_grid.addLayout(frame_num_hbox, 1, 1)
@@ -173,7 +178,7 @@ class LeftHalf:
 
     def toggle_hide_contours(self, value):
         if self.main_window.image_displayed:
-            self.main_window.hide_contours = bool(value) # Cast to bool for safety
+            self.main_window.hide_contours = bool(value)  # Cast to bool for safety
             self.main_window.display.update_display()
             if hasattr(self.main_window, "small_display"):
                 next_gated = self.main_window.display_slider.next_gated_frame(set=False)

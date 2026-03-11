@@ -24,6 +24,7 @@ from report.report import report
 from gui.popup_windows.results_plot import ResultsPlot
 from gui.left_half.IVUS_display import ContourType, SegmentationTool
 
+
 def init_shortcuts(main_window):
     # General
     QShortcut(QKeySequence('J'), main_window, partial(jiggle_frame, main_window))
@@ -65,26 +66,44 @@ def init_menu(main_window):
     exit_action.setShortcut('Ctrl+Q')
 
     edit_menu = main_window.menu_bar.addMenu('Edit')
-    manual_lumen_contour = edit_menu.addAction('Manual Lumen Contour', partial(new_contour, main_window, ContourType.LUMEN))
+    manual_lumen_contour = edit_menu.addAction(
+        'Manual Lumen Contour', partial(new_contour, main_window, ContourType.LUMEN)
+    )
     manual_lumen_contour.setShortcut('E')
     manual_eem_contour = edit_menu.addAction('Manual EEM Contour', partial(new_contour, main_window, ContourType.EEM))
     manual_eem_contour.setShortcut('Q')
-    manual_calc_contour = edit_menu.addAction('Manual Calcium Contour', partial(new_contour, main_window, ContourType.CALCIUM))
+    manual_calc_contour = edit_menu.addAction(
+        'Manual Calcium Contour', partial(new_contour, main_window, ContourType.CALCIUM)
+    )
     manual_calc_contour.setShortcut('7')
-    manual_branch_contour = edit_menu.addAction('Manual Branch Contour', partial(new_contour, main_window, ContourType.BRANCH))
+    manual_branch_contour = edit_menu.addAction(
+        'Manual Branch Contour', partial(new_contour, main_window, ContourType.BRANCH)
+    )
     manual_branch_contour.setShortcut('8')
-    manual_lipid_contour = edit_menu.addAction('Manual Lipid Contour', partial(new_contour, main_window, ContourType.LIPID))
+    manual_lipid_contour = edit_menu.addAction(
+        'Manual Lipid Contour', partial(new_contour, main_window, ContourType.LIPID)
+    )
     manual_lipid_contour.setShortcut('9')
-    manual_macroph_contour = edit_menu.addAction('Manual Macrophage Contour', partial(new_contour, main_window, ContourType.MACROPHAGE))
+    manual_macroph_contour = edit_menu.addAction(
+        'Manual Macrophage Contour', partial(new_contour, main_window, ContourType.MACROPHAGE)
+    )
     manual_macroph_contour.setShortcut('0')
     edit_menu.addSeparator()
-    add_calc_contour = edit_menu.addAction('Add Calcium Contour', partial(new_contour_append, main_window, ContourType.CALCIUM))
+    add_calc_contour = edit_menu.addAction(
+        'Add Calcium Contour', partial(new_contour_append, main_window, ContourType.CALCIUM)
+    )
     add_calc_contour.setShortcut('Ctrl+7')
-    add_branch_contour = edit_menu.addAction('Add Branch Contour', partial(new_contour_append, main_window, ContourType.BRANCH))
+    add_branch_contour = edit_menu.addAction(
+        'Add Branch Contour', partial(new_contour_append, main_window, ContourType.BRANCH)
+    )
     add_branch_contour.setShortcut('Ctrl+8')
-    add_lipid_contour = edit_menu.addAction('Add Lipid Contour', partial(new_contour_append, main_window, ContourType.LIPID))
+    add_lipid_contour = edit_menu.addAction(
+        'Add Lipid Contour', partial(new_contour_append, main_window, ContourType.LIPID)
+    )
     add_lipid_contour.setShortcut('Ctrl+9')
-    add_macroph_contour = edit_menu.addAction('Add Macrophage Contour', partial(new_contour_append, main_window, ContourType.MACROPHAGE))
+    add_macroph_contour = edit_menu.addAction(
+        'Add Macrophage Contour', partial(new_contour_append, main_window, ContourType.MACROPHAGE)
+    )
     add_macroph_contour.setShortcut('Ctrl+0')
     edit_menu.addAction('Remove Contours', partial(remove_contours, main_window))
     edit_menu.addSeparator()

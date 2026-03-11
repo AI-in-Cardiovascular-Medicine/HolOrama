@@ -21,18 +21,21 @@ from input_output.contours_io import Measure
 
 # RGB colour for each mask label (index = label value).
 # Label 0 (background) is intentionally skipped during blending.
-_MASK_OVERLAY_COLORS = np.array([
-    [0,   0,   0  ],   # 0 – background  (unused)
-    [0,   180, 255],   # 1 – lumen        cyan-blue
-    [0,   200, 80 ],   # 2 – EEM wall     green
-    [255, 215, 0  ],   # 3 – calcium      gold
-    [255, 100, 0  ],   # 4 – lipid        orange
-    [200, 0,   220],   # 5 – macrophage   violet
-    [220, 80,  80 ],   # 6 – adventitia   rose
-    [0,   180, 255],   # 7 – branch       cyan-blue (same as lumen)
-], dtype=np.float32)
+_MASK_OVERLAY_COLORS = np.array(
+    [
+        [0, 0, 0],  # 0 – background  (unused)
+        [0, 180, 255],  # 1 – lumen        cyan-blue
+        [0, 200, 80],  # 2 – EEM wall     green
+        [255, 215, 0],  # 3 – calcium      gold
+        [255, 100, 0],  # 4 – lipid        orange
+        [200, 0, 220],  # 5 – macrophage   violet
+        [220, 80, 80],  # 6 – adventitia   rose
+        [0, 180, 255],  # 7 – branch       cyan-blue (same as lumen)
+    ],
+    dtype=np.float32,
+)
 
-_MASK_ALPHA = 0.45   # overlay opacity (0 = transparent, 1 = opaque)
+_MASK_ALPHA = 0.45  # overlay opacity (0 = transparent, 1 = opaque)
 
 
 class ContourType(Enum):
@@ -88,7 +91,7 @@ ALLOWED_TOOLS = {
     ContourType.MEASUREMENT_1: {SegmentationTool.LINE},
     ContourType.MEASUREMENT_2: {SegmentationTool.LINE},
     ContourType.REFERENCE: {SegmentationTool.POINT},
-    ContourType.WIRE: {SegmentationTool.ANGLE}
+    ContourType.WIRE: {SegmentationTool.ANGLE},
 }
 
 
@@ -198,7 +201,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
 
         #####################################################################################################
         # legacy to be refactored
-        self.active_point_index: int = None # wtf is this legacy crap
+        self.active_point_index: int = None  # wtf is this legacy crap
         self.measure_index: int = None  # wtf is this legacy crap
         self.measure_colors = self.main_window.measure_colors
         self.pending_measure_points: list = [None, None]  # first-click-only state per measure index
@@ -227,7 +230,9 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
 
     def _draw_contours_frame(self):
         # other contours
-        closed_contour_types = {ct for ct in ContourType if SegmentationTool.CLOSED_SPLINE in ALLOWED_TOOLS.get(ct, set())}
+        closed_contour_types = {
+            ct for ct in ContourType if SegmentationTool.CLOSED_SPLINE in ALLOWED_TOOLS.get(ct, set())
+        }
         for ct in closed_contour_types:
             fd = self.main_window.data.get(self.frame)
             if fd is None:
@@ -240,9 +245,20 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 if not contour or not contour[0]:
                     continue
                 data = (contour[0], contour[1] if len(contour) > 1 else [])
-                self._draw_contour_frame(data, contour_type=ct, set_current=(ct == self.active_contour_type and i == self.active_contour_index), contour_index=i)
+                self._draw_contour_frame(
+                    data,
+                    contour_type=ct,
+                    set_current=(ct == self.active_contour_type and i == self.active_contour_index),
+                    contour_index=i,
+                )
 
-    def _draw_contour_frame(self, contour_data: Tuple[List[float], List[float]], contour_type: ContourType = None, set_current: bool = False, contour_index: int = 0):
+    def _draw_contour_frame(
+        self,
+        contour_data: Tuple[List[float], List[float]],
+        contour_type: ContourType = None,
+        set_current: bool = False,
+        contour_index: int = 0,
+    ):
         """
         Draw contour_data for the specified contour_type.
         - If set_current is True, this spline becomes self.working_spline (editing target).
@@ -263,8 +279,16 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         key = self.contour_key(ct)
         fd = self.main_window.data.get(self.frame)
         contour_obj = getattr(fd, key, None) if fd else None
-        raw_start = contour_obj.start_coords[contour_index] if (contour_obj and len(contour_obj.start_coords) > contour_index) else None
-        raw_end = contour_obj.end_coords[contour_index] if (contour_obj and len(contour_obj.end_coords) > contour_index) else None
+        raw_start = (
+            contour_obj.start_coords[contour_index]
+            if (contour_obj and len(contour_obj.start_coords) > contour_index)
+            else None
+        )
+        raw_end = (
+            contour_obj.end_coords[contour_index]
+            if (contour_obj and len(contour_obj.end_coords) > contour_index)
+            else None
+        )
 
         start_coords = (raw_start[0] * self.scaling_factor, raw_start[1] * self.scaling_factor) if raw_start else None
         end_coords = (raw_end[0] * self.scaling_factor, raw_end[1] * self.scaling_factor) if raw_end else None
@@ -272,7 +296,9 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         if start_coords is None and lumen_x:
             start_coords = (lumen_x[0], lumen_y[0])
 
-        is_closed = contour_obj.closed[contour_index] if (contour_obj and len(contour_obj.closed) > contour_index) else True
+        is_closed = (
+            contour_obj.closed[contour_index] if (contour_obj and len(contour_obj.closed) > contour_index) else True
+        )
 
         if is_closed:
             geometry = SplineGeometry(
@@ -305,20 +331,20 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 knot_color = color
                 brush = False
                 if start_coords and math.hypot(curr_x - start_coords[0], curr_y - start_coords[1]) < SENSITIVITY:
-                    knot_color=self.start_color
+                    knot_color = self.start_color
                     brush = True
                 if end_coords and math.hypot(curr_x - end_coords[0], curr_y - end_coords[1]) < SENSITIVITY:
-                    knot_color=self.end_color
+                    knot_color = self.end_color
                     brush = True
                 knot_point = Point(
-                        (curr_x, curr_y),
-                        self.point_thickness,
-                        self.point_radius,
-                        i,
-                        knot_color,
-                        alpha,
-                        brush,
-                    )
+                    (curr_x, curr_y),
+                    self.point_thickness,
+                    self.point_radius,
+                    i,
+                    knot_color,
+                    alpha,
+                    brush,
+                )
                 knot_points.append(knot_point)
 
             for p in knot_points:
@@ -388,7 +414,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
     def get_current_spline(self):
         """Returns the currently active spline based on self.active_contour_type."""
         return self.get_finalized_spline(self.active_contour_type, self.active_contour_index)
-    
+
     def _ensure_finalized_list_for_key(self, key: str, length: int):
         """Ensure finalized_splines[key] exists and has at least `length` entries."""
         lst = self.finalized_splines.get(key)
@@ -494,7 +520,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                         first = eem
                     if first is not None:
                         eem_contour = first.get_unscaled_contour(self.scaling_factor)
-                
+
                 self._draw_contours_frame()
                 self._draw_measure()
                 self._draw_reference()
@@ -562,11 +588,13 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         """
         try:
             frame_mask = contours_to_mask(
-                self.images[self.frame:self.frame + 1],
+                self.images[self.frame : self.frame + 1],
                 [self.frame],
                 self.main_window.data,
                 self.main_window.metadata,
-            )[0]  # (H, W) uint8
+            )[
+                0
+            ]  # (H, W) uint8
         except Exception as e:
             logger.warning(f'Mask overlay failed for frame {self.frame}: {e}')
             if display_data.ndim == 2:
@@ -583,10 +611,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             pixels = frame_mask == label_idx
             if not pixels.any():
                 continue
-            rgb[pixels] = (
-                rgb[pixels] * (1.0 - _MASK_ALPHA)
-                + _MASK_OVERLAY_COLORS[label_idx] * _MASK_ALPHA
-            )
+            rgb[pixels] = rgb[pixels] * (1.0 - _MASK_ALPHA) + _MASK_OVERLAY_COLORS[label_idx] * _MASK_ALPHA
 
         result = np.clip(rgb, 0, 255).astype(np.uint8)
         return np.ascontiguousarray(result), w * 3, QImage.Format.Format_RGB888
@@ -625,8 +650,10 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.display_image(update_contours=True)
 
     def start_contour(
-        self, contour_type: ContourType = ContourType.LUMEN, segmentation_tool: SegmentationTool = None,
-        append: bool = False
+        self,
+        contour_type: ContourType = ContourType.LUMEN,
+        segmentation_tool: SegmentationTool = None,
+        append: bool = False,
     ):
         """
         Start drawing a new contour of the specified type and with the specified tool.
@@ -757,7 +784,9 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                     start_coords=start_coords,
                     end_coords=None,
                 )
-                self.working_spline = OpenSpline(geometry, color=cfg.color, line_thickness=self.contour_thickness, transparency=cfg.alpha)
+                self.working_spline = OpenSpline(
+                    geometry, color=cfg.color, line_thickness=self.contour_thickness, transparency=cfg.alpha
+                )
             self.graphics_scene.addItem(self.working_spline)
         elif self.working_spline.scene() is not None:
             self.working_spline.geometry.knot_points_x = xs
@@ -897,12 +926,18 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             (x1, y1), (x2, y2) = measure.points
             p1 = QPointF(x1 * self.scaling_factor, y1 * self.scaling_factor)
             p2 = QPointF(x2 * self.scaling_factor, y2 * self.scaling_factor)
-            self.graphics_scene.addItem(Point((p1.x(), p1.y()), self.point_thickness, self.point_radius, 0, self.measure_colors[index]))
-            self.graphics_scene.addItem(Point((p2.x(), p2.y()), self.point_thickness, self.point_radius, 1, self.measure_colors[index]))
+            self.graphics_scene.addItem(
+                Point((p1.x(), p1.y()), self.point_thickness, self.point_radius, 0, self.measure_colors[index])
+            )
+            self.graphics_scene.addItem(
+                Point((p2.x(), p2.y()), self.point_thickness, self.point_radius, 1, self.measure_colors[index])
+            )
             self.graphics_scene.addLine(QLineF(p1, p2), get_qt_pen(self.measure_colors[index], self.point_thickness))
             length = measure.length
             if length is None:
-                length = round(QLineF(p1, p2).length() * self.main_window.metadata["resolution"] / self.scaling_factor, 2)
+                length = round(
+                    QLineF(p1, p2).length() * self.main_window.metadata["resolution"] / self.scaling_factor, 2
+                )
             length_text = QGraphicsTextItem(f'{length} mm')
             length_text.setPos(p2.x(), p2.y())
             self.graphics_scene.addItem(length_text)
@@ -913,10 +948,11 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 self.graphics_scene.addItem(
                     Point(
                         pos=(px * self.scaling_factor, py * self.scaling_factor),
-                        line_thickness=self.point_thickness, 
+                        line_thickness=self.point_thickness,
                         point_radius=self.point_radius,
                         index=0,
-                        color=self.measure_colors[index])
+                        color=self.measure_colors[index],
+                    )
                 )
 
     def add_measure(self, point, index=None, new=True):
@@ -925,11 +961,12 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         orig_y = point.y() / self.scaling_factor
         self.graphics_scene.addItem(
             Point(
-                pos=(point.x(), point.y()), 
-                line_thickness=self.point_thickness, 
-                point_radius=self.point_radius, 
-                index=index, 
-                color=self.measure_colors[index])
+                pos=(point.x(), point.y()),
+                line_thickness=self.point_thickness,
+                point_radius=self.point_radius,
+                index=index,
+                color=self.measure_colors[index],
+            )
         )
         if self.pending_measure_points[index] is None:
             # First click — store as pending
@@ -942,8 +979,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             line = QLineF(p1, p2)
             length = round(line.length() * self.main_window.metadata["resolution"] / self.scaling_factor, 2)
             attr = f'measurement_{index + 1}'
-            setattr(self.main_window.data[self.frame], attr,
-                    Measure(points=(p1_orig, (orig_x, orig_y)), length=length))
+            setattr(self.main_window.data[self.frame], attr, Measure(points=(p1_orig, (orig_x, orig_y)), length=length))
             self.pending_measure_points[index] = None
             self.graphics_scene.addLine(line, get_qt_pen(self.measure_colors[index], self.point_thickness))
             length_text = QGraphicsTextItem(f'{length} mm')
@@ -985,11 +1021,12 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         scaled_y = fd.reference[1] * self.scaling_factor
         self.graphics_scene.addItem(
             Point(
-                pos=(scaled_x, scaled_y), 
-                line_thickness=self.point_thickness, 
+                pos=(scaled_x, scaled_y),
+                line_thickness=self.point_thickness,
                 point_radius=self.point_radius,
                 index=0,
-                color=self.main_window.reference_color)
+                color=self.main_window.reference_color,
+            )
         )
         text = QGraphicsTextItem('Reference')
         text.setPos(scaled_x, scaled_y)
@@ -1018,6 +1055,7 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         self.reference_mode = False
         self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
         self.display_image(update_contours=True)
+
     ################################################################################################
 
     def start_angle(self):
@@ -1178,7 +1216,9 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
         nearest_ct = None
         nearest_index = 0
 
-        closed_contour_types = {ct for ct in ContourType if SegmentationTool.CLOSED_SPLINE in ALLOWED_TOOLS.get(ct, set())}
+        closed_contour_types = {
+            ct for ct in ContourType if SegmentationTool.CLOSED_SPLINE in ALLOWED_TOOLS.get(ct, set())
+        }
         for ct in closed_contour_types:
             fd = self.main_window.data.get(self.frame)
             if fd is None:
@@ -1191,7 +1231,9 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                 if not contour or not contour[0]:
                     continue
                 for x_orig, y_orig in zip(contour[0], contour[1] if len(contour) > 1 else []):
-                    dist = math.hypot(pos.x() - (x_orig * self.scaling_factor), pos.y() - (y_orig * self.scaling_factor))
+                    dist = math.hypot(
+                        pos.x() - (x_orig * self.scaling_factor), pos.y() - (y_orig * self.scaling_factor)
+                    )
                     if dist < min_dist:
                         min_dist = dist
                         nearest_ct = ct
@@ -1305,9 +1347,8 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
 
                 geom = self.working_spline.geometry
                 key = self.contour_key(self.active_contour_type)
-                new_pos = (geom.knot_points_x[self.active_point_index],
-                           geom.knot_points_y[self.active_point_index])
-                
+                new_pos = (geom.knot_points_x[self.active_point_index], geom.knot_points_y[self.active_point_index])
+
                 if self.active_point.color == self.start_color:
                     geom.start_coords = new_pos
                 elif self.active_point.color == self.end_color:
@@ -1344,11 +1385,11 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
             if not self.drawing_mode:
                 pos = self.mapToScene(event.pos())
                 current_spline = self.get_current_spline()
-                
+
                 if current_spline and current_spline.on_path(pos) is not None:
                     scaled_coords = (pos.x(), pos.y())
                     orig_coords = (pos.x() / self.scaling_factor, pos.y() / self.scaling_factor)
-                    
+
                     key = self.contour_key(self.active_contour_type)
                     contour_obj = getattr(self.main_window.data[self.frame], key)
 
@@ -1365,9 +1406,9 @@ class IVUSDisplay(QGraphicsView, MetricsMixin):
                             contour_obj.start_coords[ci] = orig_coords
                         else:
                             contour_obj.start_coords.append(orig_coords)
-                    
+
                     self.active_end_coords_flag = not self.active_end_coords_flag
-                    
+
                     current_spline.geometry._ensure_start_end_coords()
                     current_spline._rebuild_path()
                     self.update_display()

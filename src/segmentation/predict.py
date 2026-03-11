@@ -31,16 +31,19 @@ class Predict:
         """Min-max normalisation of the images"""
         if do_it_or_not:
             self.images = (self.images - self.images.min(axis=(1, 2), keepdims=True)) / (
-                    self.images.max(axis=(1, 2), keepdims=True) - self.images.min(axis=(1, 2), keepdims=True)
+                self.images.max(axis=(1, 2), keepdims=True) - self.images.min(axis=(1, 2), keepdims=True)
             )
 
     def inference(self):
         if "nnUNetTrainer" not in self.model_file:
             import tensorflow as tf
+
             custom_objects = {'BinaryCrossentropy': tf.keras.losses.BinaryCrossentropy}
             model = tf.keras.models.load_model(self.model_file, custom_objects=custom_objects, compile=False)
 
-            self.check_input_shape(model.input_shape, )
+            self.check_input_shape(
+                model.input_shape,
+            )
             mask = np.zeros_like(self.images)
 
             if self.conserve_memory:
@@ -64,8 +67,8 @@ class Predict:
                     if progress is not None:
                         progress.setValue(frame)
                     # calling model() instead of model.predict() leads to smaller memory leak
-                    pred = model(self.images[frame: frame + self.batch_size, :, :], training=False)
-                    mask[frame: frame + self.batch_size, :, :] = np.array(pred)[0, :, :, :, 0]
+                    pred = model(self.images[frame : frame + self.batch_size, :, :], training=False)
+                    mask[frame : frame + self.batch_size, :, :] = np.array(pred)[0, :, :, :, 0]
                     if progress is not None and progress.wasCanceled():
                         progress.close()
                         return None
@@ -73,12 +76,13 @@ class Predict:
                     progress.close()
             else:
                 prediction = model.predict(
-                    self.images[self.lower_limit: self.upper_limit, :, :], batch_size=self.batch_size, verbose=1
+                    self.images[self.lower_limit : self.upper_limit, :, :], batch_size=self.batch_size, verbose=1
                 )
-                mask[self.lower_limit: self.upper_limit, :, :] = np.array(prediction)[0, :, :, :, 0]
+                mask[self.lower_limit : self.upper_limit, :, :] = np.array(prediction)[0, :, :, :, 0]
         else:
             from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
             import torch
+
             device = "cuda" if torch.cuda.is_available() else "cpu"
             seg_predictor = nnUNetPredictor(
                 tile_step_size=0.5,
@@ -88,7 +92,7 @@ class Predict:
                 device=torch.device(device),
                 verbose=False,
                 verbose_preprocessing=False,
-                allow_tqdm=True
+                allow_tqdm=True,
             )
             # initializes the network architecture, loads the checkpoint
             seg_predictor.initialize_from_trained_model_folder(
@@ -102,11 +106,11 @@ class Predict:
             #                                               properties_or_list_of_properties=[dict(spacing=[1, 1, 1]) for _ in self.images],
             #                                               truncated_ofname=None,
             #                                               num_processes=1)
-            mask = seg_predictor.predict_single_npy_array(self.images[None, ...].astype(np.float32),
-                                                          image_properties=dict(spacing=[1, 1, 1]))
+            mask = seg_predictor.predict_single_npy_array(
+                self.images[None, ...].astype(np.float32), image_properties=dict(spacing=[1, 1, 1])
+            )
             print(f"mask shape: {mask.shape}")
         return mask
-
 
     def check_input_shape(self, input_shape, batch_size=16):
         """
@@ -115,6 +119,7 @@ class Predict:
 
         """
         import tensorflow as tf
+
         logger.info(f"Input shape: {self.images.shape}")
         if input_shape[1] != self.images.shape[1] or input_shape[2] != self.images.shape[2]:
             logger.warning("Reshaping the images to match the model input shape.")

@@ -128,13 +128,13 @@ class ContourBasedGating:
         # Draw any existing lines first
         self.draw_existing_lines(self.main_window.gated_frames_dia, self.main_window.diastole_color_plt)
         self.draw_existing_lines(self.main_window.gated_frames_sys, self.main_window.systole_color_plt)
-        
+
         # Only run automatic gating if no frames are already gated
         if not self.main_window.gated_frames_dia and not self.main_window.gated_frames_sys:
             # Show method selection dialog after plot is rendered
             auto_gating = AutomaticGating(self.main_window, self.report_data)
             auto_gating.automatic_gating(image_based_gating_filtered, contour_based_gating_filtered)
-            
+
             # Redraw lines with new automatic gating results
             self.draw_existing_lines(self.main_window.gated_frames_dia, self.main_window.diastole_color_plt)
             self.draw_existing_lines(self.main_window.gated_frames_sys, self.main_window.systole_color_plt)

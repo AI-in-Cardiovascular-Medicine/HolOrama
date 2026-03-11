@@ -22,11 +22,7 @@ def read_image(main_window):
     main_window.reset_state()
     main_window.status_bar.showMessage('Reading image file...')
     file_name, _ = QFileDialog.getOpenFileName(
-        main_window, 
-        'Open IVUS File', 
-        '..', 
-        'All files (*)', 
-        options=QFileDialog.Option.DontUseNativeDialog
+        main_window, 'Open IVUS File', '..', 'All files (*)', options=QFileDialog.Option.DontUseNativeDialog
     )
     if file_name:
         main_window.gating_display.fig.clear()
@@ -37,7 +33,7 @@ def read_image(main_window):
             parse_dicom(main_window)
             if main_window.images.ndim == 4:  # 3 channel input
                 if main_window.metadata['modality'] == 'OCT':
-                    main_window.images_display = 1 # add only a flag value for RAM efficiency
+                    main_window.images_display = 1  # add only a flag value for RAM efficiency
                     main_window.images = convert_oct_to_gray(main_window.images)
                 else:
                     main_window.images = main_window.images[:, :, :, 0]
@@ -67,12 +63,10 @@ def read_image(main_window):
                     main_window.data[i] = FrameData()
             main_window.segmentation = True
             main_window.gated_frames_dia = [
-                frame for frame in range(num_frames)
-                if main_window.data[frame].phase == 'D'
+                frame for frame in range(num_frames) if main_window.data[frame].phase == 'D'
             ]
             main_window.gated_frames_sys = [
-                frame for frame in range(num_frames)
-                if main_window.data[frame].phase == 'S'
+                frame for frame in range(num_frames) if main_window.data[frame].phase == 'S'
             ]
             main_window.gated_frames = main_window.gated_frames_dia
         else:  # initialise empty containers
@@ -90,9 +84,9 @@ def convert_oct_to_gray(oct_array):
     """
     # Define the luminosity weights
     weights = np.array([0.299, 0.587, 0.114])
-    
+
     # Use dot product to apply weights to the last dimension (the 3 color channels)
     # This effectively does: (R * 0.299) + (G * 0.587) + (B * 0.114)
     gray_oct = np.dot(oct_array[..., :3], weights)
-    
+
     return gray_oct.astype(np.uint8)
