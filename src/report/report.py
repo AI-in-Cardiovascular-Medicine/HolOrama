@@ -155,7 +155,7 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
     # Fallback: try display.get_full_contour_list for backward compatibility
     if lumen_full_list is None:
         try:
-            from gui.left_half.IVUS_display import ContourType
+            from gui.left_half.display import ContourType
 
             lumen_full_list = main_window.display.get_full_contour_list(ContourType.LUMEN)
         except (ImportError, AttributeError) as e:

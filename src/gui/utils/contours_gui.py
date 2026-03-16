@@ -1,5 +1,5 @@
 from gui.popup_windows.message_boxes import ErrorMessage
-from gui.left_half.IVUS_display import ContourType, SegmentationTool
+from gui.left_half.display import ContourType, SegmentationTool
 
 def new_contour(main_window, contour_type: ContourType):
     if not main_window.image_displayed:

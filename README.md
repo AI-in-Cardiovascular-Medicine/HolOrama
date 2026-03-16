@@ -157,7 +157,7 @@ Make sure to quickly check the **config.yaml** file and configure everything to 
 - lview_display_stretch: input parameter for .setStretchFactor in class RightHalf
 - windowing_sensitivity: Defines how much windowing changes with <kbd>RMB<kbd> draging
 - n_interactive_points: The dragable points on the contour, default 10 equally spaced points, however new one can also be added interactively by clicking on the contour
-- alpha_contour: Used as input parameter for .setAlpha in class IVUSDisplay. Default 128 for 50% transparency, higher values more opaque.
+- alpha_contour: Used as input parameter for .setAlpha in class Display. Default 128 for 50% transparency, higher values more opaque.
 
 **Gating**:
 - normalize_step: If step=0 compute one global z-score over the entire data. If step > 0 split data into non-overlapping windows of length normalize_step and apply z-score to each window seperately.

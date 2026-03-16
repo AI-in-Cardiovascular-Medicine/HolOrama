@@ -321,12 +321,12 @@ class Spline(QGraphicsPathItem):
 
     @property
     def full_contours(self) -> Tuple[np.ndarray, np.ndarray]:
-        """Compatibility property for existing IVUSDisplay code"""
+        """Compatibility property for existing Display code"""
         return self.geometry.interpolate()
     
     @property
     def knot_points(self) -> Tuple[List[float], List[float]]:
-        """Compatibility property for existing IVUSDisplay code"""
+        """Compatibility property for existing Display code"""
         return self.geometry.knot_points_x, self.geometry.knot_points_y
     
     @property
@@ -400,7 +400,7 @@ class Spline(QGraphicsPathItem):
     def update(self, pos: QPointF, index: int, path_index: Optional[int] = None) -> int:
         """
         Updates the geometry and redraws. 
-        Matches the signature IVUSDisplay.mouseMoveEvent expects.
+        Matches the signature Display.mouseMoveEvent expects.
         """
         if path_index is not None:
             # Adding a new point

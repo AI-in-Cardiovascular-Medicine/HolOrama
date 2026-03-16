@@ -13,7 +13,7 @@ from report.report import compute_polygon_metrics, farthest_points, closest_poin
 
 class MetricsMixin:
     """
-    Mixin class for IVUSDisplay to handle plaque/lumen metrics 
+    Mixin class for Display to handle plaque/lumen metrics 
     and UI text overlays.
     """
 

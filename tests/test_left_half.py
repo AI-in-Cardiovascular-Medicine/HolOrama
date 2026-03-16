@@ -69,7 +69,7 @@ class TestLeftHalfFinal:
              patch('PyQt6.QtWidgets.QLabel') as MockLabel, \
              patch('PyQt6.QtWidgets.QCheckBox') as MockCheckBox, \
              patch('PyQt6.QtCore.Qt'), \
-             patch('gui.left_half.left_half.IVUSDisplay') as MockIVUSDisplay, \
+             patch('gui.left_half.left_half.Display') as MockDisplay, \
              patch('gui.left_half.left_half.Slider') as MockSlider, \
              patch('gui.left_half.left_half.Communicate'):
             
@@ -92,7 +92,7 @@ class TestLeftHalfFinal:
             MockCheckBox.return_value = mock_checkbox
             
             mock_display = MagicMock()
-            MockIVUSDisplay.return_value = mock_display
+            MockDisplay.return_value = mock_display
             
             mock_slider = MagicMock()
             MockSlider.return_value = mock_slider

@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from gui.left_half.IVUS_display import IVUSDisplay, ContourType, SegmentationTool
+from gui.left_half.display import Display, ContourType, SegmentationTool
 from gui.utils.slider import Slider, Communicate
 from gui.utils.contours_gui import new_measure, new_reference, new_angle, set_tool
 
@@ -27,7 +27,7 @@ class LeftHalf:
         self.main_window = main_window
         self.left_widget = QWidget()
         left_vbox = QVBoxLayout()
-        main_window.display = IVUSDisplay(main_window)
+        main_window.display = Display(main_window)
         main_window.display_frame_comms = Communicate()
         main_window.display_frame_comms.updateBW[int].connect(main_window.display.set_frame)
         self.measure_colors: list[str] = ['red', 'cyan']
