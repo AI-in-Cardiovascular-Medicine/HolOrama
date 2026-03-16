@@ -18,7 +18,7 @@
 # Requested features
 - [] Frame quality checkboxes
 - [] Marker on the longitudinal view (to show what has been segmented)
-- [] Scroll wheel should go throug frames
+- [x] Scroll wheel should go through frames
 - [] Region of interest definition
 - [] Marker to show vessel size (outliers)
 - [] Subcontours should be deleted seperately

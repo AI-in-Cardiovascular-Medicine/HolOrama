@@ -1330,7 +1330,7 @@ class Display(QGraphicsView, MetricsMixin):
                 item.update_pos(new_scene_pos)
 
                 self.working_spline.update(new_scene_pos, self.active_point_index)
-            else:
+            elif self.active_point_index is None and not self.drawing_mode:
                 self.setMouseTracking(True)
                 delta_y = event.position().y() - self.mouse_y
                 self.mouse_y = event.position().y()
