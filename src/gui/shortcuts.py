@@ -209,9 +209,17 @@ def reset_phases(main_window):
                 elif fd.phase == 'S':
                     main_window.gated_frames_sys.remove(frame)
                     main_window.systolic_frame_box.setChecked(False)
+                elif fd.phase == 'T':
+                    try:
+                        main_window.gated_frames_oct.remove(frame)
+                    except ValueError:
+                        pass
                 fd.phase = '-'
-            main_window.gated_frames = main_window.gated_frames_dia + main_window.gated_frames_sys
-            main_window.gated_frames.sort()
+            if main_window.metadata.get('modality') == 'OCT':
+                main_window.gated_frames = main_window.gated_frames_oct
+            else:
+                main_window.gated_frames = main_window.gated_frames_dia + main_window.gated_frames_sys
+                main_window.gated_frames.sort()
             main_window.gated_frames_dia.sort()
             main_window.gated_frames_sys.sort()
             main_window.status_bar.showMessage(main_window.waiting_status)

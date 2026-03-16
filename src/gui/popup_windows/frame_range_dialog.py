@@ -3,19 +3,24 @@ from PyQt6.QtWidgets import QDialog, QLineEdit, QDialogButtonBox, QFormLayout
 
 
 class FrameRangeDialog(QDialog):
-    def __init__(self, main_window):
+    def __init__(self, main_window, step: bool=False):
         super().__init__(main_window)
         self.main_window = main_window
         self.lower_limit = QLineEdit(self)
         self.lower_limit.setText('1')
         self.upper_limit = QLineEdit(self)
         self.upper_limit.setText(str(main_window.images.shape[0]))
+        if step:
+            self.step_layout = QLineEdit(self)
+            self.step_layout.setText('1')
 
         buttonBox = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
 
         layout = QFormLayout(self)
         layout.addRow('Lower limit', self.lower_limit)
         layout.addRow('Upper limit', self.upper_limit)
+        if step:
+            layout.addRow('Step (mm)', self.step_layout)
         layout.addWidget(buttonBox)
 
         buttonBox.accepted.connect(self.accept)
@@ -30,6 +35,9 @@ class FrameRangeDialog(QDialog):
         if lower_limit >= upper_limit:
             lower_limit, upper_limit = upper_limit, lower_limit
         return lower_limit, upper_limit
+
+    def getStep(self):
+        return float(self.step_layout.text())
 
 
 class StartFramesDialog(QDialog):

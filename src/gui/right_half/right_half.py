@@ -6,6 +6,7 @@ from functools import partial
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QSplitter, QPushButton, QWidget, QFrame
 
+from gui.popup_windows.frame_range_dialog import FrameRangeDialog
 from gui.popup_windows.small_display import SmallDisplay
 from segmentation.segment import segment
 
@@ -87,21 +88,26 @@ class RightHalf:
         splitter.setStretchFactor(1, mw.config.display.lview_display_stretch)
         vbox.addWidget(splitter)
 
-        vbox.addLayout(self._build_lower_buttons())
+        vbox.addLayout(self._build_lower_buttons(oct=True))
         return root
 
-    def _build_lower_buttons(self):
+    def _build_lower_buttons(self, oct=False):
         mw = self.main_window
         layout = QVBoxLayout()
         segment_button = QPushButton('Automatic Segmentation')
         segment_button.setToolTip('Run deep learning based segmentation of lumen')
         segment_button.clicked.connect(partial(segment, mw))
-        gating_button = QPushButton('Extract Diastolic and Systolic Frames')
-        gating_button.setToolTip('Extract diastolic and systolic images from pullback')
-        gating_button.clicked.connect(mw.contour_based_gating)
+        if oct:
+            right_button = QPushButton('Tag every X mm')
+            right_button.setToolTip('Tag frames at regular distance intervals within a frame range')
+            right_button.clicked.connect(partial(tag_frames_by_distance, mw))
+        else:
+            right_button = QPushButton('Extract Diastolic and Systolic Frames')
+            right_button.setToolTip('Extract diastolic and systolic images from pullback')
+            right_button.clicked.connect(mw.contour_based_gating)
         command_buttons = QHBoxLayout()
         command_buttons.addWidget(segment_button)
-        command_buttons.addWidget(gating_button)
+        command_buttons.addWidget(right_button)
         layout.addLayout(command_buttons)
         layout.addLayout(QHBoxLayout())  # measures placeholder
         return layout
@@ -130,6 +136,37 @@ class RightHalf:
 # ---------------------------------------------------------------------------
 # OCT helpers
 # ---------------------------------------------------------------------------
+
+def tag_frames_by_distance(main_window):
+    if not main_window.image_displayed:
+        return
+    dialog = FrameRangeDialog(main_window, step=True)
+    dialog.setWindowTitle('Tag every X mm')
+    if not dialog.exec():
+        return
+
+    lower_limit, upper_limit = dialog.getInputs()
+    step_mm = dialog.getStep()
+    if step_mm <= 0:
+        return
+
+    speed = main_window.metadata.pullback_speed      # mm/s
+    frame_rate = main_window.metadata.frame_rate     # frames/s
+    mm_per_frame = speed / frame_rate
+    step_frames = step_mm / mm_per_frame
+
+    i = 0
+    while True:
+        idx = lower_limit + round(i * step_frames)
+        if idx >= upper_limit:
+            break
+        if idx not in main_window.gated_frames_oct:
+            bisect.insort_left(main_window.gated_frames_oct, idx)
+        main_window.data[idx].phase = 'T'
+        i += 1
+
+    main_window.display.update_display()
+
 
 def toggle_tagged_frame(main_window, state_true, drag=False):
     if main_window.image_displayed:

@@ -10,7 +10,7 @@
 - [x] Marker on the longitudinal view (to show what has been segmented)
 - [x] Marker to show vessel size (outliers)
 - [x] Scroll wheel should go through frames
-- [] Frame quality checkboxes
+- [x] Frame quality checkboxes
 - [] Subcontours should be deleted seperately
 - [] clicking in longitudinal view let's user set region of interest
 - [] mousewheel in longitudinal view changes cut line
