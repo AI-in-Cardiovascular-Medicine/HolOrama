@@ -74,7 +74,8 @@ def _print_banner():
     )                             
     print(f"  version  : {__version__}")
     print(f"  docs     : https://aivus-caa.readthedocs.io")
-    print(f"  license  : MIT\n")
+    print(f"  license  : MIT")
+    print(f"  authors  : yungselm, cardionaut, Pooya Mohammadi Kazaj\n")
 
 
 if os.environ.get("AIVUS_SILENT", "0") == "0":

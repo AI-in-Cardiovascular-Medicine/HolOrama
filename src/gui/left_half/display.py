@@ -225,7 +225,7 @@ class Display(QGraphicsView, MetricsMixin):
         self._draw_contours_frame()
 
         contours = self.get_full_contour_list(self.active_contour_type)
-        self.main_window.longitudinal_view.set_data(self.images, contours)
+        self.main_window.longitudinal_view.set_data(self.images)
         self.display_image(update_image=True, update_contours=True, update_phase=True)
 
     def _draw_contours_frame(self):
@@ -899,17 +899,8 @@ class Display(QGraphicsView, MetricsMixin):
 
             self._interrupt_drawing_mode()
 
-            saved_contours = contour_obj.contours
-            if saved_contours and saved_contours[0]:
-                xs_saved, ys_saved = saved_contours[0][0], saved_contours[0][1]
-            else:
-                xs_saved, ys_saved = [], []
-            contour_for_frame: Tuple[np.array, np.array] = (
-                np.array(xs_saved),
-                np.array(ys_saved),
-            )
             try:
-                self.main_window.longitudinal_view.lview_contour(self.frame, contour_for_frame, update=True)
+                self.main_window.longitudinal_view.plot_areas()
             except Exception as e:
                 logger.debug(f"Could not update longitudinal view for frame {self.frame}: {e}")
 
@@ -1332,7 +1323,7 @@ class Display(QGraphicsView, MetricsMixin):
                 self.working_spline.update(new_scene_pos, self.active_point_index)
             elif self.active_point_index is None and not self.drawing_mode:
                 self.setMouseTracking(True)
-                delta_y = event.position().y() - self.mouse_y
+                delta_y = self.mouse_y - event.position().y()
                 self.mouse_y = event.position().y()
                 zoom_factor = 1.0 + delta_y * self.zoom_sensitivity
                 if zoom_factor > 0:
