@@ -23,7 +23,7 @@ Contour Manipulation
 
 1. Open the IVUS/OCT data file via **File → Open** or :kbd:`Ctrl+O`.
 2. Click ``Automatic Segmentation`` to pre-segment the lumen in all frames (optional). Different ML models can be specified in ``config.yaml``.
-3. Use :kbd:`A` and :kbd:`D` to navigate through frames (or use the slider below the image).
+3. Use :kbd:`A` and :kbd:`D` or :kbd:`MW` to navigate through frames (or use the slider below the image).
 4. Press :kbd:`E` to draw a new contour by left-clicking to place points. Close the contour by clicking on the initial point. Drag existing points to adjust; click on the contour line to add new points.
 5. Press :kbd:`Ctrl+Z` to undo the last action.
 

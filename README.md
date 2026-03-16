@@ -189,7 +189,7 @@ In the current state, these cannot be changed by the user (at least not without 
 - Press <kbd>E</kbd> to manually draw a new lumen contour\
   In case you accidentally delete a contour, you can use <kbd>Ctrl</kbd> + <kbd>Z</kbd> to undo
 - Use <kbd>1</kbd>, <kbd>2</kbd> to draw measurements 1 and 2, respectively
-- Hold the right mouse button <kbd>RMB</kbd> for windowing (can be reset by pressing <kbd>R</kbd>)
+- Drag <kbd>RMB</kbd> left/righ up/down for windowing (can be reset by pressing <kbd>R</kbd>)
 - Press <kbd>C</kbd> to toggle color mode
 - Press <kbd>H</kbd> to hide all contours
 - Press <kbd>J</kbd> to jiggle around the current frame
@@ -203,7 +203,8 @@ In the current state, these cannot be changed by the user (at least not without 
 ### v1.1.0 and higher
 Additionally:
 - Press <kbd>RMB</kbd> on an existing knot point to remove it
-- Scroll <kbd>MW</kbd> to zoom in/out the current mouse position
+- Scroll <kbd>MW</kbd> to scroll through frames (forward/backward)
+- Drag <kbd>LMB</kbd> up/down for zooming (can be reset by pressing <kbd>F</kbd>)
 - Press <kbd>Q</kbd> to manually draw an ``external elastic membrane`` (EEM) contour
 - Press <kbd>7</kbd> to manually draw a ``calcification `` contour
 - Press <kbd>Ctrl</kbd> + <kbd>7</kbd> to draw an additional ``calcification`` contour in the current active spline tool (open or closed)

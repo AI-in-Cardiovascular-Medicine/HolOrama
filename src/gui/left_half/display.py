@@ -132,6 +132,7 @@ class Display(QGraphicsView, MetricsMixin):
         self.n_points_contour: int = config.display.n_points_contour
         self.image_size: int = config.display.image_size  # image display in pixel (square)
         self.windowing_sensitivity: float = config.display.windowing_sensitivity
+        self.zoom_sensitivity: float = config.display.zoom_sensitivity
         self.contour_thickness: int = config.display.contour_thickness
         self.point_thickness: int = config.display.point_thickness
         self.point_radius: int = config.display.point_radius
@@ -1176,6 +1177,7 @@ class Display(QGraphicsView, MetricsMixin):
         pos = self.mapToScene(event.position().toPoint())
 
         if event.button() == Qt.MouseButton.LeftButton:
+            self.mouse_y = event.position().y()
             if self.drawing_mode:
                 self.add_contour(pos, self.active_segmentation_tool)
             elif self.measure_index is not None:
@@ -1328,6 +1330,15 @@ class Display(QGraphicsView, MetricsMixin):
                 item.update_pos(new_scene_pos)
 
                 self.working_spline.update(new_scene_pos, self.active_point_index)
+            else:
+                self.setMouseTracking(True)
+                delta_y = event.position().y() - self.mouse_y
+                self.mouse_y = event.position().y()
+                zoom_factor = 1.0 + delta_y * self.zoom_sensitivity
+                if zoom_factor > 0:
+                    self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+                    self.scale(zoom_factor, zoom_factor)
+                    self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
 
         elif event.buttons() == Qt.MouseButton.RightButton:
             self.setMouseTracking(True)
@@ -1425,8 +1436,3 @@ class Display(QGraphicsView, MetricsMixin):
                     return  # prevent super() re-delivering event after drawing_mode is cleared
         super().mouseDoubleClickEvent(event)
 
-    def wheelEvent(self, event):
-        zoom_factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
-        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
-        self.scale(zoom_factor, zoom_factor)
-        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)

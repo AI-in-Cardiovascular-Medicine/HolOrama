@@ -44,6 +44,12 @@ def init_shortcuts(main_window):
     QShortcut(QKeySequence(Qt.Key.Key_Down), main_window, main_window.display_slider.last_gated_frame)
     QShortcut(QKeySequence('D'), main_window, main_window.display_slider.next_frame)
     QShortcut(QKeySequence(Qt.Key.Key_Right), main_window, main_window.display_slider.next_frame)
+    # Scroll wheel navigates frames
+    main_window.display.wheelEvent = lambda event: (
+        main_window.display_slider.next_frame()
+        if event.angleDelta().y() > 0
+        else main_window.display_slider.last_frame()
+    )
 
 
 def init_menu(main_window):
@@ -130,6 +136,8 @@ def init_menu(main_window):
     view_menu.addSeparator()
     reset_windowing_action = view_menu.addAction('Reset Windowing', partial(reset_windowing, main_window))
     reset_windowing_action.setShortcut('R')
+    reset_zoom_action = view_menu.addAction('Reset Zoom', partial(reset_zoom, main_window))
+    reset_zoom_action.setShortcut('F')
     toggle_color_action = view_menu.addAction('Toggle Color', partial(toggle_color, main_window))
     toggle_color_action.setShortcut('C')
     view_menu.addSeparator()
@@ -358,6 +366,11 @@ def undo_delete(main_window):
                     contour_obj.contours = [[xlist, ylist]]
 
             main_window.display.update_display()
+
+
+def reset_zoom(main_window):
+    if main_window.image_displayed:
+        main_window.display.resetTransform()
 
 
 def reset_windowing(main_window):
