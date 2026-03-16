@@ -874,6 +874,10 @@ class Display(QGraphicsView, MetricsMixin):
                 xs_sparse_origin = [x / self.scaling_factor for x in downsampled[0]]
                 ys_sparse_origin = [y / self.scaling_factor for y in downsampled[1]]
 
+                if not self.working_spline.geometry.is_closed and xs_sparse_origin:
+                    xs_sparse_origin[-1] = self.working_spline.geometry.full_contour[0][-1] / self.scaling_factor
+                    ys_sparse_origin[-1] = self.working_spline.geometry.full_contour[1][-1] / self.scaling_factor
+
                 if self.append_contour_mode:
                     if not self._contour_close_committed:
                         contour_obj.contours.append([xs_sparse_origin, ys_sparse_origin])

@@ -12,6 +12,7 @@
 - [x] Marker to show vessel size (outliers)
 - [x] Scroll wheel should go through frames
 - [x] Frame quality checkboxes
+- [] Can't delete start and end point
 - [] Subcontours should be deleted seperately
 - [] clicking in longitudinal view let's user set region of interest
 - [] mousewheel in longitudinal view changes cut line

@@ -147,17 +147,18 @@ def tag_frames_by_distance(main_window):
 
     lower_limit, upper_limit = dialog.getInputs()
     step_mm = dialog.getStep()
-    if step_mm <= 0:
+    if step_mm <= 0.0:
         return
 
-    speed = main_window.metadata.pullback_speed      # mm/s
-    frame_rate = main_window.metadata.frame_rate     # frames/s
+    speed = main_window.metadata['pullback_speed']      # mm/s
+    frame_rate = main_window.metadata['frame_rate']     # frames/s
     mm_per_frame = speed / frame_rate
     step_frames = step_mm / mm_per_frame
 
     i = 0
     while True:
         idx = lower_limit + round(i * step_frames)
+        print(idx)
         if idx >= upper_limit:
             break
         if idx not in main_window.gated_frames_oct:
