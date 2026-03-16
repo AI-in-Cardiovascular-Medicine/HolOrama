@@ -10,15 +10,13 @@ from PyQt6.QtWidgets import (
     QApplication,
     QLabel,
     QWidget,
-    QCheckBox,
     QVBoxLayout,
     QHBoxLayout,
     QGridLayout,
 )
 from PyQt6.QtCore import Qt
 
-from gui.left_half.display import Display, ContourType, SegmentationTool
-from gui.utils.slider import Slider, Communicate
+from gui.left_half.display import ContourType, SegmentationTool
 from gui.utils.contours_gui import new_measure, new_reference, new_angle, set_tool
 
 
@@ -27,9 +25,6 @@ class LeftHalf:
         self.main_window = main_window
         self.left_widget = QWidget()
         left_vbox = QVBoxLayout()
-        main_window.display = Display(main_window)
-        main_window.display_frame_comms = Communicate()
-        main_window.display_frame_comms.updateBW[int].connect(main_window.display.set_frame)
         self.measure_colors: list[str] = ['red', 'cyan']
         self.reference_color: str = 'yellow'
 
@@ -95,16 +90,8 @@ class LeftHalf:
 
         left_lower_grid = QGridLayout()
         hide_checkboxes = QHBoxLayout()
-        main_window.hide_contours_box = QCheckBox('&Hide Contours')
-        main_window.hide_contours_box.setChecked(False)
         main_window.hide_contours_box.stateChanged[int].connect(self.toggle_hide_contours)
-
-        main_window.hide_special_points_box = QCheckBox('&Hide Metrics')
-        main_window.hide_special_points_box.setChecked(False)
         main_window.hide_special_points_box.stateChanged[int].connect(self.toggle_hide_special_points)
-
-        main_window.mask_mode_box = QCheckBox('&Mask mode')
-        main_window.mask_mode_box.setChecked(False)
         main_window.mask_mode_box.stateChanged[int].connect(self.toggle_mask_mode)
 
         hide_checkboxes.addWidget(main_window.hide_contours_box)
@@ -121,7 +108,6 @@ class LeftHalf:
         self.play_button.clicked.connect(partial(self.play, main_window))
         self.paused = True
 
-        main_window.display_slider = Slider(main_window, Qt.Orientation.Horizontal)
         main_window.display_slider.valueChanged[int].connect(self.change_value)
 
         slider_hbox = QHBoxLayout()

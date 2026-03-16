@@ -16,9 +16,9 @@
 - [] Config callable from GUI
 
 # Requested features
-- [] Frame quality checkboxes
-- [] Marker on the longitudinal view (to show what has been segmented)
-- [x] Scroll wheel should go through frames
 - [] Region of interest definition
-- [] Marker to show vessel size (outliers)
+- [x] Marker on the longitudinal view (to show what has been segmented)
+- [x] Marker to show vessel size (outliers)
+- [x] Scroll wheel should go through frames
+- [] Frame quality checkboxes
 - [] Subcontours should be deleted seperately

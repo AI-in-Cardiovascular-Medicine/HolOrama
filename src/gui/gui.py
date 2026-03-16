@@ -1,4 +1,5 @@
 import os
+from functools import partial
 from loguru import logger
 
 from PyQt6.QtWidgets import (
@@ -7,12 +8,18 @@ from PyQt6.QtWidgets import (
     QSplitter,
     QTableWidget,
     QStatusBar,
+    QCheckBox,
+    QPushButton,
 )
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QIcon
 
 from gui.left_half.left_half import LeftHalf
-from gui.right_half.right_half import RightHalf
+from gui.left_half.display import Display
+from gui.utils.slider import Slider, Communicate
+from gui.right_half.right_half import RightHalf, toggle_diastolic_frame, toggle_systolic_frame, use_diastolic
+from gui.right_half.gating_display import GatingDisplay
+from gui.right_half.longitudinal_view import LongitudinalView
 from gui.shortcuts import init_shortcuts, init_menu
 from input_output.contours_io import write_contours
 from gating.contour_based_gating import ContourBasedGating
@@ -61,6 +68,34 @@ class Master(QMainWindow):
         self.status_bar = QStatusBar(self)
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage(self.waiting_status)
+
+        # Left-half widgets
+        self.display = Display(self)
+        self.display_frame_comms = Communicate()
+        self.display_frame_comms.updateBW[int].connect(self.display.set_frame)
+        self.display_slider = Slider(self, Qt.Orientation.Horizontal)
+        self.hide_contours_box = QCheckBox('&Hide Contours')
+        self.hide_contours_box.setChecked(False)
+        self.hide_special_points_box = QCheckBox('&Hide Metrics')
+        self.hide_special_points_box.setChecked(False)
+        self.mask_mode_box = QCheckBox('&Mask mode')
+        self.mask_mode_box.setChecked(False)
+
+        # Right-half widgets
+        self.diastolic_frame_box = QCheckBox('Diastolic Frame')
+        self.diastolic_frame_box.setChecked(False)
+        self.diastolic_frame_box.stateChanged.connect(partial(toggle_diastolic_frame, self))
+        self.systolic_frame_box = QCheckBox('Systolic Frame')
+        self.systolic_frame_box.setChecked(False)
+        self.systolic_frame_box.stateChanged.connect(partial(toggle_systolic_frame, self))
+        self.use_diastolic_button = QPushButton('Diastolic Frames')
+        self.use_diastolic_button.setStyleSheet(f'background-color: rgb{self.diastole_color}')
+        self.use_diastolic_button.setCheckable(True)
+        self.use_diastolic_button.setChecked(True)
+        self.use_diastolic_button.clicked.connect(partial(use_diastolic, self))
+        self.use_diastolic_button.setToolTip('Press button to switch between diastolic and systolic frames')
+        self.gating_display = GatingDisplay(self)
+        self.longitudinal_view = LongitudinalView(self)
 
         main_window_splitter = QSplitter()
         self.left_half = LeftHalf(self)

@@ -4,10 +4,8 @@ import matplotlib.pyplot as plt
 from loguru import logger
 from functools import partial
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QSplitter, QPushButton, QCheckBox, QWidget
+from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QSplitter, QPushButton, QWidget
 
-from gui.right_half.gating_display import GatingDisplay
-from gui.right_half.longitudinal_view import LongitudinalView
 from gui.popup_windows.small_display import SmallDisplay
 from segmentation.segment import segment
 
@@ -19,37 +17,20 @@ class RightHalf:
         right_vbox = QVBoxLayout()
         checkboxes = QHBoxLayout()
 
-        self.main_window.diastolic_frame_box = QCheckBox('Diastolic Frame')
-        self.main_window.diastolic_frame_box.setChecked(False)
-        self.main_window.diastolic_frame_box.stateChanged.connect(partial(toggle_diastolic_frame, main_window))
-        checkboxes.addWidget(self.main_window.diastolic_frame_box)
-
-        self.main_window.systolic_frame_box = QCheckBox('Systolic Frame')
-        self.main_window.systolic_frame_box.setChecked(False)
-        self.main_window.systolic_frame_box.stateChanged.connect(partial(toggle_systolic_frame, main_window))
-        checkboxes.addWidget(self.main_window.systolic_frame_box)
-
-        self.main_window.use_diastolic_button = QPushButton('Diastolic Frames')
-        self.main_window.use_diastolic_button.setStyleSheet(f'background-color: rgb{self.main_window.diastole_color}')
-        self.main_window.use_diastolic_button.setCheckable(True)
-        self.main_window.use_diastolic_button.setChecked(True)
-        self.main_window.use_diastolic_button.clicked.connect(partial(use_diastolic, main_window))
-        self.main_window.use_diastolic_button.setToolTip('Press button to switch between diastolic and systolic frames')
-        checkboxes.addWidget(self.main_window.use_diastolic_button)
+        checkboxes.addWidget(main_window.diastolic_frame_box)
+        checkboxes.addWidget(main_window.systolic_frame_box)
+        checkboxes.addWidget(main_window.use_diastolic_button)
 
         small_display_button = QPushButton('Compare Frames')
         small_display_button.setToolTip('Open a small display to compare two frames')
         small_display_button.clicked.connect(partial(open_small_display, main_window))
         checkboxes.addWidget(small_display_button)
 
-        main_window.gating_display = GatingDisplay(main_window)
         checkboxes.addWidget(main_window.gating_display.toolbar)
         right_vbox.addLayout(checkboxes)
 
-        # Change 2: Scoped Orientation Enum
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.addWidget(main_window.gating_display)
-        main_window.longitudinal_view = LongitudinalView(main_window)
         splitter.addWidget(main_window.longitudinal_view)
 
         gating_display_size = main_window.gating_display.sizeHint().height()
