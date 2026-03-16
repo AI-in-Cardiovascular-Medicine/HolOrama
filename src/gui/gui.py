@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QStatusBar,
     QCheckBox,
     QPushButton,
+    QButtonGroup,
 )
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QIcon
@@ -17,7 +18,15 @@ from PyQt6.QtGui import QIcon
 from gui.left_half.left_half import LeftHalf
 from gui.left_half.display import Display
 from gui.utils.slider import Slider, Communicate
-from gui.right_half.right_half import RightHalf, toggle_diastolic_frame, toggle_systolic_frame, use_diastolic
+from gui.right_half.right_half import (
+    RightHalf,
+    toggle_diastolic_frame,
+    toggle_systolic_frame,
+    toggle_tagged_frame,
+    use_diastolic,
+    use_tagged,
+    set_oct_quality,
+)
 from gui.right_half.gating_display import GatingDisplay
 from gui.right_half.longitudinal_view import LongitudinalView
 from gui.shortcuts import init_shortcuts, init_menu
@@ -97,10 +106,30 @@ class Master(QMainWindow):
         self.gating_display = GatingDisplay(self)
         self.longitudinal_view = LongitudinalView(self)
 
+        # OCT-specific widgets
+        self.tagged_frame_button = QCheckBox('Tagged Frame')
+        self.tagged_frame_button.setChecked(False)
+        self.tagged_frame_button.stateChanged.connect(partial(toggle_tagged_frame, self))
+        self.use_tagged_button = QPushButton('Tagged Frames')
+        self.use_tagged_button.setStyleSheet('background-color: yellow')
+        self.use_tagged_button.clicked.connect(partial(use_tagged, self))
+        self.oct_quality_buttons = {}
+        self.oct_quality_button_group = QButtonGroup(self)
+        self.oct_quality_button_group.setExclusive(True)
+        for label in ['Very Bad', 'Bad', 'Ok', 'Good', 'Very Good']:
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.clicked.connect(partial(set_oct_quality, self, label))
+            self.oct_quality_buttons[label] = btn
+            self.oct_quality_button_group.addButton(btn)
+        self.oct_quality_buttons['Very Good'].setChecked(True)
+        self.gated_frames_oct = []
+
         main_window_splitter = QSplitter()
         self.left_half = LeftHalf(self)
         main_window_splitter.addWidget(self.left_half())
-        main_window_splitter.addWidget(RightHalf(self)())
+        self.right_half = RightHalf(self)
+        main_window_splitter.addWidget(self.right_half())
 
         self.setWindowTitle('AIVUS Software')
         icon_path = os.path.join(os.path.dirname(__file__), '..', '..', 'media', 'desktop_img.ico')
@@ -134,3 +163,6 @@ class Master(QMainWindow):
         self.metadata = {}
         self.images = None
         self.images_display = None
+        self.gated_frames_oct = []
+        self.tagged_frame_button.setChecked(False)
+        self.oct_quality_buttons['Very Good'].setChecked(True)

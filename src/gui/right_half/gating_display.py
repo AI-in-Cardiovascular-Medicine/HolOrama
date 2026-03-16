@@ -11,8 +11,9 @@ matplotlib.use('Qt5Agg')  # needed to embed matplotlib figure in PyQt5 window
 
 class GatingDisplay(FigureCanvasQTAgg):
     def __init__(self, main_window, parent=None, width=None, height=None, dpi=100):
-        if darkdetect.isDark():
-            plt.style.use('dark_background')
+        # if darkdetect.isDark():
+        #     plt.style.use('dark_background')
+        plt.style.use('dark_background')
 
         width = main_window.config.display.image_size if width is None else width
         height = width // 2 if height is None else height

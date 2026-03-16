@@ -72,6 +72,9 @@ class MetricsMixin:
         elif code == "S":
             text = "Systole"
             color = QColor(*self.main_window.systole_color)
+        elif code == "T":
+            text = "Tagged"
+            color = QColor("yellow")
         else:
             text = ""
             color = Qt.GlobalColor.white

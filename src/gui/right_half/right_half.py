@@ -4,61 +4,174 @@ import matplotlib.pyplot as plt
 from loguru import logger
 from functools import partial
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QSplitter, QPushButton, QWidget
+from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QSplitter, QPushButton, QWidget, QFrame
 
 from gui.popup_windows.small_display import SmallDisplay
 from segmentation.segment import segment
+
+OCT_QUALITY_LABELS = ['Very Bad', 'Bad', 'Ok', 'Good', 'Very Good']
 
 
 class RightHalf:
     def __init__(self, main_window):
         self.main_window = main_window
+
+        # Outer container — stays in the main splitter forever
         self.right_widget = QWidget()
-        right_vbox = QVBoxLayout()
+        self.right_layout = QVBoxLayout(self.right_widget)
+        self.right_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Slider connection for per-frame OCT updates (connected once, checks mode at runtime)
+        main_window.display_slider.valueChanged.connect(partial(update_oct_display, main_window))
+
+        # Build default (non-OCT) content
+        self.content_widget = self._build_non_oct()
+        self.right_layout.addWidget(self.content_widget)
+
+    # ------------------------------------------------------------------
+    # Build helpers
+    # ------------------------------------------------------------------
+
+    def _build_non_oct(self):
+        mw = self.main_window
+        root = QWidget()
+        vbox = QVBoxLayout(root)
+
         checkboxes = QHBoxLayout()
-
-        checkboxes.addWidget(main_window.diastolic_frame_box)
-        checkboxes.addWidget(main_window.systolic_frame_box)
-        checkboxes.addWidget(main_window.use_diastolic_button)
-
-        small_display_button = QPushButton('Compare Frames')
-        small_display_button.setToolTip('Open a small display to compare two frames')
-        small_display_button.clicked.connect(partial(open_small_display, main_window))
-        checkboxes.addWidget(small_display_button)
-
-        checkboxes.addWidget(main_window.gating_display.toolbar)
-        right_vbox.addLayout(checkboxes)
+        checkboxes.addWidget(mw.diastolic_frame_box)
+        checkboxes.addWidget(mw.systolic_frame_box)
+        checkboxes.addWidget(mw.use_diastolic_button)
+        compare_btn = QPushButton('Compare Frames')
+        compare_btn.setToolTip('Open a small display to compare two frames')
+        compare_btn.clicked.connect(partial(open_small_display, mw))
+        checkboxes.addWidget(compare_btn)
+        checkboxes.addWidget(mw.gating_display.toolbar)
+        vbox.addLayout(checkboxes)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
-        splitter.addWidget(main_window.gating_display)
-        splitter.addWidget(main_window.longitudinal_view)
+        splitter.addWidget(mw.gating_display)
+        splitter.addWidget(mw.longitudinal_view)
+        gating_size = mw.gating_display.sizeHint().height()
+        splitter.setSizes([gating_size, gating_size])
+        splitter.setStretchFactor(0, mw.config.display.gating_display_stretch)
+        splitter.setStretchFactor(1, mw.config.display.lview_display_stretch)
+        vbox.addWidget(splitter)
 
-        gating_display_size = main_window.gating_display.sizeHint().height()
-        splitter.setSizes([gating_display_size, gating_display_size])
-        splitter.setStretchFactor(0, main_window.config.display.gating_display_stretch)
-        splitter.setStretchFactor(1, main_window.config.display.lview_display_stretch)
-        right_vbox.addWidget(splitter)
+        vbox.addLayout(self._build_lower_buttons())
+        return root
 
-        right_lower_vbox = QVBoxLayout()
+    def _build_oct(self):
+        mw = self.main_window
+        root = QWidget()
+        vbox = QVBoxLayout(root)
+
+        checkboxes = QHBoxLayout()
+        checkboxes.addWidget(mw.tagged_frame_button)
+        checkboxes.addWidget(mw.use_tagged_button)
+        compare_btn = QPushButton('Compare Frames')
+        compare_btn.setToolTip('Open a small display to compare two frames')
+        compare_btn.clicked.connect(partial(open_small_display, mw))
+        checkboxes.addWidget(compare_btn)
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.VLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        checkboxes.addWidget(separator)
+        for label in OCT_QUALITY_LABELS:
+            checkboxes.addWidget(mw.oct_quality_buttons[label])
+        vbox.addLayout(checkboxes)
+
+        splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.addWidget(QWidget())  # empty top placeholder — add functionality later
+        splitter.addWidget(mw.longitudinal_view)
+        splitter.setStretchFactor(0, mw.config.display.gating_display_stretch)
+        splitter.setStretchFactor(1, mw.config.display.lview_display_stretch)
+        vbox.addWidget(splitter)
+
+        vbox.addLayout(self._build_lower_buttons())
+        return root
+
+    def _build_lower_buttons(self):
+        mw = self.main_window
+        layout = QVBoxLayout()
         segment_button = QPushButton('Automatic Segmentation')
         segment_button.setToolTip('Run deep learning based segmentation of lumen')
-        segment_button.clicked.connect(partial(segment, main_window))
+        segment_button.clicked.connect(partial(segment, mw))
         gating_button = QPushButton('Extract Diastolic and Systolic Frames')
         gating_button.setToolTip('Extract diastolic and systolic images from pullback')
-        gating_button.clicked.connect(main_window.contour_based_gating)
+        gating_button.clicked.connect(mw.contour_based_gating)
         command_buttons = QHBoxLayout()
         command_buttons.addWidget(segment_button)
         command_buttons.addWidget(gating_button)
-        right_lower_vbox.addLayout(command_buttons)
-        measures = QHBoxLayout()
-        right_lower_vbox.addLayout(measures)
-        right_vbox.addLayout(right_lower_vbox)
+        layout.addLayout(command_buttons)
+        layout.addLayout(QHBoxLayout())  # measures placeholder
+        return layout
 
-        self.right_widget.setLayout(right_vbox)
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def update_for_modality(self):
+        self.right_layout.removeWidget(self.content_widget)
+        self.content_widget.setParent(None)
+        self.content_widget.deleteLater()
+
+        if self.main_window.metadata.get('modality') == 'OCT':
+            self.main_window.gated_frames = self.main_window.gated_frames_oct
+            self.content_widget = self._build_oct()
+        else:
+            self.content_widget = self._build_non_oct()
+
+        self.right_layout.addWidget(self.content_widget)
 
     def __call__(self):
         return self.right_widget
 
+
+# ---------------------------------------------------------------------------
+# OCT helpers
+# ---------------------------------------------------------------------------
+
+def toggle_tagged_frame(main_window, state_true, drag=False):
+    if main_window.image_displayed:
+        frame = main_window.display_slider.value()
+        if state_true:
+            if frame not in main_window.gated_frames_oct:
+                bisect.insort_left(main_window.gated_frames_oct, frame)
+            main_window.data[frame].phase = 'T'
+        else:
+            try:
+                main_window.gated_frames_oct.remove(frame)
+            except ValueError:
+                pass
+            if main_window.data[frame].phase == 'T':
+                main_window.data[frame].phase = '-'
+        main_window.display.update_display()
+
+
+def use_tagged(main_window):
+    if main_window.image_displayed:
+        main_window.gated_frames = main_window.gated_frames_oct
+
+
+def set_oct_quality(main_window, label):
+    if main_window.image_displayed:
+        frame = main_window.display_slider.value()
+        main_window.data[frame].quality = label
+
+
+def update_oct_display(main_window, frame):
+    """Update Tagged Frame checkbox and quality buttons when the slider moves (OCT only)."""
+    if main_window.image_displayed and main_window.metadata.get('modality') == 'OCT':
+        main_window.tagged_frame_button.blockSignals(True)
+        main_window.tagged_frame_button.setChecked(frame in main_window.gated_frames_oct)
+        main_window.tagged_frame_button.blockSignals(False)
+        quality = main_window.data[frame].quality
+        main_window.oct_quality_buttons[quality].setChecked(True)
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
 
 def open_small_display(main_window):
     if main_window.image_displayed:

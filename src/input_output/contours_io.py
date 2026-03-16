@@ -44,6 +44,7 @@ class Measure:
 @dataclass
 class FrameData:
     phase: str = '-'
+    quality: str = 'Very Good'
     lumen: Contour = field(default_factory=Contour)
     eem: Contour = field(default_factory=Contour)
     calcium: Contour = field(default_factory=Contour)
@@ -196,6 +197,7 @@ def _build_frame_data(raw: dict) -> Dict[int, FrameData]:
         i = int(key)
         frames[i] = FrameData(
             phase=frame_raw.get('phase', '-'),
+            quality=frame_raw.get('quality', 'Very Good'),
             lumen=_build_contour(frame_raw.get('lumen')),
             eem=_build_contour(frame_raw.get('eem')),
             calcium=_build_contour(frame_raw.get('calcium')),

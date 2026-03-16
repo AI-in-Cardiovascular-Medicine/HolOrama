@@ -68,6 +68,9 @@ def read_image(main_window):
             main_window.gated_frames_sys = [
                 frame for frame in range(num_frames) if main_window.data[frame].phase == 'S'
             ]
+            main_window.gated_frames_oct = [
+                frame for frame in range(num_frames) if main_window.data[frame].phase == 'T'
+            ]
             main_window.gated_frames = main_window.gated_frames_dia
         else:  # initialise empty containers
             main_window.data = {i: FrameData() for i in range(num_frames)}
@@ -75,6 +78,7 @@ def read_image(main_window):
 
         main_window.image_displayed = True
         main_window.display_slider.setValue(main_window.metadata['num_frames'] - 1)
+        main_window.right_half.update_for_modality()
     main_window.status_bar.showMessage(main_window.waiting_status)
 
 
