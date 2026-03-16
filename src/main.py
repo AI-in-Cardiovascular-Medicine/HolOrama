@@ -29,6 +29,8 @@ logging.basicConfig(
     ],
 )
 log = logging.getLogger(__name__)
+logging.getLogger("hydra").setLevel(logging.WARNING)
+logging.getLogger("omegaconf").setLevel(logging.WARNING)
 
 
 def handle_exception(exc_type, exc_value, exc_tb):
@@ -59,15 +61,17 @@ qInstallMessageHandler(qt_message_handler)
 def _print_banner():
     print(
         r"""
-      {_       {__{__         {__{__     {__  {__ __
-     {_ __     {__ {__       {__ {__     {__{__    {__
-    {_  {__    {__  {__     {__  {__     {__ {__
-   {__   {__   {__   {__   {__   {__     {__   {__
-  {______ {__  {__    {__ {__    {__     {__      {__
- {__       {__ {__     {____     {__     {__{__    {__
-{__         {__{__      {__        {_____     {__ __
-"""
-    )
+          (                  (      
+   (      )\ )               )\ )   
+   )\    (()/( (   (     (  (()/(   
+((((_)(   /(_)))\  )\    )\  /(_))  
+ )\ _ )\ (_)) ((_)((_)_ ((_)(_))    
+ (_)_\(_)|_ _|\ \ / /| | | |/ __|   
+  / _ \   | |  \ V / | |_| |\__ \   
+ /_/ \_\ |___|  \_/   \___/ |___/   
+       
+       """
+    )                             
     print(f"  version  : {__version__}")
     print(f"  docs     : https://aivus-caa.readthedocs.io")
     print(f"  license  : MIT\n")

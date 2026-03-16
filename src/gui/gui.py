@@ -1,7 +1,6 @@
 import os
 from loguru import logger
 
-# Change 1: Updated namespace to PyQt6
 from PyQt6.QtWidgets import (
     QMainWindow,
     QMenuBar,
@@ -9,7 +8,7 @@ from PyQt6.QtWidgets import (
     QTableWidget,
     QStatusBar,
 )
-from PyQt6.QtCore import QTimer  # Change 2: Updated namespace
+from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QIcon
 
 from gui.left_half.left_half import LeftHalf
@@ -48,8 +47,6 @@ class Master(QMainWindow):
         self.diastole_color_plt = tuple(x / 255 for x in self.diastole_color)  # for matplotlib
         self.systole_color = (209, 55, 38)
         self.systole_color_plt = tuple(x / 255 for x in self.systole_color)
-        self.measure_colors = ['red', 'cyan']
-        self.reference_color = 'yellow'
         self.waiting_status = 'Waiting for user input...'
         self.init_gui()
         init_shortcuts(self)
@@ -70,7 +67,7 @@ class Master(QMainWindow):
         main_window_splitter.addWidget(self.left_half())
         main_window_splitter.addWidget(RightHalf(self)())
 
-        self.setWindowTitle('AIVUS-OCT Software')
+        self.setWindowTitle('AIVUS Software')
         icon_path = os.path.join(os.path.dirname(__file__), '..', '..', 'media', 'desktop_img.ico')
         self.setWindowIcon(QIcon(icon_path))
         self.setCentralWidget(main_window_splitter)

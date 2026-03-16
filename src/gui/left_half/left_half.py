@@ -30,6 +30,8 @@ class LeftHalf:
         main_window.display = IVUSDisplay(main_window)
         main_window.display_frame_comms = Communicate()
         main_window.display_frame_comms.updateBW[int].connect(main_window.display.set_frame)
+        self.measure_colors: list[str] = ['red', 'cyan']
+        self.reference_color: str = 'yellow'
 
         display_buttons_hbox = QHBoxLayout()
         self.display_button_group = QButtonGroup()
@@ -54,19 +56,19 @@ class LeftHalf:
         self.reference_btn = QPushButton('🟡Reference')
         self.reference_btn.setCheckable(True)
         self.reference_btn.setToolTip("Set a reference point")
-        self.reference_btn.setStyleSheet(f'border-color: {main_window.reference_color}')
+        self.reference_btn.setStyleSheet(f'border-color: {self.reference_color}')
         self.reference_btn.clicked.connect(partial(new_reference, main_window))
 
         self.measure_btn_1 = QPushButton('📏Measurement 1')
         self.measure_btn_1.setCheckable(True)
         self.measure_btn_1.setToolTip("Measure distance between two points")
-        self.measure_btn_1.setStyleSheet(f'border-color: {main_window.measure_colors[0]}')
+        self.measure_btn_1.setStyleSheet(f'border-color: {self.measure_colors[0]}')
         self.measure_btn_1.clicked.connect(partial(new_measure, main_window, 0))
 
         self.measure_btn_2 = QPushButton('📏Measurement 2')
         self.measure_btn_2.setCheckable(True)
         self.measure_btn_2.setToolTip("Measure distance between two points")
-        self.measure_btn_2.setStyleSheet(f'border-color: {main_window.measure_colors[1]}')
+        self.measure_btn_2.setStyleSheet(f'border-color: {self.measure_colors[1]}')
         self.measure_btn_2.clicked.connect(partial(new_measure, main_window, 1))
 
         self.angle_btn = QPushButton('📐Angle Wire')

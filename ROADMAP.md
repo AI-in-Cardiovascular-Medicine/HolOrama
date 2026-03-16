@@ -10,3 +10,15 @@
 - [] Add brush
 - [x] Add button to hide measurements
 - [x] Make image size dynamic
+- [] Type safety in whole program
+- [] Try/Except in whole program, wherever applicable
+- [] Clean up for log files
+- [] Config callable from GUI
+
+# Requested features
+- [] Frame quality checkboxes
+- [] Marker on the longitudinal view (to show what has been segmented)
+- [] Scroll wheel should go throug frames
+- [] Region of interest definition
+- [] Marker to show vessel size (outliers)
+- [] Subcontours should be deleted seperately
