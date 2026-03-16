@@ -6,7 +6,8 @@
 - [] Adjust gating module to new data
 
 # Requested features
-- [] Region of interest definition
+- [x] Region of interest definition
+- [x] Tag every x mm
 - [x] Marker on the longitudinal view (to show what has been segmented)
 - [x] Marker to show vessel size (outliers)
 - [x] Scroll wheel should go through frames

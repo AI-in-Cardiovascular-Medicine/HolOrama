@@ -1,5 +1,6 @@
 import os
 import sys
+import atexit
 import hydra
 import logging
 from pathlib import Path
@@ -31,6 +32,15 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 logging.getLogger("hydra").setLevel(logging.WARNING)
 logging.getLogger("omegaconf").setLevel(logging.WARNING)
+
+
+def _cleanup_empty_log():
+    logging.shutdown()
+    if LOG_FILE.exists() and LOG_FILE.stat().st_size == 0:
+        LOG_FILE.unlink()
+
+
+atexit.register(_cleanup_empty_log)
 
 
 def handle_exception(exc_type, exc_value, exc_tb):
@@ -75,7 +85,7 @@ def _print_banner():
     print(f"  version  : {__version__}")
     print(f"  docs     : https://aivus-caa.readthedocs.io")
     print(f"  license  : MIT")
-    print(f"  authors  : yungselm, cardionaut, Pooya Mohammadi Kazaj\n")
+    print(f"  author  : yungselm\n")
 
 
 if os.environ.get("AIVUS_SILENT", "0") == "0":
