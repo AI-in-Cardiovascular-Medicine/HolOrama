@@ -181,6 +181,8 @@ class Display(QGraphicsView, MetricsMixin):
         self.window_width: int = self.initial_window_width
         self.mouse_x: float = 0.0
         self.mouse_y: float = 0.0
+        self._panning: bool = False
+        self._pan_last_pos = None
 
         self.frame: int = 0
         self.points_to_draw: list[Point] = []
@@ -1171,6 +1173,11 @@ class Display(QGraphicsView, MetricsMixin):
 
         if event.button() == Qt.MouseButton.LeftButton:
             self.mouse_y = event.position().y()
+            if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                self._panning = True
+                self._pan_last_pos = event.pos()
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+                return
             if self.drawing_mode:
                 self.add_contour(pos, self.active_segmentation_tool)
             elif self.measure_index is not None:
@@ -1320,6 +1327,12 @@ class Display(QGraphicsView, MetricsMixin):
         self.display_image(update_contours=True)
 
     def mouseMoveEvent(self, event):
+        if self._panning and event.buttons() & Qt.MouseButton.LeftButton:
+            delta = event.pos() - self._pan_last_pos
+            self._pan_last_pos = event.pos()
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
+            return
         if event.buttons() == Qt.MouseButton.LeftButton:
             if self.active_point_index is not None:
                 item = self.active_point
@@ -1348,6 +1361,11 @@ class Display(QGraphicsView, MetricsMixin):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self._panning:
+            self._panning = False
+            self._pan_last_pos = None
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             if self.active_point_index is not None and self.working_spline:
                 self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
@@ -1433,4 +1451,3 @@ class Display(QGraphicsView, MetricsMixin):
                     self._finish_open_spline()
                     return  # prevent super() re-delivering event after drawing_mode is cleared
         super().mouseDoubleClickEvent(event)
-
