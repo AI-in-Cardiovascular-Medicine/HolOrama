@@ -202,9 +202,11 @@ In the current state, these cannot be changed by the user (at least not without 
 
 ### v1.1.0 and higher
 Additionally:
+- Press <kbd>Esc</kbd> to exit drawing mode and return to a neutral state
 - Press <kbd>RMB</kbd> on an existing knot point to remove it
 - Scroll <kbd>MW</kbd> to scroll through frames (forward/backward)
 - Drag <kbd>LMB</kbd> up/down for zooming (can be reset by pressing <kbd>F</kbd>)
+- Drag <kbd>Ctrl</kbd> + <kbd>LMB</kbd> to move the image inside it's widget
 - Press <kbd>Q</kbd> to manually draw an ``external elastic membrane`` (EEM) contour
 - Press <kbd>7</kbd> to manually draw a ``calcification `` contour
 - Press <kbd>Ctrl</kbd> + <kbd>7</kbd> to draw an additional ``calcification`` contour in the current active spline tool (open or closed)

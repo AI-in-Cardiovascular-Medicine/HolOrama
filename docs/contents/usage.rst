@@ -39,9 +39,11 @@ v1.1.0 and higher
 
 Additional shortcuts available from version 1.1.0:
 
+- :kbd:`Esc` — Exiting drawing mode (return to neutral state)
 - :kbd:`RMB` on a knot point — Remove that point
 - :kbd:`MW` (scroll) — Scroll through images
 - :kbd:`LMB` (hold) — Zoom in/out current mouse position (reset with :kbd:`F`)
+- :kbd:`Ctrl+LMB` — Move the image inside it's widget
 - :kbd:`Q` — Draw an ``external elastic membrane`` (EEM) contour
 - :kbd:`7` — Draw a ``calcification`` contour
 - :kbd:`Ctrl+7` — Add an additional ``calcification`` contour in the current active spline tool (open or closed)

@@ -3,6 +3,37 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-03-17
+Beta version for AIVUS-OCT
+
+### Added
+- Panning mode with Ctrl+LMB drag
+- Tag every x mm functionality
+- Log file clean up function
+- Display areas in longitudinal view as dots
+- Direct links to report a problem or request a feature under Help menu
+
+### Fixed
+- Panning mouse behaviour and Escape key to exit drawing mode
+- Cursor shape only shown inside display area
+- Bug where slider disappears for lumen and lumen type is always selected after closing contour
+- Deleting of end coordinates
+- Hardcoded Abbott exception for missing framerate metadata in hospital DICOM headers
+- Open spline downsample
+- Zooming fix
+- Logger warnings
+- Guard against garbage collector of other systems
+
+### Changed
+- Mouse wheel now scrolls through frames; LMB used for zooming
+- Split right-half display logic into separate OCT and IVUS builds
+- Fixed monkey patching of right and left half
+
+## [1.2.2] - 2026-03-06
+### Added
+- Added a logger functionality to main loop
+- Added a startup banner
+
 ## [1.2.1] - 2026-03-05
 Now runs on PyQt6
 
@@ -52,6 +83,8 @@ Now runs on PyQt6
 
 ---
 
+[1.3.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.2.1...v1.3.0
+[1.2.1]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.0.0...v1.1.0
