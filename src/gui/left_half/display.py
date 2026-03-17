@@ -224,7 +224,6 @@ class Display(QGraphicsView, MetricsMixin):
 
         self._draw_contours_frame()
 
-        contours = self.get_full_contour_list(self.active_contour_type)
         self.main_window.longitudinal_view.set_data(self.images)
         self.display_image(update_image=True, update_contours=True, update_phase=True)
 
@@ -1260,7 +1259,7 @@ class Display(QGraphicsView, MetricsMixin):
         elif spline_item and current_spline:
             self._add_new_point_to_spline(scene_pos)
 
-    def _select_existing_point(self, point_item):
+    def _select_existing_point(self, point_item: Point):
         # self.main_window.setCursor(Qt.CursorShape.BlankCursor)  # remove cursor for precise contour changes
         # https://stackoverflow.com/questions/53627056/how-to-get-cursor-click-position-in-qgraphicsitem-coordinate-system
         try:
@@ -1294,7 +1293,7 @@ class Display(QGraphicsView, MetricsMixin):
         self.graphics_scene.addItem(self.active_point)
         self.active_point.update_color()
 
-    def _delete_point(self, point_item):
+    def _delete_point(self, point_item: Point):
         """Removes a knot point from the scene and the data model."""
         try:
             idx = self.points_to_draw.index(point_item)
@@ -1313,6 +1312,11 @@ class Display(QGraphicsView, MetricsMixin):
                 contour_obj.contours[ci][0].pop(idx)
                 if len(contour_obj.contours[ci]) > 1:
                     contour_obj.contours[ci][1].pop(idx)
+
+                if point_item.color == self.start_color and ci < len(contour_obj.start_coords):
+                    contour_obj.start_coords[ci] = None
+                if point_item.color == self.end_color and ci < len(contour_obj.end_coords):
+                    contour_obj.end_coords[ci] = None
 
         self.display_image(update_contours=True)
 

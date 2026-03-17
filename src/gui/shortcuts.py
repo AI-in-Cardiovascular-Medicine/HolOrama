@@ -341,6 +341,7 @@ def stop_all(main_window):
 def delete_contour(main_window):
     if main_window.image_displayed:
         key = main_window.display.contour_key()
+        ci = main_window.display.active_contour_index
 
         if not hasattr(main_window, 'tmp_contours'):
             main_window.tmp_contours = {}
@@ -349,14 +350,38 @@ def delete_contour(main_window):
         fd = main_window.data.get(frame)
         if fd:
             contour_obj = getattr(fd, key, None)
-            if contour_obj and contour_obj.contours and contour_obj.contours[0]:
-                xlist = list(contour_obj.contours[0][0]) if contour_obj.contours[0][0] else []
-                ylist = list(contour_obj.contours[0][1]) if len(contour_obj.contours[0]) > 1 else []
+            if contour_obj and contour_obj.contours and ci < len(contour_obj.contours):
+                c = contour_obj.contours[ci]
+                xlist = list(c[0]) if c and c[0] else []
+                ylist = list(c[1]) if c and len(c) > 1 else []
+                start = contour_obj.start_coords[ci] if len(contour_obj.start_coords) > ci else None
+                end = contour_obj.end_coords[ci] if len(contour_obj.end_coords) > ci else None
+                closed = contour_obj.closed[ci] if len(contour_obj.closed) > ci else True
             else:
-                xlist, ylist = [], []
-            main_window.tmp_contours[key] = (xlist, ylist)
-            if contour_obj:
-                contour_obj.contours = []
+                xlist, ylist, start, end, closed = [], [], None, None, True
+
+            main_window.tmp_contours[key] = (ci, xlist, ylist, start, end, closed)
+
+            if contour_obj and ci < len(contour_obj.contours):
+                del contour_obj.contours[ci]
+                if ci < len(contour_obj.start_coords):
+                    del contour_obj.start_coords[ci]
+                if ci < len(contour_obj.end_coords):
+                    del contour_obj.end_coords[ci]
+                if ci < len(contour_obj.closed):
+                    del contour_obj.closed[ci]
+
+                # Update finalized_splines
+                lst = main_window.display.finalized_splines.get(key)
+                if lst and ci < len(lst):
+                    del lst[ci]
+
+                # Clamp active index
+                remaining = len(contour_obj.contours)
+                if remaining > 0:
+                    main_window.display.active_contour_index = min(ci, remaining - 1)
+                else:
+                    main_window.display.active_contour_index = 0
 
         main_window.display.display_image(update_contours=True)
 
@@ -365,13 +390,20 @@ def undo_delete(main_window):
     if main_window.image_displayed:
         key = main_window.display.contour_key()
         if hasattr(main_window, 'tmp_contours') and key in main_window.tmp_contours:
-            xlist, ylist = main_window.tmp_contours.pop(key)
+            saved = main_window.tmp_contours.pop(key)
+            ci, xlist, ylist, start, end, closed = saved
             frame = main_window.display.frame
             fd = main_window.data.get(frame)
             if fd:
                 contour_obj = getattr(fd, key, None)
                 if contour_obj is not None:
-                    contour_obj.contours = [[xlist, ylist]]
+                    contour_obj.contours.insert(ci, [xlist, ylist])
+                    if start is not None:
+                        contour_obj.start_coords.insert(ci, start)
+                    if end is not None:
+                        contour_obj.end_coords.insert(ci, end)
+                    contour_obj.closed.insert(ci, closed)
+                    main_window.display.active_contour_index = ci
 
             main_window.display.update_display()
 

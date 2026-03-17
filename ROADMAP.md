@@ -12,17 +12,18 @@
 - [x] Marker to show vessel size (outliers)
 - [x] Scroll wheel should go through frames
 - [x] Frame quality checkboxes
-- [] Can't delete start and end point
-- [] Subcontours should be deleted seperately
+- [x] Subcontours should be deleted seperately
+- [x] Can't delete start and end point
 - [] clicking in longitudinal view let's user set region of interest
 - [] mousewheel in longitudinal view changes cut line
+- [] scrolling over end of index hides contours (but only lumen)
 
 # Lower priority
-- [] Reduce memory by not storing main_window.images and main_window.dicom at the same time.
-- [] Add brush
 - [x] Add button to hide measurements
 - [x] Make image size dynamic
+- [x] Clean up for log files -> only store now when error
+- [] Add brush
+- [] Reduce memory by not storing main_window.images and main_window.dicom at the same time.
 - [] Type safety in whole program
 - [] Try/Except in whole program, wherever applicable
-- [] Clean up for log files
 - [] Config callable from GUI
