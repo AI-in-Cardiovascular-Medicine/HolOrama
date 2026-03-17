@@ -35,7 +35,7 @@ def parse_dicom(main_window):
 
 
 def parse_ivus(main_window):
-    """Parses DICOM metadata"""
+    """Parses DICOM metadata for IVUS"""
     if len(main_window.dicom.PatientName.encode('ascii')) > 0:
         patient_name = main_window.dicom.PatientName.original_string.decode('utf-8')
     else:
@@ -129,7 +129,7 @@ def parse_ivus(main_window):
         pullback_start_frame = int(pullback_start_frame)
 
     main_window.metadata['pullback_start_frame'] = pullback_start_frame
-    main_window.metadata['frame_rate'] = main_window.dicom.get('Cine Rate', 30)
+    main_window.metadata['frame_rate'] = main_window.dicom.get('CineRate')
 
     main_window.metadata_table.setRowCount(9)
     main_window.metadata_table.setColumnCount(2)
@@ -161,7 +161,7 @@ def parse_ivus(main_window):
 
 
 def parse_ivus_oct(main_window):
-    """Parses DICOM metadata for both IVUS and OCT modalities"""
+    """Parses DICOM metadata for IVUS+OCT modality"""
     ds = main_window.dicom
 
     patient_name = str(ds.get('PatientName', 'Unknown'))
@@ -175,7 +175,7 @@ def parse_ivus_oct(main_window):
 
     main_window.metadata['dimension'] = rows
 
-    # 3. Pullback Rate (mm/s)
+    # Pullback Rate (mm/s)
     if ds.get('IVUSPullbackRate'):
         pullback_rate = float(ds.IVUSPullbackRate)
     elif ds.get(0x000B1001):  # Boston Private Tag
@@ -194,26 +194,35 @@ def parse_ivus_oct(main_window):
 
     num_frames = main_window.images.shape[0]
 
-    if ds.get('FrameTimeVector'):
-        # Variable frame rate (Common in IVUS)
-        frame_time_vector = [float(f) for f in ds.FrameTimeVector]
-        pullback_time = np.cumsum(frame_time_vector) / 1000.0  # ms to s
-        pullback_length = pullback_time * pullback_rate
+    # Pullback length
+    if ds.get((0x0018, 0x1063)):
+        frame_time_ms = float(ds[0x0018, 0x1063].value)
     elif ds.get('FrameTime'):
-        # Constant frame rate (Common in OCT)
-        frame_time = float(ds.FrameTime)
-        pullback_time = (np.arange(num_frames) * frame_time) / 1000.0
-        pullback_length = pullback_time * pullback_rate
+        frame_time_ms = float(ds.FrameTime)
     else:
-        # Fallback
-        pullback_length = np.zeros((num_frames,))
+        val, ok = QInputDialog.getText(
+            main_window, 'Frame Time', 'No frame time found, enter frame time (ms):', QLineEdit.EchoMode.Normal, '33.3'
+        )
+        frame_time_ms = float(val) if ok else 33.3
+    duration_s = (num_frames * frame_time_ms) / 1000
 
-    main_window.metadata['pullback_length'] = pullback_length
+    main_window.metadata['pullback_length'] = pullback_rate * duration_s
 
-    # 5. Resolution (Pixel Spacing)
+    # Frame rate
+    frame_rate = num_frames / duration_s
+    # Abbott OPTIS stores FrameTime as ~100ms regardless of actual rate.
+    # Derive correct fps from pullback speed per FCC spec (FCC-ID sb6c408650):
+    #   36/18 mm/s → 180 fps (standard); 10/20/25 mm/s → 100 fps (C7 Dragonfly)
+    if 'abbott' in str(manufacturer).lower() and 'optis' in str(model).lower():
+        if abs(pullback_rate - 36.0) < 1 or abs(pullback_rate - 18.0) < 1:
+            frame_rate = 180.0
+        else:
+            frame_rate = 100.0
+    main_window.metadata['frame_rate'] = frame_rate
+
+    # Resolution (Pixel Spacing)
     if ds.get('SequenceOfUltrasoundRegions'):
         region = ds.SequenceOfUltrasoundRegions[0]
-        # PhysicalUnits 3 = cm, convert PhysicalDelta (cm/pixel) to mm/pixel
         unit_multiplier = 10 if region.PhysicalUnitsXDirection == 3 else 1
         resolution = float(region.PhysicalDeltaX) * unit_multiplier
     elif ds.get('PixelSpacing'):
@@ -229,13 +238,9 @@ def parse_ivus_oct(main_window):
     if ds.get('IVUSPullbackStartFrameNumber'):
         start_frame = int(ds.IVUSPullbackStartFrameNumber)
     else:
-        # OCT/Standard DICOM might not have this; default to 0
         start_frame = 0
 
     main_window.metadata['pullback_start_frame'] = start_frame
-
-    # Frame Rate (Cine Rate or Recommended Display)
-    main_window.metadata['frame_rate'] = ds.get('CineRate', ds.get('RecommendedDisplayFrameRate', 30))
 
     # Update UI Table
     metadata_items = [
@@ -257,7 +262,6 @@ def parse_ivus_oct(main_window):
         main_window.metadata_table.setItem(i, 0, QTableWidgetItem(label))
         main_window.metadata_table.setItem(i, 1, QTableWidgetItem(str(value)))
 
-    # Table Formatting
     main_window.metadata_table.horizontalHeader().hide()
     main_window.metadata_table.verticalHeader().hide()
     main_window.metadata_table.resizeColumnsToContents()
