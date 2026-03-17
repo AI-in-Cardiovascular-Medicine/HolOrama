@@ -640,7 +640,6 @@ class Display(QGraphicsView, MetricsMixin):
         self.append_contour_mode = False
         self._contour_close_committed = False
         self.active_point = None
-        self.active_contour_type = ContourType.LUMEN
 
     def _interrupt_drawing_mode(self):
         """Handles safe exit of drawing mode, returning to initial state."""

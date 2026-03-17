@@ -14,9 +14,9 @@
 - [x] Frame quality checkboxes
 - [x] Subcontours should be deleted seperately
 - [x] Can't delete start and end point
+- [x] scrolling over end of index hides contours (but only lumen)
 - [] clicking in longitudinal view let's user set region of interest
 - [] mousewheel in longitudinal view changes cut line
-- [] scrolling over end of index hides contours (but only lumen)
 
 # Lower priority
 - [x] Add button to hide measurements

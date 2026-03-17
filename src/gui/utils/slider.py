@@ -34,7 +34,11 @@ class Slider(QSlider):
     def set_value(self, value, reset_highlights=True):
         if hasattr(self.main_window, 'display'):
             # clean up the scene to avoid potential Qt conflicts for the next frame
-            self.main_window.display.cleanup_temporary_drawing()
+            # only clean up when the frame will actually change (avoid removing working_spline
+            # when clamped at boundary with no subsequent redraw)
+            new_value = max(self.minimum(), min(self.maximum(), value))
+            if new_value != self.value():
+                self.main_window.display.cleanup_temporary_drawing()
 
         self.setValue(value)
         try:  # small display
