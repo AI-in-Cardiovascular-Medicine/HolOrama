@@ -334,8 +334,7 @@ def jiggle_frame(main_window):
 
 
 def stop_all(main_window):
-    main_window.display.stop_contour()
-    main_window.display.measure_index = None
+    main_window.display._interrupt_drawing_mode()
 
 
 def delete_contour(main_window):

@@ -16,7 +16,7 @@ display:
   zoom_sensitivity: 0.005  # fraction of zoom per pixel dragged; below 0.005 for slower, above for faster
   n_interactive_points: 10
   n_points_contour: 200  # ideally choose a multiple of 100 (for calculation of closest points)
-  contour_thickness: 3
+  contour_thickness: 2
   point_thickness: 1
   point_radius: 10
   color_contour: 'green'

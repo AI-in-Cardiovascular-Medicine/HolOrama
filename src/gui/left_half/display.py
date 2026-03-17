@@ -646,7 +646,7 @@ class Display(QGraphicsView, MetricsMixin):
     def _interrupt_drawing_mode(self):
         """Handles safe exit of drawing mode, returning to initial state."""
         self.cleanup_temporary_drawing()
-        self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
+        self.main_window.display.setCursor(Qt.CursorShape.ArrowCursor)
         self.display_image(update_contours=True)
 
     def start_contour(
@@ -696,7 +696,7 @@ class Display(QGraphicsView, MetricsMixin):
         self.points_to_draw = []
         self.active_point = None
         self.active_end_coords_flag = True
-        self.main_window.setCursor(Qt.CursorShape.CrossCursor)
+        self.main_window.display.setCursor(Qt.CursorShape.CrossCursor)
 
         fd = self.main_window.data[self.frame]
         contour_obj = getattr(fd, key)
@@ -982,7 +982,7 @@ class Display(QGraphicsView, MetricsMixin):
             self.graphics_scene.addItem(length_text)
             if new:
                 self.measure_index = None
-                self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
+                self.main_window.display.setCursor(Qt.CursorShape.ArrowCursor)
 
     def start_measure(self, index: int):
         if self.drawing_mode:
@@ -991,7 +991,7 @@ class Display(QGraphicsView, MetricsMixin):
         if fd:
             setattr(fd, f'measurement_{index + 1}', None)
         self.pending_measure_points[index] = None
-        self.main_window.setCursor(Qt.CursorShape.CrossCursor)
+        self.main_window.display.setCursor(Qt.CursorShape.CrossCursor)
         self.measure_index = index
         self.display_image(update_contours=True)
         if self.active_segmentation_tool == SegmentationTool.OPEN_SPLINE:
@@ -1005,7 +1005,7 @@ class Display(QGraphicsView, MetricsMixin):
         if self.main_window.image_displayed:
             self.pending_measure_points[index] = None
             self.measure_index = None
-            self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
+            self.main_window.display.setCursor(Qt.CursorShape.ArrowCursor)
             self.display_image(update_contours=True)
 
     def _draw_reference(self):
@@ -1029,7 +1029,7 @@ class Display(QGraphicsView, MetricsMixin):
 
     def start_reference(self):
         self.reference_mode = True
-        self.main_window.setCursor(Qt.CursorShape.CrossCursor)
+        self.main_window.display.setCursor(Qt.CursorShape.CrossCursor)
         fd = self.main_window.data.get(self.frame)
         if fd:
             fd.reference = None
@@ -1048,7 +1048,7 @@ class Display(QGraphicsView, MetricsMixin):
             pos.y() / self.scaling_factor,
         )
         self.reference_mode = False
-        self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
+        self.main_window.display.setCursor(Qt.CursorShape.ArrowCursor)
         self.display_image(update_contours=True)
 
     ################################################################################################
@@ -1059,7 +1059,7 @@ class Display(QGraphicsView, MetricsMixin):
             self.stop_contour()
         self.angle_mode = True
         self.angle_clicks = []
-        self.main_window.setCursor(Qt.CursorShape.CrossCursor)
+        self.main_window.display.setCursor(Qt.CursorShape.CrossCursor)
         self.main_window.data[self.frame].wire = None
         self.display_image(update_contours=True)
         if self.active_segmentation_tool == SegmentationTool.OPEN_SPLINE:
@@ -1081,7 +1081,7 @@ class Display(QGraphicsView, MetricsMixin):
         elif len(self.angle_clicks) == 2:
             fd.wire = (fd.wire[0], original_point)
             self.angle_mode = False
-            self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
+            self.main_window.display.setCursor(Qt.CursorShape.ArrowCursor)
             self.display_image(update_contours=True)
 
     def _draw_angles(self):
@@ -1266,7 +1266,7 @@ class Display(QGraphicsView, MetricsMixin):
             self._add_new_point_to_spline(scene_pos)
 
     def _select_existing_point(self, point_item: Point):
-        # self.main_window.setCursor(Qt.CursorShape.BlankCursor)  # remove cursor for precise contour changes
+        # self.main_window.display.setCursor(Qt.CursorShape.BlankCursor)  # remove cursor for precise contour changes
         # https://stackoverflow.com/questions/53627056/how-to-get-cursor-click-position-in-qgraphicsitem-coordinate-system
         try:
             self.active_point_index = self.points_to_draw.index(point_item)
@@ -1285,7 +1285,7 @@ class Display(QGraphicsView, MetricsMixin):
         if path_index is None:  # Safety check: only add if we actually clicked the path
             return
 
-        self.main_window.setCursor(Qt.CursorShape.BlankCursor)
+        self.main_window.display.setCursor(Qt.CursorShape.BlankCursor)
         self.active_point_index = self.working_spline.update(pos, -1, path_index)
 
         cfg = self.contour_configs.get(self.active_contour_type)
@@ -1364,11 +1364,11 @@ class Display(QGraphicsView, MetricsMixin):
         if event.button() == Qt.MouseButton.LeftButton and self._panning:
             self._panning = False
             self._pan_last_pos = None
-            self.setCursor(Qt.CursorShape.ArrowCursor)
+            self.display.setCursor(Qt.CursorShape.ArrowCursor)
             return
         if event.button() == Qt.MouseButton.LeftButton:
             if self.active_point_index is not None and self.working_spline:
-                self.main_window.setCursor(Qt.CursorShape.ArrowCursor)
+                self.main_window.display.setCursor(Qt.CursorShape.ArrowCursor)
                 self.active_point.reset_color()
 
                 geom = self.working_spline.geometry

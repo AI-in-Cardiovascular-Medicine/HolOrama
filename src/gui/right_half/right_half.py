@@ -155,6 +155,9 @@ def tag_frames_by_distance(main_window):
     mm_per_frame = speed / frame_rate
     step_frames = step_mm / mm_per_frame
     
+    for idx in range(lower_limit, upper_limit):
+        main_window.data[idx].phase = '-'
+
     i = 0
     while True:
         idx = lower_limit + round(i * step_frames)
