@@ -638,14 +638,27 @@ class Display(QGraphicsView, MetricsMixin):
                     self.graphics_scene.removeItem(point)
             self.points_to_draw = []
 
+        was_drawing = self.drawing_mode
         self.drawing_mode = False
+        self.reference_mode = False
+        self.angle_mode = False
         self.append_contour_mode = False
         self._contour_close_committed = False
         self.active_point = None
+        if was_drawing and (
+            self.active_contour_type == ContourType.MEASUREMENT_1
+            or self.active_contour_type == ContourType.MEASUREMENT_2
+            or self.active_contour_type == ContourType.REFERENCE
+            or self.active_contour_type == ContourType.WIRE
+        ):
+            self.active_contour_type = ContourType.LUMEN
 
     def _interrupt_drawing_mode(self):
         """Handles safe exit of drawing mode, returning to initial state."""
         self.cleanup_temporary_drawing()
+        if self.measure_index is not None:
+            self.pending_measure_points[self.measure_index] = None
+            self.measure_index = None
         self.main_window.display.setCursor(Qt.CursorShape.ArrowCursor)
         self.display_image(update_contours=True)
 
@@ -922,12 +935,26 @@ class Display(QGraphicsView, MetricsMixin):
             p1 = QPointF(x1 * self.scaling_factor, y1 * self.scaling_factor)
             p2 = QPointF(x2 * self.scaling_factor, y2 * self.scaling_factor)
             self.graphics_scene.addItem(
-                Point((p1.x(), p1.y()), self.point_thickness, self.point_radius, 0, self.main_window.left_half.measure_colors[index])
+                Point(
+                    (p1.x(), p1.y()),
+                    self.point_thickness,
+                    self.point_radius,
+                    0,
+                    self.main_window.left_half.measure_colors[index],
+                )
             )
             self.graphics_scene.addItem(
-                Point((p2.x(), p2.y()), self.point_thickness, self.point_radius, 1, self.main_window.left_half.measure_colors[index])
+                Point(
+                    (p2.x(), p2.y()),
+                    self.point_thickness,
+                    self.point_radius,
+                    1,
+                    self.main_window.left_half.measure_colors[index],
+                )
             )
-            self.graphics_scene.addLine(QLineF(p1, p2), get_qt_pen(self.main_window.left_half.measure_colors[index], self.point_thickness))
+            self.graphics_scene.addLine(
+                QLineF(p1, p2), get_qt_pen(self.main_window.left_half.measure_colors[index], self.point_thickness)
+            )
             length = measure.length
             if length is None:
                 length = round(
@@ -976,7 +1003,9 @@ class Display(QGraphicsView, MetricsMixin):
             attr = f'measurement_{index + 1}'
             setattr(self.main_window.data[self.frame], attr, Measure(points=(p1_orig, (orig_x, orig_y)), length=length))
             self.pending_measure_points[index] = None
-            self.graphics_scene.addLine(line, get_qt_pen(self.main_window.left_half.measure_colors[index], self.point_thickness))
+            self.graphics_scene.addLine(
+                line, get_qt_pen(self.main_window.left_half.measure_colors[index], self.point_thickness)
+            )
             length_text = QGraphicsTextItem(f'{length} mm')
             length_text.setPos(point.x(), point.y())
             self.graphics_scene.addItem(length_text)
@@ -1364,7 +1393,7 @@ class Display(QGraphicsView, MetricsMixin):
         if event.button() == Qt.MouseButton.LeftButton and self._panning:
             self._panning = False
             self._pan_last_pos = None
-            self.display.setCursor(Qt.CursorShape.ArrowCursor)
+            self.setCursor(Qt.CursorShape.ArrowCursor)
             return
         if event.button() == Qt.MouseButton.LeftButton:
             if self.active_point_index is not None and self.working_spline:
