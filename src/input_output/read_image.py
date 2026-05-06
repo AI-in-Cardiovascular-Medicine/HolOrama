@@ -1,4 +1,5 @@
 import os
+import traceback
 
 import pydicom as dcm
 import SimpleITK as sitk
@@ -8,7 +9,7 @@ from loguru import logger
 from PyQt6.QtWidgets import QFileDialog
 
 from gui.popup_windows.message_boxes import ErrorMessage
-from input_output.metadata import parse_dicom
+from input_output.metadata import parse_dicom, parse_nifti, parse_nifti_oct
 from input_output.contours_io import read_contours, FrameData
 
 
@@ -41,10 +42,24 @@ def read_image(main_window):
             try:  # NIfTi
                 img = sitk.ReadImage(file_name)
                 main_window.images = sitk.GetArrayFromImage(img)
-                # main_window.file_name = main_window.file_name.split('_')[0]  # remove _img.nii suffix
                 main_window.file_name = os.path.basename(file_name).split('_')[0]
-                # TODO: Do the same as parse_dicom here
-            except:
+
+                if main_window.images.ndim == 4:  # RGB/OCT
+                    # Scalar 4D NIfTI: SimpleITK reverses axis order so channels land at dim 0 → (3, F, H, W).
+                    # Vector NIfTI (GetNumberOfComponentsPerPixel > 1): channels already last → (F, H, W, 3).
+                    # convert_oct_to_gray expects channels-last, so transpose the scalar case.
+                    if img.GetNumberOfComponentsPerPixel() == 1:
+                        main_window.images = main_window.images.transpose(1, 2, 3, 0)
+                    # Store uint8 RGB for colour display (mirrors dicom.pixel_array for DICOM OCT).
+                    main_window.images_rgb = main_window.images.clip(0, 255).astype(np.uint8)
+                    main_window.images_display = 1
+                    main_window.images = convert_oct_to_gray(main_window.images)
+                    parse_nifti_oct(main_window, img)
+                else:
+                    parse_nifti(main_window, img)
+
+            except Exception:
+                traceback.print_exc()
                 ErrorMessage(
                     main_window, 'File is not a valid IVUS file and could not be loaded (DICOM or NIfTi supported)'
                 )

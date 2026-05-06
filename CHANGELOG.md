@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.3.1] - 2026-05-06
+
+### Added
+- NIfTI image support: `parse_nifti` and `parse_nifti_oct` functions in `metadata.py` mirror the existing DICOM parsers, extracting resolution, pullback speed, pullback length, frame rate, and image dimensions from the NIfTI header via SimpleITK
+- NIfTI OCT colour display: RGB frames stored as `images_rgb` so the display renderer and longitudinal view serve colour images, matching the DICOM OCT behaviour
+
+### Fixed
+- NIfTI OCT axis ordering: SimpleITK returns scalar 4D NIfTI with channels at dim 0 `(3, F, H, W)`; transposed to channels-last `(F, H, W, 3)` before grayscale conversion
+- Bare `except:` in NIfTI loading path replaced with `except Exception` and `traceback.print_exc()` so errors are no longer silently swallowed
+- `display.py` and `longitudinal_view.py` now check for `images_rgb` before falling back to `dicom.pixel_array`, preventing an `AttributeError` crash when loading NIfTI OCT files
+- `reset_state` clears `images_rgb` to prevent stale NIfTI RGB data bleeding into subsequent DICOM loads
+
 ## [1.3.0] - 2026-03-17
 Beta version for AIVUS-OCT
 
@@ -83,6 +95,7 @@ Now runs on PyQt6
 
 ---
 
+[1.3.1]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.1.1...v1.2.0

@@ -160,6 +160,152 @@ def parse_ivus(main_window):
     main_window.metadata_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
 
+def _nifti_spacing_and_descrip(img):
+    """Returns (spacing, z_spacing, descrip) from a SimpleITK NIfTI image."""
+    spacing = img.GetSpacing()
+    z_spacing = spacing[2] if len(spacing) >= 3 else 0.0
+    descrip = img.GetMetaData('descrip').strip() if img.HasMetaDataKey('descrip') else ''
+    return spacing, z_spacing, descrip
+
+
+def _nifti_resolution(main_window, spacing):
+    """Returns in-plane pixel spacing in mm, prompting if unavailable."""
+    if len(spacing) >= 1 and spacing[0] > 0:
+        return spacing[0]
+    val, _ = QInputDialog.getText(
+        main_window,
+        'Pixel Spacing',
+        'No pixel spacing found in NIfTI header, enter pixel spacing (mm):',
+        QLineEdit.EchoMode.Normal,
+        '',
+    )
+    return float(val)
+
+
+def _nifti_pullback_speed(main_window, default='0.5'):
+    """Prompts for pullback speed — no standard NIfTI field exists."""
+    val, _ = QInputDialog.getText(
+        main_window,
+        'Pullback Speed',
+        'Enter pullback speed (mm/s):',
+        QLineEdit.EchoMode.Normal,
+        default,
+    )
+    return float(val)
+
+
+def _nifti_frame_rate(img):
+    """Derives frame rate from NIfTI pixdim[4] (temporal step in seconds), or None."""
+    if img.HasMetaDataKey('pixdim[4]'):
+        dt = float(img.GetMetaData('pixdim[4]'))
+        if dt > 0:
+            return round(1.0 / dt, 2)
+    return None
+
+
+def _apply_metadata_table(main_window, items):
+    """Populates the metadata QTableWidget from a list of (label, value) pairs."""
+    main_window.metadata_table.setRowCount(len(items))
+    main_window.metadata_table.setColumnCount(2)
+    for i, (label, value) in enumerate(items):
+        main_window.metadata_table.setItem(i, 0, QTableWidgetItem(label))
+        main_window.metadata_table.setItem(i, 1, QTableWidgetItem(str(value)))
+    main_window.metadata_table.horizontalHeader().hide()
+    main_window.metadata_table.verticalHeader().hide()
+    main_window.metadata_table.resizeColumnsToContents()
+    main_window.metadata_table.resizeRowsToContents()
+    main_window.metadata_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    main_window.metadata_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+
+def parse_nifti(main_window, img):
+    """Parses NIfTI metadata for IVUS — mirrors parse_ivus for DICOM."""
+    spacing, z_spacing, descrip = _nifti_spacing_and_descrip(img)
+    num_frames = main_window.images.shape[0]
+    rows = main_window.images.shape[1]
+    cols = main_window.images.shape[2]
+
+    main_window.metadata['modality'] = 'IVUS'
+    main_window.metadata['dimension'] = rows
+
+    resolution = _nifti_resolution(main_window, spacing)
+    main_window.metadata['resolution'] = resolution
+
+    pullback_rate = _nifti_pullback_speed(main_window, default='0.5')
+    main_window.metadata['pullback_speed'] = pullback_rate
+
+    if z_spacing > 0:
+        pullback_length = np.arange(1, num_frames + 1) * z_spacing
+    else:
+        pullback_length = np.zeros((num_frames,))
+    main_window.metadata['pullback_length'] = pullback_length
+
+    main_window.metadata['frame_rate'] = _nifti_frame_rate(img)
+    main_window.metadata['pullback_start_frame'] = 0
+
+    total_pullback = pullback_length[-1] if z_spacing > 0 else 0.0
+    _apply_metadata_table(main_window, [
+        ('Modality', 'IVUS (NIfTI)'),
+        ('Resolution (mm)', f'{resolution:.4f}'),
+        ('Dimensions', f'{rows}x{cols}'),
+        ('Pullback Speed', f'{pullback_rate} mm/s'),
+        ('Pullback Length', f'{total_pullback:.1f} mm'),
+        ('Frame Rate', f"{main_window.metadata['frame_rate']} fps" if main_window.metadata['frame_rate'] else 'Unknown'),
+        ('Description', descrip or 'N/A'),
+    ])
+
+
+def parse_nifti_oct(main_window, img):
+    """Parses NIfTI metadata for IVUS+OCT — mirrors parse_ivus_oct for DICOM."""
+    spacing, z_spacing, descrip = _nifti_spacing_and_descrip(img)
+    num_frames = main_window.images.shape[0]
+    rows = main_window.images.shape[1]
+    cols = main_window.images.shape[2]
+
+    main_window.metadata['modality'] = 'OCT'
+    main_window.metadata['dimension'] = rows
+
+    resolution = _nifti_resolution(main_window, spacing)
+    main_window.metadata['resolution'] = resolution
+
+    pullback_rate = _nifti_pullback_speed(main_window, default='36.0')
+    main_window.metadata['pullback_speed'] = pullback_rate
+
+    # Pullback length as scalar total distance
+    if z_spacing > 0:
+        pullback_length = z_spacing * num_frames
+    else:
+        frame_rate_tmp = _nifti_frame_rate(img)
+        if frame_rate_tmp and frame_rate_tmp > 0:
+            duration_s = num_frames / frame_rate_tmp
+        else:
+            val, _ = QInputDialog.getText(
+                main_window, 'Frame Time', 'No frame time found, enter frame time (ms):', QLineEdit.EchoMode.Normal, '5.56'
+            )
+            duration_s = num_frames * float(val) / 1000
+        pullback_length = pullback_rate * duration_s
+    main_window.metadata['pullback_length'] = pullback_length
+
+    # Frame rate — derive from z_spacing and pullback_rate, fallback to pixdim[4]
+    if z_spacing > 0 and pullback_rate > 0:
+        frame_rate = round(pullback_rate / z_spacing, 2)
+    else:
+        frame_rate = _nifti_frame_rate(img)
+    main_window.metadata['frame_rate'] = frame_rate
+
+    main_window.metadata['pullback_start_frame'] = 0
+
+    _apply_metadata_table(main_window, [
+        ('Modality', 'OCT (NIfTI)'),
+        ('Resolution (mm)', f'{resolution:.4f}'),
+        ('Dimensions', f'{rows}x{cols}'),
+        ('Pullback Speed', f'{pullback_rate} mm/s'),
+        ('Pullback Length', f'{pullback_length:.1f} mm'),
+        ('Frame Rate', f'{frame_rate} fps' if frame_rate else 'Unknown'),
+        ('Description', descrip or 'N/A'),
+    ])
+
+
 def parse_ivus_oct(main_window):
     """Parses DICOM metadata for IVUS+OCT modality"""
     ds = main_window.dicom

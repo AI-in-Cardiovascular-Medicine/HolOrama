@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aivus"
-version = "1.2.2"
+version = "1.3.1"
 description = "AIVUS: AIVUS-CAA (coronary artery anomalies) AIVUS-OCT (optical coherence tomography)"
 authors = ["yungselm", "cardionaut", "Pooya Mohammadi Kazaj"]
 
@@ -42,6 +42,8 @@ pytest-mock = "^3.10.0"
 pytest-cov = "^4.0.0"
 black = "^22.6.0"
 isort = "^5.10.1"
+mypy = "*"
+ruff = "*"
 
 [tool.autohooks]
 mode = "poetry"

@@ -163,6 +163,7 @@ class Master(QMainWindow):
         self.metadata = {}
         self.images = None
         self.images_display = None
+        self.images_rgb = None
         self.gated_frames_oct = []
         self.tagged_frame_button.setChecked(False)
         self.oct_quality_buttons['Very Good'].setChecked(True)

@@ -555,7 +555,10 @@ class Display(QGraphicsView, MetricsMixin):
 
     def _prepare_display_data(self):
         if hasattr(self.main_window, "images_display") and self.main_window.images_display is not None:
-            img = self.main_window.dicom.pixel_array[self.frame].copy()
+            if hasattr(self.main_window, 'images_rgb'):
+                img = self.main_window.images_rgb[self.frame].copy()
+            else:
+                img = self.main_window.dicom.pixel_array[self.frame].copy()
             h, w, ch = img.shape
             return img, h, w, ch * w, QImage.Format.Format_RGB888
 
