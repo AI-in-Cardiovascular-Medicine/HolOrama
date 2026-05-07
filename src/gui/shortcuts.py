@@ -14,7 +14,7 @@ from gui.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 from gui.popup_windows.video_player import VideoPlayer
 from gui.utils.contours_gui import new_contour, new_contour_append, new_measure, new_angle, set_tool
 from input_output.metadata import MetadataWindow
-from input_output.read_image import read_image
+from input_output.read_image import read_image, read_nifti_mask
 from input_output.contours_io import write_contours, save_gated_images
 from segmentation.save_as_nifti import save_as_nifti
 from segmentation.segment import segment
@@ -56,6 +56,7 @@ def init_menu(main_window):
     file_menu = main_window.menu_bar.addMenu('File')
     open_action = file_menu.addAction('Open File', partial(read_image, main_window))
     open_action.setShortcut('Ctrl+O')
+    mask_action = file_menu.addAction('Open Mask', partial(read_nifti_mask, main_window))
     file_menu.addSeparator()
     save_contours = file_menu.addAction('Save Contours', partial(write_contours, main_window))
     save_contours.setShortcut('Ctrl+S')

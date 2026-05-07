@@ -104,14 +104,15 @@ def convert_nifti_to_dicom(main_window, out_path, file_name, frames_to_save):
 # Label constants
 # ---------------------------------------------------------------------------
 
-LABEL_BACKGROUND = 0  # catheter zone, wire shadow, outside 4.75 mm
+LABEL_CATHETER = 0   # catheter zone (< 0.45 mm from centre) and outside 4.75 mm
 LABEL_LUMEN = 1
-LABEL_EEM_WALL = 2  # between lumen and EEM
+LABEL_EEM_WALL = 2   # between lumen and EEM
 LABEL_CALCIUM = 3
 LABEL_LIPID = 4
 LABEL_MACROPHAGE = 5
 LABEL_ADVENTITIA = 6  # outside EEM, within 4.75 mm
-LABEL_BRANCH = 7  # side-branch lumen
+LABEL_BRANCH = 7     # side-branch lumen
+LABEL_WIRE_SHADOW = 9  # guide-wire angular shadow
 
 _CATHETER_MM = 0.45
 _MAX_VESSEL_MM = 4.75
@@ -255,8 +256,7 @@ def contours_to_mask(images, contoured_frames, data, metadata):
 
     Labels
     ------
-    0  background  - catheter zone (< 0.45 mm from centre),
-                     guide-wire shadow, outside 4.75 mm
+    0  catheter    - catheter zone (< 0.45 mm) and outside 4.75 mm
     1  lumen
     2  EEM wall    - inside EEM contour, outside lumen
     3  calcium     - within EEM (open or closed spline)
@@ -264,6 +264,7 @@ def contours_to_mask(images, contoured_frames, data, metadata):
     5  macrophage  - within EEM (open or closed spline)
     6  adventitia  - outside EEM, within 4.75 mm
     7  branch      - side-branch lumen (closed spline, not EEM-clipped)
+    9  wire shadow - guide-wire angular shadow
 
     Parameters
     ----------
@@ -332,9 +333,9 @@ def contours_to_mask(images, contoured_frames, data, metadata):
             branch_mask = _contour_obj_to_mask(fd.branch, cx, cy, image_shape)
             fm[branch_mask] = LABEL_BRANCH
 
-        # Final exclusion: catheter zone, wire shadow, outside 4.75 mm → 0
         wire_shadow = _wire_shadow_mask(fd.wire, image_shape, center_y, center_x)
-        fm[catheter_zone | wire_shadow | outside_vessel] = LABEL_BACKGROUND
+        fm[outside_vessel | catheter_zone] = LABEL_CATHETER
+        fm[wire_shadow] = LABEL_WIRE_SHADOW
 
         mask[i] = fm
 

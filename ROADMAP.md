@@ -28,3 +28,9 @@
 - [] Type safety in whole program
 - [] Try/Except in whole program, wherever applicable
 - [] Config callable from GUI
+
+# Segmentation tool
+- [] Ensure that only tagged frames can be exported
+- [] Adjust output nifti to work with several contour_types
+- [] Aim for a first test data set including lumen, side branch, catheter for around 300 frames
+- [] Image quality should be tagged

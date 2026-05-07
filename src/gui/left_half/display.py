@@ -555,7 +555,7 @@ class Display(QGraphicsView, MetricsMixin):
 
     def _prepare_display_data(self):
         if hasattr(self.main_window, "images_display") and self.main_window.images_display is not None:
-            if hasattr(self.main_window, 'images_rgb'):
+            if hasattr(self.main_window, 'images_rgb') and self.main_window.images_rgb is not None:
                 img = self.main_window.images_rgb[self.frame].copy()
             else:
                 img = self.main_window.dicom.pixel_array[self.frame].copy()

@@ -14,7 +14,7 @@ display:
   lview_display_stretch: 1
   windowing_sensitivity: 0.03  # 1 for default, below 1 for slower, above 1 for faster
   zoom_sensitivity: 0.005  # fraction of zoom per pixel dragged; below 0.005 for slower, above for faster
-  n_interactive_points: 10
+  n_interactive_points: 20
   n_points_contour: 200  # ideally choose a multiple of 100 (for calculation of closest points)
   contour_thickness: 2
   point_thickness: 1

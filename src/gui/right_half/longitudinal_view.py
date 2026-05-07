@@ -39,7 +39,7 @@ class LongitudinalView(QGraphicsView):
         self.image_height = images.shape[1]
 
         if hasattr(self.main_window, 'images_display') and self.main_window.images_display is not None:
-            if hasattr(self.main_window, 'images_rgb'):
+            if hasattr(self.main_window, 'images_rgb') and self.main_window.images_rgb is not None:
                 slice_data = self.main_window.images_rgb[:, :, self.image_height // 2, :]
             else:
                 slice_data = self.main_window.dicom.pixel_array[:, :, self.image_height // 2, :]
