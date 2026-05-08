@@ -144,7 +144,7 @@ class MetricsMixin:
 
                 if has_eem_coords:
                     polygon_eem = Polygon([(float(x), float(y)) for x, y in zip(eem_x, eem_y)])
-                    eem_area, _, _, _ = compute_polygon_metrics(self.main_window, polygon_eem, frame)
+                    eem_area = polygon_eem.area * self.main_window.metadata['resolution'] ** 2
         except Exception:
             logger.exception("Failed while computing EEM area")
 

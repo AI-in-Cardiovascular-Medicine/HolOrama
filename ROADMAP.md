@@ -37,3 +37,6 @@
 - [x] Number of interactive points should adjust by circumference of the contour -> make half for smaller contours
 - [] Find a solution to have several section with start end point
 - [] Make mask live update, allow brush mode in mask mode
+
+# Bugs
+- [] When EEM is present together with lumen the wrong metric is projected to longitudinal view (addition?)

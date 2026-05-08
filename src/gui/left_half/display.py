@@ -1437,6 +1437,10 @@ class Display(QGraphicsView, MetricsMixin):
 
                 self.display_image(update_contours=True)
                 self.active_point_index = None
+                try:
+                    self.main_window.longitudinal_view.plot_areas()
+                except Exception as e:
+                    logger.debug(f"Could not update longitudinal view for frame {self.frame}: {e}")
         super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event):
