@@ -46,11 +46,11 @@ def save_as_nifti(main_window, mode=None):
         file_name = os.path.splitext(os.path.basename(main_window.file_name))[0]  # remove file extension
         os.makedirs(out_path, exist_ok=True)
         mask = contours_to_mask(
-            main_window.images[frames_to_save], frames_to_save, main_window.data, main_window.metadata
+            main_window.images[frames_to_save], frames_to_save, main_window.data
         )
 
         progress = QProgressDialog()
-        progress.setWindowFlags(Qt.Dialog)
+        progress.setWindowFlags(Qt.WindowType.Dialog)
         progress.setModal(True)
         progress.setMinimum(0)
         progress_max = len(frames_to_save) * main_window.config.save.save_2d + main_window.config.save.save_3d
@@ -104,18 +104,14 @@ def convert_nifti_to_dicom(main_window, out_path, file_name, frames_to_save):
 # Label constants
 # ---------------------------------------------------------------------------
 
-LABEL_CATHETER = 0   # catheter zone (< 0.45 mm from centre) and outside 4.75 mm
 LABEL_LUMEN = 1
 LABEL_EEM_WALL = 2   # between lumen and EEM
 LABEL_CALCIUM = 3
 LABEL_LIPID = 4
 LABEL_MACROPHAGE = 5
-LABEL_ADVENTITIA = 6  # outside EEM, within 4.75 mm
 LABEL_BRANCH = 7     # side-branch lumen
 LABEL_WIRE_SHADOW = 9  # guide-wire angular shadow
 
-_CATHETER_MM = 0.45
-_MAX_VESSEL_MM = 4.75
 _N_INTERP = 500  # dense interpolation points for smooth polygon boundaries
 
 
@@ -250,19 +246,18 @@ def _wire_shadow_mask(wire, image_shape, center_y, center_x):
 # ---------------------------------------------------------------------------
 
 
-def contours_to_mask(images, contoured_frames, data, metadata):
+def contours_to_mask(images, contoured_frames, data):
     """
     Convert IVUS contours to a multi-label numpy mask.
 
     Labels
     ------
-    0  catheter    - catheter zone (< 0.45 mm) and outside 4.75 mm
+    0  background  - everything not covered by another label
     1  lumen
     2  EEM wall    - inside EEM contour, outside lumen
     3  calcium     - within EEM (open or closed spline)
     4  lipid       - within EEM (open or closed spline)
     5  macrophage  - within EEM (open or closed spline)
-    6  adventitia  - outside EEM, within 4.75 mm
     7  branch      - side-branch lumen (closed spline, not EEM-clipped)
     9  wire shadow - guide-wire angular shadow
 
@@ -273,23 +268,12 @@ def contours_to_mask(images, contoured_frames, data, metadata):
         Frame indices in the original timeline; mask[i] is built from
         data[contoured_frames[i]].
     data : Dict[int, FrameData]
-    metadata : dict
-        Must contain 'resolution' (mm / original-image-pixel).
     """
     image_shape = images.shape[1:3]
     H, W = image_shape
     mask = np.zeros((len(contoured_frames), H, W), dtype=np.uint8)
 
-    resolution = metadata['resolution']  # mm / pixel
-    catheter_r = _CATHETER_MM / resolution  # pixels
-    outer_r = _MAX_VESSEL_MM / resolution  # pixels
-
     center_y, center_x = H / 2.0, W / 2.0
-
-    yy, xx = np.mgrid[0:H, 0:W]
-    dist_sq = (xx.astype(float) - center_x) ** 2 + (yy.astype(float) - center_y) ** 2
-    catheter_zone = dist_sq <= catheter_r**2
-    outside_vessel = dist_sq > outer_r**2
 
     for i, frame in enumerate(contoured_frames):
         fd = data.get(frame)
@@ -306,10 +290,13 @@ def contours_to_mask(images, contoured_frames, data, metadata):
 
         # Layer bottom-up; later layers overwrite earlier ones
         if fd.eem.contours:
-            # Adventitia: inside 4.75 mm, outside EEM
-            fm[~outside_vessel & ~eem_mask] = LABEL_ADVENTITIA
             # EEM wall: inside EEM, outside lumen
             fm[eem_mask & ~lumen_mask] = LABEL_EEM_WALL
+
+        # Branch: needs to be in front of lumen!
+        if fd.branch.contours:
+            branch_mask = _contour_obj_to_mask(fd.branch, cx, cy, image_shape)
+            fm[branch_mask] = LABEL_BRANCH
 
         if fd.lumen.contours:
             fm[lumen_mask] = LABEL_LUMEN
@@ -328,13 +315,7 @@ def contours_to_mask(images, contoured_frames, data, metadata):
             plaque &= ~lumen_mask  # never inside lumen
             fm[plaque] = label
 
-        # Branch: side-branch lumen, not clipped to EEM
-        if fd.branch.contours:
-            branch_mask = _contour_obj_to_mask(fd.branch, cx, cy, image_shape)
-            fm[branch_mask] = LABEL_BRANCH
-
         wire_shadow = _wire_shadow_mask(fd.wire, image_shape, center_y, center_x)
-        fm[outside_vessel | catheter_zone] = LABEL_CATHETER
         fm[wire_shadow] = LABEL_WIRE_SHADOW
 
         mask[i] = fm

@@ -49,7 +49,7 @@ class Predict:
             if self.conserve_memory:
                 if self.main_window is not None:
                     progress = QProgressDialog(self.main_window)
-                    progress.setWindowFlags(Qt.Dialog)
+                    progress.setWindowFlags(Qt.WindowType.Dialog)
                     progress.setModal(True)
                     progress.setMinimum(self.lower_limit)
                     progress.setMaximum(self.upper_limit)
