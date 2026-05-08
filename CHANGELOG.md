@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.3.2] - 2026-05-08
+
+### Added
+- Multi-pair start/end labelling for closed splines: double-clicking a knot point on a finalized closed spline shows a QMenu popup ("Mark as Start", "Mark as End", "Remove Label"), allowing any number of start/end pairs to be assigned on the same contour
+- Per-pair dotted closure arcs: each matched (start, end) pair renders a solid lesion arc and a complementary dotted closure arc with no visual overlap; additional pairs are composited via a boolean point mask so the solid and dotted paths are always strictly non-overlapping
+
+### Changed
+- Open splines now auto-assign start/end coordinates to the first and last knot point on finalization; no user interaction required
+- `Contour.start_coords` / `end_coords` schema changed from a single `(x, y)` tuple per contour index to a `List[Tuple[float, float]]`; old JSON files are transparently migrated on load via `_normalize_coord_entry`
+
+### Fixed
+- Open spline double-click correctly ends the contour at the double-click position (spurious preceding `mousePressEvent` knot intentionally kept in geometry so `full_contour[-1]` snaps to the click location)
+
 ## [1.3.1] - 2026-05-06
 
 ### Added

@@ -1,11 +1,10 @@
 import os
 import time
 import cv2
-import numpy as np
 
 from loguru import logger
 from functools import partial
-from PyQt6.QtGui import QKeySequence, QDesktopServices, QShortcut, QAction
+from PyQt6.QtGui import QKeySequence, QDesktopServices, QShortcut
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt, QUrl
 
@@ -17,7 +16,6 @@ from input_output.metadata import MetadataWindow
 from input_output.read_image import read_image, read_nifti_mask
 from input_output.contours_io import write_contours, save_gated_images
 from segmentation.save_as_nifti import save_as_nifti
-from segmentation.segment import segment
 from report.report import report
 
 
@@ -56,7 +54,7 @@ def init_menu(main_window):
     file_menu = main_window.menu_bar.addMenu('File')
     open_action = file_menu.addAction('Open File', partial(read_image, main_window))
     open_action.setShortcut('Ctrl+O')
-    mask_action = file_menu.addAction('Open Mask', partial(read_nifti_mask, main_window))
+    file_menu.addAction('Open Mask', partial(read_nifti_mask, main_window))
     file_menu.addSeparator()
     save_contours = file_menu.addAction('Save Contours', partial(write_contours, main_window))
     save_contours.setShortcut('Ctrl+S')
@@ -354,11 +352,11 @@ def delete_contour(main_window):
                 c = contour_obj.contours[ci]
                 xlist = list(c[0]) if c and c[0] else []
                 ylist = list(c[1]) if c and len(c) > 1 else []
-                start = contour_obj.start_coords[ci] if len(contour_obj.start_coords) > ci else None
-                end = contour_obj.end_coords[ci] if len(contour_obj.end_coords) > ci else None
+                start = contour_obj.start_coords[ci] if len(contour_obj.start_coords) > ci else []
+                end = contour_obj.end_coords[ci] if len(contour_obj.end_coords) > ci else []
                 closed = contour_obj.closed[ci] if len(contour_obj.closed) > ci else True
             else:
-                xlist, ylist, start, end, closed = [], [], None, None, True
+                xlist, ylist, start, end, closed = [], [], [], [], True
 
             main_window.tmp_contours[key] = (ci, xlist, ylist, start, end, closed)
 
@@ -398,10 +396,8 @@ def undo_delete(main_window):
                 contour_obj = getattr(fd, key, None)
                 if contour_obj is not None:
                     contour_obj.contours.insert(ci, [xlist, ylist])
-                    if start is not None:
-                        contour_obj.start_coords.insert(ci, start)
-                    if end is not None:
-                        contour_obj.end_coords.insert(ci, end)
+                    contour_obj.start_coords.insert(ci, start)
+                    contour_obj.end_coords.insert(ci, end)
                     contour_obj.closed.insert(ci, closed)
                     main_window.display.active_contour_index = ci
 
@@ -450,5 +446,5 @@ def save_video_pullback(main_window):
     for frame in range(fps * duration):
         out.write(image_stack[frame, :, :])
     out.release()
-    SuccessMessage(main_window, f'Saving video')
+    SuccessMessage(main_window, 'Saving video')
     main_window.status_bar.showMessage(main_window.waiting_status)

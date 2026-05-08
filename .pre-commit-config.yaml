@@ -7,7 +7,7 @@ repos:
         language: system
         types: [python]
         require_serial: true
-        args: [--quiet, --target-version, py312]
+        args: [--quiet, --target-version, py311]
 
       - id: python-ruff
         name: Ruff linting

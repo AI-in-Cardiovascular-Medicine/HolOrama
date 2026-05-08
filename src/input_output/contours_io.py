@@ -31,8 +31,11 @@ class Contour:
     contours: List[Tuple[List[float], List[float]]] = field(default_factory=list)
     measurements: Measurements = field(default_factory=Measurements)
     closed: List[bool] = field(default_factory=list)
-    start_coords: List[Tuple[Tuple[float, ...], Tuple[float, ...]]] = field(default_factory=list)
-    end_coords: List[Tuple[Tuple[float, ...], Tuple[float, ...]]] = field(default_factory=list)
+    # Each entry is a list of (x, y) tuples for that contour index.
+    # Open splines: always [(first_x, first_y)] / [(last_x, last_y)] (auto-set).
+    # Closed splines: [] initially, grows as user labels knot points.
+    start_coords: List[List[Tuple[float, float]]] = field(default_factory=list)
+    end_coords: List[List[Tuple[float, float]]] = field(default_factory=list)
 
 
 @dataclass
@@ -63,6 +66,32 @@ class FrameData:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _normalize_coord_entry(item) -> List[Tuple[float, float]]:
+    """Normalize a persisted start/end entry to the new list-of-tuples format.
+
+    Handles three legacy shapes:
+      None                          → []
+      (x, y)  / [x, y]             → [(x, y)]   (old single-point format)
+      [(x, y), ...]                 → [(x, y), ...]  (already new format)
+    """
+    if item is None:
+        return []
+    if isinstance(item, (list, tuple)):
+        if len(item) == 0:
+            return []
+        first = item[0]
+        # Single (x, y) pair stored directly
+        if isinstance(first, (int, float)):
+            return [(float(item[0]), float(item[1]))]
+        # List of points
+        result = []
+        for pt in item:
+            if pt is not None and isinstance(pt, (list, tuple)) and len(pt) >= 2:
+                result.append((float(pt[0]), float(pt[1])))
+        return result
+    return []
 
 
 def _to_serializable(obj):
@@ -122,12 +151,14 @@ def _build_contour(raw: Optional[dict]) -> Contour:
         if x and y and x[0] == x[-1] and y[0] == y[-1]:
             x, y = x[:-1], y[:-1]
         stripped.append([x, y])
+    start_coords = [_normalize_coord_entry(e) for e in raw.get('start_coords', [])]
+    end_coords = [_normalize_coord_entry(e) for e in raw.get('end_coords', [])]
     return Contour(
         contours=stripped,
         measurements=Measurements(**raw.get('measurements', {})),
         closed=raw.get('closed', []),
-        start_coords=raw.get('start_coords', []),
-        end_coords=raw.get('end_coords', []),
+        start_coords=start_coords,
+        end_coords=end_coords,
     )
 
 
