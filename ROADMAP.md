@@ -33,10 +33,10 @@
 - [] Ensure that only tagged frames can be exported
 - [x] Adjust output nifti to work with several contour_types
 - [] Aim for a first test data set including lumen, side branch, catheter for around 300 frames
-- [] Image quality should be tagged
 - [x] Number of interactive points should adjust by circumference of the contour -> make half for smaller contours
-- [] Find a solution to have several section with start end point
-- [] Make mask live update, allow brush mode in mask mode
+- [x] Find a solution to have several sections with start end point
+- [x] Make mask live update, 
+- [] Allow brush mode in mask mode
 
 # Bugs
 - [x] When EEM is present together with lumen the wrong metric is projected to longitudinal view (addition?)
