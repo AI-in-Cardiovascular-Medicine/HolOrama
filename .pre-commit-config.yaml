@@ -1,0 +1,24 @@
+repos:
+  - repo: local
+    hooks:
+      - id: python-black
+        name: Black formatting
+        entry: black
+        language: system
+        types: [python]
+        require_serial: true
+        args: [--quiet, --target-version, py312]
+
+      # - id: python-ruff
+      #   name: Ruff linting
+      #   entry: ruff check
+      #   language: system
+      #   types: [python]
+      #   args: [--fix]
+
+      # - id: python-mypy
+      #   name: Mypy type checking
+      #   entry: mypy src --ignore-missing-imports
+      #   language: system
+      #   types: [python]
+      #   pass_filenames: false
