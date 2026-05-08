@@ -596,7 +596,6 @@ class Display(QGraphicsView, MetricsMixin):
                 self.images[self.frame : self.frame + 1],
                 [self.frame],
                 self.main_window.data,
-                self.main_window.metadata,
             )[
                 0
             ]  # (H, W) uint8
@@ -1435,7 +1434,8 @@ class Display(QGraphicsView, MetricsMixin):
                     else:
                         contour_obj.end_coords.append(end_val)
 
-                self.display_image(update_contours=True)
+                mask_active = getattr(self.main_window, 'mask_mode_box', None) and self.main_window.mask_mode_box.isChecked()
+                self.display_image(update_image=mask_active, update_contours=True)
                 self.active_point_index = None
                 try:
                     self.main_window.longitudinal_view.plot_areas()

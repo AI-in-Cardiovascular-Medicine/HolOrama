@@ -39,4 +39,4 @@
 - [] Make mask live update, allow brush mode in mask mode
 
 # Bugs
-- [] When EEM is present together with lumen the wrong metric is projected to longitudinal view (addition?)
+- [x] When EEM is present together with lumen the wrong metric is projected to longitudinal view (addition?)
