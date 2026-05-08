@@ -31,6 +31,9 @@
 
 # Segmentation tool
 - [] Ensure that only tagged frames can be exported
-- [] Adjust output nifti to work with several contour_types
+- [x] Adjust output nifti to work with several contour_types
 - [] Aim for a first test data set including lumen, side branch, catheter for around 300 frames
 - [] Image quality should be tagged
+- [x] Number of interactive points should adjust by circumference of the contour -> make half for smaller contours
+- [] Find a solution to have several section with start end point
+- [] Make mask live update, allow brush mode in mask mode

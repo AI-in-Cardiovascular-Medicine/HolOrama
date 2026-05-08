@@ -10,6 +10,7 @@ from loguru import logger
 from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsTextItem
 from PyQt6.QtCore import Qt, QLineF, QPointF
 from PyQt6.QtGui import QPixmap, QImage
+from shapely.geometry import Polygon
 
 from gui.utils.geometry import Point, Spline, SplineGeometry, OpenSplineGeometry, OpenSpline, get_qt_pen
 from gui.utils.metrics import MetricsMixin
@@ -115,7 +116,7 @@ class ContourConfig:
     n_interactive_points: int
 
 
-SENSITIVITY = 20  # pixels for closure detection
+SENSITIVITY = 10  # pixels for closure detection
 
 
 class Display(QGraphicsView, MetricsMixin):
@@ -163,7 +164,7 @@ class Display(QGraphicsView, MetricsMixin):
                 point_thickness=self.point_thickness,
                 alpha=self.alpha_contour,
                 n_points_contour=self.n_points_contour,
-                n_interactive_points=self.n_interactive_points,
+                n_interactive_points=self.n_interactive_points if ct in (ContourType.LUMEN, ContourType.EEM) else self.n_interactive_points // 2,
             )
 
         # scene data
@@ -398,7 +399,7 @@ class Display(QGraphicsView, MetricsMixin):
                 spline_geo = SplineGeometry(
                     knot_points_x=x_coords,
                     knot_points_y=y_coords,
-                    n_interpolated_points=self.n_interactive_points,
+                    n_interpolated_points=self.n_interactive_points if contour_type in (ContourType.LUMEN, ContourType.EEM) else self.n_interactive_points // 2,
                     start_coords=None,
                     end_coords=None,
                 )
@@ -825,7 +826,7 @@ class Display(QGraphicsView, MetricsMixin):
                     [self.working_spline.geometry.full_contour[0].tolist()],
                     [self.working_spline.geometry.full_contour[1].tolist()],
                 ),
-                self.n_interactive_points,
+                self.n_interactive_points if self.active_contour_type in (ContourType.LUMEN, ContourType.EEM) else self.n_interactive_points // 2,
             )
             key = self.contour_key(self.active_contour_type)
             x_list = [point / self.scaling_factor for point in downsampled[0]]
@@ -885,7 +886,7 @@ class Display(QGraphicsView, MetricsMixin):
                         [self.working_spline.geometry.full_contour[0].tolist()],
                         [self.working_spline.geometry.full_contour[1].tolist()],
                     ),
-                    self.n_interactive_points,
+                    self.n_interactive_points if key in (ContourType.LUMEN, ContourType.EEM) else self.n_interactive_points // 2,
                 )
                 xs_sparse_origin = [x / self.scaling_factor for x in downsampled[0]]
                 ys_sparse_origin = [y / self.scaling_factor for y in downsampled[1]]
