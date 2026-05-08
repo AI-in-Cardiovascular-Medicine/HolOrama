@@ -9,12 +9,12 @@ repos:
         require_serial: true
         args: [--quiet, --target-version, py312]
 
-      # - id: python-ruff
-      #   name: Ruff linting
-      #   entry: ruff check
-      #   language: system
-      #   types: [python]
-      #   args: [--fix]
+      - id: python-ruff
+        name: Ruff linting
+        entry: ruff check
+        language: system
+        types: [python]
+        args: [--fix]
 
       # - id: python-mypy
       #   name: Mypy type checking
