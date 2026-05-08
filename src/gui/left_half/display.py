@@ -7,10 +7,9 @@ from typing import Tuple, List, Union, Any
 
 import numpy as np
 from loguru import logger
-from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsTextItem
+from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsTextItem, QMenu
 from PyQt6.QtCore import Qt, QLineF, QPointF
 from PyQt6.QtGui import QPixmap, QImage
-from shapely.geometry import Polygon
 
 from gui.utils.geometry import Point, Spline, SplineGeometry, OpenSplineGeometry, OpenSpline, get_qt_pen
 from gui.utils.metrics import MetricsMixin
@@ -164,7 +163,9 @@ class Display(QGraphicsView, MetricsMixin):
                 point_thickness=self.point_thickness,
                 alpha=self.alpha_contour,
                 n_points_contour=self.n_points_contour,
-                n_interactive_points=self.n_interactive_points if ct in (ContourType.LUMEN, ContourType.EEM) else self.n_interactive_points // 2,
+                n_interactive_points=self.n_interactive_points
+                if ct in (ContourType.LUMEN, ContourType.EEM)
+                else self.n_interactive_points // 2,
             )
 
         # scene data
@@ -201,7 +202,7 @@ class Display(QGraphicsView, MetricsMixin):
         self._contour_close_committed: bool = False
         self.mask_mode: bool = False
         self.active_point: Point = None
-        self.active_end_coords_flag = True  # Flag to switch, which point double click sets
+        self._active_start_end_idx: int | None = None  # index in start/end list of the dragged labeled point
 
         #####################################################################################################
         # legacy to be refactored
@@ -264,13 +265,13 @@ class Display(QGraphicsView, MetricsMixin):
         """
         Draw contour_data for the specified contour_type.
         - If set_current is True, this spline becomes self.working_spline (editing target).
-        - If contour_type == ContourType.LUMEN also set self.lumen_spline for metrics.
         """
         if not contour_data or not contour_data[0] or not contour_data[1]:
             return
 
-        lumen_x = [point * self.scaling_factor for point in contour_data[0]]
-        lumen_y = [point * self.scaling_factor for point in contour_data[1]]
+        sf = self.scaling_factor
+        lumen_x = [point * sf for point in contour_data[0]]
+        lumen_y = [point * sf for point in contour_data[1]]
 
         ct = contour_type
         cfg = self.contour_configs.get(ct, None)
@@ -281,39 +282,39 @@ class Display(QGraphicsView, MetricsMixin):
         key = self.contour_key(ct)
         fd = self.main_window.data.get(self.frame)
         contour_obj = getattr(fd, key, None) if fd else None
-        raw_start = (
+
+        # Read start/end as lists-of-tuples (new schema).
+        raw_starts = (
             contour_obj.start_coords[contour_index]
             if (contour_obj and len(contour_obj.start_coords) > contour_index)
-            else None
+            else []
         )
-        raw_end = (
+        raw_ends = (
             contour_obj.end_coords[contour_index]
             if (contour_obj and len(contour_obj.end_coords) > contour_index)
-            else None
+            else []
         )
-
-        start_coords = (raw_start[0] * self.scaling_factor, raw_start[1] * self.scaling_factor) if raw_start else None
-        end_coords = (raw_end[0] * self.scaling_factor, raw_end[1] * self.scaling_factor) if raw_end else None
-
-        if start_coords is None and lumen_x:
-            start_coords = (lumen_x[0], lumen_y[0])
 
         is_closed = (
             contour_obj.closed[contour_index] if (contour_obj and len(contour_obj.closed) > contour_index) else True
         )
 
         if is_closed:
-            geometry = SplineGeometry(
-                lumen_x,
-                lumen_y,
-                self.n_points_contour,
-                start_coords,
-                end_coords,
-            )
-            geometry._ensure_start_end_coords()
-            geometry.interpolate()
+            # Closed spline: start/end are user-labelled lists; geometry needs none.
+            start_coords_list = [(x * sf, y * sf) for x, y in raw_starts]
+            end_coords_list = [(x * sf, y * sf) for x, y in raw_ends]
+
+            geometry = SplineGeometry(lumen_x, lumen_y, self.n_points_contour, None, None)
             spline_cls = Spline
         else:
+            # Open spline: single auto start (first knot) / end (last knot).
+            start_coords = (
+                (raw_starts[0][0] * sf, raw_starts[0][1] * sf)
+                if raw_starts
+                else ((lumen_x[0], lumen_y[0]) if lumen_x else None)
+            )
+            end_coords = (raw_ends[0][0] * sf, raw_ends[0][1] * sf) if raw_ends else None
+
             geometry = OpenSplineGeometry(
                 knot_points_x=lumen_x,
                 knot_points_y=lumen_y,
@@ -332,12 +333,26 @@ class Display(QGraphicsView, MetricsMixin):
                 curr_y = geometry.knot_points_y[i]
                 knot_color = color
                 brush = False
-                if start_coords and math.hypot(curr_x - start_coords[0], curr_y - start_coords[1]) < SENSITIVITY:
-                    knot_color = self.start_color
-                    brush = True
-                if end_coords and math.hypot(curr_x - end_coords[0], curr_y - end_coords[1]) < SENSITIVITY:
-                    knot_color = self.end_color
-                    brush = True
+                if is_closed:
+                    for sc in start_coords_list:
+                        if math.hypot(curr_x - sc[0], curr_y - sc[1]) < SENSITIVITY:
+                            knot_color = self.start_color
+                            brush = True
+                            break
+                    if not brush:
+                        for ec in end_coords_list:
+                            if math.hypot(curr_x - ec[0], curr_y - ec[1]) < SENSITIVITY:
+                                knot_color = self.end_color
+                                brush = True
+                                break
+                else:
+                    if start_coords and math.hypot(curr_x - start_coords[0], curr_y - start_coords[1]) < SENSITIVITY:
+                        knot_color = self.start_color
+                        brush = True
+                    if end_coords and math.hypot(curr_x - end_coords[0], curr_y - end_coords[1]) < SENSITIVITY:
+                        knot_color = self.end_color
+                        brush = True
+
                 knot_point = Point(
                     (curr_x, curr_y),
                     self.point_thickness,
@@ -352,6 +367,14 @@ class Display(QGraphicsView, MetricsMixin):
             for p in knot_points:
                 self.graphics_scene.addItem(p)
             spline = spline_cls(geometry, color=color, line_thickness=thickness, transparency=alpha)
+
+            # Attach paired start/end coords to closed splines for dotted arc rendering.
+            if is_closed:
+                n_pairs = min(len(start_coords_list), len(end_coords_list))
+                spline.coord_pairs = list(zip(start_coords_list[:n_pairs], end_coords_list[:n_pairs]))
+                if spline.coord_pairs:
+                    spline._rebuild_path()
+
             self.graphics_scene.addItem(spline)
 
             key_str = self.contour_key(ct)
@@ -399,7 +422,9 @@ class Display(QGraphicsView, MetricsMixin):
                 spline_geo = SplineGeometry(
                     knot_points_x=x_coords,
                     knot_points_y=y_coords,
-                    n_interpolated_points=self.n_interactive_points if contour_type in (ContourType.LUMEN, ContourType.EEM) else self.n_interactive_points // 2,
+                    n_interpolated_points=self.n_interactive_points
+                    if contour_type in (ContourType.LUMEN, ContourType.EEM)
+                    else self.n_interactive_points // 2,
                     start_coords=None,
                     end_coords=None,
                 )
@@ -711,14 +736,14 @@ class Display(QGraphicsView, MetricsMixin):
         self.working_spline = None
         self.points_to_draw = []
         self.active_point = None
-        self.active_end_coords_flag = True
+        self._active_start_end_idx = None
         self.main_window.display.setCursor(Qt.CursorShape.CrossCursor)
 
         fd = self.main_window.data[self.frame]
         contour_obj = getattr(fd, key)
         if not append:
             contour_obj.contours = []
-            contour_obj.start_coords = []
+            contour_obj.start_coords = []  # will be populated in stop_contour
             contour_obj.end_coords = []
             contour_obj.closed = []
         self.display_image(update_contours=True)
@@ -825,7 +850,9 @@ class Display(QGraphicsView, MetricsMixin):
                     [self.working_spline.geometry.full_contour[0].tolist()],
                     [self.working_spline.geometry.full_contour[1].tolist()],
                 ),
-                self.n_interactive_points if self.active_contour_type in (ContourType.LUMEN, ContourType.EEM) else self.n_interactive_points // 2,
+                self.n_interactive_points
+                if self.active_contour_type in (ContourType.LUMEN, ContourType.EEM)
+                else self.n_interactive_points // 2,
             )
             key = self.contour_key(self.active_contour_type)
             x_list = [point / self.scaling_factor for point in downsampled[0]]
@@ -834,10 +861,14 @@ class Display(QGraphicsView, MetricsMixin):
             if self.append_contour_mode:
                 contour_obj.contours.append([x_list, y_list])
                 contour_obj.closed.append(True)
+                contour_obj.start_coords.append([])
+                contour_obj.end_coords.append([])
                 self._contour_close_committed = True
             else:
                 contour_obj.contours = [[x_list, y_list]]
                 contour_obj.closed = [True]
+                contour_obj.start_coords = [[]]
+                contour_obj.end_coords = [[]]
 
         self.stop_contour()
 
@@ -845,9 +876,12 @@ class Display(QGraphicsView, MetricsMixin):
         """Finish drawing an open spline on double-click and save it as open (closed=False).
 
         Qt fires a mousePressEvent just before mouseDoubleClickEvent, so one extra point
-        is added at the double-click position. We discard that last point here.
+        is added at the double-click position. We discard that last *visual* Point here
+        but intentionally leave the knot in the geometry: stop_contour snaps
+        xs_sparse_origin[-1] to full_contour[-1], which is that spurious knot — i.e.
+        exactly the double-click position. Removing it from the geometry would shift
+        the saved end one knot earlier.
         """
-        # Remove the spurious last point added by the preceding mousePressEvent
         if self.points_to_draw:
             last_point = self.points_to_draw.pop()
             if last_point.scene() is not None:
@@ -885,7 +919,9 @@ class Display(QGraphicsView, MetricsMixin):
                         [self.working_spline.geometry.full_contour[0].tolist()],
                         [self.working_spline.geometry.full_contour[1].tolist()],
                     ),
-                    self.n_interactive_points if key in (ContourType.LUMEN, ContourType.EEM) else self.n_interactive_points // 2,
+                    self.n_interactive_points
+                    if key in (ContourType.LUMEN, ContourType.EEM)
+                    else self.n_interactive_points // 2,
                 )
                 xs_sparse_origin = [x / self.scaling_factor for x in downsampled[0]]
                 ys_sparse_origin = [y / self.scaling_factor for y in downsampled[1]]
@@ -894,26 +930,23 @@ class Display(QGraphicsView, MetricsMixin):
                     xs_sparse_origin[-1] = self.working_spline.geometry.full_contour[0][-1] / self.scaling_factor
                     ys_sparse_origin[-1] = self.working_spline.geometry.full_contour[1][-1] / self.scaling_factor
 
+                is_open = not self.working_spline.geometry.is_closed
                 if self.append_contour_mode:
                     if not self._contour_close_committed:
                         contour_obj.contours.append([xs_sparse_origin, ys_sparse_origin])
-                    start = self.working_spline.geometry.start_coords
-                    end = self.working_spline.geometry.end_coords
-                    contour_obj.start_coords.append(
-                        (start[0] / self.scaling_factor, start[1] / self.scaling_factor) if start else None
-                    )
-                    contour_obj.end_coords.append(
-                        (end[0] / self.scaling_factor, end[1] / self.scaling_factor) if end else None
-                    )
+                        # start/end already appended by _close_current_spline for closed splines
+                        if is_open:
+                            contour_obj.start_coords.append([(xs_sparse_origin[0], ys_sparse_origin[0])])
+                            contour_obj.end_coords.append([(xs_sparse_origin[-1], ys_sparse_origin[-1])])
                     self.active_contour_index = len(contour_obj.contours) - 1
                 else:
                     contour_obj.contours = [[xs_sparse_origin, ys_sparse_origin]]
-                    start = self.working_spline.geometry.start_coords
-                    end = self.working_spline.geometry.end_coords
-                    if start:
-                        contour_obj.start_coords = [(start[0] / self.scaling_factor, start[1] / self.scaling_factor)]
-                    if end:
-                        contour_obj.end_coords = [(end[0] / self.scaling_factor, end[1] / self.scaling_factor)]
+                    if is_open:
+                        contour_obj.start_coords = [[(xs_sparse_origin[0], ys_sparse_origin[0])]]
+                        contour_obj.end_coords = [[(xs_sparse_origin[-1], ys_sparse_origin[-1])]]
+                    else:
+                        # closed: start/end already set in _close_current_spline
+                        pass
                 lst = self._ensure_finalized_list_for_key(key, self.active_contour_index + 1)
                 lst[self.active_contour_index] = self.working_spline
 
@@ -1169,8 +1202,10 @@ class Display(QGraphicsView, MetricsMixin):
                 is_closed = contour_obj.closed[i] if len(contour_obj.closed) > i else True
                 if is_closed:
                     continue
-                raw_start = contour_obj.start_coords[i] if len(contour_obj.start_coords) > i else None
-                raw_end = contour_obj.end_coords[i] if len(contour_obj.end_coords) > i else None
+                raw_starts = contour_obj.start_coords[i] if len(contour_obj.start_coords) > i else []
+                raw_ends = contour_obj.end_coords[i] if len(contour_obj.end_coords) > i else []
+                raw_start = raw_starts[0] if raw_starts else None
+                raw_end = raw_ends[0] if raw_ends else None
                 if raw_start is None and raw_end is None:
                     continue
 
@@ -1298,16 +1333,45 @@ class Display(QGraphicsView, MetricsMixin):
             self._add_new_point_to_spline(scene_pos)
 
     def _select_existing_point(self, point_item: Point):
-        # self.main_window.display.setCursor(Qt.CursorShape.BlankCursor)  # remove cursor for precise contour changes
-        # https://stackoverflow.com/questions/53627056/how-to-get-cursor-click-position-in-qgraphicsitem-coordinate-system
         try:
             self.active_point_index = self.points_to_draw.index(point_item)
         except ValueError:
-            # Should not happen if point_item belongs to the active spline
             return
         self.active_point = point_item
         point_item.update_color()
         self.working_spline = self.get_current_spline()
+
+        # Record which index in the start/end list this labeled point corresponds to,
+        # so mouseReleaseEvent can update the correct entry after a drag.
+        self._active_start_end_idx = None
+        if point_item.color in (self.start_color, self.end_color):
+            key = self.contour_key(self.active_contour_type)
+            contour_obj = getattr(self.main_window.data[self.frame], key, None)
+            ci = self.active_contour_index
+            if contour_obj:
+                sf = self.scaling_factor
+                px = point_item.x / sf
+                py = point_item.y / sf
+                coord_list = (
+                    (
+                        contour_obj.start_coords[ci]
+                        if point_item.color == self.start_color
+                        else contour_obj.end_coords[ci]
+                    )
+                    if (
+                        ci
+                        < len(
+                            contour_obj.start_coords if point_item.color == self.start_color else contour_obj.end_coords
+                        )
+                    )
+                    else []
+                )
+                best, best_idx = float('inf'), None
+                for j, (cx, cy) in enumerate(coord_list):
+                    d = math.hypot(px - cx, py - cy)
+                    if d < best:
+                        best, best_idx = d, j
+                self._active_start_end_idx = best_idx
 
     def _add_new_point_to_spline(self, pos):
         if not self.working_spline:
@@ -1331,6 +1395,69 @@ class Display(QGraphicsView, MetricsMixin):
         self.graphics_scene.addItem(self.active_point)
         self.active_point.update_color()
 
+    def _get_active_closed_flag(self) -> bool:
+        """Return True when the currently active contour index is a closed spline."""
+        key = self.contour_key(self.active_contour_type)
+        fd = self.main_window.data.get(self.frame)
+        if fd is None:
+            return True
+        contour_obj = getattr(fd, key, None)
+        if contour_obj is None or not contour_obj.closed:
+            return True
+        ci = self.active_contour_index
+        return contour_obj.closed[ci] if ci < len(contour_obj.closed) else True
+
+    def _show_knot_label_popup(self, knot_item: Point, view_pos):
+        """QMenu popup beside a knot point for labelling it as start, end, or neutral."""
+        key = self.contour_key(self.active_contour_type)
+        contour_obj = getattr(self.main_window.data[self.frame], key, None)
+        if contour_obj is None:
+            return
+        ci = self.active_contour_index
+        sf = self.scaling_factor
+        kx = knot_item.x / sf
+        ky = knot_item.y / sf
+
+        starts = contour_obj.start_coords[ci] if ci < len(contour_obj.start_coords) else []
+        ends = contour_obj.end_coords[ci] if ci < len(contour_obj.end_coords) else []
+
+        is_start = any(math.hypot(kx - sx, ky - sy) < SENSITIVITY for sx, sy in starts)
+        is_end = any(math.hypot(kx - ex, ky - ey) < SENSITIVITY for ex, ey in ends)
+
+        menu = QMenu(self)
+        start_action = menu.addAction("Mark as Start")
+        end_action = menu.addAction("Mark as End")
+        menu.addSeparator()
+        neutral_action = menu.addAction("Remove Label")
+
+        # A point cannot be both start and end; only allow labeling unlabeled points.
+        start_action.setEnabled(not is_start and not is_end)
+        end_action.setEnabled(not is_start and not is_end)
+        neutral_action.setEnabled(is_start or is_end)
+
+        action = menu.exec(self.mapToGlobal(view_pos))
+
+        if action == start_action:
+            while len(contour_obj.start_coords) <= ci:
+                contour_obj.start_coords.append([])
+            contour_obj.start_coords[ci].append((kx, ky))
+        elif action == end_action:
+            while len(contour_obj.end_coords) <= ci:
+                contour_obj.end_coords.append([])
+            contour_obj.end_coords[ci].append((kx, ky))
+        elif action == neutral_action:
+            if is_start and ci < len(contour_obj.start_coords):
+                contour_obj.start_coords[ci] = [
+                    s for s in contour_obj.start_coords[ci] if math.hypot(kx - s[0], ky - s[1]) >= SENSITIVITY
+                ]
+            if is_end and ci < len(contour_obj.end_coords):
+                contour_obj.end_coords[ci] = [
+                    e for e in contour_obj.end_coords[ci] if math.hypot(kx - e[0], ky - e[1]) >= SENSITIVITY
+                ]
+
+        if action is not None:
+            self.update_display()
+
     def _delete_point(self, point_item: Point):
         """Removes a knot point from the scene and the data model."""
         try:
@@ -1351,10 +1478,16 @@ class Display(QGraphicsView, MetricsMixin):
                 if len(contour_obj.contours[ci]) > 1:
                     contour_obj.contours[ci][1].pop(idx)
 
+                px = point_item.x / self.scaling_factor
+                py = point_item.y / self.scaling_factor
                 if point_item.color == self.start_color and ci < len(contour_obj.start_coords):
-                    contour_obj.start_coords[ci] = None
+                    contour_obj.start_coords[ci] = [
+                        s for s in contour_obj.start_coords[ci] if math.hypot(px - s[0], py - s[1]) >= SENSITIVITY
+                    ]
                 if point_item.color == self.end_color and ci < len(contour_obj.end_coords):
-                    contour_obj.end_coords[ci] = None
+                    contour_obj.end_coords[ci] = [
+                        e for e in contour_obj.end_coords[ci] if math.hypot(px - e[0], py - e[1]) >= SENSITIVITY
+                    ]
 
         self.display_image(update_contours=True)
 
@@ -1407,34 +1540,26 @@ class Display(QGraphicsView, MetricsMixin):
                 key = self.contour_key(self.active_contour_type)
                 new_pos = (geom.knot_points_x[self.active_point_index], geom.knot_points_y[self.active_point_index])
 
-                if self.active_point.color == self.start_color:
-                    geom.start_coords = new_pos
-                elif self.active_point.color == self.end_color:
-                    geom.end_coords = new_pos
-
                 x_list = [p / self.scaling_factor for p in geom.knot_points_x]
                 y_list = [p / self.scaling_factor for p in geom.knot_points_y]
                 contour_obj = getattr(self.main_window.data[self.frame], key)
                 ci = self.active_contour_index
                 if ci < len(contour_obj.contours):
                     contour_obj.contours[ci] = [x_list, y_list]
-                # Only persist start/end coords when the dragged point is the designated start or end point.
-                # geom.start_coords always has a value (defaults to first knot), so we must not use it
-                # as a condition — that would overwrite start_coords on every ordinary point drag.
-                if self.active_point.color == self.start_color and geom.start_coords:
-                    start_val = (geom.start_coords[0] / self.scaling_factor, geom.start_coords[1] / self.scaling_factor)
-                    if ci < len(contour_obj.start_coords):
-                        contour_obj.start_coords[ci] = start_val
-                    else:
-                        contour_obj.start_coords.append(start_val)
-                if self.active_point.color == self.end_color and geom.end_coords:
-                    end_val = (geom.end_coords[0] / self.scaling_factor, geom.end_coords[1] / self.scaling_factor)
-                    if ci < len(contour_obj.end_coords):
-                        contour_obj.end_coords[ci] = end_val
-                    else:
-                        contour_obj.end_coords.append(end_val)
 
-                mask_active = getattr(self.main_window, 'mask_mode_box', None) and self.main_window.mask_mode_box.isChecked()
+                # Persist the new position of a labeled start/end knot.
+                new_val = (new_pos[0] / self.scaling_factor, new_pos[1] / self.scaling_factor)
+                label_idx = self._active_start_end_idx
+                if self.active_point.color == self.start_color and ci < len(contour_obj.start_coords):
+                    if label_idx is not None and label_idx < len(contour_obj.start_coords[ci]):
+                        contour_obj.start_coords[ci][label_idx] = new_val
+                if self.active_point.color == self.end_color and ci < len(contour_obj.end_coords):
+                    if label_idx is not None and label_idx < len(contour_obj.end_coords[ci]):
+                        contour_obj.end_coords[ci][label_idx] = new_val
+
+                mask_active = (
+                    getattr(self.main_window, 'mask_mode_box', None) and self.main_window.mask_mode_box.isChecked()
+                )
                 self.display_image(update_image=mask_active, update_contours=True)
                 self.active_point_index = None
                 try:
@@ -1445,46 +1570,16 @@ class Display(QGraphicsView, MetricsMixin):
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            if not self.drawing_mode:
-                pos = self.mapToScene(event.pos())
-                current_spline = self.get_current_spline()
-
-                if current_spline and current_spline.on_path(pos) is not None:
-                    scaled_coords = (pos.x(), pos.y())
-                    orig_coords = (pos.x() / self.scaling_factor, pos.y() / self.scaling_factor)
-
-                    key = self.contour_key(self.active_contour_type)
-                    contour_obj = getattr(self.main_window.data[self.frame], key)
-
-                    ci = self.active_contour_index
-                    if self.active_end_coords_flag:
-                        current_spline.geometry.end_coords = scaled_coords
-                        if ci < len(contour_obj.end_coords):
-                            contour_obj.end_coords[ci] = orig_coords
-                        else:
-                            contour_obj.end_coords.append(orig_coords)
-                    else:
-                        current_spline.geometry.start_coords = scaled_coords
-                        if ci < len(contour_obj.start_coords):
-                            contour_obj.start_coords[ci] = orig_coords
-                        else:
-                            contour_obj.start_coords.append(orig_coords)
-
-                    self.active_end_coords_flag = not self.active_end_coords_flag
-
-                    current_spline.geometry._ensure_start_end_coords()
-                    current_spline._rebuild_path()
-                    self.update_display()
-            else:
+            if self.drawing_mode:
+                # Finish an open spline being drawn (unchanged behaviour).
                 if self.active_segmentation_tool == SegmentationTool.OPEN_SPLINE:
-                    pos = self.mapToScene(event.pos())
-                    if self.working_spline is not None:
-                        self.working_spline.geometry.end_coords = (pos.x(), pos.y())
-                    if self.append_contour_mode:
-                        key = self.contour_key(self.active_contour_type)
-                        contour_obj = getattr(self.main_window.data[self.frame], key)
-                        while len(contour_obj.end_coords) < len(contour_obj.contours):
-                            contour_obj.end_coords.append(None)
                     self._finish_open_spline()
-                    return  # prevent super() re-delivering event after drawing_mode is cleared
+                    return
+            else:
+                # Double-click on a knot point of a closed spline → label popup.
+                items = self.items(event.pos())
+                knot_item = next((i for i in items if isinstance(i, Point) and i in self.points_to_draw), None)
+                if knot_item and self._get_active_closed_flag():
+                    self._show_knot_label_popup(knot_item, event.pos())
+                    return
         super().mouseDoubleClickEvent(event)
