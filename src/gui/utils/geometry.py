@@ -19,7 +19,7 @@ class SplineGeometry:
     n_interpolated_points: int
     start_coords: Tuple[float, float] | None
     end_coords: Tuple[float, float] | None
-    full_contour: Tuple[List[float], List[float]] = field(default_factory=lambda: ([], []))
+    full_contour: Tuple[np.ndarray, np.ndarray] = field(default_factory=lambda: (np.array([]), np.array([])))
     is_closed: bool = True
     dashed: bool = False
 
@@ -69,7 +69,7 @@ class SplineGeometry:
     def _get_closest_knot_index(self, x: float, y: float) -> int:
         """Helper to find which knot index is physically closest to a coordinate."""
         distances = [np.sqrt((kx - x) ** 2 + (ky - y) ** 2) for kx, ky in zip(self.knot_points_x, self.knot_points_y)]
-        return np.argmin(distances)
+        return int(np.argmin(distances))
 
     def _ensure_closed(self):
         """Ensure first and last points match for closed splines."""
@@ -83,16 +83,16 @@ class SplineGeometry:
     ) -> 'SplineGeometry':
         """Create a spline from a list of (x, y) points."""
         if not points:
-            return cls([], [], None, None, n_interpolated_points, is_closed)
+            return cls([], [], n_interpolated_points, None, None, is_closed=is_closed)
         x_coords, y_coords = zip(*points)
-        return cls(list(x_coords), list(y_coords), None, None, n_interpolated_points, is_closed)
+        return cls(list(x_coords), list(y_coords), n_interpolated_points, None, None, is_closed=is_closed)
 
     @classmethod
     def from_arrays(
         cls, x_coords: List[float], y_coords: List[float], n_interpolated_points: int, is_closed: bool = True
     ) -> 'SplineGeometry':
         """Create a spline from separate x and y arrays."""
-        return cls(list(x_coords), list(y_coords), None, None, n_interpolated_points, is_closed)
+        return cls(list(x_coords), list(y_coords), n_interpolated_points, None, None, is_closed=is_closed)
 
     def interpolate(self) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -154,7 +154,7 @@ class SplineGeometry:
         min_dist = np.min(distances)
 
         if min_dist < threshold:
-            return np.argmin(distances)
+            return int(np.argmin(distances))
         return None
 
     def _find_best_insertion_index(self, path_index: int) -> int:
@@ -202,7 +202,7 @@ class SplineGeometry:
         # Find the index in the interpolated array closest to start and end
         start_idx = 0
         if self.start_coords:
-            start_idx = np.argmin(np.sqrt((full_x - self.start_coords[0]) ** 2 + (full_y - self.start_coords[1]) ** 2))
+            start_idx = int(np.argmin(np.sqrt((full_x - self.start_coords[0]) ** 2 + (full_y - self.start_coords[1]) ** 2)))
 
         end_idx = np.argmin(np.sqrt((full_x - self.end_coords[0]) ** 2 + (full_y - self.end_coords[1]) ** 2))
 
@@ -229,12 +229,13 @@ class Point(QGraphicsEllipseItem):
         self.point_radius = point_radius
         self.transparency = transparency
         self.color = color
-        self.x, self.y = pos[0], pos[1]
+        self.x, self.y = pos[0], pos[1]  # type: ignore[method-assign]
         self.index = index
 
         self.default_color = get_qt_pen(color, line_thickness, transparency)
         self.setPen(self.default_color)
 
+        self.default_brush: QBrush | None
         if brush:
             self.default_brush = QBrush(self.default_color.color())
             self.setBrush(self.default_brush)
@@ -250,10 +251,10 @@ class Point(QGraphicsEllipseItem):
     def update_pos(self, pos):
         """Update point position from Qt event"""
         if isinstance(pos, QPointF):
-            self.x, self.y = pos.x(), pos.y()
+            self.x, self.y = pos.x(), pos.y()  # type: ignore[method-assign, assignment]
         else:
             # Handle case where pos might be a tuple or other type
-            self.x, self.y = pos.x(), pos.y() if hasattr(pos, 'x') else pos
+            self.x, self.y = pos.x(), pos.y() if hasattr(pos, 'x') else pos  # type: ignore[method-assign, assignment]
         return self._update_qt_rect()
 
     def _update_qt_rect(self):
@@ -432,7 +433,7 @@ class Spline(QGraphicsPathItem):
         self._tail_items[0].setPath(dotted_path)
         self._tail_items[0].setVisible(True)
 
-    def update(self, pos: QPointF, index: int, path_index: Optional[int] = None) -> int:
+    def update_point(self, pos: QPointF, index: int, path_index: Optional[int] = None) -> int:
         """
         Updates the geometry and redraws.
         Matches the signature Display.mouseMoveEvent expects.

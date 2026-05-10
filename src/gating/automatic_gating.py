@@ -74,11 +74,8 @@ class AutomaticGating:
         dialog = GatingMethodDialog(self.main_window)
         if dialog.exec():
             image_method, contour_method = dialog.get_methods()
-            if image_method == "maxima":
-                temp_indices = identify_extrema(self.main_window, image_based_signal)
-                image_indices = temp_indices[1]
-            else:
-                image_indices = temp_indices[0]
+            temp_indices = identify_extrema(self.main_window, image_based_signal)
+            image_indices = temp_indices[1] if image_method == "maxima" else temp_indices[0]
             if contour_method == "maxima":
                 temp_indices = identify_extrema(self.main_window, contour_based_signal)
                 contour_indices = temp_indices[1]

@@ -37,7 +37,7 @@ def save_as_nifti(main_window, mode=None):
             and main_window.data[frame].phase in ['D', 'S']
         ]
     elif mode == 'all':
-        frames_to_save = range(main_window.metadata['num_frames'])
+        frames_to_save = list(range(main_window.metadata['num_frames']))
     else:
         return  # nothing to save
 

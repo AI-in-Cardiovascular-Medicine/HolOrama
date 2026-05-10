@@ -57,14 +57,14 @@ def parse_ivus(main_window):
     elif main_window.dicom.get(0x000B1001):
         pullback_rate = float(main_window.dicom[0x000B1001].value)
     else:
-        pullback_rate, _ = QInputDialog.getText(
+        pullback_rate_str, _ = QInputDialog.getText(
             main_window,
             'Pullback Speed',
             'No pullback speed found, please enter pullback speed (mm/s)',
             QLineEdit.EchoMode.Normal,
             '0.5',
         )
-        pullback_rate = float(pullback_rate)
+        pullback_rate = float(pullback_rate_str)
 
     main_window.metadata['pullback_speed'] = pullback_rate
 

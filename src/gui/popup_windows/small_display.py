@@ -47,10 +47,10 @@ class SmallDisplay(QMainWindow):
         self.pixmap = QGraphicsPixmapItem()
         self.scene.addItem(self.pixmap)
 
-    def calculate_correlation(self, frame):
+    def calculate_correlation(self, frame: int) -> tuple[list[float], list[int | None]]:
         """Calculates correlation coefficients with the previous 20 to 10 frames."""
-        correlations = []
-        frame_indices = []
+        correlations: list[float] = []
+        frame_indices: list[int | None] = []
         start_frame = max(0, frame - 30)
         end_frame = max(0, frame - 5)
 
@@ -66,7 +66,7 @@ class SmallDisplay(QMainWindow):
 
         return correlations, frame_indices
 
-    def find_best_correlation(self, correlations, frame_indices):
+    def find_best_correlation(self, correlations: list[float], frame_indices: list[int | None]) -> tuple[int | None, float | None]:
         """Finds the frame with the highest correlation."""
         if not correlations:
             return None, None
@@ -77,7 +77,7 @@ class SmallDisplay(QMainWindow):
 
         return best_frame_index, max_corr
 
-    def update_frame(self, frame, update_image=False, update_contours=False, update_text=False):
+    def update_frame(self, frame: int, update_image: bool=False, update_contours: bool=False, update_text: bool=False):
         if update_image:
             if frame is None:
                 self.pixmap.setPixmap(QPixmap())
@@ -141,7 +141,8 @@ class SmallDisplay(QMainWindow):
                         )
                         for i in range(len(current_contour.knot_points[0]) - 1)
                     ]
-                    [self.scene.addItem(point) for point in self.contour_points]
+                    for point in self.contour_points:
+                        self.scene.addItem(point)
                     self.scene.addItem(current_contour)
                     polygon = Polygon(
                         [
@@ -175,9 +176,9 @@ class SmallDisplay(QMainWindow):
         if update_text:
             # Remove previous correlation text items
             text_items = [item for item in self.scene.items() if isinstance(item, QGraphicsTextItem)]
-            for item in text_items:
-                if item.scene() == self.scene:
-                    self.scene.removeItem(item)
+            for text_item in text_items:
+                if text_item.scene() == self.scene:
+                    self.scene.removeItem(text_item)
 
             # Calculate correlation for this frame
             correlations, frame_indices = self.calculate_correlation(frame)
@@ -193,13 +194,14 @@ class SmallDisplay(QMainWindow):
                 text = f"Frame {frame + 1} \n No Previous Frames Available"
 
             # Create and position the text item centered at the top of the view
-            text_item = self.scene.addText(text)
-            text_item.setDefaultTextColor(Qt.GlobalColor.white)
-            font = text_item.font()
+            new_text_item = self.scene.addText(text)
+            assert new_text_item is not None
+            new_text_item.setDefaultTextColor(Qt.GlobalColor.white)
+            font = new_text_item.font()
             font.setPointSize(font.pointSize() * 2)
-            text_item.setFont(font)
+            new_text_item.setFont(font)
 
             # Calculate centered position
-            text_item_width = text_item.boundingRect().width()
-            text_item_height = text_item.boundingRect().height()
-            text_item.setPos((self.image_size - text_item_width) / 2, (self.image_size - text_item_height) / 2)
+            text_item_width = new_text_item.boundingRect().width()
+            text_item_height = new_text_item.boundingRect().height()
+            new_text_item.setPos((self.image_size - text_item_width) / 2, (self.image_size - text_item_height) / 2)

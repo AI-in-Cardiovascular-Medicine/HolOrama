@@ -170,7 +170,7 @@ class Display(QGraphicsView, MetricsMixin):
 
         # scene data
         self.graphics_scene = QGraphicsScene(self)
-        self.images: np.ndarray = None
+        self.images: np.ndarray | None = None
         self.scaling_factor: float = 1.0
         self.image_width: int = 0
         image = QGraphicsPixmapItem(QPixmap(self.image_size, self.image_size))
@@ -190,8 +190,8 @@ class Display(QGraphicsView, MetricsMixin):
         self.points_to_draw: list[Point] = []
         self.start_coords: Tuple[float, float] | None = None
         self.end_coords: Tuple[float, float] | None = None
-        self.working_spline: Spline = None
-        self.finalized_splines: dict[ContourType, Spline] = {}
+        self.working_spline: Spline | None = None
+        self.finalized_splines: dict[str, list[Spline | None] | None] = {}
 
         # flags and states
         self.active_contour_type: ContourType = ContourType.LUMEN
@@ -201,13 +201,13 @@ class Display(QGraphicsView, MetricsMixin):
         self.append_contour_mode: bool = False
         self._contour_close_committed: bool = False
         self.mask_mode: bool = False
-        self.active_point: Point = None
+        self.active_point: Point | None = None
         self._active_start_end_idx: int | None = None  # index in start/end list of the dragged labeled point
 
         #####################################################################################################
         # legacy to be refactored
-        self.active_point_index: int = None  # wtf is this legacy crap
-        self.measure_index: int = None  # wtf is this legacy crap
+        self.active_point_index: int | None = None  # wtf is this legacy crap
+        self.measure_index: int | None = None  # wtf is this legacy crap
         self.pending_measure_points: list = [None, None]  # first-click-only state per measure index
         self.reference_mode: bool = False
         self.angle_mode: bool = False
@@ -258,7 +258,7 @@ class Display(QGraphicsView, MetricsMixin):
     def _draw_contour_frame(
         self,
         contour_data: Tuple[List[float], List[float]],
-        contour_type: ContourType = None,
+        contour_type: ContourType | None = None,
         set_current: bool = False,
         contour_index: int = 0,
     ):
@@ -305,7 +305,7 @@ class Display(QGraphicsView, MetricsMixin):
             end_coords_list = [(x * sf, y * sf) for x, y in raw_ends]
 
             geometry = SplineGeometry(lumen_x, lumen_y, self.n_points_contour, None, None)
-            spline_cls = Spline
+            spline_cls: type[Spline] = Spline
         else:
             # Open spline: single auto start (first knot) / end (last knot).
             start_coords = (
@@ -399,14 +399,14 @@ class Display(QGraphicsView, MetricsMixin):
 
         self.display_image(update_image=True, update_contours=True, update_phase=True)
 
-    def get_full_contour_list(self, contour_type: ContourType = None, unscaled: bool = False) -> List | None:
+    def get_full_contour_list(self, contour_type: ContourType | None = None, unscaled: bool = False) -> List | None:
         """
         Return a list of length num_frames with interpolated contours (or None per frame).
         Reads from main_window.data (Dict[int, FrameData]).
         """
         key = self.contour_key(contour_type)
         num_frames = self.images.shape[0] if self.images is not None else 0
-        full_contours = [None] * num_frames
+        full_contours: list[tuple[np.ndarray, np.ndarray] | None] = [None] * num_frames
 
         for frame_idx in range(num_frames):
             fd = self.main_window.data.get(frame_idx)
@@ -434,7 +434,7 @@ class Display(QGraphicsView, MetricsMixin):
 
         return full_contours
 
-    def contour_key(self, contour_type: ContourType = None) -> str:
+    def contour_key(self, contour_type: ContourType | None = None) -> str:
         """Return the string key for the given contour type (defaults to active)."""
         return (contour_type or self.active_contour_type).value
 
@@ -452,7 +452,7 @@ class Display(QGraphicsView, MetricsMixin):
             lst.extend([None] * (length - len(lst)))
         return lst
 
-    def get_finalized_spline(self, contour_type: ContourType = None, index: int | None = None):
+    def get_finalized_spline(self, contour_type: ContourType | None = None, index: int | None = None):
         """Return the finalized spline for given contour type and index (or None)."""
         key = self.contour_key(contour_type)
         lst = self.finalized_splines.get(key, [])
@@ -464,7 +464,7 @@ class Display(QGraphicsView, MetricsMixin):
             return lst[0] if lst else None
         return lst[idx]
 
-    def _get_contour_data(self, contour_type: ContourType = None, frame: int | None = None):
+    def _get_contour_data(self, contour_type: ContourType | None = None, frame: int | None = None):
         """
         Return (x_list, y_list) for the given contour type at the given frame,
         or ([], []) if absent. Reads from main_window.data (Dict[int, FrameData]).
@@ -588,6 +588,7 @@ class Display(QGraphicsView, MetricsMixin):
             h, w, ch = img.shape
             return img, h, w, ch * w, QImage.Format.Format_RGB888
 
+        assert self.images is not None
         lo = self.window_level - self.window_width / 2
         hi = self.window_level + self.window_width / 2
         norm = np.clip(self.images[self.frame, :, :], lo, hi)
@@ -617,6 +618,7 @@ class Display(QGraphicsView, MetricsMixin):
         Returns (rgb_array, bytes_per_line, QImage_format).
         """
         try:
+            assert self.images is not None
             frame_mask = contours_to_mask(
                 self.images[self.frame : self.frame + 1],
                 [self.frame],
@@ -693,7 +695,7 @@ class Display(QGraphicsView, MetricsMixin):
     def start_contour(
         self,
         contour_type: ContourType = ContourType.LUMEN,
-        segmentation_tool: SegmentationTool = None,
+        segmentation_tool: SegmentationTool | None = None,
         append: bool = False,
     ):
         """
@@ -1350,8 +1352,8 @@ class Display(QGraphicsView, MetricsMixin):
             ci = self.active_contour_index
             if contour_obj:
                 sf = self.scaling_factor
-                px = point_item.x / sf
-                py = point_item.y / sf
+                px = point_item.x / sf  # type: ignore[operator]
+                py = point_item.y / sf  # type: ignore[operator]
                 coord_list = (
                     (
                         contour_obj.start_coords[ci]
@@ -1382,7 +1384,7 @@ class Display(QGraphicsView, MetricsMixin):
             return
 
         self.main_window.display.setCursor(Qt.CursorShape.BlankCursor)
-        self.active_point_index = self.working_spline.update(pos, -1, path_index)
+        self.active_point_index = self.working_spline.update_point(pos, -1, path_index)
 
         cfg = self.contour_configs.get(self.active_contour_type)
         self.active_point = Point(
@@ -1415,8 +1417,8 @@ class Display(QGraphicsView, MetricsMixin):
             return
         ci = self.active_contour_index
         sf = self.scaling_factor
-        kx = knot_item.x / sf
-        ky = knot_item.y / sf
+        kx = knot_item.x / sf  # type: ignore[operator]
+        ky = knot_item.y / sf  # type: ignore[operator]
 
         starts = contour_obj.start_coords[ci] if ci < len(contour_obj.start_coords) else []
         ends = contour_obj.end_coords[ci] if ci < len(contour_obj.end_coords) else []
@@ -1429,6 +1431,9 @@ class Display(QGraphicsView, MetricsMixin):
         end_action = menu.addAction("Mark as End")
         menu.addSeparator()
         neutral_action = menu.addAction("Remove Label")
+        assert start_action is not None
+        assert end_action is not None
+        assert neutral_action is not None
 
         # A point cannot be both start and end; only allow labeling unlabeled points.
         start_action.setEnabled(not is_start and not is_end)
@@ -1478,8 +1483,8 @@ class Display(QGraphicsView, MetricsMixin):
                 if len(contour_obj.contours[ci]) > 1:
                     contour_obj.contours[ci][1].pop(idx)
 
-                px = point_item.x / self.scaling_factor
-                py = point_item.y / self.scaling_factor
+                px = point_item.x / self.scaling_factor  # type: ignore[operator]
+                py = point_item.y / self.scaling_factor  # type: ignore[operator]
                 if point_item.color == self.start_color and ci < len(contour_obj.start_coords):
                     contour_obj.start_coords[ci] = [
                         s for s in contour_obj.start_coords[ci] if math.hypot(px - s[0], py - s[1]) >= SENSITIVITY
@@ -1495,17 +1500,19 @@ class Display(QGraphicsView, MetricsMixin):
         if self._panning and event.buttons() & Qt.MouseButton.LeftButton:
             delta = event.pos() - self._pan_last_pos
             self._pan_last_pos = event.pos()
-            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
-            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())  # type: ignore[union-attr]
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())  # type: ignore[union-attr]
             return
         if event.buttons() == Qt.MouseButton.LeftButton:
             if self.active_point_index is not None:
                 item = self.active_point
+                assert item is not None
+                assert self.working_spline is not None
                 new_scene_pos = self.mapToScene(event.pos())
 
                 item.update_pos(new_scene_pos)
 
-                self.working_spline.update(new_scene_pos, self.active_point_index)
+                self.working_spline.update_point(new_scene_pos, self.active_point_index)
             elif self.active_point_index is None and not self.drawing_mode:
                 self.setMouseTracking(True)
                 delta_y = self.mouse_y - event.position().y()
@@ -1533,6 +1540,7 @@ class Display(QGraphicsView, MetricsMixin):
             return
         if event.button() == Qt.MouseButton.LeftButton:
             if self.active_point_index is not None and self.working_spline:
+                assert self.active_point is not None
                 self.main_window.display.setCursor(Qt.CursorShape.ArrowCursor)
                 self.active_point.reset_color()
 

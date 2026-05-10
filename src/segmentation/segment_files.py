@@ -25,7 +25,7 @@ def segment_files(config: DictConfig) -> None:
 
     for file in tqdm(files, desc='Segmenting files', unit='files', leave=False):
         try:
-            image = dcm.read_file(os.path.join(input_dir, file), force=True).pixel_array
+            image = dcm.dcmread(os.path.join(input_dir, file), force=True).pixel_array
             if image.ndim == 4:  # 3 channel input
                 image = image[:, :, :, 0]
         except (AttributeError, IsADirectoryError):

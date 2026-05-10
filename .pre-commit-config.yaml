@@ -16,9 +16,9 @@ repos:
         types: [python]
         args: [--fix]
 
-      # - id: python-mypy
-      #   name: Mypy type checking
-      #   entry: mypy src --ignore-missing-imports
-      #   language: system
-      #   types: [python]
-      #   pass_filenames: false
+      - id: python-mypy
+        name: Mypy type checking
+        entry: poetry run mypy src/ --ignore-missing-imports --check-untyped-defs
+        language: system
+        types: [python]
+        pass_filenames: false

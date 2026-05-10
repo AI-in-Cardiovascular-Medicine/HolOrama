@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy as np
 import matplotlib.path as mplPath
 from loguru import logger
@@ -58,7 +60,7 @@ def mask_to_contours(main_window, masks, lower_limit, upper_limit, config=None):
                 keep_lumen_x, keep_lumen_y = downsample(keep_largest_contour(contours_frame, image_shape), num_points)
                 # remove last point after segmentation
                 keep_lumen_x, keep_lumen_y = keep_lumen_x[:-1], keep_lumen_y[:-1]
-                fd.lumen.contours = [[keep_lumen_x, keep_lumen_y]]
+                fd.lumen.contours = [(keep_lumen_x, keep_lumen_y)]
             data[frame] = fd
         logger.info(f'Found contours in {counter} frames')
         return data
@@ -77,7 +79,7 @@ def mask_to_contours(main_window, masks, lower_limit, upper_limit, config=None):
             keep_lumen_x, keep_lumen_y = keep_lumen_x[:-1], keep_lumen_y[:-1]
         if keep_lumen_x:
             counter += 1
-            fd.lumen.contours = [[keep_lumen_x, keep_lumen_y]]
+            fd.lumen.contours = [(keep_lumen_x, keep_lumen_y)]
         else:
             fd.lumen.contours = [_catheter_fallback_contour(image_shape, fallback_radius_px, num_points)]
     logger.info(f'Found contours in {counter} frames')
@@ -89,7 +91,7 @@ def _catheter_fallback_contour(image_shape, radius_px, num_points):
     angles = np.linspace(0, 2 * np.pi, num_points, endpoint=False)
     x = (cx + radius_px * np.cos(angles)).tolist()
     y = (cy + radius_px * np.sin(angles)).tolist()
-    return [x, y]
+    return (x, y)
 
 
 def label_contours(image):
@@ -107,7 +109,7 @@ def label_contours(image):
 
 def keep_largest_contour(contours, image_shape):
     max_length = 0
-    keep_contour = [[], []]
+    keep_contour: list[list[Any]] = [[], []]
     for contour in contours:
         if keep_valid_contour(contour, image_shape):
             if len(contour[0]) > max_length:
@@ -120,14 +122,14 @@ def keep_largest_contour(contours, image_shape):
 def keep_valid_contour(contour, image_shape):
     """Contour is valid if it contains the centroid of the image"""
     bbPath = mplPath.Path(np.transpose(contour))
-    centroid = [image_shape[0] // 2, image_shape[1] // 2]
+    centroid = (image_shape[0] // 2, image_shape[1] // 2)
     return bbPath.contains_point(centroid)
 
 
 def downsample(contours, num_points):
     """Downsamples input contour data by selecting n points from original contour"""
     num_frames = len(contours[0])
-    downsampled = [[] for _ in range(num_frames)], [[] for _ in range(num_frames)]
+    downsampled: Any = ([[] for _ in range(num_frames)], [[] for _ in range(num_frames)])
 
     for frame in range(num_frames):
         if len(contours[0][frame]) > num_points * 1.2:
@@ -136,6 +138,6 @@ def downsample(contours, num_points):
                 downsampled[axis][frame] = [contours[axis][frame][point] for point in points_to_sample]
 
     if num_frames == 1:
-        downsampled = [downsampled[0][0], downsampled[1][0]]  # remove unnecessary dimension
+        downsampled = [downsampled[0][0], downsampled[1][0]]  # remove unnecessary dimension  # type: ignore[assignment]
 
     return downsampled

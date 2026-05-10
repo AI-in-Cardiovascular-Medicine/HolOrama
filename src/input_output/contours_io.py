@@ -150,7 +150,7 @@ def _build_contour(raw: Optional[dict]) -> Contour:
         y = list(entry[1]) if len(entry) > 1 else []
         if x and y and x[0] == x[-1] and y[0] == y[-1]:
             x, y = x[:-1], y[:-1]
-        stripped.append([x, y])
+        stripped.append((x, y))
     start_coords = [_normalize_coord_entry(e) for e in raw.get('start_coords', [])]
     end_coords = [_normalize_coord_entry(e) for e in raw.get('end_coords', [])]
     return Contour(

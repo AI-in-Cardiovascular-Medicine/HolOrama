@@ -15,16 +15,6 @@ from gui.right_half.right_half import toggle_diastolic_frame, toggle_systolic_fr
 from report.report import report
 
 
-def timing_decorator(func):
-    def wrapper(*args, **kwargs):
-        start_time = time.time()
-        result = func(*args, **kwargs)
-        end_time = time.time()
-        print(f"{func.__name__} took {end_time - start_time:.4f} seconds")
-        return result
-
-    return wrapper
-
 
 class ContourBasedGating:
     def __init__(self, main_window):
@@ -172,6 +162,7 @@ class ContourBasedGating:
                 self.selected_line = plt.axvline(x=event.xdata, color=color, linestyle=self.default_linestyle)
                 self.vertical_lines.append(self.selected_line)
 
+            assert self.selected_line is not None
             self.selected_line.set_linestyle('dashed')
             plt.draw()
 

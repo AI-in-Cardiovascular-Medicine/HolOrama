@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Any, Tuple
 
 import numpy as np
 from loguru import logger
@@ -13,9 +13,19 @@ from report.report import compute_polygon_metrics, farthest_points, closest_poin
 
 class MetricsMixin:
     """
-    Mixin class for Display to handle plaque/lumen metrics 
+    Mixin class for Display to handle plaque/lumen metrics
     and UI text overlays.
     """
+
+    main_window: Any
+    frame: int
+    point_thickness: int
+    alpha_contour: int
+    graphics_scene: Any
+    scaling_factor: float
+    contour_configs: Any
+    image_size: int
+    active_contour_type: Any
 
     def _maybe_compute_metrics(self, unscaled_lumen: Tuple[np.ndarray, np.ndarray] | None = None, unscaled_eem: Tuple[np.ndarray, np.ndarray] | None = None):
         if unscaled_lumen is None:
@@ -77,7 +87,7 @@ class MetricsMixin:
             color = QColor("yellow")
         else:
             text = ""
-            color = Qt.GlobalColor.white
+            color = QColor(Qt.GlobalColor.white)
 
         # replace previous phase_text if present
         phase_text = getattr(self, "phase_text", None)
@@ -110,7 +120,7 @@ class MetricsMixin:
         elif isinstance(config.color, (tuple, list)):
             color = QColor(*config.color)
         else:
-            color = Qt.GlobalColor.white
+            color = QColor(Qt.GlobalColor.white)
             
         self.active_contour_text.setDefaultTextColor(color)
         
@@ -121,12 +131,12 @@ class MetricsMixin:
         
         self.graphics_scene.addItem(self.active_contour_text)
 
-    def compute_eem_and_percent_stenosis(self, frame: int, lumen_area: float, eem_full: Tuple[float, float] | None = None):
+    def compute_eem_and_percent_stenosis(self, frame: int, lumen_area: float, eem_full: Tuple[Any, Any] | None = None):
         """
         Return (eem_area, percent_stenosis_text).
         Robust to numpy arrays and malformed data structures.
         """
-        eem_area = None
+        eem_area: float | None = None
         percent_text = "n/a"
         
         try:
@@ -149,7 +159,7 @@ class MetricsMixin:
             logger.exception("Failed while computing EEM area")
 
         try:
-            if lumen_area is not None and eem_area not in (None, 0):
+            if lumen_area is not None and eem_area is not None and eem_area != 0:
                 percent = ((eem_area - lumen_area)/ eem_area) * 100.0
                 percent = max(0.0, min(100.0, percent))  # clamp 0..100
                 percent_text = f"{round(percent, 2)} %"

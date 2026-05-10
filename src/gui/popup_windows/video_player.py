@@ -1,5 +1,6 @@
 import os
 
+from pathlib import Path
 from loguru import logger
 from PyQt6.QtWidgets import QMainWindow
 from PyQt6.QtMultimediaWidgets import QVideoWidget
@@ -18,13 +19,13 @@ class VideoPlayer(QMainWindow):
         self.media_player.setVideoOutput(self.video_widget)
         self.media_player.mediaStatusChanged.connect(self.media_ended)
 
-    def play(self, video_path, local_file=True):
+    def play(self, video_path: str | Path, local_file=True):
         if local_file:
             path = os.path.dirname(os.path.abspath(__file__))
             video_path = os.path.abspath(os.path.join(path, '..', '..', video_path))
             media_source = QUrl.fromLocalFile(video_path)
         else:
-            media_source = QUrl(video_path)
+            media_source = QUrl(str(video_path))
 
         self.show()
         self.media_player.setSource(media_source)

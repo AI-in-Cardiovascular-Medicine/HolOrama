@@ -442,7 +442,7 @@ def save_video_pullback(main_window):
     fps = main_window.metadata['frame_rate']
     duration = len(image_stack) // fps
     out_path = os.path.splitext(main_window.file_name)[0] + '_pullback.mp4'
-    out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (size[1], size[0]), False)
+    out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (size[1], size[0]), False)  # type: ignore[attr-defined]
     for frame in range(fps * duration):
         out.write(image_stack[frame, :, :])
     out.release()

@@ -388,7 +388,7 @@ def centroid_center_vector(window, centroid_x, centroid_y):
 
 
 def farthest_points(main_window, exterior_coords, frame):
-    max_distance = 0
+    max_distance: float = 0
     farthest_points = None
 
     for point1, point2 in combinations(exterior_coords, 2):
@@ -399,16 +399,16 @@ def farthest_points(main_window, exterior_coords, frame):
 
     longest_distance = max_distance * main_window.metadata['resolution']
 
-    try:
-        x1, y1 = farthest_points[0]
-        x2, y2 = farthest_points[1]
-        farthest_point_x = [x1, x2]
-        farthest_point_y = [y1, y2]
-    except TypeError:
+    if farthest_points is None:
         logger.warning('No farthest points found, probably due to polygon shape')
         farthest_point_x = [0, 0]
         farthest_point_y = [0, 0]
         longest_distance = 0
+    else:
+        x1, y1 = farthest_points[0]
+        x2, y2 = farthest_points[1]
+        farthest_point_x = [x1, x2]
+        farthest_point_y = [y1, y2]
 
     fd = main_window.data.get(frame)
     if fd:
@@ -444,16 +444,16 @@ def closest_points(main_window, polygon, frame):
 
     shortest_distance = min_distance * main_window.metadata['resolution']
 
-    try:
-        x1, y1 = closest_points[0]
-        x2, y2 = closest_points[1]
-        closest_point_x = [x1, x2]
-        closest_point_y = [y1, y2]
-    except TypeError:
+    if closest_points is None:
         logger.warning('No closest points found, probably due to polygon shape')
         closest_point_x = [0, 0]
         closest_point_y = [0, 0]
         shortest_distance = 0
+    else:
+        x1, y1 = closest_points[0]
+        x2, y2 = closest_points[1]
+        closest_point_x = [x1, x2]
+        closest_point_y = [y1, y2]
 
     fd = main_window.data.get(frame)
     if fd:
@@ -486,8 +486,8 @@ def save_csv_files(main_window, lumen_x, lumen_y, name, frames):
                 [abs(y * main_window.metadata['resolution'] - img_dim_mm) for y in lumen_y[frame]],
             )
             for row in rows:
-                row = [frame + 1] + list(row) + [main_window.metadata['pullback_length'][frame] - distance_offset]
-                contours_writer.writerow(row)
+                csv_row = [frame + 1] + list(row) + [main_window.metadata['pullback_length'][frame] - distance_offset]
+                contours_writer.writerow(csv_row)
 
     if name in ('diastolic', 'systolic'):
         ref_file_name = f'{name}_reference_points.csv'

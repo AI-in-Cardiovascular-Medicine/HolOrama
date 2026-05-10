@@ -37,7 +37,7 @@ def read_image(main_window):
         main_window.gating_display.fig.clear()
         plt.draw()
         try:  # DICOM
-            main_window.dicom = dcm.read_file(file_name, force=True)
+            main_window.dicom = dcm.dcmread(file_name, force=True)
             main_window.images = main_window.dicom.pixel_array
             parse_dicom(main_window)
             if main_window.images.ndim == 4:  # 3 channel input

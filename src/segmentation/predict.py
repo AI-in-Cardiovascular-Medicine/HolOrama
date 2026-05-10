@@ -18,7 +18,7 @@ class Predict:
         self.conserve_memory = config.segmentation.conserve_memory
         self.images = None
 
-    def __call__(self, images, lower_limit, upper_limit) -> None:
+    def __call__(self, images, lower_limit, upper_limit) -> np.ndarray | None:
         self.images = images
         self.lower_limit = lower_limit
         self.upper_limit = upper_limit
@@ -29,12 +29,13 @@ class Predict:
 
     def normalisation(self, do_it_or_not: bool):
         """Min-max normalisation of the images"""
-        if do_it_or_not:
+        if do_it_or_not and self.images is not None:
             self.images = (self.images - self.images.min(axis=(1, 2), keepdims=True)) / (
                 self.images.max(axis=(1, 2), keepdims=True) - self.images.min(axis=(1, 2), keepdims=True)
             )
 
     def inference(self):
+        assert self.images is not None
         if "nnUNetTrainer" not in self.model_file:
             import tensorflow as tf
 
@@ -118,6 +119,7 @@ class Predict:
         model.input_shape
 
         """
+        assert self.images is not None
         import tensorflow as tf
 
         logger.info(f"Input shape: {self.images.shape}")

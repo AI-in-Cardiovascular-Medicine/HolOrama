@@ -150,7 +150,7 @@ class LeftHalf:
 
         self.play_button.setIcon(self.play_icon)
 
-    def change_value(self, value):
+    def change_value(self, value: int):
         self.main_window.display_frame_comms.updateBW.emit(value)
         self.main_window.display.update_display()
         self.frame_number_label.setText(f'Frame {value + 1}')
@@ -164,7 +164,7 @@ class LeftHalf:
             else:
                 self.main_window.systolic_frame_box.setChecked(False)
 
-    def toggle_hide_contours(self, value):
+    def toggle_hide_contours(self, value: int):
         if self.main_window.image_displayed:
             self.main_window.hide_contours = bool(value)  # Cast to bool for safety
             self.main_window.display.update_display()
@@ -175,7 +175,7 @@ class LeftHalf:
             if not value:
                 self.main_window.longitudinal_view.show_lview_contours()
 
-    def toggle_hide_special_points(self, value):
+    def toggle_hide_special_points(self, value: int):
         if self.main_window.image_displayed:
             self.main_window.hide_special_points = bool(value)
             self.main_window.display.update_display()
