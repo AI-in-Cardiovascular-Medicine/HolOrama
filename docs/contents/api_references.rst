@@ -1,7 +1,7 @@
 # docs/contents/api_reference.rst
 
 Application Structure & API Reference
-====================================
+======================================
 
 *(This section provides an overview of the software architecture. Placeholder for further details.)*
 

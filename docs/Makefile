@@ -1,28 +1,14 @@
-# docs/Makefile
+# Minimal makefile for Sphinx documentation
 
-# Makefile for Sphinx documentation
-
-# You can set these variables from the command line.
-SPHINXOPTS    =
-SPHINXBUILD   = sphinx-build
+SPHINXOPTS    ?=
+SPHINXBUILD   ?= sphinx-build
 SOURCEDIR     = .
 BUILDDIR      = _build
 
+help:
+	@$(SPHINXBUILD) -M help "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+
 .PHONY: help Makefile
 
-help:
-	@echo "Sphinx documentation commands:"
-	@echo "  make html       # build HTML in _build/html"
-	@echo "  make latexpdf   # build PDF in _build/latex"
-	@echo "  make clean      # remove build output"
-	@echo
-
-html:
-	$(SPHINXBUILD) -b html "$(SOURCEDIR)" "$(BUILDDIR)/html" $(SPHINXOPTS)
-
-latexpdf:
-	$(SPHINXBUILD) -b latex "$(SOURCEDIR)" "$(BUILDDIR)/latex" $(SPHINXOPTS) && \
-	cd "$(BUILDDIR)/latex" && make all-pdf
-
-clean:
-	rm -rf $(BUILDDIR)
+%: Makefile
+	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)

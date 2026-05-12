@@ -42,7 +42,7 @@ Two curves are displayed:
 - **Image-based curve (green):** Represents correlation peaks and minimal blurriness.
 - **Contour-based curve (yellow):** Reflects extrema in the vector measurements (alternating peaks and valleys for systolic/diastolic positions).
 
-A Butterworth filter (passband: 45–180 bpm) smooths each curve; the unfiltered signal is shown as a dotted line beneath.
+A Butterworth filter (passband: 45-180 bpm) smooths each curve; the unfiltered signal is shown as a dotted line beneath.
 
 **Interactive Gating Interface:**
 

@@ -56,8 +56,40 @@ If you find a bug, please help us fix it by opening a [a new issue](https://gith
     - Python version
     - OS and architecture
 
-## Don't know where to start?
-- We currently need help improving the documentation and writing test for the existing funcitonality.
-- If you feel up for a challenge, we want to implement the possibility of additional contours for e.g. EEM.
+## Suggesting Enhancements
 
-------------------------------------------------------------------------------------
+Open a [feature request issue](https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/issues/new/choose) and describe:
+- The problem you are trying to solve
+- Your proposed solution and why it would be useful
+- Any alternatives you considered
+
+## Your First Code Contribution
+
+- We currently need help improving the documentation and writing tests for the existing functionality.
+- If you feel up for a challenge, we want to implement the possibility of additional contours for e.g. EEM.
+- Pick an open issue labelled `good first issue` or `help wanted`, comment on it, and open a pull request referencing the issue number.
+
+## Pull Request Process
+
+1. Make sure all tests pass (`pytest`)
+2. Update documentation if your change affects behaviour
+3. Keep the pull request focused — one logical change per PR
+4. A maintainer will review and merge once approved
+
+## Coding Style & Tests
+
+- Format with `ruff` / `black` (configured in `pyproject.toml`)
+- Type-annotate new functions and check with `mypy`
+- Add or update tests in `tests/` for any changed behaviour
+- Run the full suite with `pytest` before opening a PR
+
+## Writing Documentation
+
+Documentation lives in `docs/` and is built with Sphinx.
+- Edit `.rst` files under `docs/contents/` for narrative docs
+- Run `.\make.bat html` (Windows) or `make html` (Linux/macOS) to preview locally
+
+## Where to Get Help
+
+- Open a [GitHub Discussion](https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/discussions) for general questions
+- File an [issue](https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/issues/new/choose) for bugs or feature requests

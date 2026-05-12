@@ -14,6 +14,13 @@ This opens the graphical user interface (GUI) providing access to all functional
 Keyboard Shortcuts
 ------------------
 
+.. figure:: ../media/keyboard.png
+   :name: fig-keyboard
+   :alt: Keybindings for AIVUS
+   :align: center
+   :width: 900px
+
+
 v1.0.0 (Base module)
 ~~~~~~~~~~~~~~~~~~~~~
 
