@@ -1,3 +1,13 @@
 # Exclude CSV files
 *.csv linguist-generated=true
-*.json linguist-generated=true
+
+# Exclude Jupyter Notebook outputs
+*.ipynb linguist-generated=true
+
+# Exclude documentation files
+*.md linguist-documentation=true
+*.rst linguist-documentation=true
+
+# Exclude binary data files
+*.dcm linguist-binary=true
+*.stl linguist-binary=true
