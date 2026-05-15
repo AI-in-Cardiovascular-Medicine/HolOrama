@@ -1,0 +1,3 @@
+# Exclude CSV files
+*.csv linguist-generated=true
+*.json linguist-generated=true
