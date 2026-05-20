@@ -150,6 +150,7 @@ def init_menu(main_window):
 
     help_menu = main_window.menu_bar.addMenu('Help')
     help_menu.addAction('GitHub Page', partial(open_url, main_window, description='github'))
+    help_menu.addAction('Documentation', partial(open_url, main_window, description='docs'))
     help_menu.addAction('Keyboard Shortcuts', partial(open_url, main_window, description='keyboard_shortcuts'))
     help_menu.addAction('Report a Problem', partial(open_url, main_window, description='issue'))
     help_menu.addAction('Request a Feature', partial(open_url, main_window, description='feature'))
@@ -291,8 +292,10 @@ def show_metadata(main_window):
 def open_url(main_window, description=None):
     if description == 'github':
         url = 'https://github.com/yungselm/AIVUS-OCT'
+    elif description == 'docs':
+        url = 'https://aivus-caa.readthedocs.io/en/latest'
     elif description == 'keyboard_shortcuts':
-        url = 'https://github.com/yungselm/AIVUS-OCT?tab=readme-ov-file#keyboard-shortcuts'
+        url = 'https://aivus-caa.readthedocs.io/en/latest/contents/usage.html'
     elif description == 'issue':
         url = 'https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/issues/new?template=bug_report.md'
     elif description == 'feature':
