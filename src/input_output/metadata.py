@@ -1,6 +1,5 @@
 import numpy as np
 
-from loguru import logger
 from PyQt6.QtWidgets import (
     QMainWindow,
     QInputDialog,
@@ -36,20 +35,14 @@ def parse_dicom(main_window):
 
 def parse_ivus(main_window):
     """Parses DICOM metadata for IVUS"""
-    if len(main_window.dicom.PatientName.encode('ascii')) > 0:
-        patient_name = main_window.dicom.PatientName.original_string.decode('utf-8')
+    patient_name_tag = main_window.dicom.get('PatientName')
+    if patient_name_tag and len(patient_name_tag.encode('ascii')) > 0:
+        patient_name = patient_name_tag.original_string.decode('utf-8')
     else:
         patient_name = 'Unknown'
 
-    if len(main_window.dicom.PatientBirthDate) > 0:
-        birth_date = main_window.dicom.PatientBirthDate
-    else:
-        birth_date = 'Unknown'
-
-    if len(main_window.dicom.PatientSex) > 0:
-        gender = main_window.dicom.PatientSex
-    else:
-        gender = 'Unknown'
+    birth_date = str(main_window.dicom.get('PatientBirthDate') or 'Unknown')
+    gender = str(main_window.dicom.get('PatientSex') or 'Unknown')
 
     if main_window.dicom.get('IVUSPullbackRate'):
         pullback_rate = float(main_window.dicom.IVUSPullbackRate)
@@ -244,15 +237,21 @@ def parse_nifti(main_window, img):
     main_window.metadata['pullback_start_frame'] = 0
 
     total_pullback = pullback_length[-1] if z_spacing > 0 else 0.0
-    _apply_metadata_table(main_window, [
-        ('Modality', 'IVUS (NIfTI)'),
-        ('Resolution (mm)', f'{resolution:.4f}'),
-        ('Dimensions', f'{rows}x{cols}'),
-        ('Pullback Speed', f'{pullback_rate} mm/s'),
-        ('Pullback Length', f'{total_pullback:.1f} mm'),
-        ('Frame Rate', f"{main_window.metadata['frame_rate']} fps" if main_window.metadata['frame_rate'] else 'Unknown'),
-        ('Description', descrip or 'N/A'),
-    ])
+    _apply_metadata_table(
+        main_window,
+        [
+            ('Modality', 'IVUS (NIfTI)'),
+            ('Resolution (mm)', f'{resolution:.4f}'),
+            ('Dimensions', f'{rows}x{cols}'),
+            ('Pullback Speed', f'{pullback_rate} mm/s'),
+            ('Pullback Length', f'{total_pullback:.1f} mm'),
+            (
+                'Frame Rate',
+                f"{main_window.metadata['frame_rate']} fps" if main_window.metadata['frame_rate'] else 'Unknown',
+            ),
+            ('Description', descrip or 'N/A'),
+        ],
+    )
 
 
 def parse_nifti_oct(main_window, img):
@@ -280,7 +279,11 @@ def parse_nifti_oct(main_window, img):
             duration_s = num_frames / frame_rate_tmp
         else:
             val, _ = QInputDialog.getText(
-                main_window, 'Frame Time', 'No frame time found, enter frame time (ms):', QLineEdit.EchoMode.Normal, '5.56'
+                main_window,
+                'Frame Time',
+                'No frame time found, enter frame time (ms):',
+                QLineEdit.EchoMode.Normal,
+                '5.56',
             )
             duration_s = num_frames * float(val) / 1000
         pullback_length = pullback_rate * duration_s
@@ -295,15 +298,18 @@ def parse_nifti_oct(main_window, img):
 
     main_window.metadata['pullback_start_frame'] = 0
 
-    _apply_metadata_table(main_window, [
-        ('Modality', 'OCT (NIfTI)'),
-        ('Resolution (mm)', f'{resolution:.4f}'),
-        ('Dimensions', f'{rows}x{cols}'),
-        ('Pullback Speed', f'{pullback_rate} mm/s'),
-        ('Pullback Length', f'{pullback_length:.1f} mm'),
-        ('Frame Rate', f'{frame_rate} fps' if frame_rate else 'Unknown'),
-        ('Description', descrip or 'N/A'),
-    ])
+    _apply_metadata_table(
+        main_window,
+        [
+            ('Modality', 'OCT (NIfTI)'),
+            ('Resolution (mm)', f'{resolution:.4f}'),
+            ('Dimensions', f'{rows}x{cols}'),
+            ('Pullback Speed', f'{pullback_rate} mm/s'),
+            ('Pullback Length', f'{pullback_length:.1f} mm'),
+            ('Frame Rate', f'{frame_rate} fps' if frame_rate else 'Unknown'),
+            ('Description', descrip or 'N/A'),
+        ],
+    )
 
 
 def parse_ivus_oct(main_window):

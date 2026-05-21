@@ -5,7 +5,6 @@ import pydicom as dcm
 import SimpleITK as sitk
 import numpy as np
 import matplotlib.pyplot as plt
-from loguru import logger
 from PyQt6.QtWidgets import QFileDialog
 
 from skimage import measure as sk_measure
@@ -14,7 +13,12 @@ from gui.popup_windows.message_boxes import ErrorMessage
 from input_output.metadata import parse_dicom, parse_nifti, parse_nifti_oct
 from input_output.contours_io import read_contours, FrameData
 from segmentation.save_as_nifti import (
-    LABEL_LUMEN, LABEL_EEM_WALL, LABEL_CALCIUM, LABEL_LIPID, LABEL_MACROPHAGE, LABEL_BRANCH
+    LABEL_LUMEN,
+    LABEL_EEM_WALL,
+    LABEL_CALCIUM,
+    LABEL_LIPID,
+    LABEL_MACROPHAGE,
+    LABEL_BRANCH,
 )
 from segmentation.segment import downsample
 from gui.left_half.display import ContourType
@@ -36,9 +40,16 @@ def read_image(main_window):
     if file_name:
         main_window.gating_display.fig.clear()
         plt.draw()
-        try:  # DICOM
-            main_window.dicom = dcm.dcmread(file_name, force=True)
+        # Probe for DICOM: only dcmread + pixel_array determine the format; parse_dicom runs outside
+        # the format-detection except so its errors are never silently swallowed by the NIfTI path.
+        _is_dicom = False
+        try:
+            main_window.dicom = dcm.dcmread(file_name, force=True, defer_size=256)
             main_window.images = main_window.dicom.pixel_array
+            _is_dicom = True
+        except Exception:
+            pass
+        if _is_dicom:
             parse_dicom(main_window)
             if main_window.images.ndim == 4:  # 3 channel input
                 if main_window.metadata['modality'] == 'OCT':
@@ -46,7 +57,7 @@ def read_image(main_window):
                     main_window.images = convert_oct_to_gray(main_window.images)
                 else:
                     main_window.images = main_window.images[:, :, :, 0]
-        except AttributeError:
+        else:
             try:  # NIfTi
                 img = sitk.ReadImage(file_name)
                 main_window.images = sitk.GetArrayFromImage(img)
@@ -118,18 +129,21 @@ def read_nifti_mask(main_window, contour_type=ContourType.LUMEN):
 
     # Map each ContourType to the label(s) that form its binary mask
     _LABEL_MASK = {
-        ContourType.LUMEN:      lambda a: a == LABEL_LUMEN,
-        ContourType.EEM:        lambda a: np.isin(a, [LABEL_LUMEN, LABEL_EEM_WALL]),
-        ContourType.CALCIUM:    lambda a: a == LABEL_CALCIUM,
-        ContourType.LIPID:      lambda a: a == LABEL_LIPID,
+        ContourType.LUMEN: lambda a: a == LABEL_LUMEN,
+        ContourType.EEM: lambda a: np.isin(a, [LABEL_LUMEN, LABEL_EEM_WALL]),
+        ContourType.CALCIUM: lambda a: a == LABEL_CALCIUM,
+        ContourType.LIPID: lambda a: a == LABEL_LIPID,
         ContourType.MACROPHAGE: lambda a: a == LABEL_MACROPHAGE,
-        ContourType.BRANCH:     lambda a: a == LABEL_BRANCH,
+        ContourType.BRANCH: lambda a: a == LABEL_BRANCH,
     }
     if contour_type not in _LABEL_MASK:
         return
 
     file_name, _ = QFileDialog.getOpenFileName(
-        main_window, 'Open NIfTI Mask', '..', 'NIfTI files (*.nii *.nii.gz)',
+        main_window,
+        'Open NIfTI Mask',
+        '..',
+        'NIfTI files (*.nii *.nii.gz)',
         options=QFileDialog.Option.DontUseNativeDialog,
     )
     if not file_name:
@@ -181,10 +195,12 @@ def read_nifti_mask(main_window, contour_type=ContourType.LUMEN):
                     ([list(geometry.full_contour[0])], [list(geometry.full_contour[1])]),
                     n_pts,
                 )
-                sparse_contours.append([
-                    [x / sf for x in downsampled[0]],
-                    [y / sf for y in downsampled[1]],
-                ])
+                sparse_contours.append(
+                    [
+                        [x / sf for x in downsampled[0]],
+                        [y / sf for y in downsampled[1]],
+                    ]
+                )
             if not sparse_contours:
                 continue
             contour_obj.contours = sparse_contours

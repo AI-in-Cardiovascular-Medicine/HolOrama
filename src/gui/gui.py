@@ -1,7 +1,6 @@
 import os
 from functools import partial
 from typing import Any
-from loguru import logger
 
 import numpy as np
 from omegaconf import DictConfig
@@ -55,7 +54,9 @@ class Master(QMainWindow):
         self.hide_special_points: bool = False
         self.colormap_enabled: bool = False
         self.filter: str | None = None
-        self.tmp_contours: dict[str, tuple[list[float], list[float]]] = {}  # per-contour-type undo storage, e.g. {'lumen': (xlist, ylist)}
+        self.tmp_contours: dict[
+            str, tuple[list[float], list[float]]
+        ] = {}  # per-contour-type undo storage, e.g. {'lumen': (xlist, ylist)}
         self.gated_frames: list[int] = []
         self.gated_frames_dia: list[int] = []
         self.gated_frames_sys: list[int] = []
@@ -70,6 +71,8 @@ class Master(QMainWindow):
         self.systole_color: tuple[int, int, int] = (209, 55, 38)
         self.systole_color_plt: tuple[float, ...] = tuple(x / 255 for x in self.systole_color)
         self.waiting_status: str = 'Waiting for user input...'
+        self.small_display = None
+        self.results_plot = None
         self.init_gui()
         init_shortcuts(self)
 
@@ -152,6 +155,12 @@ class Master(QMainWindow):
             write_contours(self)
 
     def reset_state(self) -> None:
+        if self.results_plot is not None:
+            self.results_plot.close()
+        if self.small_display is not None:
+            self.small_display.close()
+            self.small_display = None
+        self.display.reset()
         self.file_name = None
         self.image_displayed = False
         self.segmentation = False
@@ -170,6 +179,7 @@ class Master(QMainWindow):
         self.images = None
         self.images_display = None
         self.images_rgb = None
+        self.dicom = None
         self.gated_frames_oct = []
         self.tagged_frame_button.setChecked(False)
         self.oct_quality_buttons['Very Good'].setChecked(True)

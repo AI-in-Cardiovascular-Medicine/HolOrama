@@ -217,6 +217,37 @@ class Display(QGraphicsView, MetricsMixin):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
+    def reset(self) -> None:
+        """Reset all per-image interaction state. Called before a new image is loaded."""
+        if self.working_spline is not None and self.working_spline.scene() is not None:
+            self.graphics_scene.removeItem(self.working_spline)
+        for point in self.points_to_draw:
+            if point.scene() is not None:
+                self.graphics_scene.removeItem(point)
+
+        self.frame = 0
+        self.points_to_draw = []
+        self.working_spline = None
+        self.start_coords = None
+        self.end_coords = None
+        self.drawing_mode = False
+        self.append_contour_mode = False
+        self._contour_close_committed = False
+        self.mask_mode = False
+        self.active_point = None
+        self._active_start_end_idx = None
+        self.active_contour_index = 0
+        self.active_contour_type = ContourType.LUMEN
+        self.active_point_index = None
+        self.measure_index = None
+        self.pending_measure_points = [None, None]
+        self.reference_mode = False
+        self.angle_mode = False
+        self.angle_clicks = []
+        self.window_level = self.initial_window_level
+        self.window_width = self.initial_window_width
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+
     # initialize data from main_window data
     def set_data(self, images):
         """Initialize display data from main_window.data (Dict[int, FrameData])."""

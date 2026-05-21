@@ -431,8 +431,8 @@ def plot_results(main_window):
         if report_data is None:
             logger.error('No report data available to plot')
             return
-        results_plot = ResultsPlot(main_window, report_data)
-        results_plot.show()
+        main_window.results_plot = ResultsPlot(main_window, report_data)
+        main_window.results_plot.show()
 
 
 def save_video_pullback(main_window):
