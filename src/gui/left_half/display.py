@@ -212,6 +212,7 @@ class Display(QGraphicsView, MetricsMixin):
         self.reference_mode: bool = False
         self.angle_mode: bool = False
         self.angle_clicks: list[QPointF] = []
+        self._display_updating: bool = False
         #####################################################################################################
 
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
@@ -257,9 +258,10 @@ class Display(QGraphicsView, MetricsMixin):
 
         self.finalized_splines = {ct.value: [] for ct in ContourType}
 
-        self._draw_contours_frame()
-
-        self.main_window.longitudinal_view.set_data(self.images)
+        try:
+            self.main_window.longitudinal_view.set_data(self.images)
+        except Exception:
+            logger.warning('longitudinal_view.set_data failed; continuing without longitudinal update')
         self.display_image(update_image=True, update_contours=True, update_phase=True)
 
     def _draw_contours_frame(self):
@@ -528,6 +530,15 @@ class Display(QGraphicsView, MetricsMixin):
 
     # image data handling methods
     def display_image(self, update_image=False, update_contours=False, update_phase=False):
+        if self._display_updating:
+            return
+        self._display_updating = True
+        try:
+            self._display_image_inner(update_image, update_contours, update_phase)
+        finally:
+            self._display_updating = False
+
+    def _display_image_inner(self, update_image=False, update_contours=False, update_phase=False):
         image_types = (QGraphicsPixmapItem, Marker)
 
         old_overlays = [it for it in self.graphics_scene.items() if not isinstance(it, image_types)]

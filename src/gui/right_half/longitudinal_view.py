@@ -1,8 +1,14 @@
 import cv2
 
 import numpy as np
-from loguru import logger
-from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsLineItem, QGraphicsEllipseItem, QSizePolicy
+from PyQt6.QtWidgets import (
+    QGraphicsView,
+    QGraphicsScene,
+    QGraphicsPixmapItem,
+    QGraphicsLineItem,
+    QGraphicsEllipseItem,
+    QSizePolicy,
+)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QImage, QColor, QPen, QBrush
 
@@ -13,7 +19,7 @@ class LongitudinalView(QGraphicsView):
     """
 
     DOT_RADIUS = 3
-    MARGIN_TOP = 0.05     # fraction of image_height reserved at top
+    MARGIN_TOP = 0.05  # fraction of image_height reserved at top
     MARGIN_BOTTOM = 0.05  # fraction of image_height reserved at bottom
 
     def __init__(self, main_window):
@@ -37,17 +43,24 @@ class LongitudinalView(QGraphicsView):
         self._area_items = []
         self.num_frames = images.shape[0]
         self.image_height = images.shape[1]
+        center_col = images.shape[2] // 2
 
         if hasattr(self.main_window, 'images_display') and self.main_window.images_display is not None:
             if hasattr(self.main_window, 'images_rgb') and self.main_window.images_rgb is not None:
-                slice_data = self.main_window.images_rgb[:, :, self.image_height // 2, :]
+                slice_data = self.main_window.images_rgb[:, :, center_col, :]
             else:
-                slice_data = self.main_window.dicom.pixel_array[:, :, self.image_height // 2, :]
+                slice_data = self.main_window.dicom.pixel_array[:, :, center_col, :]
             slice_data = np.transpose(slice_data, (1, 0, 2)).copy()
             q_format = QImage.Format.Format_RGB888
             bytes_per_line = self.num_frames * 3
         else:
-            slice_data = images[:, :, self.image_height // 2]
+            slice_data = images[:, :, center_col]
+            if slice_data.dtype != np.uint8:
+                vmin, vmax = float(slice_data.min()), float(slice_data.max())
+                if vmax > vmin:
+                    slice_data = ((slice_data.astype(np.float32) - vmin) / (vmax - vmin) * 255).astype(np.uint8)
+                else:
+                    slice_data = np.zeros_like(slice_data, dtype=np.uint8)
             slice_data = np.transpose(slice_data, (1, 0)).copy()
             q_format = QImage.Format.Format_Grayscale8
             bytes_per_line = self.num_frames
@@ -115,7 +128,7 @@ class LongitudinalView(QGraphicsView):
             else:
                 new_brush = QBrush(QColor('orange'))
                 new_brush = new_brush
-            item.setBrush(new_brush)           
+            item.setBrush(new_brush)
             item.setPen(no_pen)
             if self._areas_hidden:
                 item.setVisible(False)

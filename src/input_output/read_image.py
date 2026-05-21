@@ -46,9 +46,11 @@ def read_image(main_window):
         try:
             main_window.dicom = dcm.dcmread(file_name, force=True, defer_size=256)
             main_window.images = main_window.dicom.pixel_array
+            if 'Modality' not in main_window.dicom:
+                raise ValueError("Not a valid DICOM: missing Modality tag")
             _is_dicom = True
         except Exception:
-            pass
+            main_window.dicom = None  # prevent garbage dataset from leaking into NIfTI path
         if _is_dicom:
             parse_dicom(main_window)
             if main_window.images.ndim == 4:  # 3 channel input
@@ -84,9 +86,14 @@ def read_image(main_window):
                 )
                 return None
 
-        main_window.file_name = os.path.splitext(file_name)[0]  # remove file extension
+        root, ext = os.path.splitext(file_name)
+        if ext == '.gz':
+            root = os.path.splitext(root)[0]
+        main_window.file_name = root
         main_window.metadata['num_frames'] = main_window.images.shape[0]
+        main_window.display_slider.blockSignals(True)
         main_window.display_slider.setMaximum(main_window.metadata['num_frames'] - 1)
+        main_window.display_slider.blockSignals(False)
 
         num_frames = main_window.metadata['num_frames']
         success = read_contours(main_window, main_window.file_name)
