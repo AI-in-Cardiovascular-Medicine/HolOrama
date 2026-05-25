@@ -20,7 +20,7 @@ from report.report import report
 
 
 from gui.popup_windows.results_plot import ResultsPlot
-from gui.left_half.display import ContourType, SegmentationTool
+from domain.all_types import ContourType, SegmentationTool
 
 
 def init_shortcuts(main_window):

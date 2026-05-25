@@ -3,7 +3,7 @@ import bisect
 import numpy as np
 from loguru import logger
 from scipy.interpolate import splprep, splev
-from PyQt6.QtWidgets import QGraphicsEllipseItem, QGraphicsPathItem
+from PyQt6.QtWidgets import QGraphicsEllipseItem, QGraphicsPathItem, QGraphicsLineItem
 from PyQt6.QtCore import Qt, QPointF
 from PyQt6.QtGui import QPen, QPainterPath, QColor, QBrush
 from dataclasses import dataclass, field
@@ -538,3 +538,12 @@ class OpenSpline(Spline):
         self.setPath(path)
         for ti in self._tail_items:
             ti.setVisible(False)
+
+
+class Marker(QGraphicsLineItem):
+    def __init__(self, x1, y1, x2, y2, color=Qt.GlobalColor.white):
+        super().__init__()
+        pen = QPen(QColor(color), 1)
+        pen.setDashPattern([1, 6])
+        self.setLine(x1, y1, x2, y2)
+        self.setPen(pen)

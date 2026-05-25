@@ -11,7 +11,8 @@ from skimage import measure as sk_measure
 
 from gui.popup_windows.message_boxes import ErrorMessage
 from input_output.metadata import parse_dicom, parse_nifti, parse_nifti_oct
-from input_output.contours_io import read_contours, FrameData
+from input_output.contours_io import read_contours
+from domain.io_types import FrameData
 from segmentation.save_as_nifti import (
     LABEL_LUMEN,
     LABEL_EEM_WALL,
@@ -21,7 +22,7 @@ from segmentation.save_as_nifti import (
     LABEL_BRANCH,
 )
 from segmentation.segment import downsample
-from gui.left_half.display import ContourType
+from domain.all_types import ContourType
 from tools.geometry import SplineGeometry
 
 

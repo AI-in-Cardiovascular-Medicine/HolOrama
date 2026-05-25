@@ -5,13 +5,13 @@ from PyQt6.QtWidgets import (
     QGraphicsView,
     QGraphicsScene,
     QGraphicsPixmapItem,
-    QGraphicsLineItem,
     QGraphicsEllipseItem,
     QSizePolicy,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QImage, QColor, QPen, QBrush
 
+from tools.geometry import Marker
 
 class LongitudinalView(QGraphicsView):
     """
@@ -166,11 +166,3 @@ class LongitudinalView(QGraphicsView):
         super().resizeEvent(event)
         self.stretch_to_fit()
 
-
-class Marker(QGraphicsLineItem):
-    def __init__(self, x1, y1, x2, y2, color=Qt.GlobalColor.white):
-        super().__init__()
-        pen = QPen(QColor(color), 1)
-        pen.setDashPattern([1, 6])
-        self.setLine(x1, y1, x2, y2)
-        self.setPen(pen)

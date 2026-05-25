@@ -12,10 +12,10 @@ from PyQt6.QtGui import QPixmap, QImage
 from domain.all_types import MASK_OVERLAY_COLORS, MASK_ALPHA, ALLOWED_TOOLS, ContourConfig, ContourType, SegmentationTool
 from tools.geometry import Point, Spline, SplineGeometry, OpenSplineGeometry, OpenSpline, get_qt_pen
 from gui.utils.metrics import MetricsMixin
-from gui.right_half.longitudinal_view import Marker
+from tools.geometry import Marker
 from segmentation.segment import downsample
 from segmentation.save_as_nifti import contours_to_mask
-from input_output.contours_io import Measure
+from domain.io_types import Measure
 
 
 SENSITIVITY = 10  # pixels for closure detection

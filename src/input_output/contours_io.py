@@ -7,67 +7,98 @@ import tempfile
 
 import numpy as np
 from loguru import logger
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict
 from typing import List, Tuple, Optional, Dict
 
 from version import version_file_str
+from domain.io_types import Measure, Measurements, Contour, FrameData
 from gui.popup_windows.message_boxes import ErrorMessage
 
 
-# ---------------------------------------------------------------------------
-# Dataclasses
-# ---------------------------------------------------------------------------
+def read_contours(main_window, file_name=None) -> bool:
+    """Read contours from the most recent JSON file and populate
+    main_window.data as Dict[int, FrameData]. Returns True on success."""
+    json_files = glob.glob(f'{file_name}_contours*.json')
+    if not json_files:
+        logger.info('No contour JSON files found.')
+        return False
+
+    newest = max(json_files)
+    logger.info(f'Current version: {version_file_str} | Loading: {newest}')
+
+    try:
+        with open(newest, 'r') as f:
+            raw = json.load(f)
+    except Exception as e:
+        logger.exception(f'Failed to read {newest}: {e}')
+        ErrorMessage(
+            main_window,
+            f'Contour file is corrupted and could not be loaded:\n{os.path.basename(newest)}\n\nDelete or repair the file and try again.',
+        )
+        return False
+
+    num_frames = main_window.metadata['num_frames']
+
+    if _is_legacy(raw):
+        scaling_factor = main_window.display.image_size / main_window.images.shape[1]
+        main_window.data = _build_frame_data_legacy(raw, num_frames, scaling_factor)
+        main_window.gating_signal = raw.get('gating_signal', {})
+    else:
+        main_window.data = _build_frame_data(raw)
+        main_window.gating_signal = raw.get('gating_signal', {})
+
+    main_window.contours_drawn = True
+    main_window.hide_contours_box.setChecked(False)
+    logger.info(f'Loaded {len(main_window.data)} frames from {newest}')
+    return True
 
 
-@dataclass
-class Measurements:
-    area: Optional[float] = None
-    circumference: Optional[float] = None
-    major_axis: Optional[float] = None
-    minor_axis: Optional[float] = None
-    elliptic_ratio: Optional[float] = None
+def write_contours(main_window) -> None:
+    """Serialize main_window.data (Dict[int, FrameData]) to JSON."""
+    if not main_window.image_displayed:
+        ErrorMessage(main_window, 'Cannot write contours before reading input file.')
+        return
+
+    base = os.path.splitext(main_window.file_name)[0]
+    out_path = f'{base}_contours_{version_file_str}.json'
+
+    try:
+        serializable = {str(i): asdict(frame) for i, frame in main_window.data.items()}
+        serializable['gating_signal'] = main_window.gating_signal
+        out_dir = os.path.dirname(out_path) or '.'
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=out_dir, suffix='.tmp')
+        try:
+            with os.fdopen(tmp_fd, 'w') as f:
+                json.dump(serializable, f, default=_to_serializable, indent=2)
+            shutil.move(tmp_path, out_path)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+        logger.info(f'Wrote contours to {out_path}')
+    except Exception as e:
+        logger.exception(f'Failed to write contours: {e}')
 
 
-@dataclass
-class Contour:
-    contours: List[Tuple[List[float], List[float]]] = field(default_factory=list)
-    measurements: Measurements = field(default_factory=Measurements)
-    closed: List[bool] = field(default_factory=list)
-    # Each entry is a list of (x, y) tuples for that contour index.
-    # Open splines: always [(first_x, first_y)] / [(last_x, last_y)] (auto-set).
-    # Closed splines: [] initially, grows as user labels knot points.
-    start_coords: List[List[Tuple[float, float]]] = field(default_factory=list)
-    end_coords: List[List[Tuple[float, float]]] = field(default_factory=list)
+def save_gated_images(main_window) -> None:
+    """Save diastolic and systolic frames as separate .npy arrays."""
+    if not main_window.image_displayed:
+        ErrorMessage(main_window, 'Cannot save gated images before reading the input file.')
+        return
 
+    diastolic, systolic = [], []
+    for i, frame in main_window.data.items():
+        if frame.phase == 'D':
+            diastolic.append(main_window.images[i])
+        elif frame.phase == 'S':
+            systolic.append(main_window.images[i])
 
-@dataclass
-class Measure:
-    points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
-    length: Optional[float] = None
-
-
-@dataclass
-class FrameData:
-    phase: str = '-'
-    quality: str = 'Very Good'
-    lumen: Contour = field(default_factory=Contour)
-    eem: Contour = field(default_factory=Contour)
-    calcium: Contour = field(default_factory=Contour)
-    branch: Contour = field(default_factory=Contour)
-    lipid: Contour = field(default_factory=Contour)
-    macrophage: Contour = field(default_factory=Contour)
-    measurement_1: Optional[Measure] = None
-    measurement_2: Optional[Measure] = None
-    reference: Optional[Tuple[float, float]] = None
-    wire: Optional[Tuple[Tuple[float, float], ...]] = None
-    centroid: Optional[Tuple[float, float]] = None
-    closest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
-    farthest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
+    base = os.path.splitext(main_window.file_name)[0]
+    np.save(f'{base}_diastolic.npy', np.array(diastolic))
+    np.save(f'{base}_systolic.npy', np.array(systolic))
+    logger.info(f'Saved {len(diastolic)} diastolic and {len(systolic)} systolic frames.')
 
 
 def _normalize_coord_entry(item) -> List[Tuple[float, float]]:
@@ -246,94 +277,3 @@ def _build_frame_data(raw: dict) -> Dict[int, FrameData]:
             farthest_points=frame_raw.get('farthest_points'),
         )
     return frames
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-
-def read_contours(main_window, file_name=None) -> bool:
-    """Read contours from the most recent JSON file and populate
-    main_window.data as Dict[int, FrameData]. Returns True on success."""
-    json_files = glob.glob(f'{file_name}_contours*.json')
-    if not json_files:
-        logger.info('No contour JSON files found.')
-        return False
-
-    newest = max(json_files)
-    logger.info(f'Current version: {version_file_str} | Loading: {newest}')
-
-    try:
-        with open(newest, 'r') as f:
-            raw = json.load(f)
-    except Exception as e:
-        logger.exception(f'Failed to read {newest}: {e}')
-        ErrorMessage(
-            main_window,
-            f'Contour file is corrupted and could not be loaded:\n{os.path.basename(newest)}\n\nDelete or repair the file and try again.',
-        )
-        return False
-
-    num_frames = main_window.metadata['num_frames']
-
-    if _is_legacy(raw):
-        scaling_factor = main_window.display.image_size / main_window.images.shape[1]
-        main_window.data = _build_frame_data_legacy(raw, num_frames, scaling_factor)
-        main_window.gating_signal = raw.get('gating_signal', {})
-    else:
-        main_window.data = _build_frame_data(raw)
-        main_window.gating_signal = raw.get('gating_signal', {})
-
-    main_window.contours_drawn = True
-    main_window.hide_contours_box.setChecked(False)
-    logger.info(f'Loaded {len(main_window.data)} frames from {newest}')
-    return True
-
-
-def write_contours(main_window) -> None:
-    """Serialize main_window.data (Dict[int, FrameData]) to JSON."""
-    if not main_window.image_displayed:
-        ErrorMessage(main_window, 'Cannot write contours before reading input file.')
-        return
-
-    base = os.path.splitext(main_window.file_name)[0]
-    out_path = f'{base}_contours_{version_file_str}.json'
-
-    try:
-        serializable = {str(i): asdict(frame) for i, frame in main_window.data.items()}
-        serializable['gating_signal'] = main_window.gating_signal
-        out_dir = os.path.dirname(out_path) or '.'
-        tmp_fd, tmp_path = tempfile.mkstemp(dir=out_dir, suffix='.tmp')
-        try:
-            with os.fdopen(tmp_fd, 'w') as f:
-                json.dump(serializable, f, default=_to_serializable, indent=2)
-            shutil.move(tmp_path, out_path)
-        except Exception:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
-            raise
-        logger.info(f'Wrote contours to {out_path}')
-    except Exception as e:
-        logger.exception(f'Failed to write contours: {e}')
-
-
-def save_gated_images(main_window) -> None:
-    """Save diastolic and systolic frames as separate .npy arrays."""
-    if not main_window.image_displayed:
-        ErrorMessage(main_window, 'Cannot save gated images before reading the input file.')
-        return
-
-    diastolic, systolic = [], []
-    for i, frame in main_window.data.items():
-        if frame.phase == 'D':
-            diastolic.append(main_window.images[i])
-        elif frame.phase == 'S':
-            systolic.append(main_window.images[i])
-
-    base = os.path.splitext(main_window.file_name)[0]
-    np.save(f'{base}_diastolic.npy', np.array(diastolic))
-    np.save(f'{base}_systolic.npy', np.array(systolic))
-    logger.info(f'Saved {len(diastolic)} diastolic and {len(systolic)} systolic frames.')

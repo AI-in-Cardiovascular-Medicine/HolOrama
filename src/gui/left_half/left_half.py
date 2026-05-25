@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from gui.left_half.display import ContourType, SegmentationTool
+from domain.all_types import ContourType, SegmentationTool
 from gui.utils.contours_gui import new_measure, new_reference, new_angle, set_tool
 
 
