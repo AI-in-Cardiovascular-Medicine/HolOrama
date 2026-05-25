@@ -27,4 +27,5 @@ src--
     - [] move calculations into it's own module
     - [] create MainWindowData class
     - [] create MetaData class (inherit for different modalities)
+- [] Contour manipulation and mousevents need to be their own logic so can be reused by different windows
 - [] ResultsPlot could have it's own dataclass maybe?
