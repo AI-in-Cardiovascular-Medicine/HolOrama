@@ -36,6 +36,7 @@ from input_output.output.contours import write_contours
 from gating.contour_based_gating import ContourBasedGating
 from segmentation.predict import Predict
 from domain.runtime_types import FrameDataMap
+from domain.all_types import OCT_QUALITY_LABELS
 
 
 class Master(QMainWindow):
@@ -126,13 +127,13 @@ class Master(QMainWindow):
         self.oct_quality_buttons: dict[str, QPushButton] = {}
         self.oct_quality_button_group: QButtonGroup = QButtonGroup(self)
         self.oct_quality_button_group.setExclusive(True)
-        for label in ['Very Bad', 'Bad', 'Ok', 'Good', 'Very Good']:
+        for label in OCT_QUALITY_LABELS:
             btn: QPushButton = QPushButton(label)
             btn.setCheckable(True)
             btn.clicked.connect(partial(set_oct_quality, self, label))
             self.oct_quality_buttons[label] = btn
             self.oct_quality_button_group.addButton(btn)
-        self.oct_quality_buttons['Very Good'].setChecked(True)
+        self.oct_quality_buttons[OCT_QUALITY_LABELS[-1]].setChecked(True)
         self.gated_frames_oct: list[int] = []
 
         main_window_splitter: QSplitter = QSplitter()
@@ -183,4 +184,4 @@ class Master(QMainWindow):
         self.dicom = None
         self.gated_frames_oct = []
         self.tagged_frame_button.setChecked(False)
-        self.oct_quality_buttons['Very Good'].setChecked(True)
+        self.oct_quality_buttons[OCT_QUALITY_LABELS[-1]].setChecked(True)

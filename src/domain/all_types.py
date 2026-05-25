@@ -23,7 +23,7 @@ MASK_OVERLAY_COLORS = np.array(
 MASK_ALPHA = 0.45  # overlay opacity (0 = transparent, 1 = opaque)
 
 
-OCT_QUALITY_LABELS = ['Very Bad', 'Bad', 'Ok', 'Good', 'Very Good']
+OCT_QUALITY_LABELS = ['Very Bad', 'Bad', 'Ok', 'Good', 'Very Good'] # best needs to be on the right
 
 
 class ContourType(Enum):

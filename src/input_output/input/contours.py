@@ -8,6 +8,7 @@ from typing import List, Tuple, Optional, Dict
 
 from version import version_file_str
 from domain.io_types import Measure, Measurements, Contour, FrameData
+from domain.all_types import OCT_QUALITY_LABELS
 from gui.popup_windows.message_boxes import ErrorMessage
 
 
@@ -197,7 +198,7 @@ def _build_frame_data(raw: dict) -> Dict[int, FrameData]:
         i = int(key)
         frames[i] = FrameData(
             phase=frame_raw.get('phase', '-'),
-            quality=frame_raw.get('quality', 'Very Good'),
+            quality=frame_raw.get('quality', OCT_QUALITY_LABELS[-1]),
             lumen=_build_contour(frame_raw.get('lumen')),
             eem=_build_contour(frame_raw.get('eem')),
             calcium=_build_contour(frame_raw.get('calcium')),

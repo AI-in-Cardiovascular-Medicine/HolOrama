@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
 from enum import Enum
+from domain.all_types import OCT_QUALITY_LABELS
 
 @dataclass
 class Measurements:
@@ -34,7 +35,7 @@ class Measure:
 @dataclass
 class FrameData:
     phase: str = '-'
-    quality: str = 'Very Good'
+    quality: str = OCT_QUALITY_LABELS[-1]
     lumen: Contour = field(default_factory=Contour)
     eem: Contour = field(default_factory=Contour)
     calcium: Contour = field(default_factory=Contour)
