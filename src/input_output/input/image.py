@@ -13,6 +13,7 @@ from gui.popup_windows.message_boxes import ErrorMessage
 from input_output.input.metadata import parse_dicom, parse_nifti, parse_nifti_oct
 from input_output.input.contours import read_contours
 from domain.io_types import FrameData
+from domain.runtime_types import FrameDataMap
 from input_output.output.imgs_masks import (
     LABEL_LUMEN,
     LABEL_EEM_WALL,
@@ -115,7 +116,7 @@ def read_image(main_window):
             ]
             main_window.gated_frames = main_window.gated_frames_dia
         else:  # initialise empty containers
-            main_window.data = {i: FrameData() for i in range(num_frames)}
+            main_window.data = FrameDataMap({i: FrameData() for i in range(num_frames)})
         main_window.display.set_data(main_window.images)
 
         main_window.image_displayed = True

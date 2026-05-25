@@ -35,6 +35,7 @@ from gui.shortcuts import init_shortcuts, init_menu
 from input_output.output.contours import write_contours
 from gating.contour_based_gating import ContourBasedGating
 from segmentation.predict import Predict
+from domain.runtime_types import FrameDataMap
 
 
 class Master(QMainWindow):
@@ -173,7 +174,7 @@ class Master(QMainWindow):
         self.gated_frames = []
         self.gated_frames_dia = []
         self.gated_frames_sys = []
-        self.data = {}
+        self.data = FrameDataMap()
         self.gating_signal = {}
         self.metadata = {}
         self.images = None
