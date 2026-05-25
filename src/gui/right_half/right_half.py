@@ -6,11 +6,10 @@ from functools import partial
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QSplitter, QPushButton, QWidget, QFrame
 
+from domain.all_types import OCT_QUALITY_LABELS
 from gui.popup_windows.frame_range_dialog import FrameRangeDialog
 from gui.popup_windows.small_display import SmallDisplay
 from segmentation.segment import segment
-
-OCT_QUALITY_LABELS = ['Very Bad', 'Bad', 'Ok', 'Good', 'Very Good']
 
 
 class RightHalf:

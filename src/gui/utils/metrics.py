@@ -8,7 +8,7 @@ from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtCore import Qt, QLineF
 
 # Internal imports based on your file structure
-from gui.utils.geometry import get_qt_pen
+from tools.geometry import get_qt_pen
 from report.report import compute_polygon_metrics, farthest_points, closest_points
 
 class MetricsMixin:

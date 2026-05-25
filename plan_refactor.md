@@ -11,6 +11,8 @@ src--
     |   |- types
     |   |- math
     |- tools
+        |-geometric
+        |-qt-binding
 ```
 
 - Clear seperation of concerns. 
@@ -20,4 +22,9 @@ src--
 - The tools used for segmentation should be seperated from the main window. Like this they can be reused in different instances of windows.
 
 # Progress update and thoughts
-...
+- [] Main problem is input_output
+    - [] input one and output one
+    - [] move calculations into it's own module
+    - [] create MainWindowData class
+    - [] create MetaData class (inherit for different modalities)
+- [] ResultsPlot could have it's own dataclass maybe?

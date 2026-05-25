@@ -1,9 +1,7 @@
 import cv2
 import math
 
-from enum import Enum
-from dataclasses import dataclass
-from typing import Tuple, List, Union, Any
+from typing import Tuple, List
 
 import numpy as np
 from loguru import logger
@@ -11,108 +9,13 @@ from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, 
 from PyQt6.QtCore import Qt, QLineF, QPointF
 from PyQt6.QtGui import QPixmap, QImage
 
-from gui.utils.geometry import Point, Spline, SplineGeometry, OpenSplineGeometry, OpenSpline, get_qt_pen
+from domain.all_types import MASK_OVERLAY_COLORS, MASK_ALPHA, ALLOWED_TOOLS, ContourConfig, ContourType, SegmentationTool
+from tools.geometry import Point, Spline, SplineGeometry, OpenSplineGeometry, OpenSpline, get_qt_pen
 from gui.utils.metrics import MetricsMixin
 from gui.right_half.longitudinal_view import Marker
 from segmentation.segment import downsample
 from segmentation.save_as_nifti import contours_to_mask
 from input_output.contours_io import Measure
-
-
-# RGB colour for each mask label (index = label value).
-# Label 0 (background) is intentionally skipped during blending.
-_MASK_OVERLAY_COLORS = np.array(
-    [
-        [0, 0, 0],  # 0 – background  (unused)
-        [0, 180, 255],  # 1 – lumen        cyan-blue
-        [0, 200, 80],  # 2 – EEM wall     green
-        [255, 215, 0],  # 3 – calcium      gold
-        [255, 100, 0],  # 4 – lipid        orange
-        [200, 0, 220],  # 5 – macrophage   violet
-        [220, 80, 80],  # 6 – adventitia   rose
-        [0, 180, 255],  # 7 – branch       cyan-blue (same as lumen)
-    ],
-    dtype=np.float32,
-)
-
-_MASK_ALPHA = 0.45  # overlay opacity (0 = transparent, 1 = opaque)
-
-
-class ContourType(Enum):
-    LUMEN = "lumen"
-    EEM = "eem"
-    CALCIUM = "calcium"
-    BRANCH = "branch"
-    LIPID = "lipid"
-    MACROPHAGE = "macrophage"
-    MEASUREMENT_1 = "measurement_1"
-    MEASUREMENT_2 = "measurement_2"
-    REFERENCE = "reference"
-    WIRE = "wire"
-
-
-class SegmentationTool(Enum):
-    CLOSED_SPLINE = "closed_spline"
-    OPEN_SPLINE = "open_spline"
-    BRUSH = "brush"
-    ANGLE = "angle"
-    LINE = "line"
-    POINT = "point"
-
-
-ALLOWED_TOOLS = {
-    ContourType.LUMEN: {
-        SegmentationTool.CLOSED_SPLINE,
-        SegmentationTool.BRUSH,
-    },
-    ContourType.EEM: {
-        SegmentationTool.CLOSED_SPLINE,
-        SegmentationTool.BRUSH,
-    },
-    ContourType.CALCIUM: {
-        SegmentationTool.OPEN_SPLINE,
-        SegmentationTool.CLOSED_SPLINE,
-        SegmentationTool.BRUSH,
-    },
-    ContourType.BRANCH: {
-        SegmentationTool.CLOSED_SPLINE,
-        SegmentationTool.BRUSH,
-    },
-    ContourType.LIPID: {
-        SegmentationTool.OPEN_SPLINE,
-        SegmentationTool.CLOSED_SPLINE,
-        SegmentationTool.BRUSH,
-    },
-    ContourType.MACROPHAGE: {
-        SegmentationTool.OPEN_SPLINE,
-        SegmentationTool.CLOSED_SPLINE,
-        SegmentationTool.BRUSH,
-    },
-    ContourType.MEASUREMENT_1: {SegmentationTool.LINE},
-    ContourType.MEASUREMENT_2: {SegmentationTool.LINE},
-    ContourType.REFERENCE: {SegmentationTool.POINT},
-    ContourType.WIRE: {SegmentationTool.ANGLE},
-}
-
-
-def validate_tool(contour_type: ContourType, tool: SegmentationTool):
-    if tool not in ALLOWED_TOOLS.get(contour_type, set()):
-        raise ValueError(f"{tool} not allowed for {contour_type}")
-
-
-@dataclass
-class ContourConfig:
-    """Configuration for a specific contour type"""
-
-    color: Union[
-        str, Tuple[int, int, int], Any
-    ]  # accept string names ('green'), hex ('#ff00ff'), or RGB tuples (255,0,0)
-    thickness: int
-    point_radius: int
-    point_thickness: int
-    alpha: int
-    n_points_contour: int
-    n_interactive_points: int
 
 
 SENSITIVITY = 10  # pixels for closure detection
@@ -680,11 +583,11 @@ class Display(QGraphicsView, MetricsMixin):
         else:
             rgb = display_data.astype(np.float32)
 
-        for label_idx in range(1, len(_MASK_OVERLAY_COLORS)):
+        for label_idx in range(1, len(MASK_OVERLAY_COLORS)):
             pixels = frame_mask == label_idx
             if not pixels.any():
                 continue
-            rgb[pixels] = rgb[pixels] * (1.0 - _MASK_ALPHA) + _MASK_OVERLAY_COLORS[label_idx] * _MASK_ALPHA
+            rgb[pixels] = rgb[pixels] * (1.0 - MASK_ALPHA) + MASK_OVERLAY_COLORS[label_idx] * MASK_ALPHA
 
         result = np.clip(rgb, 0, 255).astype(np.uint8)
         return np.ascontiguousarray(result), w * 3, QImage.Format.Format_RGB888

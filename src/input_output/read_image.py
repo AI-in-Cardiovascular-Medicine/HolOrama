@@ -22,7 +22,7 @@ from segmentation.save_as_nifti import (
 )
 from segmentation.segment import downsample
 from gui.left_half.display import ContourType
-from gui.utils.geometry import SplineGeometry
+from tools.geometry import SplineGeometry
 
 
 def read_image(main_window):
