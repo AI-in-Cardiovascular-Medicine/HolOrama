@@ -9,7 +9,7 @@ from PyQt6.QtCore import Qt, QLineF
 
 # Internal imports based on your file structure
 from tools.geometry import get_qt_pen
-from report.report import compute_polygon_metrics, farthest_points, closest_points
+from input_output.output.reports import compute_polygon_metrics, farthest_points, closest_points
 
 class MetricsMixin:
     """

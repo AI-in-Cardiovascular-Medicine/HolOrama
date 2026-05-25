@@ -32,7 +32,7 @@ from gui.right_half.right_half import (
 from gui.right_half.gating_display import GatingDisplay
 from gui.right_half.longitudinal_view import LongitudinalView
 from gui.shortcuts import init_shortcuts, init_menu
-from input_output.contours_io import write_contours
+from input_output.output.contours import write_contours
 from gating.contour_based_gating import ContourBasedGating
 from segmentation.predict import Predict
 

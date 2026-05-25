@@ -9,7 +9,7 @@ pd.options.mode.chained_assignment = None  # default='warn'
 
 from scipy.ndimage import gaussian_filter1d
 
-from report.report import report
+from input_output.output.reports import report
 
 
 class ResultsPlot(QMainWindow):

@@ -12,11 +12,12 @@ from gui.popup_windows.frame_range_dialog import FrameRangeDialog
 from gui.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 from gui.popup_windows.video_player import VideoPlayer
 from gui.utils.contours_gui import new_contour, new_contour_append, new_measure, new_angle, set_tool
-from input_output.metadata import MetadataWindow
-from input_output.read_image import read_image, read_nifti_mask
-from input_output.contours_io import write_contours, save_gated_images
+from input_output.input.metadata import MetadataWindow
+from input_output.input.image import read_image, read_nifti_mask
+from input_output.output.contours import write_contours
+from input_output.output.other_fmt import save_gated_images
 from segmentation.save_as_nifti import save_as_nifti
-from report.report import report
+from input_output.output.reports import report
 
 
 from gui.popup_windows.results_plot import ResultsPlot

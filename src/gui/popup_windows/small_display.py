@@ -12,7 +12,7 @@ from PyQt6.QtGui import QPixmap, QImage, QPen
 from shapely.geometry import Polygon
 
 from tools.geometry import SplineGeometry, Spline, Point
-from report.report import farthest_points, closest_points
+from input_output.output.reports import farthest_points, closest_points
 import numpy as np
 
 
