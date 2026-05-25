@@ -16,7 +16,7 @@ from input_output.input.metadata import MetadataWindow
 from input_output.input.image import read_image, read_nifti_mask
 from input_output.output.contours import write_contours
 from input_output.output.other_fmt import save_gated_images
-from segmentation.save_as_nifti import save_as_nifti
+from input_output.output.imgs_masks import save_as_nifti
 from input_output.output.reports import report
 
 

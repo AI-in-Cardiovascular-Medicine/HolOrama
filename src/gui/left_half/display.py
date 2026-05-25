@@ -14,7 +14,7 @@ from tools.geometry import Point, Spline, SplineGeometry, OpenSplineGeometry, Op
 from gui.utils.metrics import MetricsMixin
 from tools.geometry import Marker
 from segmentation.segment import downsample
-from segmentation.save_as_nifti import contours_to_mask
+from input_output.output.imgs_masks import contours_to_mask
 from domain.io_types import Measure
 
 

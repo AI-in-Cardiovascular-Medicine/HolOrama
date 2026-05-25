@@ -13,7 +13,7 @@ from gui.popup_windows.message_boxes import ErrorMessage
 from input_output.input.metadata import parse_dicom, parse_nifti, parse_nifti_oct
 from input_output.input.contours import read_contours
 from domain.io_types import FrameData
-from segmentation.save_as_nifti import (
+from input_output.output.imgs_masks import (
     LABEL_LUMEN,
     LABEL_EEM_WALL,
     LABEL_CALCIUM,
