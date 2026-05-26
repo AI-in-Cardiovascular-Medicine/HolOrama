@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+from typing import Optional
+
 import numpy as np
 
 from PyQt6.QtWidgets import (
@@ -7,6 +10,24 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem,
 )
 from PyQt6.QtCore import Qt
+
+
+@dataclass
+class MetaData:
+    """Contains all the mandatory and voluntary metadata"""
+
+    modality: Optional[str] = None
+    patient_name: Optional[str] = None
+    birthdate: Optional[str] = None
+    sex: Optional[str] = None
+    pullbackspeed: Optional[str] = None
+    pullback_length: Optional[str] = None
+    resolution: Optional[str] = None
+    dimension: Optional[str] = None
+    manufacturer: Optional[str] = None
+    model: Optional[str] = None
+    pullback_start: Optional[str] = None
+    frame_rate: Optional[str] = None
 
 
 class MetadataWindow(QMainWindow):
@@ -42,7 +63,7 @@ def parse_ivus(main_window):
         patient_name = 'Unknown'
 
     birth_date = str(main_window.dicom.get('PatientBirthDate') or 'Unknown')
-    gender = str(main_window.dicom.get('PatientSex') or 'Unknown')
+    patient_sex = str(main_window.dicom.get('PatientSex') or 'Unknown')
 
     if main_window.dicom.get('IVUSPullbackRate'):
         pullback_rate = float(main_window.dicom.IVUSPullbackRate)
@@ -130,8 +151,8 @@ def parse_ivus(main_window):
     main_window.metadata_table.setItem(0, 1, QTableWidgetItem(patient_name))
     main_window.metadata_table.setItem(1, 0, QTableWidgetItem('Date of Birth'))
     main_window.metadata_table.setItem(1, 1, QTableWidgetItem(birth_date))
-    main_window.metadata_table.setItem(2, 0, QTableWidgetItem('Gender'))
-    main_window.metadata_table.setItem(2, 1, QTableWidgetItem(gender))
+    main_window.metadata_table.setItem(2, 0, QTableWidgetItem('Sex'))
+    main_window.metadata_table.setItem(2, 1, QTableWidgetItem(patient_sex))
     main_window.metadata_table.setItem(3, 0, QTableWidgetItem('Pullback Speed'))
     main_window.metadata_table.setItem(3, 1, QTableWidgetItem(str(pullback_rate)))
     main_window.metadata_table.setItem(4, 0, QTableWidgetItem('Resolution (mm)'))
@@ -318,7 +339,7 @@ def parse_ivus_oct(main_window):
 
     patient_name = str(ds.get('PatientName', 'Unknown'))
     birth_date = str(ds.get('PatientBirthDate', 'Unknown'))
-    gender = str(ds.get('PatientSex', 'Unknown'))
+    patient_sex = str(ds.get('PatientSex', 'Unknown'))
 
     modality = ds.get('Modality', 'Unknown')
     manufacturer = ds.get('Manufacturer', 'Unknown')
@@ -399,7 +420,7 @@ def parse_ivus_oct(main_window):
         ('Modality', modality),
         ('Patient Name', patient_name),
         ('Date of Birth', birth_date),
-        ('Gender', gender),
+        ('Sex', patient_sex),
         ('Pullback Speed', f"{pullback_rate} mm/s"),
         ('Resolution', f"{resolution:.4f} mm"),
         ('Dimensions', f"{rows}x{ds.get('Columns', rows)}"),

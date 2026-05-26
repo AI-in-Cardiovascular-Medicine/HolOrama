@@ -2,7 +2,7 @@ import numpy as np
 
 from enum import Enum
 from dataclasses import dataclass
-from typing import Tuple, List, Union, Any
+from typing import Tuple, Union, Any
 
 # RGB colour for each mask label (index = label value).
 # Label 0 (background) is intentionally skipped during blending.
@@ -23,7 +23,13 @@ MASK_OVERLAY_COLORS = np.array(
 MASK_ALPHA = 0.45  # overlay opacity (0 = transparent, 1 = opaque)
 
 
-OCT_QUALITY_LABELS = ['Very Bad', 'Bad', 'Ok', 'Good', 'Very Good'] # best needs to be on the right
+OCT_QUALITY_LABELS = ['Very Bad', 'Bad', 'Ok', 'Good', 'Very Good']  # best needs to be on the right
+
+
+class SupportedType(Enum):
+    IVUS = "IVUS"
+    NIRS = "NIRS"
+    OCT = "OCT"
 
 
 class ContourType(Enum):

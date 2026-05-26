@@ -62,7 +62,7 @@ class Master(QMainWindow):
         self.gated_frames: list[int] = []
         self.gated_frames_dia: list[int] = []
         self.gated_frames_sys: list[int] = []
-        self.data: dict[str, Any] = {}  # container to be saved in JSON file later, includes contours, etc.
+        self.data: FrameDataMap = FrameDataMap()
         self.gating_signal: dict[str, Any] = {}  # global gating signal, saved separately from per-frame data
         self.metadata: dict[str, Any] = {}  # metadata used outside of read_image (not saved to JSON file)
         self.images: np.ndarray | None = None

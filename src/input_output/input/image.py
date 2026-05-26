@@ -37,7 +37,7 @@ def read_image(main_window):
     main_window.reset_state()
     main_window.status_bar.showMessage('Reading image file...')
     file_name, _ = QFileDialog.getOpenFileName(
-        main_window, 'Open IVUS File', '..', 'All files (*)', options=QFileDialog.Option.DontUseNativeDialog
+        main_window, 'Open File', '..', 'All files (*)', options=QFileDialog.Option.DontUseNativeDialog
     )
     if file_name:
         main_window.gating_display.fig.clear()
@@ -84,7 +84,8 @@ def read_image(main_window):
             except Exception:
                 traceback.print_exc()
                 ErrorMessage(
-                    main_window, 'File is not a valid IVUS file and could not be loaded (DICOM or NIfTi supported)'
+                    main_window,
+                    'File is not a valid IVUS/NIRS/OCT file and could not be loaded (DICOM or NIfTi supported)',
                 )
                 return None
 
