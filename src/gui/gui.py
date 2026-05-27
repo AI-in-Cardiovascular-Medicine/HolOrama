@@ -35,7 +35,7 @@ from gui.shortcuts import init_shortcuts, init_menu
 from input_output.output.contours import write_contours
 from gating.contour_based_gating import ContourBasedGating
 from segmentation.predict import Predict
-from domain.runtime_types import FrameDataMap
+from domain.runtime_types import RuntimeData
 from domain.all_types import OCT_QUALITY_LABELS
 
 
@@ -46,7 +46,6 @@ class Master(QMainWindow):
         super().__init__()
         self.config: DictConfig = config
         self.file_name: str | None = None
-        self.autosave_interval: int = config.save.autosave_interval
         self.contour_based_gating: ContourBasedGating = ContourBasedGating(self)
         self.predictor: Predict = Predict(self)
         self.image_displayed: bool = False
@@ -55,14 +54,13 @@ class Master(QMainWindow):
         self.hide_contours: bool = False
         self.hide_special_points: bool = False
         self.colormap_enabled: bool = False
-        self.filter: str | None = None
         self.tmp_contours: dict[
             str, tuple[list[float], list[float]]
         ] = {}  # per-contour-type undo storage, e.g. {'lumen': (xlist, ylist)}
         self.gated_frames: list[int] = []
         self.gated_frames_dia: list[int] = []
         self.gated_frames_sys: list[int] = []
-        self.data: FrameDataMap = FrameDataMap()
+        self.data: RuntimeData = RuntimeData()
         self.gating_signal: dict[str, Any] = {}  # global gating signal, saved separately from per-frame data
         self.metadata: dict[str, Any] = {}  # metadata used outside of read_image (not saved to JSON file)
         self.images: np.ndarray | None = None
@@ -150,7 +148,7 @@ class Master(QMainWindow):
 
         timer: QTimer = QTimer(self)
         timer.timeout.connect(self.auto_save)
-        timer.start(self.autosave_interval)  # autosave interval in milliseconds
+        timer.start(self.config.save.autosave_interval)  # autosave interval in milliseconds
 
     def auto_save(self) -> None:
         if self.image_displayed:
@@ -170,12 +168,11 @@ class Master(QMainWindow):
         self.hide_contours = False
         self.hide_special_points = False
         self.colormap_enabled = False
-        self.filter = None
         self.tmp_contours = {}
         self.gated_frames = []
         self.gated_frames_dia = []
         self.gated_frames_sys = []
-        self.data = FrameDataMap()
+        self.data = RuntimeData()
         self.gating_signal = {}
         self.metadata = {}
         self.images = None
@@ -185,3 +182,4 @@ class Master(QMainWindow):
         self.gated_frames_oct = []
         self.tagged_frame_button.setChecked(False)
         self.oct_quality_buttons[OCT_QUALITY_LABELS[-1]].setChecked(True)
+        self.init_gui()

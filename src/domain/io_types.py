@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import numpy as np
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
 from enum import Enum
 from domain.all_types import OCT_QUALITY_LABELS
+
 
 @dataclass
 class Measurements:
@@ -51,13 +53,23 @@ class FrameData:
     farthest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
 
 
-class ProcessableModality(Enum):
-    OCT = "oct",
-    IVUS = "ivus",
-    NIRS = "nirs",
-
 @dataclass
 class MetaData:
-    """All necessary metadata for the programm to run with fall-backs to calculate missing values."""
+    modality: Optional[str] = None
+    patient_name: str = 'Unknown'
+    birthdate: str = 'Unknown'
+    sex: str = 'Unknown'
+    pullback_speed: Optional[float] = None
+    pullback_length: Optional[float | np.ndarray] = None
+    resolution: Optional[float] = None
+    dimension: Optional[int] = None
+    manufacturer: str = 'Unknown'
+    model: str = 'Unknown'
+    pullback_start_frame: Optional[int] = None
+    frame_rate: Optional[float] = None
 
-    patient_name = str,
+
+class ProcessableModality(Enum):
+    OCT = ("oct",)
+    IVUS = ("ivus",)
+    NIRS = ("nirs",)
