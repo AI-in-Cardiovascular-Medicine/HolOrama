@@ -46,10 +46,10 @@ class LongitudinalView(QGraphicsView):
         self.image_height = images.shape[1]
         center_col = images.shape[2] // 2
 
-        if hasattr(self.main_window, 'images_rgb') and self.main_window.images_rgb is not None:
-            slice_data = self.main_window.images_rgb[:, :, center_col, :]
+        if hasattr(self.main_window, 'images_rgb') and self.main_window.runtime_data.images_rgb is not None:
+            slice_data = self.main_window.runtime_data.images_rgb[:, :, center_col, :]
         else:
-            gray = self.main_window.images[:, :, center_col]  # (frames, height)
+            gray = self.main_window.runtime_data.images[:, :, center_col]  # (frames, height)
             slice_data = np.stack([gray, gray, gray], axis=-1)  # (frames, height, 3)
         slice_data = np.transpose(slice_data, (1, 0, 2)).copy()
         q_format = QImage.Format.Format_RGB888
@@ -74,18 +74,18 @@ class LongitudinalView(QGraphicsView):
         self.plot_areas()
 
     def plot_areas(self):
-        """Read lumen areas from main_window.data and draw one dot per frame."""
+        """Read lumen areas from main_window.runtime_data.frame_data_dct and draw one dot per frame."""
         for item in self._area_items:
             if item.scene() == self.graphics_scene:
                 self.graphics_scene.removeItem(item)
         self._area_items = []
 
-        if not self.main_window.data or self.image_height == 0:
+        if not self.main_window.runtime_data.frame_data_dct or self.image_height == 0:
             return
 
         areas: dict[int, float] = {}
         phases: dict[int, float] = {}
-        for frame, fd in self.main_window.data.items():
+        for frame, fd in self.main_window.runtime_data.frame_data_dct.items():
             area = fd.lumen.measurements.area
             phase = fd.phase
             if area is not None and area > 0:

@@ -11,6 +11,7 @@ from PyQt6.QtCore import Qt, QLineF
 from tools.geometry import get_qt_pen
 from input_output.output.reports import compute_polygon_metrics, farthest_points, closest_points
 
+
 class MetricsMixin:
     """
     Mixin class for Display to handle plaque/lumen metrics
@@ -27,10 +28,14 @@ class MetricsMixin:
     image_size: int
     active_contour_type: Any
 
-    def _maybe_compute_metrics(self, unscaled_lumen: Tuple[np.ndarray, np.ndarray] | None = None, unscaled_eem: Tuple[np.ndarray, np.ndarray] | None = None):
+    def _maybe_compute_metrics(
+        self,
+        unscaled_lumen: Tuple[np.ndarray, np.ndarray] | None = None,
+        unscaled_eem: Tuple[np.ndarray, np.ndarray] | None = None,
+    ):
         if unscaled_lumen is None:
             return
-        
+
         try:
             x, y = unscaled_lumen
             # Ensure we have valid arrays and they match in length
@@ -49,32 +54,42 @@ class MetricsMixin:
 
         if not poly.is_valid or poly.area == 0:
             logger.warning("Invalid or zero-area polygon created. Skipping metrics.")
-            return            
+            return
 
         lumen_area, lumen_circumf, _, _ = compute_polygon_metrics(self.main_window, poly, self.frame)
         longest_d, far_x, far_y = farthest_points(self.main_window, poly.exterior.coords, self.frame)
         shortest_d, close_x, close_y = closest_points(self.main_window, poly, self.frame)
-        
+
         eem_area, pct = self.compute_eem_and_percent_stenosis(self.frame, lumen_area, unscaled_eem)
 
         if not self.main_window.hide_special_points:
             pen = get_qt_pen('yellow', self.point_thickness * 2, self.alpha_contour)
             self.graphics_scene.addLine(
-                QLineF(far_x[0] * self.scaling_factor, far_y[0] * self.scaling_factor,
-                    far_x[1] * self.scaling_factor, far_y[1] * self.scaling_factor),
+                QLineF(
+                    far_x[0] * self.scaling_factor,
+                    far_y[0] * self.scaling_factor,
+                    far_x[1] * self.scaling_factor,
+                    far_y[1] * self.scaling_factor,
+                ),
                 pen,
             )
             self.graphics_scene.addLine(
-                QLineF(close_x[0] * self.scaling_factor, close_y[0] * self.scaling_factor,
-                    close_x[1] * self.scaling_factor, close_y[1] * self.scaling_factor),
+                QLineF(
+                    close_x[0] * self.scaling_factor,
+                    close_y[0] * self.scaling_factor,
+                    close_x[1] * self.scaling_factor,
+                    close_y[1] * self.scaling_factor,
+                ),
                 pen,
             )
 
             ell = (longest_d / shortest_d) if shortest_d else 0
-            self.build_frame_metrics_text(lumen_area, lumen_circumf, ell, longest_d, shortest_d, eem_area, pct, update_phase=False)
+            self.build_frame_metrics_text(
+                lumen_area, lumen_circumf, ell, longest_d, shortest_d, eem_area, pct, update_phase=False
+            )
 
     def update_phase_text(self):
-        fd = self.main_window.data.get(self.frame)
+        fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
         code = fd.phase if fd else '-'
         if code == "D":
             text = "Diastole"
@@ -107,28 +122,28 @@ class MetricsMixin:
     def update_active_contour(self):
         active_type = self.active_contour_type
         config = self.contour_configs.get(active_type)
-        
+
         old_text = getattr(self, "active_contour_text", None)
         if old_text and old_text.scene() == self.graphics_scene:
             self.graphics_scene.removeItem(old_text)
-        
+
         text = active_type.value.upper()
         self.active_contour_text = QGraphicsTextItem(text)
-        
+
         if isinstance(config.color, str):
             color = QColor(config.color)
         elif isinstance(config.color, (tuple, list)):
             color = QColor(*config.color)
         else:
             color = QColor(Qt.GlobalColor.white)
-            
+
         self.active_contour_text.setDefaultTextColor(color)
-        
+
         font_size = max(8, int(self.image_size / 45))
         self.active_contour_text.setFont(QFont("Helvetica", font_size, QFont.Weight.Bold))
-        
+
         self.active_contour_text.setPos(10, self.image_size - (font_size * 2.5))
-        
+
         self.graphics_scene.addItem(self.active_contour_text)
 
     def compute_eem_and_percent_stenosis(self, frame: int, lumen_area: float, eem_full: Tuple[Any, Any] | None = None):
@@ -138,7 +153,7 @@ class MetricsMixin:
         """
         eem_area: float | None = None
         percent_text = "n/a"
-        
+
         try:
             # Preferred: use prepared full_contours for EEM (display coords)
             if eem_full is not None:
@@ -154,20 +169,20 @@ class MetricsMixin:
 
                 if has_eem_coords:
                     polygon_eem = Polygon([(float(x), float(y)) for x, y in zip(eem_x, eem_y)])
-                    eem_area = polygon_eem.area * self.main_window.metadata['resolution'] ** 2
+                    eem_area = polygon_eem.area * self.main_window.runtime_data.metadata['resolution'] ** 2
         except Exception:
             logger.exception("Failed while computing EEM area")
 
         try:
             if lumen_area is not None and eem_area is not None and eem_area != 0:
-                percent = ((eem_area - lumen_area)/ eem_area) * 100.0
+                percent = ((eem_area - lumen_area) / eem_area) * 100.0
                 percent = max(0.0, min(100.0, percent))  # clamp 0..100
                 percent_text = f"{round(percent, 2)} %"
         except Exception:
             logger.exception("Failed to compute percent stenosis")
 
         return eem_area, percent_text
-            
+
     def build_frame_metrics_text(
         self,
         lumen_area,
@@ -194,12 +209,22 @@ class MetricsMixin:
             pass
 
         lines = [
-            f"Lumen area:\t\t{round(lumen_area, 2)} (mm\N{SUPERSCRIPT TWO})" if lumen_area is not None else "Lumen area:\t\tn/a",
+            f"Lumen area:\t\t{round(lumen_area, 2)} (mm\N{SUPERSCRIPT TWO})"
+            if lumen_area is not None
+            else "Lumen area:\t\tn/a",
             f"Lumen circ:\t\t{round(lumen_circumf, 2)} (mm)" if lumen_circumf is not None else "Lumen circ:\t\tn/a",
-            f"Elliptic ratio:\t\t{round(elliptic_ratio, 2)}" if elliptic_ratio is not None else "Elliptic ratio:\t\tn/a",
-            f"Longest distance:\t{round(longest_distance, 2)} (mm)" if longest_distance is not None else "Longest distance:\t\tn/a",
-            f"Shortest distance:\t{round(shortest_distance, 2)} (mm)" if shortest_distance is not None else "Shortest distance:\t\tn/a",
-            f"EEM area:\t\t{round(eem_area, 2)} (mm\N{SUPERSCRIPT TWO})" if eem_area is not None else "EEM area:\t\tn/a",
+            f"Elliptic ratio:\t\t{round(elliptic_ratio, 2)}"
+            if elliptic_ratio is not None
+            else "Elliptic ratio:\t\tn/a",
+            f"Longest distance:\t{round(longest_distance, 2)} (mm)"
+            if longest_distance is not None
+            else "Longest distance:\t\tn/a",
+            f"Shortest distance:\t{round(shortest_distance, 2)} (mm)"
+            if shortest_distance is not None
+            else "Shortest distance:\t\tn/a",
+            f"EEM area:\t\t{round(eem_area, 2)} (mm\N{SUPERSCRIPT TWO})"
+            if eem_area is not None
+            else "EEM area:\t\tn/a",
             f"Plaque burden:\t\t{percent_stenosis_text}",
         ]
 

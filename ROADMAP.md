@@ -24,7 +24,7 @@
 - [x] Make image size dynamic
 - [x] Clean up for log files -> only store now when error
 - [] Add brush
-- [] Reduce memory by not storing main_window.images and main_window.dicom at the same time.
+- [] Reduce memory by not storing main_window.runtime_data.images and main_window.dicom at the same time.
 - [] Type safety in whole program
 - [] Try/Except in whole program, wherever applicable
 - [] Config callable from GUI

@@ -10,8 +10,9 @@ from dataclasses import asdict
 from version import version_file_str
 from gui.popup_windows.message_boxes import ErrorMessage
 
+
 def write_contours(main_window) -> None:
-    """Serialize main_window.data (Dict[int, FrameData]) to JSON."""
+    """Serialize main_window.runtime_data.frame_data_dct (Dict[int, FrameData]) to JSON."""
     if not main_window.image_displayed:
         ErrorMessage(main_window, 'Cannot write contours before reading input file.')
         return
@@ -20,8 +21,8 @@ def write_contours(main_window) -> None:
     out_path = f'{base}_contours_{version_file_str}.json'
 
     try:
-        serializable = {str(i): asdict(frame) for i, frame in main_window.data.items()}
-        serializable['gating_signal'] = main_window.gating_signal
+        serializable = {str(i): asdict(frame) for i, frame in main_window.runtime_data.frame_data_dct.items()}
+        serializable['gating_signal'] = main_window.runtime_data.gating_signal
         out_dir = os.path.dirname(out_path) or '.'
         tmp_fd, tmp_path = tempfile.mkstemp(dir=out_dir, suffix='.tmp')
         try:

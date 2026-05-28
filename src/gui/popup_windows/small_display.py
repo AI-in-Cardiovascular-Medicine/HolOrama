@@ -1,4 +1,3 @@
-from loguru import logger
 from PyQt6.QtWidgets import (
     QMainWindow,
     QGraphicsView,
@@ -25,7 +24,7 @@ class SmallDisplay(QMainWindow):
         self.contour_thickness = main_window.config.display.contour_thickness
         self.point_thickness = main_window.config.display.point_thickness
         self.point_radius = main_window.config.display.point_radius
-        self.scaling_factor = self.image_size / self.main_window.images[0].shape[0]
+        self.scaling_factor = self.image_size / self.main_window.runtime_data.images[0].shape[0]
         self.window_to_image_ratio = 1.5
         self.window_size = int(self.image_size / self.window_to_image_ratio)
         self.resize(self.window_size, self.window_size)
@@ -55,7 +54,9 @@ class SmallDisplay(QMainWindow):
         end_frame = max(0, frame - 5)
 
         for i in range(start_frame, end_frame):
-            corr = np.corrcoef(self.main_window.images[frame].ravel(), self.main_window.images[i].ravel())[0, 1]
+            corr = np.corrcoef(
+                self.main_window.runtime_data.images[frame].ravel(), self.main_window.runtime_data.images[i].ravel()
+            )[0, 1]
             correlations.append(corr)
             frame_indices.append(i)
 
@@ -66,7 +67,9 @@ class SmallDisplay(QMainWindow):
 
         return correlations, frame_indices
 
-    def find_best_correlation(self, correlations: list[float], frame_indices: list[int | None]) -> tuple[int | None, float | None]:
+    def find_best_correlation(
+        self, correlations: list[float], frame_indices: list[int | None]
+    ) -> tuple[int | None, float | None]:
         """Finds the frame with the highest correlation."""
         if not correlations:
             return None, None
@@ -77,7 +80,9 @@ class SmallDisplay(QMainWindow):
 
         return best_frame_index, max_corr
 
-    def update_frame(self, frame: int, update_image: bool=False, update_contours: bool=False, update_text: bool=False):
+    def update_frame(
+        self, frame: int, update_image: bool = False, update_contours: bool = False, update_text: bool = False
+    ):
         if update_image:
             if frame is None:
                 self.pixmap.setPixmap(QPixmap())
@@ -91,10 +96,10 @@ class SmallDisplay(QMainWindow):
             self.pixmap.setPixmap(
                 QPixmap.fromImage(
                     QImage(
-                        self.main_window.images[frame],
-                        self.main_window.images[frame].shape[1],
-                        self.main_window.images[frame].shape[0],
-                        self.main_window.images[frame].shape[1],
+                        self.main_window.runtime_data.images[frame],
+                        self.main_window.runtime_data.images[frame].shape[1],
+                        self.main_window.runtime_data.images[frame].shape[0],
+                        self.main_window.runtime_data.images[frame].shape[1],
                         QImage.Format.Format_Grayscale8,
                     ).scaled(
                         self.image_size,
@@ -113,7 +118,7 @@ class SmallDisplay(QMainWindow):
                     self.scene.removeItem(item)
 
             key = self.main_window.display.contour_key()
-            contour_data = self.main_window.data.get(key)
+            contour_data = self.main_window.runtime_data.frame_data_dct.get(key)
             if contour_data and contour_data[0][frame] and not self.main_window.hide_contours:
                 lumen_x = [point * self.scaling_factor for point in contour_data[0][frame]]
                 lumen_y = [point * self.scaling_factor for point in contour_data[1][frame]]

@@ -3,7 +3,6 @@ import os
 import numpy as np
 from scipy.interpolate import splprep, splev
 import SimpleITK as sitk
-from loguru import logger
 from PyQt6.QtWidgets import QProgressDialog, QApplication
 from PyQt6.QtCore import Qt
 from skimage.draw import polygon2mask
@@ -21,19 +20,20 @@ def save_as_nifti(main_window, mode=None):
     if mode == 'contoured':
         frames_to_save = [
             frame
-            for frame in range(main_window.metadata['num_frames'])
-            if main_window.data.get(frame) and main_window.data[frame].lumen.contours
+            for frame in range(main_window.runtime_data.metadata['num_frames'])
+            if main_window.runtime_data.frame_data_dct.get(frame)
+            and main_window.runtime_data.frame_data_dct[frame].lumen.contours
         ]
     elif mode == 'gated':
         frames_to_save = [
             frame
-            for frame in range(main_window.metadata['num_frames'])
-            if main_window.data.get(frame)
-            and main_window.data[frame].lumen.contours
-            and main_window.data[frame].phase in ['D', 'S']
+            for frame in range(main_window.runtime_data.metadata['num_frames'])
+            if main_window.runtime_data.frame_data_dct.get(frame)
+            and main_window.runtime_data.frame_data_dct[frame].lumen.contours
+            and main_window.runtime_data.frame_data_dct[frame].phase in ['D', 'S']
         ]
     elif mode == 'all':
-        frames_to_save = list(range(main_window.metadata['num_frames']))
+        frames_to_save = list(range(main_window.runtime_data.metadata['num_frames']))
     else:
         return  # nothing to save
 
@@ -42,7 +42,7 @@ def save_as_nifti(main_window, mode=None):
         file_name = os.path.splitext(os.path.basename(main_window.file_name))[0]  # remove file extension
         os.makedirs(out_path, exist_ok=True)
         mask = contours_to_mask(
-            main_window.images[frames_to_save], frames_to_save, main_window.data
+            main_window.runtime_data.images[frames_to_save], frames_to_save, main_window.runtime_data.frame_data_dct
         )
 
         progress = QProgressDialog()
@@ -62,23 +62,26 @@ def save_as_nifti(main_window, mode=None):
                 if progress.wasCanceled():
                     break
                 if (
-                    main_window.data.get(frame) and main_window.data[frame].lumen.contours
+                    main_window.runtime_data.frame_data_dct.get(frame)
+                    and main_window.runtime_data.frame_data_dct[frame].lumen.contours
                 ):  # only save mask if contour exists
                     sitk.WriteImage(
                         sitk.GetImageFromArray(mask[i, :, :]),
                         os.path.join(out_path, f'{file_name}_frame_{frame}_seg.nii.gz'),
                     )
                 sitk.WriteImage(
-                    sitk.GetImageFromArray(main_window.images[frame, :, :]),
+                    sitk.GetImageFromArray(main_window.runtime_data.images[frame, :, :]),
                     os.path.join(out_path, f'{file_name}_frame_{frame}_img.nii.gz'),
                 )
         if main_window.config.save.save_3d:
             if any(
-                main_window.data.get(f) and main_window.data[f].lumen.contours for f in frames_to_save
+                main_window.runtime_data.frame_data_dct.get(f)
+                and main_window.runtime_data.frame_data_dct[f].lumen.contours
+                for f in frames_to_save
             ):  # only save mask if any contour exists
                 sitk.WriteImage(sitk.GetImageFromArray(mask), os.path.join(out_path, f'{file_name}_seg.nii.gz'))
             sitk.WriteImage(
-                sitk.GetImageFromArray(main_window.images[frames_to_save]),
+                sitk.GetImageFromArray(main_window.runtime_data.images[frames_to_save]),
                 os.path.join(out_path, f'{file_name}_img.nii.gz'),
             )
             progress.setValue(len(frames_to_save) * main_window.config.save.save_2d + 1)
@@ -101,11 +104,11 @@ def convert_nifti_to_dicom(main_window, out_path, file_name, frames_to_save):
 # ---------------------------------------------------------------------------
 
 LABEL_LUMEN = 1
-LABEL_EEM_WALL = 2   # between lumen and EEM
+LABEL_EEM_WALL = 2  # between lumen and EEM
 LABEL_CALCIUM = 3
 LABEL_LIPID = 4
 LABEL_MACROPHAGE = 5
-LABEL_BRANCH = 7     # side-branch lumen
+LABEL_BRANCH = 7  # side-branch lumen
 LABEL_WIRE_SHADOW = 9  # guide-wire angular shadow
 
 _N_INTERP = 500  # dense interpolation points for smooth polygon boundaries

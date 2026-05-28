@@ -21,11 +21,11 @@ def segment(main_window):
 
     if segment_dialog.exec():
         lower_limit, upper_limit = segment_dialog.getInputs()
-        masks = main_window.predictor(main_window.images, lower_limit, upper_limit)
+        masks = main_window.predictor(main_window.runtime_data.images, lower_limit, upper_limit)
         if masks is not None:
             mask_to_contours(main_window, masks, lower_limit, upper_limit)
             main_window.contours_drawn = True
-            main_window.display.set_data(main_window.images)
+            main_window.display.set_data(main_window.runtime_data.images)
             main_window.hide_contours_box.setChecked(False)
 
     SuccessMessage(main_window, 'Automatic segmentation')
@@ -35,7 +35,7 @@ def segment(main_window):
 def mask_to_contours(main_window, masks, lower_limit, upper_limit, config=None):
     """Extracts contours from masked images.
 
-    When main_window is provided, writes in-place to main_window.data[frame].lumen.
+    When main_window is provided, writes in-place to main_window.runtime_data.frame_data_dct[frame].lumen.
     When main_window is None (headless), returns a Dict[int, FrameData].
     """
     if main_window is not None:
@@ -65,11 +65,11 @@ def mask_to_contours(main_window, masks, lower_limit, upper_limit, config=None):
         logger.info(f'Found contours in {counter} frames')
         return data
 
-    resolution = main_window.metadata.get('resolution', 0.1)  # mm/pixel
+    resolution = main_window.runtime_data.metadata.get('resolution', 0.1)  # mm/pixel
     fallback_radius_px = 0.5 / resolution
 
     for frame in range(lower_limit, upper_limit):
-        fd = main_window.data.get(frame)
+        fd = main_window.runtime_data.frame_data_dct.get(frame)
         if fd is None:
             continue
         keep_lumen_x, keep_lumen_y = [], []

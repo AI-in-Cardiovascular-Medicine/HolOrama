@@ -26,9 +26,12 @@ def report(main_window, lower_limit=None, upper_limit=None, suppress_messages=Fa
     if lower_limit is not None and upper_limit is not None:
         frame_range = range(lower_limit, upper_limit)
     else:
-        frame_range = range(main_window.metadata['num_frames'])
+        frame_range = range(main_window.runtime_data.metadata['num_frames'])
     contoured_frames = [
-        frame for frame in frame_range if frame in main_window.data and main_window.data[frame].lumen.contours
+        frame
+        for frame in frame_range
+        if frame in main_window.runtime_data.frame_data_dct
+        and main_window.runtime_data.frame_data_dct[frame].lumen.contours
     ]
     if not contoured_frames:
         if not suppress_messages:
@@ -44,9 +47,9 @@ def report(main_window, lower_limit=None, upper_limit=None, suppress_messages=Fa
     )
     if report_data is not None:  # else user cancelled progress bar
         # Add metadata information as columns to the first row
-        report_data.loc[0, 'pullback_speed'] = main_window.metadata['pullback_speed']
-        report_data.loc[0, 'pullback_start_frame'] = main_window.metadata['pullback_start_frame']
-        report_data.loc[0, 'frame_rate'] = main_window.metadata['frame_rate']
+        report_data.loc[0, 'pullback_speed'] = main_window.runtime_data.metadata['pullback_speed']
+        report_data.loc[0, 'pullback_start_frame'] = main_window.runtime_data.metadata['pullback_start_frame']
+        report_data.loc[0, 'frame_rate'] = main_window.runtime_data.metadata['frame_rate']
 
         report_data.to_csv(
             os.path.splitext(main_window.file_name)[0] + '_report.txt',
@@ -71,7 +74,7 @@ def _safe_polygon_area(x_coords, y_coords, frame, contour_name, main_window):
 
     try:
         poly = Polygon([(x, y) for x, y in zip(x_coords, y_coords)])
-        return poly.area * main_window.metadata['resolution'] ** 2
+        return poly.area * main_window.runtime_data.metadata['resolution'] ** 2
     except (ValueError, TypeError, TopologicalError) as e:
         logger.bind(frame=frame, contour=contour_name, file=main_window.file_name).exception(
             f'Error computing area for {contour_name} contour at frame {frame}: {e}'
@@ -98,7 +101,7 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
         progress.setWindowTitle('Writing report...')
         progress.show()
 
-    n_frames = main_window.metadata['num_frames']
+    n_frames = main_window.runtime_data.metadata['num_frames']
     longest_distance = [None] * n_frames
     farthest_x = [None] * n_frames
     farthest_y = [None] * n_frames
@@ -115,7 +118,7 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
 
     # Pre-fill from stored per-frame measurements
     for frame in contoured_frames:
-        fd = main_window.data.get(frame)
+        fd = main_window.runtime_data.frame_data_dct.get(frame)
         if fd is None:
             continue
         m = fd.lumen.measurements
@@ -171,7 +174,7 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
 
     def build_xy_lists(full_list):
         if full_list is None:
-            nframes = main_window.metadata.get("num_frames", 0)
+            nframes = main_window.runtime_data.metadata.get("num_frames", 0)
             return [None] * nframes, [None] * nframes
         x_list = [contour[0] if (contour is not None and len(contour) >= 2) else None for contour in full_list]
         y_list = [contour[1] if (contour is not None and len(contour) >= 2) else None for contour in full_list]
@@ -186,7 +189,7 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
         # skip frames already computed (defensive check)
         if lumen_area[frame] and elliptic_ratio[frame] is not None and elliptic_ratio[frame] != 0:
             # compute EEM area if not present
-            fd = main_window.data.get(frame)
+            fd = main_window.runtime_data.frame_data_dct.get(frame)
             if eem_x and eem_x[frame] is not None and fd and not fd.eem.measurements.area:
                 area = _safe_polygon_area(
                     eem_x[frame], eem_y[frame], frame=frame, contour_name="eem", main_window=main_window
@@ -219,7 +222,7 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
             area = _safe_polygon_area(
                 eem_x[frame], eem_y[frame], frame=frame, contour_name="eem", main_window=main_window
             )
-            fd_eem = main_window.data.get(frame)
+            fd_eem = main_window.runtime_data.frame_data_dct.get(frame)
             if fd_eem:
                 fd_eem.eem.measurements.area = area
 
@@ -231,16 +234,20 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
     report_data = pd.DataFrame()
     report_data['frame'] = [frame + 1 for frame in contoured_frames]
     report_data['position'] = 0
-    n_frames = main_window.metadata.get('num_frames', len(contoured_frames))
-    start_frame = main_window.metadata['pullback_start_frame']
+    n_frames = main_window.runtime_data.metadata.get('num_frames', len(contoured_frames))
+    start_frame = main_window.runtime_data.metadata['pullback_start_frame']
     if start_frame <= 0.25 * n_frames:
-        offset = main_window.metadata['pullback_length'][start_frame - 1]
-        report_data['position'] = [main_window.metadata['pullback_length'][frame] for frame in contoured_frames]
+        offset = main_window.runtime_data.metadata['pullback_length'][start_frame - 1]
+        report_data['position'] = [
+            main_window.runtime_data.metadata['pullback_length'][frame] for frame in contoured_frames
+        ]
         report_data['position'] = report_data['position'] - offset
     else:
-        report_data['position'] = [main_window.metadata['pullback_length'][frame] for frame in contoured_frames]
+        report_data['position'] = [
+            main_window.runtime_data.metadata['pullback_length'][frame] for frame in contoured_frames
+        ]
     report_data['position'] = report_data['position'].apply(lambda x: max(x, 0))
-    report_data['phase'] = [main_window.data[frame].phase for frame in contoured_frames]
+    report_data['phase'] = [main_window.runtime_data.frame_data_dct[frame].phase for frame in contoured_frames]
     report_data['lumen_area'] = [lumen_area[frame] for frame in contoured_frames]
     report_data['lumen_circumf'] = [lumen_circumf[frame] for frame in contoured_frames]
     report_data['longest_distance'] = [longest_distance[frame] for frame in contoured_frames]
@@ -249,19 +256,25 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
     report_data['vector_length'] = [vector_length[frame] for frame in contoured_frames]
     report_data['vector_angle'] = [vector_angle[frame] for frame in contoured_frames]
     report_data['measurement_1'] = [
-        main_window.data[frame].measurement_1.length if main_window.data[frame].measurement_1 else None
+        main_window.runtime_data.frame_data_dct[frame].measurement_1.length
+        if main_window.runtime_data.frame_data_dct[frame].measurement_1
+        else None
         for frame in contoured_frames
     ]
     report_data['measurement_2'] = [
-        main_window.data[frame].measurement_2.length if main_window.data[frame].measurement_2 else None
+        main_window.runtime_data.frame_data_dct[frame].measurement_2.length
+        if main_window.runtime_data.frame_data_dct[frame].measurement_2
+        else None
         for frame in contoured_frames
     ]
 
-    report_data['eem_area'] = [main_window.data[frame].eem.measurements.area or 0 for frame in contoured_frames]
+    report_data['eem_area'] = [
+        main_window.runtime_data.frame_data_dct[frame].eem.measurements.area or 0 for frame in contoured_frames
+    ]
 
     # Write computed metrics back into per-frame measurements
     for frame in contoured_frames:
-        fd = main_window.data.get(frame)
+        fd = main_window.runtime_data.frame_data_dct.get(frame)
         if fd is None:
             continue
         if elliptic_ratio[frame] is not None:
@@ -269,21 +282,41 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
 
     # Save CSVs for lumen (diastolic/systolic) and for other contours if present
     if save_as_csv:
-        save_csv_files(main_window, lumen_x, lumen_y, name='diastolic', frames=main_window.gated_frames_dia)
-        save_csv_files(main_window, lumen_x, lumen_y, name='systolic', frames=main_window.gated_frames_sys)
+        save_csv_files(
+            main_window, lumen_x, lumen_y, name='diastolic', frames=main_window.runtime_data.gated_frames_dia
+        )
+        save_csv_files(main_window, lumen_x, lumen_y, name='systolic', frames=main_window.runtime_data.gated_frames_sys)
 
         # save EEM/Calcium/Branch CSVs if contours exist for any frame
         if eem_x is not None and any(elem is not None for elem in eem_x):
-            save_csv_files(main_window, eem_x, eem_y, name='eem_diastolic', frames=main_window.gated_frames_dia)
-            save_csv_files(main_window, eem_x, eem_y, name='eem_systolic', frames=main_window.gated_frames_sys)
+            save_csv_files(
+                main_window, eem_x, eem_y, name='eem_diastolic', frames=main_window.runtime_data.gated_frames_dia
+            )
+            save_csv_files(
+                main_window, eem_x, eem_y, name='eem_systolic', frames=main_window.runtime_data.gated_frames_sys
+            )
         if calc_x is not None and any(elem is not None for elem in calc_x):
-            save_csv_files(main_window, calc_x, calc_y, name='calcium_diastolic', frames=main_window.gated_frames_dia)
-            save_csv_files(main_window, calc_x, calc_y, name='calcium_systolic', frames=main_window.gated_frames_sys)
+            save_csv_files(
+                main_window, calc_x, calc_y, name='calcium_diastolic', frames=main_window.runtime_data.gated_frames_dia
+            )
+            save_csv_files(
+                main_window, calc_x, calc_y, name='calcium_systolic', frames=main_window.runtime_data.gated_frames_sys
+            )
         if branch_x is not None and any(elem is not None for elem in branch_x):
             save_csv_files(
-                main_window, branch_x, branch_y, name='branch_diastolic', frames=main_window.gated_frames_dia
+                main_window,
+                branch_x,
+                branch_y,
+                name='branch_diastolic',
+                frames=main_window.runtime_data.gated_frames_dia,
             )
-            save_csv_files(main_window, branch_x, branch_y, name='branch_systolic', frames=main_window.gated_frames_sys)
+            save_csv_files(
+                main_window,
+                branch_x,
+                branch_y,
+                name='branch_systolic',
+                frames=main_window.runtime_data.gated_frames_sys,
+            )
 
     if not suppress_messages:
         progress.close()
@@ -353,11 +386,11 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
 
 def compute_polygon_metrics(main_window, polygon, frame):
     """Computes lumen area and centroid from contour"""
-    lumen_area = polygon.area * main_window.metadata['resolution'] ** 2
-    lumen_circumf = polygon.length * main_window.metadata['resolution']
+    lumen_area = polygon.area * main_window.runtime_data.metadata['resolution'] ** 2
+    lumen_circumf = polygon.length * main_window.runtime_data.metadata['resolution']
     centroid_x = polygon.centroid.x
     centroid_y = polygon.centroid.y
-    fd = main_window.data.get(frame)
+    fd = main_window.runtime_data.frame_data_dct.get(frame)
     if fd:
         fd.lumen.measurements.area = lumen_area
         fd.lumen.measurements.circumference = lumen_circumf
@@ -397,7 +430,7 @@ def farthest_points(main_window, exterior_coords, frame):
             max_distance = distance
             farthest_points = (point1, point2)
 
-    longest_distance = max_distance * main_window.metadata['resolution']
+    longest_distance = max_distance * main_window.runtime_data.metadata['resolution']
 
     if farthest_points is None:
         logger.warning('No farthest points found, probably due to polygon shape')
@@ -410,7 +443,7 @@ def farthest_points(main_window, exterior_coords, frame):
         farthest_point_x = [x1, x2]
         farthest_point_y = [y1, y2]
 
-    fd = main_window.data.get(frame)
+    fd = main_window.runtime_data.frame_data_dct.get(frame)
     if fd:
         fd.lumen.measurements.major_axis = longest_distance
         fd.farthest_points = (
@@ -442,7 +475,7 @@ def closest_points(main_window, polygon, frame):
         if index_1 >= num_points // 2:
             break
 
-    shortest_distance = min_distance * main_window.metadata['resolution']
+    shortest_distance = min_distance * main_window.runtime_data.metadata['resolution']
 
     if closest_points is None:
         logger.warning('No closest points found, probably due to polygon shape')
@@ -455,7 +488,7 @@ def closest_points(main_window, polygon, frame):
         closest_point_x = [x1, x2]
         closest_point_y = [y1, y2]
 
-    fd = main_window.data.get(frame)
+    fd = main_window.runtime_data.frame_data_dct.get(frame)
     if fd:
         fd.lumen.measurements.minor_axis = shortest_distance
         fd.closest_points = (
@@ -473,20 +506,24 @@ def save_csv_files(main_window, lumen_x, lumen_y, name, frames):
     csv_out_dir = os.path.join(main_window.file_name + '_csv_files')
     logger.info(f'Saving {name} contours to {csv_out_dir}')
     os.makedirs(csv_out_dir, exist_ok=True)
-    img_dim_mm = main_window.metadata['dimension'] * main_window.metadata['resolution']
+    img_dim_mm = main_window.runtime_data.metadata['dimension'] * main_window.runtime_data.metadata['resolution']
 
     with open(os.path.join(csv_out_dir, f'{name}_contours.csv'), 'w', newline='') as contours_file:
         contours_writer = csv.writer(contours_file, delimiter='\t')
-        distance_offset = main_window.metadata['pullback_length'][frames[0]]
+        distance_offset = main_window.runtime_data.metadata['pullback_length'][frames[0]]
         for frame in frames:
             if lumen_x[frame] is None:
                 continue
             rows = zip(
-                [x * main_window.metadata['resolution'] for x in lumen_x[frame]],
-                [abs(y * main_window.metadata['resolution'] - img_dim_mm) for y in lumen_y[frame]],
+                [x * main_window.runtime_data.metadata['resolution'] for x in lumen_x[frame]],
+                [abs(y * main_window.runtime_data.metadata['resolution'] - img_dim_mm) for y in lumen_y[frame]],
             )
             for row in rows:
-                csv_row = [frame + 1] + list(row) + [main_window.metadata['pullback_length'][frame] - distance_offset]
+                csv_row = (
+                    [frame + 1]
+                    + list(row)
+                    + [main_window.runtime_data.metadata['pullback_length'][frame] - distance_offset]
+                )
                 contours_writer.writerow(csv_row)
 
     if name in ('diastolic', 'systolic'):
@@ -494,14 +531,14 @@ def save_csv_files(main_window, lumen_x, lumen_y, name, frames):
         with open(os.path.join(csv_out_dir, ref_file_name), 'w', newline='') as reference_file:
             reference_writer = csv.writer(reference_file, delimiter='\t')
             for frame in frames:
-                fd = main_window.data.get(frame)
+                fd = main_window.runtime_data.frame_data_dct.get(frame)
                 ref = fd.reference if fd else None
                 if ref is not None:
                     reference_writer.writerow(
                         [
                             frame + 1,
-                            ref[0] * main_window.metadata['resolution'],
-                            abs(ref[1] * main_window.metadata['resolution'] - img_dim_mm),
-                            main_window.metadata['pullback_length'][frame] - distance_offset,
+                            ref[0] * main_window.runtime_data.metadata['resolution'],
+                            abs(ref[1] * main_window.runtime_data.metadata['resolution'] - img_dim_mm),
+                            main_window.runtime_data.metadata['pullback_length'][frame] - distance_offset,
                         ]
                     )

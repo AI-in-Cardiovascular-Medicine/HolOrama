@@ -139,7 +139,7 @@ class LeftHalf:
             self.paused = True
             self.play_button.setIcon(self.play_icon)
 
-        for frame in range(start_frame, main_window.metadata['num_frames']):
+        for frame in range(start_frame, main_window.runtime_data.metadata['num_frames']):
             if not self.paused:
                 main_window.display_slider.set_value(frame)
                 QApplication.processEvents()
@@ -153,11 +153,11 @@ class LeftHalf:
         self.main_window.display.update_display()
         self.frame_number_label.setText(f'Frame {value + 1}')
 
-        if value in self.main_window.gated_frames_dia:
+        if value in self.main_window.runtime_data.gated_frames_dia:
             self.main_window.diastolic_frame_box.setChecked(True)
         else:
             self.main_window.diastolic_frame_box.setChecked(False)
-            if value in self.main_window.gated_frames_sys:
+            if value in self.main_window.runtime_data.gated_frames_sys:
                 self.main_window.systolic_frame_box.setChecked(True)
             else:
                 self.main_window.systolic_frame_box.setChecked(False)

@@ -14,7 +14,7 @@ from gui.popup_windows.message_boxes import ErrorMessage
 
 def read_contours(main_window, file_name=None) -> bool:
     """Read contours from the most recent JSON file and populate
-    main_window.data as Dict[int, FrameData]. Returns True on success."""
+    main_window.runtime_data.frame_data_dct as Dict[int, FrameData]. Returns True on success."""
     json_files = glob.glob(f'{file_name}_contours*.json')
     if not json_files:
         logger.info('No contour JSON files found.')
@@ -34,19 +34,19 @@ def read_contours(main_window, file_name=None) -> bool:
         )
         return False
 
-    num_frames = main_window.metadata['num_frames']
+    num_frames = main_window.runtime_data.metadata['num_frames']
 
     if _is_legacy(raw):
-        scaling_factor = main_window.display.image_size / main_window.images.shape[1]
-        main_window.data = _build_frame_data_legacy(raw, num_frames, scaling_factor)
-        main_window.gating_signal = raw.get('gating_signal', {})
+        scaling_factor = main_window.display.image_size / main_window.runtime_data.images.shape[1]
+        main_window.runtime_data.frame_data_dct = _build_frame_data_legacy(raw, num_frames, scaling_factor)
+        main_window.runtime_data.gating_signal = raw.get('gating_signal', {})
     else:
-        main_window.data = _build_frame_data(raw)
-        main_window.gating_signal = raw.get('gating_signal', {})
+        main_window.runtime_data.frame_data_dct = _build_frame_data(raw)
+        main_window.runtime_data.gating_signal = raw.get('gating_signal', {})
 
     main_window.contours_drawn = True
     main_window.hide_contours_box.setChecked(False)
-    logger.info(f'Loaded {len(main_window.data)} frames from {newest}')
+    logger.info(f'Loaded {len(main_window.runtime_data.frame_data_dct)} frames from {newest}')
     return True
 
 

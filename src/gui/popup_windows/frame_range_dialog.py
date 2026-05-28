@@ -3,13 +3,13 @@ from PyQt6.QtWidgets import QDialog, QLineEdit, QDialogButtonBox, QFormLayout
 
 
 class FrameRangeDialog(QDialog):
-    def __init__(self, main_window, step: bool=False):
+    def __init__(self, main_window, step: bool = False):
         super().__init__(main_window)
         self.main_window = main_window
         self.lower_limit = QLineEdit(self)
         self.lower_limit.setText('1')
         self.upper_limit = QLineEdit(self)
-        self.upper_limit.setText(str(main_window.images.shape[0]))
+        self.upper_limit.setText(str(main_window.runtime_data.images.shape[0]))
         if step:
             self.step_layout = QLineEdit(self)
             self.step_layout.setText('1')
@@ -30,7 +30,7 @@ class FrameRangeDialog(QDialog):
         lower_limit = int(self.lower_limit.text()) - 1
         lower_limit = max(0, lower_limit)
         upper_limit = int(self.upper_limit.text())
-        upper_limit = min(self.main_window.images.shape[0], upper_limit)
+        upper_limit = min(self.main_window.runtime_data.images.shape[0], upper_limit)
 
         if lower_limit >= upper_limit:
             lower_limit, upper_limit = upper_limit, lower_limit

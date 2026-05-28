@@ -1,19 +1,15 @@
 import warnings
-import time
-import itertools
 import numpy as np
 from matplotlib.backend_bases import MouseButton
 import matplotlib.pyplot as plt
-from loguru import logger
 
-from gating.signal_processing import *
+from gating.signal_processing import prepare_data
 from gui.utils.helpers import connect_consecutive_frames
 from gating.automatic_gating import AutomaticGating
 from gui.popup_windows.message_boxes import ErrorMessage
-from gui.popup_windows.frame_range_dialog import FrameRangeDialog, StartFramesDialog
+from gui.popup_windows.frame_range_dialog import FrameRangeDialog
 from gui.right_half.right_half import toggle_diastolic_frame, toggle_systolic_frame
 from input_output.output.reports import report
-
 
 
 class ContourBasedGating:
@@ -34,9 +30,12 @@ class ContourBasedGating:
         if not dialog_success:
             self.main_window.status_bar.showMessage(self.main_window.waiting_status)
             return
-        image_based_gating, contour_based_gating, image_based_gating_filtered, contour_based_gating_filtered = (
-            prepare_data(self.main_window, self.frames, self.report_data)
-        )
+        (
+            image_based_gating,
+            contour_based_gating,
+            image_based_gating_filtered,
+            contour_based_gating_filtered,
+        ) = prepare_data(self.main_window, self.frames, self.report_data)
         self.plot_data(
             image_based_gating, contour_based_gating, image_based_gating_filtered, contour_based_gating_filtered
         )
@@ -63,7 +62,7 @@ class ContourBasedGating:
                 str_missing = connect_consecutive_frames(missing_frames)
                 ErrorMessage(self.main_window, f'Please add contours to frames {str_missing}')
                 return False
-            self.frames = self.main_window.images[lower_limit:upper_limit]
+            self.frames = self.main_window.runtime_data.images[lower_limit:upper_limit]
             self.x = self.report_data['frame'].values  # want 1-based indexing for GUI
             return True
         return False
@@ -73,7 +72,6 @@ class ContourBasedGating:
     ):
         # Scale `_nor` signals to the same range
         min_signal_range = min(np.min(image_based_gating), np.min(contour_based_gating))
-        max_signal_range = max(np.max(image_based_gating), np.max(contour_based_gating))
 
         # Shift `unfiltered` signals down so their max aligns with the min of the main signals
         shift_amount = min_signal_range - np.max(image_based_gating)
@@ -116,18 +114,20 @@ class ContourBasedGating:
                 plt.draw()
 
         # Draw any existing lines first
-        self.draw_existing_lines(self.main_window.gated_frames_dia, self.main_window.diastole_color_plt)
-        self.draw_existing_lines(self.main_window.gated_frames_sys, self.main_window.systole_color_plt)
+        self.draw_existing_lines(self.main_window.runtime_data.gated_frames_dia, self.main_window.diastole_color_plt)
+        self.draw_existing_lines(self.main_window.runtime_data.gated_frames_sys, self.main_window.systole_color_plt)
 
         # Only run automatic gating if no frames are already gated
-        if not self.main_window.gated_frames_dia and not self.main_window.gated_frames_sys:
+        if not self.main_window.runtime_data.gated_frames_dia and not self.main_window.runtime_data.gated_frames_sys:
             # Show method selection dialog after plot is rendered
             auto_gating = AutomaticGating(self.main_window, self.report_data)
             auto_gating.automatic_gating(image_based_gating_filtered, contour_based_gating_filtered)
 
             # Redraw lines with new automatic gating results
-            self.draw_existing_lines(self.main_window.gated_frames_dia, self.main_window.diastole_color_plt)
-            self.draw_existing_lines(self.main_window.gated_frames_sys, self.main_window.systole_color_plt)
+            self.draw_existing_lines(
+                self.main_window.runtime_data.gated_frames_dia, self.main_window.diastole_color_plt
+            )
+            self.draw_existing_lines(self.main_window.runtime_data.gated_frames_sys, self.main_window.systole_color_plt)
             plt.draw()
 
         return True
@@ -169,10 +169,10 @@ class ContourBasedGating:
             set_slider_to = round(set_slider_to - 1)  # slider is 0-based
             self.main_window.display_slider.set_value(set_slider_to, reset_highlights=False)
 
-            if set_slider_to in self.main_window.gated_frames_dia or set_dia:
+            if set_slider_to in self.main_window.runtime_data.gated_frames_dia or set_dia:
                 self.tmp_phase = 'D'
                 toggle_diastolic_frame(self.main_window, False, drag=True)
-            elif set_slider_to in self.main_window.gated_frames_sys or set_sys:
+            elif set_slider_to in self.main_window.runtime_data.gated_frames_sys or set_sys:
                 self.tmp_phase = 'S'
                 toggle_systolic_frame(self.main_window, False, drag=True)
 

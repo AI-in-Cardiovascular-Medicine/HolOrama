@@ -21,7 +21,6 @@ from input_output.input.metadata import (
 from input_output.input.contours import read_contours
 from domain.all_types import ContourType, SupportedType
 from domain.io_types import FrameData
-from domain.runtime_types import RuntimeData
 from input_output.output.imgs_masks import (
     LABEL_LUMEN,
     LABEL_EEM_WALL,
@@ -64,7 +63,7 @@ def read_image(main_window) -> None:
         pixel_array_parsed, is_oct = _parse_pixel_array(pixel_array)
         md = parse_metadata_nifti(metadata_df, pixel_array_parsed.shape[0], is_oct, prompt)
         if is_oct:
-            main_window.images_rgb = pixel_array.clip(0, 255).astype(np.uint8)
+            main_window.runtime_data.images_rgb = pixel_array.clip(0, 255).astype(np.uint8)
     else:
         try:
             pixel_array, metadata_df = _read_dicom(file_name)
@@ -76,7 +75,7 @@ def read_image(main_window) -> None:
             pixel_array_parsed, is_oct = _parse_pixel_array(pixel_array)
             md = parse_metadata_dcm(metadata_df, pixel_array_parsed.shape[0], prompt)
             if is_oct:
-                main_window.images_rgb = pixel_array.clip(0, 255).astype(np.uint8)
+                main_window.runtime_data.images_rgb = pixel_array.clip(0, 255).astype(np.uint8)
         except Exception:
             traceback.print_exc()
             ErrorMessage(
@@ -86,7 +85,7 @@ def read_image(main_window) -> None:
             main_window.status_bar.showMessage(main_window.waiting_status)
             return
 
-    main_window.images = pixel_array_parsed
+    main_window.runtime_data.images = pixel_array_parsed
     num_frames = pixel_array_parsed.shape[0]
 
     _store_metadata(main_window, md, num_frames)
@@ -99,18 +98,23 @@ def read_image(main_window) -> None:
     success = read_contours(main_window, main_window.file_name)
     if success:
         for i in range(num_frames):
-            if i not in main_window.data:
-                main_window.data[i] = FrameData()
+            if i not in main_window.runtime_data.frame_data_dct:
+                main_window.runtime_data.frame_data_dct[i] = FrameData()
         main_window.segmentation = True
-        main_window.gated_frames_dia = [i for i in range(num_frames) if main_window.data[i].phase == 'D']
-        main_window.gated_frames_sys = [i for i in range(num_frames) if main_window.data[i].phase == 'S']
-        main_window.gated_frames_oct = [i for i in range(num_frames) if main_window.data[i].phase == 'T']
-        main_window.gated_frames = main_window.gated_frames_dia
+        main_window.runtime_data.gated_frames_dia = [
+            i for i in range(num_frames) if main_window.runtime_data.frame_data_dct[i].phase == 'D'
+        ]
+        main_window.runtime_data.gated_frames_sys = [
+            i for i in range(num_frames) if main_window.runtime_data.frame_data_dct[i].phase == 'S'
+        ]
+        main_window.runtime_data.tagged_frames = [
+            i for i in range(num_frames) if main_window.runtime_data.frame_data_dct[i].phase == 'T'
+        ]
+        main_window.runtime_data.gated_frames = main_window.runtime_data.gated_frames_dia
     else:
-        main_window.data = RuntimeData()
-        main_window.data.frame_data_dct = {i: FrameData() for i in range(num_frames)}
+        main_window.runtime_data.frame_data_dct = {i: FrameData() for i in range(num_frames)}
 
-    main_window.display.set_data(main_window.images)
+    main_window.display.set_data(main_window.runtime_data.images)
     main_window.image_displayed = True
     main_window.display_slider.setValue(num_frames - 1)
     main_window.right_half.update_for_modality()
@@ -151,7 +155,7 @@ def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) 
         ErrorMessage(main_window, 'Could not read NIfTI mask file')
         return
 
-    num_frames = min(mask_arr.shape[0], main_window.metadata['num_frames'])
+    num_frames = min(mask_arr.shape[0], main_window.runtime_data.metadata['num_frames'])
     mask_fn = _LABEL_MASK[contour_type]
     field_name = contour_type.value
     single_contour = contour_type in (ContourType.LUMEN, ContourType.EEM)
@@ -169,9 +173,9 @@ def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) 
                 continue
             if single_contour:
                 found = [max(found, key=len)]
-            if frame_idx not in main_window.data:
-                main_window.data[frame_idx] = FrameData()
-            contour_obj = getattr(main_window.data[frame_idx], field_name)
+            if frame_idx not in main_window.runtime_data.frame_data_dct:
+                main_window.runtime_data.frame_data_dct[frame_idx] = FrameData()
+            contour_obj = getattr(main_window.runtime_data.frame_data_dct[frame_idx], field_name)
             sparse_contours = []
             for c in found:
                 xs_scaled = [float(col) * sf for col in c[:, 1]]
@@ -206,16 +210,16 @@ def _make_prompt(main_window) -> PromptFn:
 
 
 def _store_metadata(main_window, md: MetaData, num_frames: int) -> None:
-    main_window.metadata['modality'] = md.modality
-    main_window.metadata['pullback_speed'] = md.pullback_speed
-    main_window.metadata['pullback_length'] = md.pullback_length
-    main_window.metadata['resolution'] = md.resolution
-    main_window.metadata['dimension'] = md.dimension
-    main_window.metadata['manufacturer'] = md.manufacturer
-    main_window.metadata['model'] = md.model
-    main_window.metadata['pullback_start_frame'] = md.pullback_start_frame
-    main_window.metadata['frame_rate'] = md.frame_rate
-    main_window.metadata['num_frames'] = num_frames
+    main_window.runtime_data.metadata['modality'] = md.modality
+    main_window.runtime_data.metadata['pullback_speed'] = md.pullback_speed
+    main_window.runtime_data.metadata['pullback_length'] = md.pullback_length
+    main_window.runtime_data.metadata['resolution'] = md.resolution
+    main_window.runtime_data.metadata['dimension'] = md.dimension
+    main_window.runtime_data.metadata['manufacturer'] = md.manufacturer
+    main_window.runtime_data.metadata['model'] = md.model
+    main_window.runtime_data.metadata['pullback_start_frame'] = md.pullback_start_frame
+    main_window.runtime_data.metadata['frame_rate'] = md.frame_rate
+    main_window.runtime_data.metadata['num_frames'] = num_frames
 
 
 _PRIVATE_TAGS = {
