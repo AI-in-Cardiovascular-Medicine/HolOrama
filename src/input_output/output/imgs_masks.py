@@ -4,7 +4,6 @@ import numpy as np
 from scipy.interpolate import splprep, splev
 import SimpleITK as sitk
 from PyQt6.QtWidgets import QProgressDialog, QApplication
-from PyQt6.QtCore import Qt
 from skimage.draw import polygon2mask
 
 from domain.all_types import ContourType
@@ -43,19 +42,6 @@ def save_as_nifti(main_window, mode=None):
         main_window.status_bar.showMessage('Saving frames as NIfTi files...')
         file_name = os.path.splitext(os.path.basename(main_window.file_name))[0]  # remove file extension
         os.makedirs(out_path, exist_ok=True)
-        mask = contours_to_mask(
-            main_window.runtime_data.images[frames_to_save], frames_to_save, main_window.runtime_data.frame_data_dct
-        )
-
-        progress = QProgressDialog()
-        progress.setWindowFlags(Qt.WindowType.Dialog)
-        progress.setModal(True)
-        progress.setMinimum(0)
-        progress_max = len(frames_to_save) * main_window.config.save.save_2d + main_window.config.save.save_3d
-        progress.setMaximum(progress_max)
-        progress.resize(500, 100)
-        progress.setWindowTitle('Saving frames as NIfTi files...')
-        progress.show()
 
         images = (
             main_window.runtime_data.images_rgb
@@ -63,56 +49,60 @@ def save_as_nifti(main_window, mode=None):
             else main_window.runtime_data.images
         )
 
-        if main_window.config.save.save_2d:
-            for i, frame in enumerate(frames_to_save):  # save individual frames as NIfTi
-                progress.setValue(i)
-                QApplication.processEvents()
-                if progress.wasCanceled():
-                    break
+        progress_max = len(frames_to_save) + int(bool(main_window.config.save.save_3d))
+        progress = QProgressDialog('Saving frames as NIfTi files...', 'Cancel', 0, progress_max, main_window)
+        progress.setWindowTitle('Saving NIfTi files')
+        progress.setMinimumDuration(0)
+        progress.setModal(True)
+        progress.setValue(0)
+        QApplication.processEvents()
+        QApplication.processEvents()  # second flush processes the paint event queued by show
+
+        frame_masks: list[np.ndarray] = []
+        for i, frame in enumerate(frames_to_save):
+            progress.setValue(i)
+            QApplication.processEvents()
+            if progress.wasCanceled():
+                break
+            single_mask = contours_to_mask(
+                main_window.runtime_data.images[frame : frame + 1], [frame], main_window.runtime_data.frame_data_dct
+            )[0]
+            if main_window.config.save.save_3d:
+                frame_masks.append(single_mask)
+            if main_window.config.save.save_2d:
                 if (
                     main_window.runtime_data.frame_data_dct.get(frame)
                     and main_window.runtime_data.frame_data_dct[frame].lumen.contours
-                ):  # only save mask if contour exists
+                ):
                     sitk.WriteImage(
-                        sitk.GetImageFromArray(mask[i, :, :]),
+                        sitk.GetImageFromArray(single_mask),
                         os.path.join(out_path, f'{file_name}_frame_{frame}_seg.nii.gz'),
                     )
                 sitk.WriteImage(
                     sitk.GetImageFromArray(images[frame, :, :]),
                     os.path.join(out_path, f'{file_name}_frame_{frame}_img.nii.gz'),
                 )
-        if main_window.config.save.save_3d:
+
+        if main_window.config.save.save_3d and not progress.wasCanceled() and frame_masks:
+            full_mask = np.stack(frame_masks, axis=0)
             if any(
                 main_window.runtime_data.frame_data_dct.get(f)
                 and main_window.runtime_data.frame_data_dct[f].lumen.contours
                 for f in frames_to_save
-            ):  # only save mask if any contour exists
-                sitk.WriteImage(sitk.GetImageFromArray(mask), os.path.join(out_path, f'{file_name}_seg.nii.gz'))
+            ):
+                sitk.WriteImage(sitk.GetImageFromArray(full_mask), os.path.join(out_path, f'{file_name}_seg.nii.gz'))
             sitk.WriteImage(
                 sitk.GetImageFromArray(images[frames_to_save]),
                 os.path.join(out_path, f'{file_name}_img.nii.gz'),
             )
-            progress.setValue(len(frames_to_save) * main_window.config.save.save_2d + 1)
+            progress.setValue(progress_max)
             QApplication.processEvents()
 
         progress.close()
         main_window.status_bar.showMessage(main_window.waiting_status)
 
-        # Call DICOM conversion function
-        if main_window.config.save.save_dicom:  # Add a config flag to enable/disable DICOM conversion
-            convert_nifti_to_dicom(main_window, out_path, file_name, frames_to_save)
-
-
-def convert_nifti_to_dicom(main_window, out_path, file_name, frames_to_save):
-    pass
-
 
 _N_INTERP = 500  # dense interpolation points for smooth polygon boundaries
-
-
-# ---------------------------------------------------------------------------
-# Private helpers
-# ---------------------------------------------------------------------------
 
 
 def _smooth_contour(xs, ys, is_closed=True):

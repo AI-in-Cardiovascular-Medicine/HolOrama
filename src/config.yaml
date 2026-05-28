@@ -49,7 +49,6 @@ save:
   save_niftis: 'none'  # 'contoured', 'all', 'none' (which frames to save as NIfTi)
   save_2d: False
   save_3d: True
-  save_dicom: True
 
 segmentation:
   # model_file: './models/old/u2net_2d_MINMAX_512_best.h5'

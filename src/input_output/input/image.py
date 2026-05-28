@@ -8,7 +8,7 @@ import nibabel as nib
 import pydicom as dcm
 import matplotlib.pyplot as plt
 from skimage import measure as sk_measure
-from PyQt6.QtWidgets import QFileDialog, QInputDialog
+from PyQt6.QtWidgets import QFileDialog, QInputDialog, QProgressDialog, QApplication
 
 from gui.popup_windows.message_boxes import ErrorMessage
 from input_output.input.metadata import (
@@ -44,74 +44,92 @@ def read_image(main_window) -> None:
         root = os.path.splitext(root)[0]
     main_window.file_name = root
 
-    prompt = _make_prompt(main_window)
+    progress = QProgressDialog('Reading image file...', '', 0, 3, main_window)
+    progress.setWindowTitle('Loading')
+    progress.setMinimumDuration(0)
+    progress.setModal(True)
+    progress.setValue(0)
+    QApplication.processEvents()
+    QApplication.processEvents()  # second flush processes the paint event queued by show
 
-    if ext in ('.gz', '.nii'):
-        pixel_array, metadata_df = _read_nifti(file_name)
-        data_correct, _ = _check_integrity(metadata_df)
-        if not data_correct:
-            ErrorMessage(main_window, 'Data is corrupted. File could not be loaded.')
-            main_window.status_bar.showMessage(main_window.waiting_status)
-            return
-        pixel_array_parsed, is_oct = _parse_pixel_array(pixel_array)
-        md = parse_metadata_nifti(metadata_df, pixel_array_parsed.shape[0], is_oct, prompt)
-        if is_oct:
-            main_window.runtime_data.images_rgb = pixel_array.clip(0, 255).astype(np.uint8)
-    else:
-        try:
-            pixel_array, metadata_df = _read_dicom(file_name)
+    try:
+        prompt = _make_prompt(main_window)
+
+        if ext in ('.gz', '.nii'):
+            pixel_array, metadata_df = _read_nifti(file_name)
             data_correct, _ = _check_integrity(metadata_df)
             if not data_correct:
                 ErrorMessage(main_window, 'Data is corrupted. File could not be loaded.')
                 main_window.status_bar.showMessage(main_window.waiting_status)
                 return
             pixel_array_parsed, is_oct = _parse_pixel_array(pixel_array)
-            md = parse_metadata_dcm(metadata_df, pixel_array_parsed.shape[0], prompt)
+            md = parse_metadata_nifti(metadata_df, pixel_array_parsed.shape[0], is_oct, prompt)
             if is_oct:
                 main_window.runtime_data.images_rgb = pixel_array.clip(0, 255).astype(np.uint8)
-        except Exception:
-            traceback.print_exc()
-            ErrorMessage(
-                main_window,
-                f'File is not a valid {"/".join(t.value for t in SupportedType)} file and could not be loaded (DICOM or NIfTI supported)',
-            )
-            main_window.status_bar.showMessage(main_window.waiting_status)
-            return
+        else:
+            try:
+                pixel_array, metadata_df = _read_dicom(file_name)
+                data_correct, _ = _check_integrity(metadata_df)
+                if not data_correct:
+                    ErrorMessage(main_window, 'Data is corrupted. File could not be loaded.')
+                    main_window.status_bar.showMessage(main_window.waiting_status)
+                    return
+                pixel_array_parsed, is_oct = _parse_pixel_array(pixel_array)
+                md = parse_metadata_dcm(metadata_df, pixel_array_parsed.shape[0], prompt)
+                if is_oct:
+                    main_window.runtime_data.images_rgb = pixel_array.clip(0, 255).astype(np.uint8)
+            except Exception:
+                traceback.print_exc()
+                ErrorMessage(
+                    main_window,
+                    f'File is not a valid {"/".join(t.value for t in SupportedType)} file and could not be loaded (DICOM or NIfTI supported)',
+                )
+                main_window.status_bar.showMessage(main_window.waiting_status)
+                return
 
-    main_window.runtime_data.images = pixel_array_parsed
-    num_frames = pixel_array_parsed.shape[0]
+        main_window.runtime_data.images = pixel_array_parsed
+        num_frames = pixel_array_parsed.shape[0]
 
-    _store_metadata(main_window, md, num_frames)
-    populate_metadata_table(main_window.metadata_table, md, metadata_df)
+        _store_metadata(main_window, md, num_frames)
+        populate_metadata_table(main_window.metadata_table, md, metadata_df)
 
-    main_window.display_slider.blockSignals(True)
-    main_window.display_slider.setMaximum(num_frames - 1)
-    main_window.display_slider.blockSignals(False)
+        main_window.display_slider.blockSignals(True)
+        main_window.display_slider.setMaximum(num_frames - 1)
+        main_window.display_slider.blockSignals(False)
 
-    success = read_contours(main_window, main_window.file_name)
-    if success:
-        for i in range(num_frames):
-            if i not in main_window.runtime_data.frame_data_dct:
-                main_window.runtime_data.frame_data_dct[i] = FrameData()
-        main_window.segmentation = True
-        main_window.runtime_data.gated_frames_dia = [
-            i for i in range(num_frames) if main_window.runtime_data.frame_data_dct[i].phase == 'D'
-        ]
-        main_window.runtime_data.gated_frames_sys = [
-            i for i in range(num_frames) if main_window.runtime_data.frame_data_dct[i].phase == 'S'
-        ]
-        main_window.runtime_data.tagged_frames = [
-            i for i in range(num_frames) if main_window.runtime_data.frame_data_dct[i].phase == 'T'
-        ]
-        main_window.runtime_data.gated_frames = main_window.runtime_data.gated_frames_dia
-    else:
-        main_window.runtime_data.frame_data_dct = {i: FrameData() for i in range(num_frames)}
+        progress.setValue(1)
+        progress.setLabelText('Reading contours...')
+        QApplication.processEvents()
+        success = read_contours(main_window, main_window.file_name)
+        if success:
+            for i in range(num_frames):
+                if i not in main_window.runtime_data.frame_data_dct:
+                    main_window.runtime_data.frame_data_dct[i] = FrameData()
+            main_window.segmentation = True
+            main_window.runtime_data.gated_frames_dia = [
+                i for i in range(num_frames) if main_window.runtime_data.frame_data_dct[i].phase == 'D'
+            ]
+            main_window.runtime_data.gated_frames_sys = [
+                i for i in range(num_frames) if main_window.runtime_data.frame_data_dct[i].phase == 'S'
+            ]
+            main_window.runtime_data.tagged_frames = [
+                i for i in range(num_frames) if main_window.runtime_data.frame_data_dct[i].phase == 'T'
+            ]
+            main_window.runtime_data.gated_frames = main_window.runtime_data.gated_frames_dia
+        else:
+            main_window.runtime_data.frame_data_dct = {i: FrameData() for i in range(num_frames)}
 
-    main_window.display.set_data(main_window.runtime_data.images)
-    main_window.image_displayed = True
-    main_window.display_slider.setValue(num_frames - 1)
-    main_window.right_half.update_for_modality()
-    main_window.status_bar.showMessage(main_window.waiting_status)
+        progress.setValue(2)
+        progress.setLabelText('Rendering...')
+        QApplication.processEvents()
+        main_window.display.set_data(main_window.runtime_data.images)
+        main_window.image_displayed = True
+        main_window.display_slider.setValue(num_frames - 1)
+        main_window.right_half.update_for_modality()
+        progress.setValue(3)
+        main_window.status_bar.showMessage(main_window.waiting_status)
+    finally:
+        progress.close()
 
 
 def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) -> None:
