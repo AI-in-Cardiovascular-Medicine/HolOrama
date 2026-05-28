@@ -19,19 +19,12 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install lint tools
-        # pin black to the same major version as pyproject.toml (^22.6.0)
-        # so CI and the local pre-commit hook agree on formatting
-        run: pip install "black>=22.6,<23" ruff mypy
+      - name: Install pre-commit and tools
+        # mypy hook uses language:system so mypy must be present in the venv
+        run: pip install pre-commit mypy
 
-      - name: Black (check only - does not modify files)
-        run: black --check --diff src/ tests/
-
-      - name: Ruff
-        run: ruff check src/ tests/
-
-      - name: Mypy
-        run: mypy src/ --ignore-missing-imports --check-untyped-defs
+      - name: Run pre-commit hooks (same checks as local)
+        run: pre-commit run --all-files
 
   test:
     name: Test Python ${{ matrix.python-version }} / ${{ matrix.os }}

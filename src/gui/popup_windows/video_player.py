@@ -1,7 +1,6 @@
 import os
 
 from pathlib import Path
-from loguru import logger
 from PyQt6.QtWidgets import QMainWindow
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtMultimedia import QMediaPlayer

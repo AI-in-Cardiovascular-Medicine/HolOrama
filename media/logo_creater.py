@@ -3,6 +3,7 @@ import math
 
 import matplotlib.pyplot as plt
 
+
 def draw_circle(width, height):
     # Create a blank image with the specified dimensions
     image = np.ones((height, width))
@@ -24,6 +25,7 @@ def draw_circle(width, height):
 
     return image
 
+
 def add_gradient(image, custom_height, gradient_range, start_y, stop_y):
     height, width = image.shape
 
@@ -42,6 +44,7 @@ def add_gradient(image, custom_height, gradient_range, start_y, stop_y):
 
     return image
 
+
 def set_left_to_diagonal_white(image, angle, x_offset):
     height, width = image.shape
 
@@ -59,6 +62,7 @@ def set_left_to_diagonal_white(image, angle, x_offset):
                 image[y, x] = 1
 
     return image
+
 
 # # Plot the image
 # image = draw_circle(50, 50)

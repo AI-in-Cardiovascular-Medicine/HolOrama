@@ -32,7 +32,7 @@ def segment_files(config: DictConfig) -> None:
             try:  # NIfTi
                 input_image = sitk.ReadImage(os.path.join(input_dir, file))
                 image = sitk.GetArrayFromImage(input_image)
-            except:
+            except Exception:
                 logger.info(f'Skipping file {file} as it is not a valid IVUS file (DICOM or NIfTi supported)')
                 continue
 
@@ -41,7 +41,7 @@ def segment_files(config: DictConfig) -> None:
         upper_limit = image.shape[0]
         try:
             masks = predictor(image, lower_limit, upper_limit)
-        except:
+        except Exception:
             continue
         frame_data = mask_to_contours(None, masks, lower_limit, upper_limit, config=config)
         if frame_data is None:
