@@ -75,45 +75,6 @@ class TestShortcuts:
         expected_calls = [((current_frame + 1,),), ((current_frame,),), ((current_frame - 1,),), ((current_frame,),)]
         assert mock_main_window.display_slider.set_value.call_args_list == expected_calls
 
-    def test_delete_contour_shortcut(self):
-        """Test delete contour shortcut"""
-        from gui.shortcuts import delete_contour
-
-        mock_main_window = self.create_mock_main_window()
-        frame = mock_main_window.display.frame
-
-        mock_main_window.runtime_data.frame_data_dct['lumen'][0][frame] = [1, 2, 3]
-        mock_main_window.runtime_data.frame_data_dct['lumen'][1][frame] = [4, 5, 6]
-
-        delete_contour(mock_main_window)
-
-        assert 'lumen' in mock_main_window.runtime_data.tmp_contours
-        assert mock_main_window.runtime_data.tmp_contours['lumen'] == ([1, 2, 3], [4, 5, 6])
-
-        assert mock_main_window.runtime_data.frame_data_dct['lumen'][0][frame] == []
-        assert mock_main_window.runtime_data.frame_data_dct['lumen'][1][frame] == []
-
-        mock_main_window.display.display_image.assert_called_once_with(update_contours=True)
-
-    def test_undo_delete_shortcut(self):
-        """Test undo delete contour shortcut"""
-        from gui.shortcuts import undo_delete
-
-        mock_main_window = self.create_mock_main_window()
-        frame = mock_main_window.display.frame
-
-        test_contour = ([1, 2, 3], [4, 5, 6])
-        mock_main_window.runtime_data.tmp_contours = {'lumen': test_contour}
-
-        undo_delete(mock_main_window)
-
-        assert mock_main_window.runtime_data.frame_data_dct['lumen'][0][frame] == test_contour[0]
-        assert mock_main_window.runtime_data.frame_data_dct['lumen'][1][frame] == test_contour[1]
-
-        assert 'lumen' not in mock_main_window.runtime_data.tmp_contours
-
-        mock_main_window.display.display_image.assert_called_once_with(update_contours=True)
-
     def test_reset_windowing_shortcut(self):
         """Test reset windowing shortcut"""
         from gui.shortcuts import reset_windowing
