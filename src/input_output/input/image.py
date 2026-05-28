@@ -236,7 +236,16 @@ def _read_dicom(filename: str) -> tuple[np.ndarray, pd.DataFrame]:
 
 def _read_nifti(filename: str) -> tuple[np.ndarray, pd.DataFrame]:
     nft: nib.Nifti1Image = nib.load(filename)  # type: ignore[assignment]
-    pixel_array = nft.get_fdata()
+    try:
+        pixel_array = nft.get_fdata()
+    except Exception:
+        # DT_RGB24 and other structured dtypes can't be cast to float by get_fdata().
+        # Read raw bytes and unpack the named fields (R, G, B) into a trailing channel axis.
+        raw = np.asarray(nft.dataobj)
+        if raw.dtype.names:
+            pixel_array = np.stack([raw[c].astype(np.float64) for c in raw.dtype.names], axis=-1)
+        else:
+            pixel_array = raw.astype(np.float64)
     if pixel_array.ndim == 3:
         pixel_array = pixel_array.transpose(2, 1, 0)
     elif pixel_array.ndim == 4:

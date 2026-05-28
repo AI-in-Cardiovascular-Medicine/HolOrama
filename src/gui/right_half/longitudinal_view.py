@@ -50,12 +50,20 @@ class LongitudinalView(QGraphicsView):
             slice_data = self.main_window.runtime_data.images_rgb[:, :, center_col, :]
         else:
             gray = self.main_window.runtime_data.images[:, :, center_col]  # (frames, height)
+            if gray.dtype != np.uint8:
+                # Normalize to uint8 using the current display windowing so the
+                # longitudinal view matches what the main display shows.
+                lo = self.main_window.display.window_level - self.main_window.display.window_width / 2
+                hi = self.main_window.display.window_level + self.main_window.display.window_width / 2
+                gray = np.clip(gray, lo, hi)
+                span = hi - lo
+                gray = ((gray - lo) / span * 255).astype(np.uint8) if span > 0 else np.zeros_like(gray, dtype=np.uint8)
             slice_data = np.stack([gray, gray, gray], axis=-1)  # (frames, height, 3)
         slice_data = np.transpose(slice_data, (1, 0, 2)).copy()
         q_format = QImage.Format.Format_RGB888
         bytes_per_line = self.num_frames * 3
 
-        if self.main_window.colormap_enabled:
+        if getattr(self.main_window, 'colormap_enabled', False):
             if len(slice_data.shape) == 3:
                 gray_temp = cv2.cvtColor(slice_data, cv2.COLOR_RGB2GRAY)
                 slice_data = cv2.applyColorMap(gray_temp, cv2.COLORMAP_COOL)

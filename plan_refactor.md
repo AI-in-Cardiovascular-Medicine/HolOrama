@@ -30,3 +30,4 @@ src--
 - [] Contour manipulation and mousevents need to be their own logic so can be reused by different windows
 - [] ResultsPlot could have it's own dataclass maybe?
 - [] big problem still with uninitialized variables in gui.py. images_display? image_displayed??
+- [] fix step mm or step frames adjust the message
