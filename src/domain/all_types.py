@@ -1,26 +1,6 @@
-import numpy as np
-
 from enum import Enum
 from dataclasses import dataclass
 from typing import Tuple, Union, Any
-
-# RGB colour for each mask label (index = label value).
-# Label 0 (background) is intentionally skipped during blending.
-MASK_OVERLAY_COLORS = np.array(
-    [
-        [0, 0, 0],  # 0 – background  (unused)
-        [0, 180, 255],  # 1 – lumen        cyan-blue
-        [0, 200, 80],  # 2 – EEM wall     green
-        [255, 215, 0],  # 3 – calcium      gold
-        [255, 100, 0],  # 4 – lipid        orange
-        [200, 0, 220],  # 5 – macrophage   violet
-        [220, 80, 80],  # 6 – adventitia   rose
-        [0, 180, 255],  # 7 – branch       cyan-blue (same as lumen)
-    ],
-    dtype=np.float32,
-)
-
-MASK_ALPHA = 0.45  # overlay opacity (0 = transparent, 1 = opaque)
 
 
 OCT_QUALITY_LABELS = ['Very Bad', 'Bad', 'Ok', 'Good', 'Very Good']  # best needs to be on the right

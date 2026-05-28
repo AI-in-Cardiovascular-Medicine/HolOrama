@@ -7,6 +7,8 @@ from PyQt6.QtWidgets import QProgressDialog, QApplication
 from PyQt6.QtCore import Qt
 from skimage.draw import polygon2mask
 
+from domain.all_types import ContourType
+from domain.mask_types import MASK_SPECS
 from gui.popup_windows.message_boxes import ErrorMessage
 
 
@@ -55,6 +57,12 @@ def save_as_nifti(main_window, mode=None):
         progress.setWindowTitle('Saving frames as NIfTi files...')
         progress.show()
 
+        images = (
+            main_window.runtime_data.images_rgb
+            if main_window.runtime_data.metadata['modality'] == 'OCT'
+            else main_window.runtime_data.images
+        )
+
         if main_window.config.save.save_2d:
             for i, frame in enumerate(frames_to_save):  # save individual frames as NIfTi
                 progress.setValue(i)
@@ -70,7 +78,7 @@ def save_as_nifti(main_window, mode=None):
                         os.path.join(out_path, f'{file_name}_frame_{frame}_seg.nii.gz'),
                     )
                 sitk.WriteImage(
-                    sitk.GetImageFromArray(main_window.runtime_data.images[frame, :, :]),
+                    sitk.GetImageFromArray(images[frame, :, :]),
                     os.path.join(out_path, f'{file_name}_frame_{frame}_img.nii.gz'),
                 )
         if main_window.config.save.save_3d:
@@ -81,7 +89,7 @@ def save_as_nifti(main_window, mode=None):
             ):  # only save mask if any contour exists
                 sitk.WriteImage(sitk.GetImageFromArray(mask), os.path.join(out_path, f'{file_name}_seg.nii.gz'))
             sitk.WriteImage(
-                sitk.GetImageFromArray(main_window.runtime_data.images[frames_to_save]),
+                sitk.GetImageFromArray(images[frames_to_save]),
                 os.path.join(out_path, f'{file_name}_img.nii.gz'),
             )
             progress.setValue(len(frames_to_save) * main_window.config.save.save_2d + 1)
@@ -99,18 +107,6 @@ def convert_nifti_to_dicom(main_window, out_path, file_name, frames_to_save):
     pass
 
 
-# ---------------------------------------------------------------------------
-# Label constants
-# ---------------------------------------------------------------------------
-
-LABEL_LUMEN = 1
-LABEL_EEM_WALL = 2  # between lumen and EEM
-LABEL_CALCIUM = 3
-LABEL_LIPID = 4
-LABEL_MACROPHAGE = 5
-LABEL_BRANCH = 7  # side-branch lumen
-LABEL_WIRE_SHADOW = 9  # guide-wire angular shadow
-
 _N_INTERP = 500  # dense interpolation points for smooth polygon boundaries
 
 
@@ -126,13 +122,18 @@ def _smooth_contour(xs, ys, is_closed=True):
     Falls back to the original arrays on failure.
     """
     xs, ys = list(xs), list(ys)
+    # Mirror SplineGeometry._ensure_closed(): add closing duplicate only when absent,
+    # so the mask spline is computed identically to the interactive display spline.
+    if is_closed and len(xs) > 1 and (xs[0] != xs[-1] or ys[0] != ys[-1]):
+        xs = xs + [xs[0]]
+        ys = ys + [ys[0]]
     n = len(xs)
     if n < 2:
         return np.array(xs), np.array(ys)
     k = min(3, n - 1)
     try:
-        tck, _ = splprep(np.array([xs, ys]), s=0.0, k=k, per=int(is_closed))
-        x_new, y_new = splev(np.linspace(0.0, 1.0, _N_INTERP), tck)
+        tck, u = splprep(np.array([xs, ys]), s=0.0, k=k, per=int(is_closed))
+        x_new, y_new = splev(np.linspace(u.min(), u.max(), _N_INTERP), tck)
         return x_new, y_new
     except Exception:
         return np.array(xs), np.array(ys)
@@ -274,6 +275,16 @@ def contours_to_mask(images, contoured_frames, data):
 
     center_y, center_x = H / 2.0, W / 2.0
 
+    _eem = MASK_SPECS[ContourType.EEM]
+    _lumen = MASK_SPECS[ContourType.LUMEN]
+    _branch = MASK_SPECS[ContourType.BRANCH]
+    _wire = MASK_SPECS[ContourType.WIRE]
+    _plaques = [
+        MASK_SPECS[ContourType.CALCIUM],
+        MASK_SPECS[ContourType.LIPID],
+        MASK_SPECS[ContourType.MACROPHAGE],
+    ]
+
     for i, frame in enumerate(contoured_frames):
         fd = data.get(frame)
         if fd is None:
@@ -287,35 +298,32 @@ def contours_to_mask(images, contoured_frames, data):
 
         fm = np.zeros(image_shape, dtype=np.uint8)
 
-        # Layer bottom-up; later layers overwrite earlier ones
-        if fd.eem.contours:
-            # EEM wall: inside EEM, outside lumen
-            fm[eem_mask & ~lumen_mask] = LABEL_EEM_WALL
+        # Layer bottom-up by paint_order; later layers overwrite earlier ones.
+        # Wire is lowest priority — painted first so all other structures appear on top.
+        wire_shadow = _wire_shadow_mask(fd.wire, image_shape, center_y, center_x)
+        fm[wire_shadow] = _wire.label
 
-        # Branch: needs to be in front of lumen!
+        if fd.eem.contours:
+            fm[eem_mask & ~lumen_mask] = _eem.label
+
+        # Branch before lumen so branch pixels inside lumen are overwritten by lumen.
         if fd.branch.contours:
             branch_mask = _contour_obj_to_mask(fd.branch, cx, cy, image_shape)
-            fm[branch_mask] = LABEL_BRANCH
+            fm[branch_mask] = _branch.label
 
         if fd.lumen.contours:
-            fm[lumen_mask] = LABEL_LUMEN
+            fm[lumen_mask] = _lumen.label
 
-        # Plaques: clipped to EEM when EEM exists
-        for label, contour_obj in (
-            (LABEL_CALCIUM, fd.calcium),
-            (LABEL_LIPID, fd.lipid),
-            (LABEL_MACROPHAGE, fd.macrophage),
-        ):
+        # Plaques: clipped to EEM when EEM exists, never inside lumen.
+        for spec in _plaques:
+            contour_obj = getattr(fd, spec.contour_type.value)
             if not contour_obj.contours:
                 continue
             plaque = _contour_obj_to_mask(contour_obj, cx, cy, image_shape)
             if fd.eem.contours:
                 plaque &= eem_mask
-            plaque &= ~lumen_mask  # never inside lumen
-            fm[plaque] = label
-
-        wire_shadow = _wire_shadow_mask(fd.wire, image_shape, center_y, center_x)
-        fm[wire_shadow] = LABEL_WIRE_SHADOW
+            plaque &= ~lumen_mask
+            fm[plaque] = spec.label
 
         mask[i] = fm
 

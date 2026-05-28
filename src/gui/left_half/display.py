@@ -10,13 +10,12 @@ from PyQt6.QtCore import Qt, QLineF, QPointF
 from PyQt6.QtGui import QPixmap, QImage
 
 from domain.all_types import (
-    MASK_OVERLAY_COLORS,
-    MASK_ALPHA,
     ALLOWED_TOOLS,
     ContourConfig,
     ContourType,
     SegmentationTool,
 )
+from domain.mask_types import MASK_ALPHA, MASK_SPECS
 from tools.geometry import Point, Spline, SplineGeometry, OpenSplineGeometry, OpenSpline, get_qt_pen
 from gui.utils.metrics import MetricsMixin
 from tools.geometry import Marker
@@ -587,11 +586,12 @@ class Display(QGraphicsView, MetricsMixin):
         else:
             rgb = display_data.astype(np.float32)
 
-        for label_idx in range(1, len(MASK_OVERLAY_COLORS)):
-            pixels = frame_mask == label_idx
+        for spec in sorted(MASK_SPECS.values(), key=lambda s: s.paint_order):
+            pixels = frame_mask == spec.label
             if not pixels.any():
                 continue
-            rgb[pixels] = rgb[pixels] * (1.0 - MASK_ALPHA) + MASK_OVERLAY_COLORS[label_idx] * MASK_ALPHA
+            color = np.array(spec.overlay_color, dtype=np.float32)
+            rgb[pixels] = rgb[pixels] * (1.0 - MASK_ALPHA) + color * MASK_ALPHA
 
         result = np.clip(rgb, 0, 255).astype(np.uint8)
         return np.ascontiguousarray(result), w * 3, QImage.Format.Format_RGB888

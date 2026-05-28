@@ -21,14 +21,7 @@ from input_output.input.metadata import (
 from input_output.input.contours import read_contours
 from domain.all_types import ContourType, SupportedType
 from domain.io_types import FrameData
-from input_output.output.imgs_masks import (
-    LABEL_LUMEN,
-    LABEL_EEM_WALL,
-    LABEL_CALCIUM,
-    LABEL_LIPID,
-    LABEL_MACROPHAGE,
-    LABEL_BRANCH,
-)
+from domain.mask_types import MASK_SPECS
 from segmentation.segment import downsample
 from tools.geometry import SplineGeometry
 
@@ -126,16 +119,9 @@ def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) 
         ErrorMessage(main_window, 'Load an image before importing a mask')
         return
 
-    _LABEL_MASK = {
-        ContourType.LUMEN: lambda a: a == LABEL_LUMEN,
-        ContourType.EEM: lambda a: np.isin(a, [LABEL_LUMEN, LABEL_EEM_WALL]),
-        ContourType.CALCIUM: lambda a: a == LABEL_CALCIUM,
-        ContourType.LIPID: lambda a: a == LABEL_LIPID,
-        ContourType.MACROPHAGE: lambda a: a == LABEL_MACROPHAGE,
-        ContourType.BRANCH: lambda a: a == LABEL_BRANCH,
-    }
-    if contour_type not in _LABEL_MASK:
+    if contour_type not in MASK_SPECS:
         return
+    spec = MASK_SPECS[contour_type]
 
     file_name, _ = QFileDialog.getOpenFileName(
         main_window,
@@ -156,7 +142,6 @@ def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) 
         return
 
     num_frames = min(mask_arr.shape[0], main_window.runtime_data.metadata['num_frames'])
-    mask_fn = _LABEL_MASK[contour_type]
     field_name = contour_type.value
     single_contour = contour_type in (ContourType.LUMEN, ContourType.EEM)
 
@@ -165,7 +150,7 @@ def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) 
     sf = main_window.display.scaling_factor
     try:
         for frame_idx in range(num_frames):
-            binary = mask_fn(mask_arr[frame_idx]).astype(np.uint8)
+            binary = spec.matches(mask_arr[frame_idx]).astype(np.uint8)
             if not binary.any():
                 continue
             found = sk_measure.find_contours(binary, 0.5)
