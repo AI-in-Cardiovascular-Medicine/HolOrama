@@ -7,9 +7,21 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 Major refactor ensuring seperation of concerns and identifying several bugs like this.
 
+### Added
+- Progress Dialog for reading in images
+
 ### Changed
 - Complete structure from:
-
+.
+├───gating
+├───gui
+│   ├───left_half
+│   ├───popup_windows
+│   ├───right_half
+│   └───_utils
+├───input_output
+├───report
+└───segmentation
 
 to: 
 .
@@ -25,6 +37,10 @@ to:
 │   └───output
 ├───segmentation
 └───tools
+With domain now including all the data structures used by the program and report integrated into output.
+
+### Fixed
+- With new structure all bugs with improper cleaning of data when loading new image are resolved, since runtime data is stored in `RuntimeData` class directly.
 
 ## [1.3.2] - 2026-05-08
 
