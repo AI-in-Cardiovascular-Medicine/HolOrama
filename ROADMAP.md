@@ -8,9 +8,8 @@
 - [] Tag every x mm
 
 # Lower priority
-- [] Reduce memory by not storing main_window.runtime_data.images and main_window.dicom at the same time.
-- [] Type safety in whole program
-- [] Try/Except in whole program, wherever applicable
+- [] Reduce memory by not storing image_rgb next to image
+- [] Reduce memory by not storing the whole pixel_array in memory but read in badges when needed.
 - [] Config callable from GUI
 
 # Segmentation tools
