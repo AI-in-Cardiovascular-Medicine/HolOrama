@@ -35,20 +35,14 @@ def init_shortcuts(main_window):
     QShortcut(QKeySequence('Alt+Delete'), main_window, partial(reset_phases, main_window))
     QShortcut(QKeySequence('Alt+S'), main_window, partial(switch_phases, main_window))
     # Traverse frames
-    QShortcut(QKeySequence('W'), main_window, main_window.display_slider.next_gated_frame)
-    QShortcut(QKeySequence(Qt.Key.Key_Up), main_window, main_window.display_slider.next_gated_frame)
-    QShortcut(QKeySequence('A'), main_window, main_window.display_slider.last_frame)
-    QShortcut(QKeySequence(Qt.Key.Key_Left), main_window, main_window.display_slider.last_frame)
-    QShortcut(QKeySequence('S'), main_window, main_window.display_slider.last_gated_frame)
-    QShortcut(QKeySequence(Qt.Key.Key_Down), main_window, main_window.display_slider.last_gated_frame)
-    QShortcut(QKeySequence('D'), main_window, main_window.display_slider.next_frame)
-    QShortcut(QKeySequence(Qt.Key.Key_Right), main_window, main_window.display_slider.next_frame)
-    # Scroll wheel navigates frames
-    main_window.display.wheelEvent = lambda event: (
-        main_window.display_slider.next_frame()
-        if event.angleDelta().y() > 0
-        else main_window.display_slider.last_frame()
-    )
+    QShortcut(QKeySequence('W'), main_window, lambda: main_window.display_slider.next_gated_frame())
+    QShortcut(QKeySequence(Qt.Key.Key_Up), main_window, lambda: main_window.display_slider.next_gated_frame())
+    QShortcut(QKeySequence('A'), main_window, lambda: main_window.display_slider.last_frame())
+    QShortcut(QKeySequence(Qt.Key.Key_Left), main_window, lambda: main_window.display_slider.last_frame())
+    QShortcut(QKeySequence('S'), main_window, lambda: main_window.display_slider.last_gated_frame())
+    QShortcut(QKeySequence(Qt.Key.Key_Down), main_window, lambda: main_window.display_slider.last_gated_frame())
+    QShortcut(QKeySequence('D'), main_window, lambda: main_window.display_slider.next_frame())
+    QShortcut(QKeySequence(Qt.Key.Key_Right), main_window, lambda: main_window.display_slider.next_frame())
 
 
 def init_menu(main_window):

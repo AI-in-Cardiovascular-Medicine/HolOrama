@@ -119,7 +119,6 @@ class Master(QMainWindow):
             self.oct_quality_buttons[label] = btn
             self.oct_quality_button_group.addButton(btn)
         self.oct_quality_buttons[OCT_QUALITY_LABELS[-1]].setChecked(True)
-        self.tagged_frames: list[int] = []
 
         main_window_splitter: QSplitter = QSplitter()
         self.left_half: LeftHalf = LeftHalf(self)

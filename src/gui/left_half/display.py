@@ -1534,6 +1534,12 @@ class Display(QGraphicsView, MetricsMixin):
                     logger.debug(f"Could not update longitudinal view for frame {self.frame}: {e}")
         super().mouseReleaseEvent(event)
 
+    def wheelEvent(self, event):
+        if event.angleDelta().y() > 0:
+            self.main_window.display_slider.next_frame()
+        else:
+            self.main_window.display_slider.last_frame()
+
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             if self.drawing_mode:
