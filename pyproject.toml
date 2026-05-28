@@ -26,11 +26,11 @@ shapely = "*"
 SimpleITK = "*"
 opencv-python-headless = "^4.9.0.80"
 tensorflow = "^2.17.0"
-# torch = { version = "2.4.0", source = "pytorch_cpu" }
-# torchvision = { version = "0.19.0", source = "pytorch_cpu" }
-# Windows with CUDA: see README Windows section for manual torch replacement
 torch = { version = "2.4.0+cu118", source = "pytorch_cu118" }
 torchvision = { version = "0.19.0+cu118", source = "pytorch_cu118" }
+# CPU-only (pass --cpu / -Cpu to install scripts):
+# torch = { version = "2.4.0", source = "pytorch_cpu" }
+# torchvision = { version = "0.19.0", source = "pytorch_cpu" }
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "*"
@@ -58,6 +58,11 @@ skip-string-normalization = true
 
 [tool.isort]
 profile = "black"
+
+[[tool.poetry.source]]
+name = "pytorch_cpu"
+url = "https://download.pytorch.org/whl/cpu"
+priority = "explicit"
 
 [[tool.poetry.source]]
 name = "pytorch_cu118"
