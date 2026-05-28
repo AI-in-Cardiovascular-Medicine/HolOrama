@@ -22,12 +22,12 @@ src--
 - The tools used for segmentation should be seperated from the main window. Like this they can be reused in different instances of windows.
 
 # Progress update and thoughts
-- [] Main problem is input_output
-    - [] input one and output one
+- [x] Main problem is input_output
+    - [x] input one and output one
     - [] move calculations into it's own module
-    - [] create MainWindowData class
-    - [] create MetaData class (inherit for different modalities)
+    - [x] create MainWindowData class -> Called RuntimeData
+    - [x] create MetaData class (inherit for different modalities)
 - [] Contour manipulation and mousevents need to be their own logic so can be reused by different windows
 - [] ResultsPlot could have it's own dataclass maybe?
-- [] big problem still with uninitialized variables in gui.py. images_display? image_displayed??
+- [x] big problem still with uninitialized variables in gui.py. images_display? image_displayed??
 - [] fix step mm or step frames adjust the message
