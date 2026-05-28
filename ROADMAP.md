@@ -1,42 +1,22 @@
 # Urgent
-- [x] Currently state pollution, where loading a new image results in rest data from last session, solve by creating a `ImageSession` object which holds the session data.
-- [x] Add executable
-- [x] Add open spline
-- [x] Guard against setting new knot point to close to existing
 - [] Adjust gating module to new data
+- [] Export solid line as it's own contour
 
 # Requested features
-- [x] Region of interest definition
-- [x] Tag every x mm
-- [x] Marker on the longitudinal view (to show what has been segmented)
-- [x] Marker to show vessel size (outliers)
-- [x] Scroll wheel should go through frames
-- [x] Frame quality checkboxes
-- [x] Subcontours should be deleted seperately
-- [x] Can't delete start and end point
-- [x] scrolling over end of index hides contours (but only lumen)
-- [x] move/center image by mouse drag
 - [] clicking in longitudinal view let's user set region of interest
 - [] mousewheel in longitudinal view changes cut line
+- [] Tag every x mm
 
 # Lower priority
-- [x] Add button to hide measurements
-- [x] Make image size dynamic
-- [x] Clean up for log files -> only store now when error
-- [] Add brush
-- [] Reduce memory by not storing main_window.images and main_window.dicom at the same time.
+- [] Reduce memory by not storing main_window.runtime_data.images and main_window.dicom at the same time.
 - [] Type safety in whole program
 - [] Try/Except in whole program, wherever applicable
 - [] Config callable from GUI
 
-# Segmentation tool
+# Segmentation tools
 - [] Ensure that only tagged frames can be exported
-- [x] Adjust output nifti to work with several contour_types
 - [] Aim for a first test data set including lumen, side branch, catheter for around 300 frames
-- [x] Number of interactive points should adjust by circumference of the contour -> make half for smaller contours
-- [x] Find a solution to have several sections with start end point
-- [x] Make mask live update, 
 - [] Allow brush mode in mask mode
+- [] Seperation of Concerns: logic on mousemovements coupled to segmentation tool
 
 # Bugs
-- [x] When EEM is present together with lumen the wrong metric is projected to longitudinal view (addition?)

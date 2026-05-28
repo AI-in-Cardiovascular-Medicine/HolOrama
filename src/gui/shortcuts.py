@@ -12,15 +12,16 @@ from gui.popup_windows.frame_range_dialog import FrameRangeDialog
 from gui.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 from gui.popup_windows.video_player import VideoPlayer
 from gui.utils.contours_gui import new_contour, new_contour_append, new_measure, new_angle, set_tool
-from input_output.metadata import MetadataWindow
-from input_output.read_image import read_image, read_nifti_mask
-from input_output.contours_io import write_contours, save_gated_images
-from segmentation.save_as_nifti import save_as_nifti
-from report.report import report
+from input_output.input.metadata import MetadataWindow
+from input_output.input.image import read_image, read_nifti_mask
+from input_output.output.contours import write_contours
+from input_output.output.other_fmt import save_gated_images
+from input_output.output.imgs_masks import save_as_nifti
+from input_output.output.reports import report
 
 
 from gui.popup_windows.results_plot import ResultsPlot
-from gui.left_half.display import ContourType, SegmentationTool
+from domain.all_types import ContourType, SegmentationTool
 
 
 def init_shortcuts(main_window):
@@ -34,20 +35,14 @@ def init_shortcuts(main_window):
     QShortcut(QKeySequence('Alt+Delete'), main_window, partial(reset_phases, main_window))
     QShortcut(QKeySequence('Alt+S'), main_window, partial(switch_phases, main_window))
     # Traverse frames
-    QShortcut(QKeySequence('W'), main_window, main_window.display_slider.next_gated_frame)
-    QShortcut(QKeySequence(Qt.Key.Key_Up), main_window, main_window.display_slider.next_gated_frame)
-    QShortcut(QKeySequence('A'), main_window, main_window.display_slider.last_frame)
-    QShortcut(QKeySequence(Qt.Key.Key_Left), main_window, main_window.display_slider.last_frame)
-    QShortcut(QKeySequence('S'), main_window, main_window.display_slider.last_gated_frame)
-    QShortcut(QKeySequence(Qt.Key.Key_Down), main_window, main_window.display_slider.last_gated_frame)
-    QShortcut(QKeySequence('D'), main_window, main_window.display_slider.next_frame)
-    QShortcut(QKeySequence(Qt.Key.Key_Right), main_window, main_window.display_slider.next_frame)
-    # Scroll wheel navigates frames
-    main_window.display.wheelEvent = lambda event: (
-        main_window.display_slider.next_frame()
-        if event.angleDelta().y() > 0
-        else main_window.display_slider.last_frame()
-    )
+    QShortcut(QKeySequence('W'), main_window, lambda: main_window.display_slider.next_gated_frame())
+    QShortcut(QKeySequence(Qt.Key.Key_Up), main_window, lambda: main_window.display_slider.next_gated_frame())
+    QShortcut(QKeySequence('A'), main_window, lambda: main_window.display_slider.last_frame())
+    QShortcut(QKeySequence(Qt.Key.Key_Left), main_window, lambda: main_window.display_slider.last_frame())
+    QShortcut(QKeySequence('S'), main_window, lambda: main_window.display_slider.last_gated_frame())
+    QShortcut(QKeySequence(Qt.Key.Key_Down), main_window, lambda: main_window.display_slider.last_gated_frame())
+    QShortcut(QKeySequence('D'), main_window, lambda: main_window.display_slider.next_frame())
+    QShortcut(QKeySequence(Qt.Key.Key_Right), main_window, lambda: main_window.display_slider.next_frame())
 
 
 def init_menu(main_window):
@@ -183,7 +178,7 @@ def remove_contours(main_window):
             lower_limit, upper_limit = dialog.getInputs()
             key = main_window.display.contour_key()
             for frame in range(lower_limit, upper_limit):
-                fd = main_window.data.get(frame)
+                fd = main_window.runtime_data.frame_data_dct.get(frame)
                 if fd:
                     contour_obj = getattr(fd, key, None)
                     if contour_obj:
@@ -200,36 +195,38 @@ def reset_phases(main_window):
             main_window.status_bar.showMessage('Resetting phases...')
             lower_limit, upper_limit = dialog.getInputs()
             for frame in range(lower_limit, upper_limit):
-                fd = main_window.data.get(frame)
+                fd = main_window.runtime_data.frame_data_dct.get(frame)
                 if fd is None:
                     continue
                 if fd.phase == 'D':
-                    main_window.gated_frames_dia.remove(frame)
+                    main_window.runtime_data.gated_frames_dia.remove(frame)
                     main_window.diastolic_frame_box.setChecked(False)
                 elif fd.phase == 'S':
-                    main_window.gated_frames_sys.remove(frame)
+                    main_window.runtime_data.gated_frames_sys.remove(frame)
                     main_window.systolic_frame_box.setChecked(False)
                 elif fd.phase == 'T':
                     try:
-                        main_window.gated_frames_oct.remove(frame)
+                        main_window.runtime_data.tagged_frames.remove(frame)
                     except ValueError:
                         pass
                 fd.phase = '-'
-            if main_window.metadata.get('modality') == 'OCT':
-                main_window.gated_frames = main_window.gated_frames_oct
+            if main_window.runtime_data.metadata.get('modality') == 'OCT':
+                main_window.runtime_data.gated_frames = main_window.runtime_data.tagged_frames
             else:
-                main_window.gated_frames = main_window.gated_frames_dia + main_window.gated_frames_sys
-                main_window.gated_frames.sort()
-            main_window.gated_frames_dia.sort()
-            main_window.gated_frames_sys.sort()
+                main_window.runtime_data.gated_frames = (
+                    main_window.runtime_data.gated_frames_dia + main_window.runtime_data.gated_frames_sys
+                )
+                main_window.runtime_data.gated_frames.sort()
+            main_window.runtime_data.gated_frames_dia.sort()
+            main_window.runtime_data.gated_frames_sys.sort()
             main_window.status_bar.showMessage(main_window.waiting_status)
 
             main_window.contour_based_gating.remove_lines()
             main_window.contour_based_gating.draw_existing_lines(
-                main_window.gated_frames_dia, main_window.diastole_color_plt
+                main_window.runtime_data.gated_frames_dia, main_window.diastole_color_plt
             )
             main_window.contour_based_gating.draw_existing_lines(
-                main_window.gated_frames_sys, main_window.systole_color_plt
+                main_window.runtime_data.gated_frames_sys, main_window.systole_color_plt
             )  # somehow only updates after first user input
 
             main_window.display.update_display()
@@ -247,37 +244,39 @@ def switch_phases(main_window):
             main_window.status_bar.showMessage('Switching phases...')
             lower_limit, upper_limit = dialog.getInputs()
             for frame in range(lower_limit, upper_limit):
-                fd = main_window.data.get(frame)
+                fd = main_window.runtime_data.frame_data_dct.get(frame)
                 if fd is None:
                     continue
                 if fd.phase == 'D':
                     fd.phase = 'S'
-                    main_window.gated_frames_dia.remove(frame)
-                    main_window.gated_frames_sys.append(frame)
+                    main_window.runtime_data.gated_frames_dia.remove(frame)
+                    main_window.runtime_data.gated_frames_sys.append(frame)
                     main_window.diastolic_frame_box.setChecked(False)
                     main_window.systolic_frame_box.setChecked(True)
                 elif fd.phase == 'S':
                     fd.phase = 'D'
-                    main_window.gated_frames_sys.remove(frame)
-                    main_window.gated_frames_dia.append(frame)
+                    main_window.runtime_data.gated_frames_sys.remove(frame)
+                    main_window.runtime_data.gated_frames_dia.append(frame)
                     main_window.diastolic_frame_box.setChecked(True)
                     main_window.systolic_frame_box.setChecked(False)
 
-            main_window.gated_frames = main_window.gated_frames_dia + main_window.gated_frames_sys
+            main_window.runtime_data.gated_frames = (
+                main_window.runtime_data.gated_frames_dia + main_window.runtime_data.gated_frames_sys
+            )
 
         # order all gated frames again, important otherwise slider will jump around
-        main_window.gated_frames.sort()
-        main_window.gated_frames_dia.sort()
-        main_window.gated_frames_sys.sort()
+        main_window.runtime_data.gated_frames.sort()
+        main_window.runtime_data.gated_frames_dia.sort()
+        main_window.runtime_data.gated_frames_sys.sort()
         main_window.status_bar.showMessage(main_window.waiting_status)
 
         # Call draw_existing_lines on the ContourBasedGating instance, but first remove all existing lines to live update plot
         main_window.contour_based_gating.remove_lines()
         main_window.contour_based_gating.draw_existing_lines(
-            main_window.gated_frames_dia, main_window.diastole_color_plt
+            main_window.runtime_data.gated_frames_dia, main_window.diastole_color_plt
         )
         main_window.contour_based_gating.draw_existing_lines(
-            main_window.gated_frames_sys, main_window.systole_color_plt
+            main_window.runtime_data.gated_frames_sys, main_window.systole_color_plt
         )
 
         main_window.display.update_display()
@@ -345,10 +344,10 @@ def delete_contour(main_window):
         ci = main_window.display.active_contour_index
 
         if not hasattr(main_window, 'tmp_contours'):
-            main_window.tmp_contours = {}
+            main_window.runtime_data.tmp_contours = {}
 
         frame = main_window.display.frame
-        fd = main_window.data.get(frame)
+        fd = main_window.runtime_data.frame_data_dct.get(frame)
         if fd:
             contour_obj = getattr(fd, key, None)
             if contour_obj and contour_obj.contours and ci < len(contour_obj.contours):
@@ -361,7 +360,7 @@ def delete_contour(main_window):
             else:
                 xlist, ylist, start, end, closed = [], [], [], [], True
 
-            main_window.tmp_contours[key] = (ci, xlist, ylist, start, end, closed)
+            main_window.runtime_data.tmp_contours[key] = (ci, xlist, ylist, start, end, closed)
 
             if contour_obj and ci < len(contour_obj.contours):
                 del contour_obj.contours[ci]
@@ -390,11 +389,11 @@ def delete_contour(main_window):
 def undo_delete(main_window):
     if main_window.image_displayed:
         key = main_window.display.contour_key()
-        if hasattr(main_window, 'tmp_contours') and key in main_window.tmp_contours:
-            saved = main_window.tmp_contours.pop(key)
+        if hasattr(main_window, 'tmp_contours') and key in main_window.runtime_data.tmp_contours:
+            saved = main_window.runtime_data.tmp_contours.pop(key)
             ci, xlist, ylist, start, end, closed = saved
             frame = main_window.display.frame
-            fd = main_window.data.get(frame)
+            fd = main_window.runtime_data.frame_data_dct.get(frame)
             if fd:
                 contour_obj = getattr(fd, key, None)
                 if contour_obj is not None:
@@ -440,9 +439,9 @@ def save_video_pullback(main_window):
         ErrorMessage(main_window, 'Cannot save video pullback before reading the image.')
         return
     main_window.status_bar.showMessage('Saving video pullback...')
-    image_stack = main_window.images
+    image_stack = main_window.runtime_data.images
     size = (image_stack[0].shape[1], image_stack[0].shape[0])
-    fps = main_window.metadata['frame_rate']
+    fps = main_window.runtime_data.metadata['frame_rate']
     duration = len(image_stack) // fps
     out_path = os.path.splitext(main_window.file_name)[0] + '_pullback.mp4'
     out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (size[1], size[0]), False)  # type: ignore[attr-defined]

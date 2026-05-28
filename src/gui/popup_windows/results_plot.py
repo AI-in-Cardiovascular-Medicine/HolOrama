@@ -1,15 +1,10 @@
-from loguru import logger
-from PyQt6.QtWidgets import QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsLineItem
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap, QImage, QPen
+from PyQt6.QtWidgets import QMainWindow, QGraphicsView, QGraphicsScene
+from PyQt6.QtGui import QPixmap, QImage
 import matplotlib.pyplot as plt
 import pandas as pd
-
-pd.options.mode.chained_assignment = None  # default='warn'
-
 from scipy.ndimage import gaussian_filter1d
 
-from report.report import report
+pd.options.mode.chained_assignment = None  # default='warn'
 
 
 class ResultsPlot(QMainWindow):
@@ -17,9 +12,9 @@ class ResultsPlot(QMainWindow):
         super().__init__(main_window)
         self.main_window = main_window
         self.report_data = report_data
-        self.pullback_speed = main_window.metadata.get('pullback_speed', 1)
-        self.pullback_start_frame = main_window.metadata.get('pullback_start_frame', 0)
-        self.frame_rate = main_window.metadata.get('frame_rate', 30)
+        self.pullback_speed = main_window.runtime_data.metadata.get('pullback_speed', 1)
+        self.pullback_start_frame = main_window.runtime_data.metadata.get('pullback_start_frame', 0)
+        self.frame_rate = main_window.runtime_data.metadata.get('frame_rate', 30)
 
         self.setWindowTitle('Results Plot')
         self.scene = QGraphicsScene()

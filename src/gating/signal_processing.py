@@ -2,7 +2,6 @@ import time
 import numpy as np
 from loguru import logger
 from scipy.signal import find_peaks, butter, filtfilt
-import cv2
 
 
 def timing_decorator(func):
@@ -20,7 +19,7 @@ def timing_decorator(func):
 def prepare_data(main_window, frames, report_data, x1=50, x2=450, y1=50, y2=450):
     """Prepares data for plotting."""
     try:
-        gating_signal = main_window.gating_signal
+        gating_signal = main_window.runtime_data.gating_signal
         if not gating_signal:  # skip if empty
             raise KeyError
         if gating_signal['gating_config'] == main_window.config.gating and len(
@@ -71,7 +70,7 @@ def prepare_data(main_window, frames, report_data, x1=50, x2=450, y1=50, y2=450)
     contour_based_gating = combined_signal(main_window, [shortest_dist, vector_angle, vector_length], maxima_only=False)
     contour_based_gating_filtered = combined_signal(main_window, signal_contour_based_filtered, maxima_only=False)
 
-    main_window.gating_signal = {
+    main_window.runtime_data.gating_signal = {
         'image_based_gating': list(image_based_gating),
         'contour_based_gating': list(contour_based_gating),
         'image_based_gating_filtered': list(image_based_gating_filtered),
@@ -156,7 +155,7 @@ def bandpass_filter(main_window, signal):
     lowcut = main_window.config.gating.lowcut
     highcut = main_window.config.gating.highcut
     order = main_window.config.gating.order
-    fs = main_window.metadata['frame_rate']  # for Butterworth filter
+    fs = main_window.runtime_data.metadata['frame_rate']  # for Butterworth filter
 
     nyquist = 0.5 * fs
     low = lowcut / nyquist

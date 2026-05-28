@@ -1,10 +1,17 @@
 import cv2
 
 import numpy as np
-from loguru import logger
-from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsLineItem, QGraphicsEllipseItem, QSizePolicy
+from PyQt6.QtWidgets import (
+    QGraphicsView,
+    QGraphicsScene,
+    QGraphicsPixmapItem,
+    QGraphicsEllipseItem,
+    QSizePolicy,
+)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QImage, QColor, QPen, QBrush
+
+from tools.geometry import Marker
 
 
 class LongitudinalView(QGraphicsView):
@@ -13,7 +20,7 @@ class LongitudinalView(QGraphicsView):
     """
 
     DOT_RADIUS = 3
-    MARGIN_TOP = 0.05     # fraction of image_height reserved at top
+    MARGIN_TOP = 0.05  # fraction of image_height reserved at top
     MARGIN_BOTTOM = 0.05  # fraction of image_height reserved at bottom
 
     def __init__(self, main_window):
@@ -37,22 +44,26 @@ class LongitudinalView(QGraphicsView):
         self._area_items = []
         self.num_frames = images.shape[0]
         self.image_height = images.shape[1]
+        center_col = images.shape[2] // 2
 
-        if hasattr(self.main_window, 'images_display') and self.main_window.images_display is not None:
-            if hasattr(self.main_window, 'images_rgb') and self.main_window.images_rgb is not None:
-                slice_data = self.main_window.images_rgb[:, :, self.image_height // 2, :]
-            else:
-                slice_data = self.main_window.dicom.pixel_array[:, :, self.image_height // 2, :]
-            slice_data = np.transpose(slice_data, (1, 0, 2)).copy()
-            q_format = QImage.Format.Format_RGB888
-            bytes_per_line = self.num_frames * 3
+        if self.main_window.runtime_data.images_rgb is not None:
+            slice_data = self.main_window.runtime_data.images_rgb[:, :, center_col, :]
         else:
-            slice_data = images[:, :, self.image_height // 2]
-            slice_data = np.transpose(slice_data, (1, 0)).copy()
-            q_format = QImage.Format.Format_Grayscale8
-            bytes_per_line = self.num_frames
+            gray = self.main_window.runtime_data.images[:, :, center_col]  # (frames, height)
+            if gray.dtype != np.uint8:
+                # Normalize to uint8 using the current display windowing so the
+                # longitudinal view matches what the main display shows.
+                lo = self.main_window.display.window_level - self.main_window.display.window_width / 2
+                hi = self.main_window.display.window_level + self.main_window.display.window_width / 2
+                gray = np.clip(gray, lo, hi)
+                span = hi - lo
+                gray = ((gray - lo) / span * 255).astype(np.uint8) if span > 0 else np.zeros_like(gray, dtype=np.uint8)
+            slice_data = np.stack([gray, gray, gray], axis=-1)  # (frames, height, 3)
+        slice_data = np.transpose(slice_data, (1, 0, 2)).copy()
+        q_format = QImage.Format.Format_RGB888
+        bytes_per_line = self.num_frames * 3
 
-        if self.main_window.colormap_enabled:
+        if getattr(self.main_window, 'colormap_enabled', False):
             if len(slice_data.shape) == 3:
                 gray_temp = cv2.cvtColor(slice_data, cv2.COLOR_RGB2GRAY)
                 slice_data = cv2.applyColorMap(gray_temp, cv2.COLORMAP_COOL)
@@ -71,18 +82,18 @@ class LongitudinalView(QGraphicsView):
         self.plot_areas()
 
     def plot_areas(self):
-        """Read lumen areas from main_window.data and draw one dot per frame."""
+        """Read lumen areas from main_window.runtime_data.frame_data_dct and draw one dot per frame."""
         for item in self._area_items:
             if item.scene() == self.graphics_scene:
                 self.graphics_scene.removeItem(item)
         self._area_items = []
 
-        if not self.main_window.data or self.image_height == 0:
+        if not self.main_window.runtime_data.frame_data_dct or self.image_height == 0:
             return
 
         areas: dict[int, float] = {}
         phases: dict[int, float] = {}
-        for frame, fd in self.main_window.data.items():
+        for frame, fd in self.main_window.runtime_data.frame_data_dct.items():
             area = fd.lumen.measurements.area
             phase = fd.phase
             if area is not None and area > 0:
@@ -115,7 +126,7 @@ class LongitudinalView(QGraphicsView):
             else:
                 new_brush = QBrush(QColor('orange'))
                 new_brush = new_brush
-            item.setBrush(new_brush)           
+            item.setBrush(new_brush)
             item.setPen(no_pen)
             if self._areas_hidden:
                 item.setVisible(False)
@@ -152,12 +163,3 @@ class LongitudinalView(QGraphicsView):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.stretch_to_fit()
-
-
-class Marker(QGraphicsLineItem):
-    def __init__(self, x1, y1, x2, y2, color=Qt.GlobalColor.white):
-        super().__init__()
-        pen = QPen(QColor(color), 1)
-        pen.setDashPattern([1, 6])
-        self.setLine(x1, y1, x2, y2)
-        self.setPen(pen)

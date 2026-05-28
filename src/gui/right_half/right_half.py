@@ -1,16 +1,14 @@
 import bisect
 
 import matplotlib.pyplot as plt
-from loguru import logger
 from functools import partial
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QSplitter, QPushButton, QWidget, QFrame
 
+from domain.all_types import OCT_QUALITY_LABELS
 from gui.popup_windows.frame_range_dialog import FrameRangeDialog
 from gui.popup_windows.small_display import SmallDisplay
 from segmentation.segment import segment
-
-OCT_QUALITY_LABELS = ['Very Bad', 'Bad', 'Ok', 'Good', 'Very Good']
 
 
 class RightHalf:
@@ -121,8 +119,8 @@ class RightHalf:
         self.content_widget.setParent(None)
         self.content_widget.deleteLater()
 
-        if self.main_window.metadata.get('modality') == 'OCT':
-            self.main_window.gated_frames = self.main_window.gated_frames_oct
+        if self.main_window.runtime_data.metadata.get('modality') == 'OCT':
+            self.main_window.runtime_data.gated_frames = self.main_window.runtime_data.tagged_frames
             self.content_widget = self._build_oct()
         else:
             self.content_widget = self._build_non_oct()
@@ -137,6 +135,7 @@ class RightHalf:
 # OCT helpers
 # ---------------------------------------------------------------------------
 
+
 def tag_frames_by_distance(main_window):
     if not main_window.image_displayed:
         return
@@ -150,22 +149,22 @@ def tag_frames_by_distance(main_window):
     if step_mm <= 0.0:
         return
 
-    speed = main_window.metadata['pullback_speed']      # mm/s
-    frame_rate = main_window.metadata['frame_rate']     # frames/s
+    speed = main_window.runtime_data.metadata['pullback_speed']  # mm/s
+    frame_rate = main_window.runtime_data.metadata['frame_rate']  # frames/s
     mm_per_frame = speed / frame_rate
     step_frames = step_mm / mm_per_frame
-    
+
     for idx in range(lower_limit, upper_limit):
-        main_window.data[idx].phase = '-'
+        main_window.runtime_data.frame_data_dct[idx].phase = '-'
 
     i = 0
     while True:
         idx = lower_limit + round(i * step_frames)
         if idx >= upper_limit:
             break
-        if idx not in main_window.gated_frames_oct:
-            bisect.insort_left(main_window.gated_frames_oct, idx)
-        main_window.data[idx].phase = 'T'
+        if idx not in main_window.runtime_data.tagged_frames:
+            bisect.insort_left(main_window.runtime_data.tagged_frames, idx)
+        main_window.runtime_data.frame_data_dct[idx].phase = 'T'
         i += 1
 
     main_window.display.update_display()
@@ -175,43 +174,44 @@ def toggle_tagged_frame(main_window, state_true, drag=False):
     if main_window.image_displayed:
         frame = main_window.display_slider.value()
         if state_true:
-            if frame not in main_window.gated_frames_oct:
-                bisect.insort_left(main_window.gated_frames_oct, frame)
-            main_window.data[frame].phase = 'T'
+            if frame not in main_window.runtime_data.tagged_frames:
+                bisect.insort_left(main_window.runtime_data.tagged_frames, frame)
+            main_window.runtime_data.frame_data_dct[frame].phase = 'T'
         else:
             try:
-                main_window.gated_frames_oct.remove(frame)
+                main_window.runtime_data.tagged_frames.remove(frame)
             except ValueError:
                 pass
-            if main_window.data[frame].phase == 'T':
-                main_window.data[frame].phase = '-'
+            if main_window.runtime_data.frame_data_dct[frame].phase == 'T':
+                main_window.runtime_data.frame_data_dct[frame].phase = '-'
         main_window.display.update_display()
 
 
 def use_tagged(main_window):
     if main_window.image_displayed:
-        main_window.gated_frames = main_window.gated_frames_oct
+        main_window.runtime_data.gated_frames = main_window.runtime_data.tagged_frames
 
 
 def set_oct_quality(main_window, label):
     if main_window.image_displayed:
         frame = main_window.display_slider.value()
-        main_window.data[frame].quality = label
+        main_window.runtime_data.frame_data_dct[frame].quality = label
 
 
 def update_oct_display(main_window, frame):
     """Update Tagged Frame checkbox and quality buttons when the slider moves (OCT only)."""
-    if main_window.image_displayed and main_window.metadata.get('modality') == 'OCT':
+    if main_window.image_displayed and main_window.runtime_data.metadata.get('modality') == 'OCT':
         main_window.tagged_frame_button.blockSignals(True)
-        main_window.tagged_frame_button.setChecked(frame in main_window.gated_frames_oct)
+        main_window.tagged_frame_button.setChecked(frame in main_window.runtime_data.tagged_frames)
         main_window.tagged_frame_button.blockSignals(False)
-        quality = main_window.data[frame].quality
+        quality = main_window.runtime_data.frame_data_dct[frame].quality
         main_window.oct_quality_buttons[quality].setChecked(True)
 
 
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
 
 def open_small_display(main_window):
     if main_window.image_displayed:
@@ -230,9 +230,9 @@ def toggle_diastolic_frame(main_window, state_true, drag=False):
         if state_true:
             main_window.use_diastolic_button.setChecked(True)
             use_diastolic(main_window)
-            if frame not in main_window.gated_frames_dia:
-                bisect.insort_left(main_window.gated_frames_dia, frame)
-                main_window.data[frame].phase = 'D'
+            if frame not in main_window.runtime_data.gated_frames_dia:
+                bisect.insort_left(main_window.runtime_data.gated_frames_dia, frame)
+                main_window.runtime_data.frame_data_dct[frame].phase = 'D'
                 main_window.contour_based_gating.update_color(main_window.diastole_color_plt)
                 main_window.contour_based_gating.current_phase = 'D'
                 plt.draw()
@@ -242,12 +242,12 @@ def toggle_diastolic_frame(main_window, state_true, drag=False):
                 pass
         else:
             try:
-                main_window.gated_frames_dia.remove(frame)
+                main_window.runtime_data.gated_frames_dia.remove(frame)
                 main_window.contour_based_gating.current_phase = None
                 if (
-                    main_window.data[frame].phase == 'D'
+                    main_window.runtime_data.frame_data_dct[frame].phase == 'D'
                 ):  # do not reset when function is called from toggle_systolic_frame
-                    main_window.data[frame].phase = '-'
+                    main_window.runtime_data.frame_data_dct[frame].phase = '-'
                     if not drag:
                         main_window.contour_based_gating.update_color()
             except ValueError:
@@ -262,9 +262,9 @@ def toggle_systolic_frame(main_window, state_true, drag=False):
         if state_true:
             main_window.use_diastolic_button.setChecked(False)
             use_diastolic(main_window)
-            if frame not in main_window.gated_frames_sys:
-                bisect.insort_left(main_window.gated_frames_sys, frame)
-                main_window.data[frame].phase = 'S'
+            if frame not in main_window.runtime_data.gated_frames_sys:
+                bisect.insort_left(main_window.runtime_data.gated_frames_sys, frame)
+                main_window.runtime_data.frame_data_dct[frame].phase = 'S'
                 main_window.contour_based_gating.update_color(main_window.systole_color_plt)
                 main_window.contour_based_gating.current_phase = 'S'
             try:  # frame cannot be diastolic and systolic at the same time
@@ -273,12 +273,12 @@ def toggle_systolic_frame(main_window, state_true, drag=False):
                 pass
         else:
             try:
-                main_window.gated_frames_sys.remove(frame)
+                main_window.runtime_data.gated_frames_sys.remove(frame)
                 main_window.contour_based_gating.current_phase = None
                 if (
-                    main_window.data[frame].phase == 'S'
+                    main_window.runtime_data.frame_data_dct[frame].phase == 'S'
                 ):  # do not reset when function is called from toggle_diastolic_frame
-                    main_window.data[frame].phase = '-'
+                    main_window.runtime_data.frame_data_dct[frame].phase = '-'
                     if not drag:
                         main_window.contour_based_gating.update_color()
             except ValueError:
@@ -292,11 +292,11 @@ def use_diastolic(main_window):
         if main_window.use_diastolic_button.isChecked():
             main_window.use_diastolic_button.setText('Diastolic Frames')
             main_window.use_diastolic_button.setStyleSheet(f'background-color: rgb{main_window.diastole_color}')
-            main_window.gated_frames = main_window.gated_frames_dia
+            main_window.runtime_data.gated_frames = main_window.runtime_data.gated_frames_dia
         else:
             main_window.use_diastolic_button.setText('Systolic Frames')
             main_window.use_diastolic_button.setStyleSheet(f'background-color: rgb{main_window.systole_color}')
-            main_window.gated_frames = main_window.gated_frames_sys
+            main_window.runtime_data.gated_frames = main_window.runtime_data.gated_frames_sys
 
         try:
             next_gated = main_window.display_slider.next_gated_frame(set=False)

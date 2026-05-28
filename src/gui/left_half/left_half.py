@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from gui.left_half.display import ContourType, SegmentationTool
+from domain.all_types import ContourType, SegmentationTool
 from gui.utils.contours_gui import new_measure, new_reference, new_angle, set_tool
 
 
@@ -30,41 +30,41 @@ class LeftHalf:
         self.display_button_group = QButtonGroup()
         self.display_button_group.setExclusive(True)
 
-        self.closed_spline_btn = QPushButton('⭕Closed Spline')
+        self.closed_spline_btn = QPushButton('⭕ Closed Spline')
         self.closed_spline_btn.setCheckable(True)
         self.closed_spline_btn.setChecked(True)  # this is the default button
         self.closed_spline_btn.setToolTip("Set drawing mode to closed spline")
         self.closed_spline_btn.clicked.connect(partial(set_tool, main_window, SegmentationTool.CLOSED_SPLINE))
 
-        self.open_spline_btn = QPushButton('➰Open Spline')
+        self.open_spline_btn = QPushButton('➰ Open Spline')
         self.open_spline_btn.setCheckable(True)
         self.open_spline_btn.setToolTip("Set drawing mode to open spline")
         self.open_spline_btn.clicked.connect(partial(set_tool, main_window, SegmentationTool.OPEN_SPLINE))
 
-        self.brush_btn = QPushButton('🖌️Brush')
+        self.brush_btn = QPushButton('🖌️ Brush')
         self.brush_btn.setCheckable(True)
         self.brush_btn.setToolTip("Set drawing mode to brush")
         self.brush_btn.clicked.connect(partial(set_tool, main_window, SegmentationTool.BRUSH))
 
-        self.reference_btn = QPushButton('🟡Reference')
+        self.reference_btn = QPushButton('🟡 Reference')
         self.reference_btn.setCheckable(True)
         self.reference_btn.setToolTip("Set a reference point")
         self.reference_btn.setStyleSheet(f'border-color: {self.reference_color}')
         self.reference_btn.clicked.connect(partial(new_reference, main_window))
 
-        self.measure_btn_1 = QPushButton('📏Measurement 1')
+        self.measure_btn_1 = QPushButton('📏 Measurement 1')
         self.measure_btn_1.setCheckable(True)
         self.measure_btn_1.setToolTip("Measure distance between two points")
         self.measure_btn_1.setStyleSheet(f'border-color: {self.measure_colors[0]}')
         self.measure_btn_1.clicked.connect(partial(new_measure, main_window, 0))
 
-        self.measure_btn_2 = QPushButton('📏Measurement 2')
+        self.measure_btn_2 = QPushButton('📏 Measurement 2')
         self.measure_btn_2.setCheckable(True)
         self.measure_btn_2.setToolTip("Measure distance between two points")
         self.measure_btn_2.setStyleSheet(f'border-color: {self.measure_colors[1]}')
         self.measure_btn_2.clicked.connect(partial(new_measure, main_window, 1))
 
-        self.angle_btn = QPushButton('📐Angle Wire')
+        self.angle_btn = QPushButton('📐 Angle Wire')
         self.angle_btn.setCheckable(True)
         self.angle_btn.setToolTip("Set angle between two points for wire shadow")
         self.angle_btn.setStyleSheet(f'border-color: {main_window.display.color_angle}')
@@ -139,7 +139,7 @@ class LeftHalf:
             self.paused = True
             self.play_button.setIcon(self.play_icon)
 
-        for frame in range(start_frame, main_window.metadata['num_frames']):
+        for frame in range(start_frame, main_window.runtime_data.metadata['num_frames']):
             if not self.paused:
                 main_window.display_slider.set_value(frame)
                 QApplication.processEvents()
@@ -153,11 +153,11 @@ class LeftHalf:
         self.main_window.display.update_display()
         self.frame_number_label.setText(f'Frame {value + 1}')
 
-        if value in self.main_window.gated_frames_dia:
+        if value in self.main_window.runtime_data.gated_frames_dia:
             self.main_window.diastolic_frame_box.setChecked(True)
         else:
             self.main_window.diastolic_frame_box.setChecked(False)
-            if value in self.main_window.gated_frames_sys:
+            if value in self.main_window.runtime_data.gated_frames_sys:
                 self.main_window.systolic_frame_box.setChecked(True)
             else:
                 self.main_window.systolic_frame_box.setChecked(False)

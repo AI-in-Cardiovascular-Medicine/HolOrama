@@ -1,9 +1,6 @@
-import itertools
 import numpy as np
-from loguru import logger
 
 from gating.signal_processing import identify_extrema
-from gui.popup_windows.frame_range_dialog import StartFramesDialog
 
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QGroupBox, QRadioButton, QDialogButtonBox
 
@@ -112,28 +109,28 @@ class AutomaticGating:
             )
 
             # reset all phases
-            for fd in self.main_window.data.values():
+            for fd in self.main_window.runtime_data.frame_data_dct.values():
                 fd.phase = '-'
-            self.main_window.gated_frames_dia = []
-            self.main_window.gated_frames_sys = []
+            self.main_window.runtime_data.gated_frames_dia = []
+            self.main_window.runtime_data.gated_frames_sys = []
             self.main_window.diastolic_frame_box.setChecked(False)
             self.main_window.systolic_frame_box.setChecked(False)
 
             if sum_first_half > sum_second_half:
-                self.main_window.gated_frames_dia = second_half
-                self.main_window.gated_frames_sys = first_half
-                self.main_window.gated_frames_dia.sort()
-                self.main_window.gated_frames_sys.sort()
+                self.main_window.runtime_data.gated_frames_dia = second_half
+                self.main_window.runtime_data.gated_frames_sys = first_half
+                self.main_window.runtime_data.gated_frames_dia.sort()
+                self.main_window.runtime_data.gated_frames_sys.sort()
             else:
-                self.main_window.gated_frames_dia = first_half
-                self.main_window.gated_frames_sys = second_half
-                self.main_window.gated_frames_dia.sort()
-                self.main_window.gated_frames_sys.sort()
+                self.main_window.runtime_data.gated_frames_dia = first_half
+                self.main_window.runtime_data.gated_frames_sys = second_half
+                self.main_window.runtime_data.gated_frames_dia.sort()
+                self.main_window.runtime_data.gated_frames_sys.sort()
 
-            for frame in self.main_window.gated_frames_dia:
-                self.main_window.data[frame].phase = 'D'
-            for frame in self.main_window.gated_frames_sys:
-                self.main_window.data[frame].phase = 'S'
+            for frame in self.main_window.runtime_data.gated_frames_dia:
+                self.main_window.runtime_data.frame_data_dct[frame].phase = 'D'
+            for frame in self.main_window.runtime_data.gated_frames_sys:
+                self.main_window.runtime_data.frame_data_dct[frame].phase = 'S'
 
 
 def _write_csv_signals(image_signal, contour_signal, image_indices, contour_indices, combined_indices):

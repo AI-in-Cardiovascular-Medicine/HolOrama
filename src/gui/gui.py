@@ -1,8 +1,6 @@
 import os
 from functools import partial
-from typing import Any
 
-import numpy as np
 from omegaconf import DictConfig
 from PyQt6.QtWidgets import (
     QMainWindow,
@@ -32,9 +30,11 @@ from gui.right_half.right_half import (
 from gui.right_half.gating_display import GatingDisplay
 from gui.right_half.longitudinal_view import LongitudinalView
 from gui.shortcuts import init_shortcuts, init_menu
-from input_output.contours_io import write_contours
+from input_output.output.contours import write_contours
 from gating.contour_based_gating import ContourBasedGating
 from segmentation.predict import Predict
+from domain.runtime_types import RuntimeData
+from domain.all_types import OCT_QUALITY_LABELS
 
 
 class Master(QMainWindow):
@@ -44,7 +44,6 @@ class Master(QMainWindow):
         super().__init__()
         self.config: DictConfig = config
         self.file_name: str | None = None
-        self.autosave_interval: int = config.save.autosave_interval
         self.contour_based_gating: ContourBasedGating = ContourBasedGating(self)
         self.predictor: Predict = Predict(self)
         self.image_displayed: bool = False
@@ -53,19 +52,7 @@ class Master(QMainWindow):
         self.hide_contours: bool = False
         self.hide_special_points: bool = False
         self.colormap_enabled: bool = False
-        self.filter: str | None = None
-        self.tmp_contours: dict[
-            str, tuple[list[float], list[float]]
-        ] = {}  # per-contour-type undo storage, e.g. {'lumen': (xlist, ylist)}
-        self.gated_frames: list[int] = []
-        self.gated_frames_dia: list[int] = []
-        self.gated_frames_sys: list[int] = []
-        self.data: dict[str, Any] = {}  # container to be saved in JSON file later, includes contours, etc.
-        self.gating_signal: dict[str, Any] = {}  # global gating signal, saved separately from per-frame data
-        self.metadata: dict[str, Any] = {}  # metadata used outside of read_image (not saved to JSON file)
-        self.images: np.ndarray | None = None
-        self.images_display: int | None = None
-        self.images_rgb: np.ndarray | None = None
+        self.runtime_data: RuntimeData = RuntimeData()
         self.diastole_color: tuple[int, int, int] = (39, 69, 219)
         self.diastole_color_plt: tuple[float, ...] = tuple(x / 255 for x in self.diastole_color)  # for matplotlib
         self.systole_color: tuple[int, int, int] = (209, 55, 38)
@@ -125,14 +112,13 @@ class Master(QMainWindow):
         self.oct_quality_buttons: dict[str, QPushButton] = {}
         self.oct_quality_button_group: QButtonGroup = QButtonGroup(self)
         self.oct_quality_button_group.setExclusive(True)
-        for label in ['Very Bad', 'Bad', 'Ok', 'Good', 'Very Good']:
+        for label in OCT_QUALITY_LABELS:
             btn: QPushButton = QPushButton(label)
             btn.setCheckable(True)
             btn.clicked.connect(partial(set_oct_quality, self, label))
             self.oct_quality_buttons[label] = btn
             self.oct_quality_button_group.addButton(btn)
-        self.oct_quality_buttons['Very Good'].setChecked(True)
-        self.gated_frames_oct: list[int] = []
+        self.oct_quality_buttons[OCT_QUALITY_LABELS[-1]].setChecked(True)
 
         main_window_splitter: QSplitter = QSplitter()
         self.left_half: LeftHalf = LeftHalf(self)
@@ -148,7 +134,7 @@ class Master(QMainWindow):
 
         timer: QTimer = QTimer(self)
         timer.timeout.connect(self.auto_save)
-        timer.start(self.autosave_interval)  # autosave interval in milliseconds
+        timer.start(self.config.save.autosave_interval)  # autosave interval in milliseconds
 
     def auto_save(self) -> None:
         if self.image_displayed:
@@ -168,18 +154,5 @@ class Master(QMainWindow):
         self.hide_contours = False
         self.hide_special_points = False
         self.colormap_enabled = False
-        self.filter = None
-        self.tmp_contours = {}
-        self.gated_frames = []
-        self.gated_frames_dia = []
-        self.gated_frames_sys = []
-        self.data = {}
-        self.gating_signal = {}
-        self.metadata = {}
-        self.images = None
-        self.images_display = None
-        self.images_rgb = None
-        self.dicom = None
-        self.gated_frames_oct = []
-        self.tagged_frame_button.setChecked(False)
-        self.oct_quality_buttons['Very Good'].setChecked(True)
+        self.runtime_data = RuntimeData()
+        self.init_gui()
