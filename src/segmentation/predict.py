@@ -1,13 +1,10 @@
 import numpy as np
 from loguru import logger
-from PyQt6.QtWidgets import QProgressDialog
-from PyQt6.QtCore import Qt
-from gui.popup_windows.message_boxes import ErrorMessage
+from PyQt6.QtWidgets import QProgressDialog, QApplication
 import gc
 
 
 class Predict:
-
     def __init__(self, main_window, config=None) -> None:
         self.main_window = main_window
         config = main_window.config if config is None else config
@@ -49,24 +46,26 @@ class Predict:
 
             if self.conserve_memory:
                 if self.main_window is not None:
-                    progress = QProgressDialog(self.main_window)
-                    progress.setWindowFlags(Qt.WindowType.Dialog)
-                    progress.setModal(True)
-                    progress.setMinimum(self.lower_limit)
-                    progress.setMaximum(self.upper_limit)
-                    progress.setMinimumDuration(1000)
-                    progress.resize(500, 100)
-                    progress.setWindowTitle('Automatic segmentation')
-                    progress.setLabelText(
-                        f'Please wait, segmenting frames {self.lower_limit + 1} to {self.upper_limit + 1}...'
+                    progress = QProgressDialog(
+                        f'Please wait, segmenting frames {self.lower_limit + 1} to {self.upper_limit + 1}...',
+                        'Cancel',
+                        self.lower_limit,
+                        self.upper_limit,
+                        self.main_window,
                     )
-                    progress.show()
+                    progress.setWindowTitle('Automatic segmentation')
+                    progress.setMinimumDuration(0)
+                    progress.setModal(True)
+                    progress.setValue(self.lower_limit)
+                    QApplication.processEvents()
+                    QApplication.processEvents()
                 else:
                     progress = None
 
                 for frame in range(self.lower_limit, self.upper_limit, self.batch_size):
                     if progress is not None:
                         progress.setValue(frame)
+                        QApplication.processEvents()
                     # calling model() instead of model.predict() leads to smaller memory leak
                     pred = model(self.images[frame : frame + self.batch_size, :, :], training=False)
                     mask[frame : frame + self.batch_size, :, :] = np.array(pred)[0, :, :, :, 0]

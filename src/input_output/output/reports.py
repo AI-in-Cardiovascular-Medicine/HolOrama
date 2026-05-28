@@ -6,8 +6,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from loguru import logger
-from PyQt6.QtWidgets import QProgressDialog
-from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QProgressDialog, QApplication
 from shapely.geometry import Polygon
 from shapely.errors import TopologicalError
 from itertools import combinations
@@ -90,17 +89,13 @@ def _safe_polygon_area(x_coords, y_coords, frame, contour_name, main_window):
 def compute_all(main_window, contoured_frames, suppress_messages, plot=True, save_as_csv=True):
     """compute all metrics and plot if desired"""
     if not suppress_messages:
-        progress = QProgressDialog(main_window)
-        # Change 2: Scoped Window Flags
-        progress.setWindowFlags(Qt.WindowType.Dialog)
+        progress = QProgressDialog('Writing report...', 'Cancel', 0, len(contoured_frames), main_window)
+        progress.setWindowTitle('Writing report')
+        progress.setMinimumDuration(0)
         progress.setModal(True)
-        progress.setMinimum(0)
-        progress.setMaximum(len(contoured_frames))
-        progress.resize(500, 100)
-        progress.setValue(0)
-        progress.setWindowTitle('Writing report...')
         progress.show()
-
+        QApplication.processEvents()
+        QApplication.processEvents()
     n_frames = main_window.runtime_data.metadata['num_frames']
     longest_distance = [None] * n_frames
     farthest_x = [None] * n_frames
@@ -185,7 +180,14 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
     calc_x, calc_y = build_xy_lists(calc_full_list)
     branch_x, branch_y = build_xy_lists(branch_full_list)
 
-    for frame in contoured_frames:
+    for i, frame in enumerate(contoured_frames):
+        if not suppress_messages:
+            progress.setValue(i + 1)
+            QApplication.processEvents()
+            if progress.wasCanceled():
+                progress.close()
+                return None
+
         # skip frames already computed (defensive check)
         if lumen_area[frame] and elliptic_ratio[frame] is not None and elliptic_ratio[frame] != 0:
             # compute EEM area if not present
@@ -225,11 +227,6 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
             fd_eem = main_window.runtime_data.frame_data_dct.get(frame)
             if fd_eem:
                 fd_eem.eem.measurements.area = area
-
-        if not suppress_messages:
-            progress.setValue(frame)
-            if progress.wasCanceled():
-                return None
 
     report_data = pd.DataFrame()
     report_data['frame'] = [frame + 1 for frame in contoured_frames]
@@ -318,68 +315,65 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
                 frames=main_window.runtime_data.gated_frames_sys,
             )
 
+        if plot:
+            index_1 = int(len(contoured_frames) * 0.2)
+            index_2 = int(len(contoured_frames) * 0.4)
+            index_3 = int(len(contoured_frames) * 0.6)
+            index_4 = int(len(contoured_frames) * 0.8)
+            indices_to_plot = [index_1, index_2, index_3, index_4]
+            frames_to_plot = [contoured_frames[frame] for frame in indices_to_plot]
+            fig, axes = plt.subplots(2, 2, figsize=(12, 12))
+
+            for index, frame in enumerate(frames_to_plot):
+                ax = axes[index // 2, index % 2]
+                ax.plot(
+                    lumen_x[frame],
+                    lumen_y[frame],
+                    '-g',
+                    linewidth=2,
+                    label='Contour',
+                )
+                ax.plot(centroid_x[frame], centroid_y[frame], 'ro', markersize=8, label='Centroid')
+                ax.plot(farthest_x[frame][0], farthest_y[frame][0], 'bo', markersize=8, label='Farthest Point 1')
+                ax.plot(farthest_x[frame][1], farthest_y[frame][1], 'bo', markersize=8, label='Farthest Point 2')
+                ax.plot(nearest_x[frame][0], nearest_y[frame][0], 'yo', markersize=8, label='Nearest Point 1')
+                ax.plot(nearest_x[frame][1], nearest_y[frame][1], 'yo', markersize=8, label='Nearest Point 2')
+
+                ax.annotate(
+                    f'Shortest Distance: {shortest_distance[frame]:.2f} mm',
+                    xy=(centroid_x[frame], centroid_y[frame]),
+                    xycoords='data',
+                    xytext=(10, 30),
+                    textcoords='offset points',
+                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=.2'),
+                )
+                ax.annotate(
+                    f'Longest Distance: {longest_distance[frame]:.2f} mm',
+                    xy=(centroid_x[frame], centroid_y[frame]),
+                    xycoords='data',
+                    xytext=(10, -30),
+                    textcoords='offset points',
+                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=-.2'),
+                )
+                ax.annotate(
+                    f'Lumen Area: {lumen_area[frame]:.2f} mm\N{SUPERSCRIPT TWO}\nElliptic Ratio: {longest_distance[frame]/shortest_distance[frame]:.2f}',
+                    xy=(centroid_x[frame], centroid_y[frame]),
+                    xycoords='data',
+                    xytext=(10, 0),
+                    textcoords='offset points',
+                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0'),
+                )
+                ax.legend(loc='upper right')
+                ax.invert_yaxis()
+                ax.grid()
+                ax.set_title(f'Frame {frame + 1}')
+
+            fig.tight_layout()
+            fig.show()
+
     if not suppress_messages:
         progress.close()
-
-    if plot:
-        index_1 = int(len(contoured_frames) * 0.2)
-        index_2 = int(len(contoured_frames) * 0.4)
-        index_3 = int(len(contoured_frames) * 0.6)
-        index_4 = int(len(contoured_frames) * 0.8)
-        indices_to_plot = [index_1, index_2, index_3, index_4]
-        frames_to_plot = [contoured_frames[frame] for frame in indices_to_plot]
-        fig, axes = plt.subplots(2, 2, figsize=(12, 12))
-
-        for index, frame in enumerate(frames_to_plot):
-            ax = axes[index // 2, index % 2]
-            ax.plot(
-                lumen_x[frame],
-                lumen_y[frame],
-                '-g',
-                linewidth=2,
-                label='Contour',
-            )
-            ax.plot(centroid_x[frame], centroid_y[frame], 'ro', markersize=8, label='Centroid')
-            ax.plot(farthest_x[frame][0], farthest_y[frame][0], 'bo', markersize=8, label='Farthest Point 1')
-            ax.plot(farthest_x[frame][1], farthest_y[frame][1], 'bo', markersize=8, label='Farthest Point 2')
-            ax.plot(nearest_x[frame][0], nearest_y[frame][0], 'yo', markersize=8, label='Nearest Point 1')
-            ax.plot(nearest_x[frame][1], nearest_y[frame][1], 'yo', markersize=8, label='Nearest Point 2')
-
-            # Annotate with shortest and longest distances
-            ax.annotate(
-                f'Shortest Distance: {shortest_distance[frame]:.2f} mm',
-                xy=(centroid_x[frame], centroid_y[frame]),
-                xycoords='data',
-                xytext=(10, 30),
-                textcoords='offset points',
-                arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=.2'),
-            )
-
-            ax.annotate(
-                f'Longest Distance: {longest_distance[frame]:.2f} mm',
-                xy=(centroid_x[frame], centroid_y[frame]),
-                xycoords='data',
-                xytext=(10, -30),
-                textcoords='offset points',
-                arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=-.2'),
-            )
-
-            ax.annotate(
-                f'Lumen Area: {lumen_area[frame]:.2f} mm\N{SUPERSCRIPT TWO}\nElliptic Ratio: {longest_distance[frame]/shortest_distance[frame]:.2f}',
-                xy=(centroid_x[frame], centroid_y[frame]),
-                xycoords='data',
-                xytext=(10, 0),
-                textcoords='offset points',
-                arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0'),
-            )
-
-            ax.legend(loc='upper right')
-            ax.invert_yaxis()
-            ax.grid()
-            ax.set_title(f'Frame {frame + 1}')
-
-        fig.tight_layout()
-        fig.show()
+        QApplication.processEvents()
 
     return report_data
 
@@ -401,13 +395,13 @@ def compute_polygon_metrics(main_window, polygon, frame):
 
 def centroid_center_vector(window, centroid_x, centroid_y):
     """Returns the length and angle of a vector from the center of the image to the centroid"""
-    center_x = window.images.shape[1] / 2
-    center_y = window.images.shape[2] / 2
+    center_x = window.runtime_data.images.shape[1] / 2
+    center_y = window.runtime_data.images.shape[2] / 2
 
     unit_vector = np.array([0, 1])
     vector = np.array([centroid_x - center_x, centroid_y - center_y])
 
-    vector_length = np.linalg.norm(vector) * window.metadata['resolution']
+    vector_length = np.linalg.norm(vector) * window.runtime_data.metadata['resolution']
 
     vector_dot = np.dot(unit_vector, vector)
     vector_det = np.linalg.det(np.array([unit_vector, vector]))
