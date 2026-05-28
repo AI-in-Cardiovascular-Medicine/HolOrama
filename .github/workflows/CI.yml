@@ -22,7 +22,7 @@ jobs:
       - name: Install lint tools
         run: pip install black ruff mypy
 
-      - name: Black (check only – does not modify files)
+      - name: Black (check only - does not modify files)
         run: black --check --diff src/ tests/
 
       - name: Ruff
