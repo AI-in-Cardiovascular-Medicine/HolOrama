@@ -46,7 +46,7 @@ class LongitudinalView(QGraphicsView):
         self.image_height = images.shape[1]
         center_col = images.shape[2] // 2
 
-        if hasattr(self.main_window, 'images_rgb') and self.main_window.runtime_data.images_rgb is not None:
+        if self.main_window.runtime_data.images_rgb is not None:
             slice_data = self.main_window.runtime_data.images_rgb[:, :, center_col, :]
         else:
             gray = self.main_window.runtime_data.images[:, :, center_col]  # (frames, height)
