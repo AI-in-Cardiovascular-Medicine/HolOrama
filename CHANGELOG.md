@@ -3,6 +3,29 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-05-28
+
+Major refactor ensuring seperation of concerns and identifying several bugs like this.
+
+### Changed
+- Complete structure from:
+
+
+to: 
+.
+├───domain
+├───gating
+├───gui
+│   ├───left_half
+│   ├───popup_windows
+│   ├───right_half
+│   └───_utils
+├───input_output
+│   ├───input
+│   └───output
+├───segmentation
+└───tools
+
 ## [1.3.2] - 2026-05-08
 
 ### Added
