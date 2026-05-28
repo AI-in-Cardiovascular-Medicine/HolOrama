@@ -49,7 +49,7 @@ jobs:
           sudo apt-get install -y -q \
             libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
             libxcb-render-util0 libxcb-xinerama0 libxkbcommon-x11-0 libdbus-1-3 \
-            libegl1
+            libegl1 libpulse0
 
       - name: Install Python dependencies
         run: |

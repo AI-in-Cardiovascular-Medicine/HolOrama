@@ -327,7 +327,9 @@ class Display(QGraphicsView, MetricsMixin):
                 self.working_spline = spline
                 self.points_to_draw = knot_points
         else:
-            logger.warning(f'Spline for frame {self.frame + 1} could not be interpolated for {ct.value}')
+            logger.warning(
+                f'Spline for frame {self.frame + 1} could not be interpolated for {ct.value if ct is not None else "unknown"}'
+            )
 
     def set_frame(self, value):
         self.frame = value
