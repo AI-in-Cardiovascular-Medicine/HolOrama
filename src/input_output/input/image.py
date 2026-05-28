@@ -62,7 +62,6 @@ def read_image(main_window) -> None:
             main_window.status_bar.showMessage(main_window.waiting_status)
             return
         pixel_array_parsed, is_oct = _parse_pixel_array(pixel_array)
-        main_window.images_display = 1
         md = parse_metadata_nifti(metadata_df, pixel_array_parsed.shape[0], is_oct, prompt)
         if is_oct:
             main_window.images_rgb = pixel_array.clip(0, 255).astype(np.uint8)
@@ -76,7 +75,6 @@ def read_image(main_window) -> None:
                 return
             pixel_array_parsed, is_oct = _parse_pixel_array(pixel_array)
             md = parse_metadata_dcm(metadata_df, pixel_array_parsed.shape[0], prompt)
-            main_window.images_display = 1
             if is_oct:
                 main_window.images_rgb = pixel_array.clip(0, 255).astype(np.uint8)
         except Exception:
@@ -113,14 +111,14 @@ def read_image(main_window) -> None:
         main_window.data.frame_data_dct = {i: FrameData() for i in range(num_frames)}
 
     main_window.display.set_data(main_window.images)
-    main_window.display_images = True
+    main_window.image_displayed = True
     main_window.display_slider.setValue(num_frames - 1)
     main_window.right_half.update_for_modality()
     main_window.status_bar.showMessage(main_window.waiting_status)
 
 
 def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) -> None:
-    if not main_window.display_images:
+    if not main_window.image_displayed:
         ErrorMessage(main_window, 'Load an image before importing a mask')
         return
 

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Any
 
 import numpy as np
 
@@ -15,3 +16,4 @@ class RuntimeData:
         self.gated_frames_dia: list[int] = []
         self.gated_frames_sys: list[int] = []
         self.tmp_contours: dict[str, tuple[list[float], list[float]]] = {}
+        self.gating_signal: dict[str, Any] = {}

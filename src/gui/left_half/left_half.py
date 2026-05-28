@@ -30,41 +30,41 @@ class LeftHalf:
         self.display_button_group = QButtonGroup()
         self.display_button_group.setExclusive(True)
 
-        self.closed_spline_btn = QPushButton('⭕Closed Spline')
+        self.closed_spline_btn = QPushButton('⭕ Closed Spline')
         self.closed_spline_btn.setCheckable(True)
         self.closed_spline_btn.setChecked(True)  # this is the default button
         self.closed_spline_btn.setToolTip("Set drawing mode to closed spline")
         self.closed_spline_btn.clicked.connect(partial(set_tool, main_window, SegmentationTool.CLOSED_SPLINE))
 
-        self.open_spline_btn = QPushButton('➰Open Spline')
+        self.open_spline_btn = QPushButton('➰ Open Spline')
         self.open_spline_btn.setCheckable(True)
         self.open_spline_btn.setToolTip("Set drawing mode to open spline")
         self.open_spline_btn.clicked.connect(partial(set_tool, main_window, SegmentationTool.OPEN_SPLINE))
 
-        self.brush_btn = QPushButton('🖌️Brush')
+        self.brush_btn = QPushButton('🖌️ Brush')
         self.brush_btn.setCheckable(True)
         self.brush_btn.setToolTip("Set drawing mode to brush")
         self.brush_btn.clicked.connect(partial(set_tool, main_window, SegmentationTool.BRUSH))
 
-        self.reference_btn = QPushButton('🟡Reference')
+        self.reference_btn = QPushButton('🟡 Reference')
         self.reference_btn.setCheckable(True)
         self.reference_btn.setToolTip("Set a reference point")
         self.reference_btn.setStyleSheet(f'border-color: {self.reference_color}')
         self.reference_btn.clicked.connect(partial(new_reference, main_window))
 
-        self.measure_btn_1 = QPushButton('📏Measurement 1')
+        self.measure_btn_1 = QPushButton('📏 Measurement 1')
         self.measure_btn_1.setCheckable(True)
         self.measure_btn_1.setToolTip("Measure distance between two points")
         self.measure_btn_1.setStyleSheet(f'border-color: {self.measure_colors[0]}')
         self.measure_btn_1.clicked.connect(partial(new_measure, main_window, 0))
 
-        self.measure_btn_2 = QPushButton('📏Measurement 2')
+        self.measure_btn_2 = QPushButton('📏 Measurement 2')
         self.measure_btn_2.setCheckable(True)
         self.measure_btn_2.setToolTip("Measure distance between two points")
         self.measure_btn_2.setStyleSheet(f'border-color: {self.measure_colors[1]}')
         self.measure_btn_2.clicked.connect(partial(new_measure, main_window, 1))
 
-        self.angle_btn = QPushButton('📐Angle Wire')
+        self.angle_btn = QPushButton('📐 Angle Wire')
         self.angle_btn.setCheckable(True)
         self.angle_btn.setToolTip("Set angle between two points for wire shadow")
         self.angle_btn.setStyleSheet(f'border-color: {main_window.display.color_angle}')

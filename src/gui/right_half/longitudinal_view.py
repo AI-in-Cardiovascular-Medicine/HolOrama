@@ -13,6 +13,7 @@ from PyQt6.QtGui import QPixmap, QImage, QColor, QPen, QBrush
 
 from tools.geometry import Marker
 
+
 class LongitudinalView(QGraphicsView):
     """
     Displays the longitudinal view of the IVUS pullback with lumen area overlay.
@@ -45,25 +46,14 @@ class LongitudinalView(QGraphicsView):
         self.image_height = images.shape[1]
         center_col = images.shape[2] // 2
 
-        if hasattr(self.main_window, 'images_display') and self.main_window.images_display is not None:
-            if hasattr(self.main_window, 'images_rgb') and self.main_window.images_rgb is not None:
-                slice_data = self.main_window.images_rgb[:, :, center_col, :]
-            else:
-                slice_data = self.main_window.dicom.pixel_array[:, :, center_col, :]
-            slice_data = np.transpose(slice_data, (1, 0, 2)).copy()
-            q_format = QImage.Format.Format_RGB888
-            bytes_per_line = self.num_frames * 3
+        if hasattr(self.main_window, 'images_rgb') and self.main_window.images_rgb is not None:
+            slice_data = self.main_window.images_rgb[:, :, center_col, :]
         else:
-            slice_data = images[:, :, center_col]
-            if slice_data.dtype != np.uint8:
-                vmin, vmax = float(slice_data.min()), float(slice_data.max())
-                if vmax > vmin:
-                    slice_data = ((slice_data.astype(np.float32) - vmin) / (vmax - vmin) * 255).astype(np.uint8)
-                else:
-                    slice_data = np.zeros_like(slice_data, dtype=np.uint8)
-            slice_data = np.transpose(slice_data, (1, 0)).copy()
-            q_format = QImage.Format.Format_Grayscale8
-            bytes_per_line = self.num_frames
+            gray = self.main_window.images[:, :, center_col]  # (frames, height)
+            slice_data = np.stack([gray, gray, gray], axis=-1)  # (frames, height, 3)
+        slice_data = np.transpose(slice_data, (1, 0, 2)).copy()
+        q_format = QImage.Format.Format_RGB888
+        bytes_per_line = self.num_frames * 3
 
         if self.main_window.colormap_enabled:
             if len(slice_data.shape) == 3:
@@ -165,4 +155,3 @@ class LongitudinalView(QGraphicsView):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.stretch_to_fit()
-

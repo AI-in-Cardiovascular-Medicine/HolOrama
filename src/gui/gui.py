@@ -64,7 +64,6 @@ class Master(QMainWindow):
         self.gating_signal: dict[str, Any] = {}  # global gating signal, saved separately from per-frame data
         self.metadata: dict[str, Any] = {}  # metadata used outside of read_image (not saved to JSON file)
         self.images: np.ndarray | None = None
-        self.images_display: int | None = None
         self.images_rgb: np.ndarray | None = None
         self.diastole_color: tuple[int, int, int] = (39, 69, 219)
         self.diastole_color_plt: tuple[float, ...] = tuple(x / 255 for x in self.diastole_color)  # for matplotlib
@@ -176,10 +175,7 @@ class Master(QMainWindow):
         self.gating_signal = {}
         self.metadata = {}
         self.images = None
-        self.images_display = None
         self.images_rgb = None
         self.dicom = None
         self.gated_frames_oct = []
-        self.tagged_frame_button.setChecked(False)
-        self.oct_quality_buttons[OCT_QUALITY_LABELS[-1]].setChecked(True)
         self.init_gui()

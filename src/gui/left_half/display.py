@@ -9,7 +9,14 @@ from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, 
 from PyQt6.QtCore import Qt, QLineF, QPointF
 from PyQt6.QtGui import QPixmap, QImage
 
-from domain.all_types import MASK_OVERLAY_COLORS, MASK_ALPHA, ALLOWED_TOOLS, ContourConfig, ContourType, SegmentationTool
+from domain.all_types import (
+    MASK_OVERLAY_COLORS,
+    MASK_ALPHA,
+    ALLOWED_TOOLS,
+    ContourConfig,
+    ContourType,
+    SegmentationTool,
+)
 from tools.geometry import Point, Spline, SplineGeometry, OpenSplineGeometry, OpenSpline, get_qt_pen
 from gui.utils.metrics import MetricsMixin
 from tools.geometry import Marker
@@ -525,11 +532,8 @@ class Display(QGraphicsView, MetricsMixin):
                     self.graphics_scene.removeItem(it)
 
     def _prepare_display_data(self):
-        if hasattr(self.main_window, "images_display") and self.main_window.images_display is not None:
-            if hasattr(self.main_window, 'images_rgb') and self.main_window.images_rgb is not None:
-                img = self.main_window.images_rgb[self.frame].copy()
-            else:
-                img = self.main_window.dicom.pixel_array[self.frame].copy()
+        if self.main_window.images_rgb is not None:
+            img = self.main_window.images_rgb[self.frame].copy()
             h, w, ch = img.shape
             return img, h, w, ch * w, QImage.Format.Format_RGB888
 
