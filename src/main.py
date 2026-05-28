@@ -81,11 +81,11 @@ def _print_banner():
  /_/ \_\ |___|  \_/   \___/ |___/   
        
        """
-    )                             
+    )
     print(f"  version  : {__version__}")
-    print(f"  docs     : https://aivus-caa.readthedocs.io")
-    print(f"  license  : MIT")
-    print(f"  author   : yungselm\n")
+    print("  docs     : https://aivus-caa.readthedocs.io")
+    print("  license  : MIT")
+    print("  author   : yungselm\n")
 
 
 if os.environ.get("AIVUS_SILENT", "0") == "0":

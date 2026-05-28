@@ -202,7 +202,9 @@ class SplineGeometry:
         # Find the index in the interpolated array closest to start and end
         start_idx = 0
         if self.start_coords:
-            start_idx = int(np.argmin(np.sqrt((full_x - self.start_coords[0]) ** 2 + (full_y - self.start_coords[1]) ** 2)))
+            start_idx = int(
+                np.argmin(np.sqrt((full_x - self.start_coords[0]) ** 2 + (full_y - self.start_coords[1]) ** 2))
+            )
 
         end_idx = np.argmin(np.sqrt((full_x - self.end_coords[0]) ** 2 + (full_y - self.end_coords[1]) ** 2))
 
