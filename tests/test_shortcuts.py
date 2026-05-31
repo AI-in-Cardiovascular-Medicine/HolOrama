@@ -38,7 +38,7 @@ class TestShortcuts:
 
     def test_hide_contours_shortcut(self):
         """Test hide contours shortcut"""
-        from gui.shortcuts import hide_contours
+        from pages.intravascular.shortcuts import hide_contours
 
         mock_main_window = self.create_mock_main_window()
 
@@ -50,7 +50,7 @@ class TestShortcuts:
 
     def test_hide_special_points_shortcut(self):
         """Test hide special points shortcut"""
-        from gui.shortcuts import hide_special_points
+        from pages.intravascular.shortcuts import hide_special_points
 
         mock_main_window = self.create_mock_main_window()
 
@@ -64,7 +64,7 @@ class TestShortcuts:
     @patch('PyQt6.QtWidgets.QApplication.processEvents')
     def test_jiggle_frame_shortcut(self, mock_process_events, mock_sleep):
         """Test jiggle frame shortcut"""
-        from gui.shortcuts import jiggle_frame
+        from pages.intravascular.shortcuts import jiggle_frame
 
         mock_main_window = self.create_mock_main_window()
         current_frame = 50
@@ -77,7 +77,7 @@ class TestShortcuts:
 
     def test_reset_windowing_shortcut(self):
         """Test reset windowing shortcut"""
-        from gui.shortcuts import reset_windowing
+        from pages.intravascular.shortcuts import reset_windowing
 
         mock_main_window = self.create_mock_main_window()
 
@@ -97,7 +97,7 @@ class TestShortcuts:
 
     def test_toggle_color_shortcut(self):
         """Test toggle color map shortcut"""
-        from gui.shortcuts import toggle_color
+        from pages.intravascular.shortcuts import toggle_color
 
         mock_main_window = self.create_mock_main_window()
         initial_state = mock_main_window.colormap_enabled
