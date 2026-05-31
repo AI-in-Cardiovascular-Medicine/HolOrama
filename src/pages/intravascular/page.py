@@ -2,15 +2,13 @@ from functools import partial
 
 from omegaconf import DictConfig
 from PyQt6.QtWidgets import (
-    QWidget,
     QSplitter,
     QTableWidget,
     QCheckBox,
     QPushButton,
     QButtonGroup,
-    QVBoxLayout,
 )
-from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtCore import QTimer, Qt, QSize
 
 from pages.intravascular.left_half.left_half import LeftHalf
 from pages.intravascular.left_half.display import Display
@@ -34,9 +32,9 @@ from domain.runtime_types import RuntimeData
 from domain.all_types import OCT_QUALITY_LABELS
 
 
-class IntravascularPage(QWidget):
+class IntravascularPage(QSplitter):
     def __init__(self, config: DictConfig, menu_bar, status_bar) -> None:
-        super().__init__()
+        super().__init__(Qt.Orientation.Horizontal)
         self.config: DictConfig = config
         self.menu_bar = menu_bar
         self.status_bar = status_bar
@@ -112,20 +110,21 @@ class IntravascularPage(QWidget):
             self.oct_quality_button_group.addButton(btn)
         self.oct_quality_buttons[OCT_QUALITY_LABELS[-1]].setChecked(True)
 
-        main_window_splitter: QSplitter = QSplitter()
         self.left_half: LeftHalf = LeftHalf(self)
-        main_window_splitter.addWidget(self.left_half())
+        self.addWidget(self.left_half())
         self.right_half: RightHalf = RightHalf(self)
-        main_window_splitter.addWidget(self.right_half())
+        self.addWidget(self.right_half())
+        self.setChildrenCollapsible(False)
 
         timer: QTimer = QTimer(self)
         timer.timeout.connect(self.auto_save)
         timer.start(self.config.save.autosave_interval)
 
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(main_window_splitter)
-        self.setLayout(layout)
+    def sizeHint(self) -> QSize:
+        return QSize(0, 0)
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(0, 0)
 
     def style(self):
         from PyQt6.QtWidgets import QApplication

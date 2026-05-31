@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QGridLayout,
+    QLayout,
 )
 from PyQt6.QtCore import Qt
 
@@ -121,6 +122,7 @@ class LeftHalf:
         frame_num_hbox.addWidget(self.frame_number_label)
         left_lower_grid.addLayout(frame_num_hbox, 1, 1)
         left_vbox.addLayout(left_lower_grid)
+        left_vbox.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         self.left_widget.setLayout(left_vbox)
 
     def __call__(self):
