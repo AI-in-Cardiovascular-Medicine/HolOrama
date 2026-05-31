@@ -17,7 +17,7 @@ from domain.all_types import (
 )
 from domain.mask_types import MASK_ALPHA, MASK_SPECS
 from tools.geometry import Point, Spline, SplineGeometry, OpenSplineGeometry, OpenSpline, get_qt_pen
-from gui.utils.metrics import MetricsMixin
+from pages.intravascular.utils.metrics import MetricsMixin
 from tools.geometry import Marker
 from segmentation.segment import downsample
 from input_output.output.imgs_masks import contours_to_mask

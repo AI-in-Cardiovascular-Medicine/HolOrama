@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from skimage import measure as sk_measure
 from PyQt6.QtWidgets import QFileDialog, QInputDialog, QProgressDialog, QApplication
 
-from gui.popup_windows.message_boxes import ErrorMessage
+from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from input_output.input.metadata import (
     MetaData,
     PromptFn,

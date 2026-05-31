@@ -9,7 +9,7 @@ from typing import List, Tuple, Optional, Dict
 from version import version_file_str
 from domain.io_types import Measure, Measurements, Contour, FrameData
 from domain.all_types import OCT_QUALITY_LABELS
-from gui.popup_windows.message_boxes import ErrorMessage
+from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
 
 def read_contours(main_window, file_name=None) -> bool:

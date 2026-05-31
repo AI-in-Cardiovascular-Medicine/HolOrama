@@ -8,7 +8,7 @@ from loguru import logger
 from dataclasses import asdict
 
 from version import version_file_str
-from gui.popup_windows.message_boxes import ErrorMessage
+from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
 
 def write_contours(main_window) -> None:

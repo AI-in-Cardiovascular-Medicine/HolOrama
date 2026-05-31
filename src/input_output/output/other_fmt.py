@@ -2,7 +2,7 @@ import os
 
 import numpy as np
 from loguru import logger
-from gui.popup_windows.message_boxes import ErrorMessage
+from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
 
 def save_gated_images(main_window) -> None:

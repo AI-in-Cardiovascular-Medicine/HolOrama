@@ -4,11 +4,11 @@ from matplotlib.backend_bases import MouseButton
 import matplotlib.pyplot as plt
 
 from gating.signal_processing import prepare_data
-from gui.utils.helpers import connect_consecutive_frames
+from pages.intravascular.utils.helpers import connect_consecutive_frames
 from gating.automatic_gating import AutomaticGating
-from gui.popup_windows.message_boxes import ErrorMessage
-from gui.popup_windows.frame_range_dialog import FrameRangeDialog
-from gui.right_half.right_half import toggle_diastolic_frame, toggle_systolic_frame
+from pages.intravascular.popup_windows.message_boxes import ErrorMessage
+from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
+from pages.intravascular.right_half.right_half import toggle_diastolic_frame, toggle_systolic_frame
 from input_output.output.reports import report
 
 

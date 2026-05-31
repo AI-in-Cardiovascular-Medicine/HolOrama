@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import qInstallMessageHandler, QtMsgType
 
 from version import __version__
-from gui.gui import Master
+from gui.app import Master
 
 
 LOG_DIR = Path("logs")
