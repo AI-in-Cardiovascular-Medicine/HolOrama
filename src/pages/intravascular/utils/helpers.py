@@ -1,3 +1,21 @@
+from PyQt6.QtWidgets import QWidget
+from PyQt6.QtCore import QSize
+
+
+class SplitterPane(QWidget):
+    """QWidget whose minimumSizeHint() always returns QSize(1, 1).
+
+    QSplitter reads minimumSizeHint() — not minimumSize() — to compute the
+    legal range for the handle.  Using a plain QWidget causes the 7-button row
+    (~700-900 px minimum) or the NavigationToolbar (~480 px minimum) to lock
+    the handle at those large positions.  This subclass removes that constraint
+    so the handle can be positioned freely.
+    """
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(1, 1)
+
+
 def connect_consecutive_frames(missing: list) -> str:
     nums = sorted(set(missing))
     groups: list[list[int]] = []

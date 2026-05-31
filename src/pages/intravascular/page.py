@@ -128,11 +128,12 @@ class IntravascularPage(QSplitter):
 
     def style(self):
         from PyQt6.QtWidgets import QApplication
+
         return QApplication.style()
 
     def close(self):
         top = self.window()
-        if top is not self:
+        if top is not None and top is not self:
             top.close()
 
     def auto_save(self) -> None:

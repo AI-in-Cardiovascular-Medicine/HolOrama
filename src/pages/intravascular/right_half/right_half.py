@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QSplitter, QPushButton, QW
 from domain.all_types import OCT_QUALITY_LABELS
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
 from pages.intravascular.popup_windows.small_display import SmallDisplay
+from pages.intravascular.utils.helpers import SplitterPane
 from segmentation.segment import segment
 
 
@@ -15,7 +16,7 @@ class RightHalf:
         self.main_window = main_window
 
         # Outer container — stays in the main splitter forever
-        self.right_widget = QWidget()
+        self.right_widget = SplitterPane()
         self.right_layout = QVBoxLayout(self.right_widget)
         self.right_layout.setContentsMargins(0, 0, 0, 0)
         self.right_layout.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)

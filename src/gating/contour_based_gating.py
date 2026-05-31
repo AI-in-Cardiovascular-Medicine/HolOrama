@@ -100,8 +100,12 @@ class ContourBasedGating:
 
         self.ax.plot(self.x, image_based_gating_filtered, color='green', label='Image based gating')
         self.ax.plot(self.x, contour_based_gating_filtered, color='yellow', label='Contour based gating')
-        self.ax.plot(self.x, image_based_gating, color='green', linestyle='dashed', label='Image based gating (unfiltered)')
-        self.ax.plot(self.x, contour_based_gating, color='yellow', linestyle='dashed', label='Contour based gating (unfiltered)')
+        self.ax.plot(
+            self.x, image_based_gating, color='green', linestyle='dashed', label='Image based gating (unfiltered)'
+        )
+        self.ax.plot(
+            self.x, contour_based_gating, color='yellow', linestyle='dashed', label='Contour based gating (unfiltered)'
+        )
 
         self.ax.set_xlabel('Frame')
         self.ax.get_yaxis().set_visible(False)
@@ -125,7 +129,9 @@ class ContourBasedGating:
         if not self.main_window.runtime_data.gated_frames_dia and not self.main_window.runtime_data.gated_frames_sys:
             auto_gating = AutomaticGating(self.main_window, self.report_data)
             auto_gating.automatic_gating(image_based_gating_filtered, contour_based_gating_filtered)
-            self.draw_existing_lines(self.main_window.runtime_data.gated_frames_dia, self.main_window.diastole_color_plt)
+            self.draw_existing_lines(
+                self.main_window.runtime_data.gated_frames_dia, self.main_window.diastole_color_plt
+            )
             self.draw_existing_lines(self.main_window.runtime_data.gated_frames_sys, self.main_window.systole_color_plt)
             self._draw()
 
@@ -214,9 +220,7 @@ class ContourBasedGating:
             return
         frames = [frame for frame in frames if frame in (self.x - 1)]
         for frame in frames:
-            self.vertical_lines.append(
-                self.ax.axvline(x=frame + 1, color=color, linestyle=self.default_linestyle)
-            )
+            self.vertical_lines.append(self.ax.axvline(x=frame + 1, color=color, linestyle=self.default_linestyle))
 
     def remove_lines(self):
         for line in self.vertical_lines:

@@ -7,8 +7,10 @@ class CctaPage(QWidget):
         super().__init__()
         layout = QGridLayout()
         for row, col, name in [
-            (0, 0, 'Axial'), (0, 1, 'Sagittal'),
-            (1, 0, 'Coronal'), (1, 1, '3D / CPR'),
+            (0, 0, 'Axial'),
+            (0, 1, 'Sagittal'),
+            (1, 0, 'Coronal'),
+            (1, 1, '3D / CPR'),
         ]:
             label = QLabel(name)
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)

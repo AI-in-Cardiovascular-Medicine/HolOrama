@@ -7,7 +7,6 @@ from PyQt6.QtWidgets import (
     QStyle,
     QApplication,
     QLabel,
-    QWidget,
     QVBoxLayout,
     QHBoxLayout,
     QGridLayout,
@@ -17,12 +16,13 @@ from PyQt6.QtCore import Qt
 
 from domain.all_types import ContourType, SegmentationTool
 from pages.intravascular.utils.contours_gui import new_measure, new_reference, new_angle, set_tool
+from pages.intravascular.utils.helpers import SplitterPane
 
 
 class LeftHalf:
     def __init__(self, main_window):
         self.main_window = main_window
-        self.left_widget = QWidget()
+        self.left_widget = SplitterPane()
         left_vbox = QVBoxLayout()
         self.measure_colors: list[str] = ['red', 'cyan']
         self.reference_color: str = 'yellow'
