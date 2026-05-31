@@ -188,7 +188,7 @@ def populate_metadata_table(
     main_rows = [(lbl, v) for lbl, v in main_rows if v is not None]
 
     remaining = full_df[~full_df['Description'].isin(_METADATA_DESCRIPTIONS)][['Description', 'Value']]
-    extra_rows = list(zip(remaining['Description'], remaining['Value'].astype(str)))
+    extra_rows = [(d, _fmt_dicom_value(v)) for d, v in zip(remaining['Description'], remaining['Value'])]
 
     total = len(main_rows) + 1 + len(extra_rows)  # +1 for '...' separator
     table.setRowCount(total)
@@ -221,6 +221,36 @@ def populate_metadata_table(
     table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
 
+# ─── DICOM value formatters ──────────────────────────────────────────────────
+
+
+def _fmt_dicom_date(val: str) -> str:
+    """YYYYMMDD → YYYY/MM/DD, pass through anything else."""
+    s = str(val).strip()
+    if len(s) == 8 and s.isdigit():
+        return f'{s[:4]}/{s[4:6]}/{s[6:]}'
+    return s
+
+
+def _fmt_dicom_time(val: str) -> str:
+    """HHMMSS or HHMMSS.F (possibly stored as float) → HH:MM:SS."""
+    integer_part = str(val).strip().split('.')[0]
+    if len(integer_part) == 6 and integer_part.isdigit():
+        return f'{integer_part[:2]}:{integer_part[2:4]}:{integer_part[4:]}'
+    return str(val)
+
+
+def _fmt_dicom_value(val: str) -> str:
+    """Best-effort formatting for raw DICOM values in the extra rows."""
+    s = str(val).strip()
+    if len(s) == 8 and s.isdigit():
+        return _fmt_dicom_date(s)
+    integer_part = s.split('.')[0]
+    if len(integer_part) == 6 and integer_part.isdigit():
+        return _fmt_dicom_time(s)
+    return s
+
+
 # ─── Pure extraction helpers (no PyQt) ───────────────────────────────────────
 
 
@@ -236,7 +266,7 @@ def extract_modality(df: pd.DataFrame) -> Optional[str]:
 def extract_patient_info(df: pd.DataFrame) -> tuple[str, str, str]:
     # pydicom uses apostrophe in elem.name for some fields
     name = _val(df, "Patient's Name") or _val(df, 'Patient Name') or 'Unknown'
-    birth = str(_val(df, "Patient's Birth Date") or _val(df, 'Patient Birth Date') or 'Unknown')
+    birth = _fmt_dicom_date(str(_val(df, "Patient's Birth Date") or _val(df, 'Patient Birth Date') or 'Unknown'))
     sex = str(_val(df, "Patient's Sex") or _val(df, 'Patient Sex') or 'Unknown')
     return str(name), birth, sex
 
