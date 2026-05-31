@@ -178,3 +178,5 @@ main.build
 main.dist
 
 .vscode/
+
+DICOM

@@ -1,9 +1,8 @@
 import bisect
 
-import matplotlib.pyplot as plt
 from functools import partial
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QSplitter, QPushButton, QWidget, QFrame
+from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QSplitter, QPushButton, QWidget, QFrame, QLayout
 
 from domain.all_types import OCT_QUALITY_LABELS
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
@@ -19,6 +18,7 @@ class RightHalf:
         self.right_widget = QWidget()
         self.right_layout = QVBoxLayout(self.right_widget)
         self.right_layout.setContentsMargins(0, 0, 0, 0)
+        self.right_layout.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
 
         # Slider connection for per-frame OCT updates (connected once, checks mode at runtime)
         main_window.display_slider.valueChanged.connect(partial(update_oct_display, main_window))
@@ -235,7 +235,6 @@ def toggle_diastolic_frame(main_window, state_true, drag=False):
                 main_window.runtime_data.frame_data_dct[frame].phase = 'D'
                 main_window.contour_based_gating.update_color(main_window.diastole_color_plt)
                 main_window.contour_based_gating.current_phase = 'D'
-                plt.draw()
             try:  # frame cannot be diastolic and systolic at the same time
                 main_window.systolic_frame_box.setChecked(False)
             except ValueError:

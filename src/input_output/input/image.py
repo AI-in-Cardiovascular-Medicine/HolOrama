@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import nibabel as nib
 import pydicom as dcm
-import matplotlib.pyplot as plt
 from skimage import measure as sk_measure
 from PyQt6.QtWidgets import QFileDialog, QInputDialog, QProgressDialog, QApplication
 
@@ -37,7 +36,7 @@ def read_image(main_window) -> None:
 
     main_window.reset_state()
     main_window.gating_display.fig.clear()
-    plt.draw()
+    main_window.gating_display.fig.canvas.draw_idle()
 
     root, ext = os.path.splitext(file_name)
     if ext == '.gz':
