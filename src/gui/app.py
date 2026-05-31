@@ -10,8 +10,33 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QVBoxLayout,
     QPushButton,
+    QStylePainter,
+    QStyleOptionButton,
+    QStyle,
 )
+from PyQt6.QtCore import QSize
 from PyQt6.QtGui import QIcon
+
+
+class _NavButton(QPushButton):
+    """Checkable push button with text rotated 90° to fit a narrow sidebar."""
+
+    def sizeHint(self) -> QSize:
+        s = super().sizeHint()
+        return QSize(s.height(), s.width())
+
+    def minimumSizeHint(self) -> QSize:
+        s = super().minimumSizeHint()
+        return QSize(s.height(), s.width())
+
+    def paintEvent(self, _event) -> None:
+        painter = QStylePainter(self)
+        opt = QStyleOptionButton()
+        self.initStyleOption(opt)
+        opt.rect = opt.rect.transposed()
+        painter.rotate(-90)
+        painter.translate(-self.height(), 0)
+        painter.drawControl(QStyle.ControlElement.CE_PushButton, opt)
 
 from pages.intravascular.page import IntravascularPage
 from pages.ccta.page import CctaPage
@@ -51,16 +76,16 @@ class Master(QMainWindow):
 
     def _build_nav_bar(self) -> QWidget:
         bar = QWidget()
-        bar.setFixedWidth(120)
+        bar.setFixedWidth(40)
         layout = QVBoxLayout(bar)
-        layout.setContentsMargins(4, 8, 4, 8)
+        layout.setContentsMargins(2, 8, 2, 8)
 
-        ivus_btn = QPushButton('Intravascular')
+        ivus_btn = _NavButton('Intravascular')
         ivus_btn.setCheckable(True)
         ivus_btn.setChecked(True)
         ivus_btn.clicked.connect(lambda: self._switch_page(0, ivus_btn, ccta_btn))
 
-        ccta_btn = QPushButton('CCTA')
+        ccta_btn = _NavButton('CCTA')
         ccta_btn.setCheckable(True)
         ccta_btn.clicked.connect(lambda: self._switch_page(1, ccta_btn, ivus_btn))
 
