@@ -1,11 +1,12 @@
 import cv2
 import numpy as np
 from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QPointF, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap, QPen, QColor
 
 
 _CROSSHAIR_COLOR = QColor(255, 255, 0)
+_ZOOM_SENSITIVITY = 0.01  # same magnitude as intravascular display
 
 
 class CctaDisplay(QGraphicsView):
@@ -16,9 +17,11 @@ class CctaDisplay(QGraphicsView):
     Coronal/sagittal images are aspect-corrected using voxel_spacing so anatomy
     looks proportional (slice_thickness often differs from pixel_spacing).
 
-    Scroll wheel  → steps the slice axis for this view
-    Left click    → updates the cursor in the two orthogonal axes
-    Right drag    → window/level adjustment (horizontal=level, vertical=width)
+    Scroll wheel        → steps the slice axis for this view
+    Left click          → updates the crosshair / cursor in orthogonal axes
+    Left drag (up/down) → zoom in / out (anchored under the cursor)
+    Double-click        → reset zoom to fit
+    Right drag          → window/level (horizontal=level, vertical=width)
 
     cursor_moved(z, y, x) is emitted by scroll and click events.
     set_cursor(z, y, x)   is called by CctaPage to synchronise all views;
@@ -43,6 +46,9 @@ class CctaDisplay(QGraphicsView):
         self.window_width: int = self._DEFAULT_WIDTH
         self._mouse_x: float = 0.0
         self._mouse_y: float = 0.0
+        self._press_pos: QPointF = QPointF(0.0, 0.0)
+        self._is_dragging: bool = False
+        self._user_zoomed: bool = False
         self._render_buf: np.ndarray | None = None  # kept alive for QImage
 
         self._scene = QGraphicsScene(self)
@@ -50,6 +56,7 @@ class CctaDisplay(QGraphicsView):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setBackgroundBrush(Qt.GlobalColor.black)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     # ------------------------------------------------------------------ public
 
@@ -62,7 +69,15 @@ class CctaDisplay(QGraphicsView):
         self.cursor_x = X // 2
         self.window_level = self._DEFAULT_LEVEL
         self.window_width = self._DEFAULT_WIDTH
+        self._user_zoomed = False
+        self.resetTransform()
         self._render()
+
+    def reset_zoom(self) -> None:
+        self._user_zoomed = False
+        self.resetTransform()
+        if self.volume is not None:
+            self.fitInView(self._scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
     def set_cursor(self, z: int, y: int, x: int) -> None:
         if z == self.cursor_z and y == self.cursor_y and x == self.cursor_x:
@@ -111,7 +126,6 @@ class CctaDisplay(QGraphicsView):
             return self.cursor_y, self.cursor_x
 
         elif self.orientation == 'coronal':
-            # Row is z-axis flipped and scaled
             row = round(((Z - 1) - self.cursor_z) * dz / dx)
             return max(0, min(row, img_h - 1)), max(0, min(self.cursor_x, img_w - 1))
 
@@ -133,7 +147,6 @@ class CctaDisplay(QGraphicsView):
             )
 
         elif self.orientation == 'coronal':
-            # Undo the z-axis scale: row_orig = row * dx/dz, then flip
             row_orig = int(row * dx / dz)
             z = max(0, min((Z - 1) - row_orig, Z - 1))
             return z, self.cursor_y, max(0, min(col, X - 1))
@@ -160,23 +173,25 @@ class CctaDisplay(QGraphicsView):
 
         ch_row, ch_col = self._crosshair_pos(h, w)
         pen = QPen(_CROSSHAIR_COLOR)
-        pen.setCosmetic(True)  # 1 px regardless of fitInView scale
+        pen.setCosmetic(True)  # 1 px regardless of view transform
         self._scene.addLine(0, ch_row, w, ch_row, pen)
         self._scene.addLine(ch_col, 0, ch_col, h, pen)
 
         self._scene.setSceneRect(0, 0, w, h)
-        self.fitInView(self._scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        if not self._user_zoomed:
+            self.fitInView(self._scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
     # ---------------------------------------------------------- Qt overrides
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        if self.volume is not None:
+        if self.volume is not None and not self._user_zoomed:
             self.fitInView(self._scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
     def wheelEvent(self, event) -> None:
         if self.volume is None:
             return
+        self.setFocus()
         Z, Y, X = self.volume.shape
         delta = 1 if event.angleDelta().y() > 0 else -1
         if self.orientation == 'axial':
@@ -199,17 +214,31 @@ class CctaDisplay(QGraphicsView):
             )
 
     def mousePressEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton and self.volume is not None:
-            pos = self.mapToScene(event.position().toPoint())
-            z, y, x = self._scene_to_cursor(int(pos.y()), int(pos.x()))
-            self.cursor_moved.emit(z, y, x)
+        self.setFocus()
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._press_pos = event.position()
+            self._mouse_y = event.position().y()
+            self._is_dragging = False
         elif event.button() == Qt.MouseButton.RightButton:
             self._mouse_x = event.position().x()
             self._mouse_y = event.position().y()
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
-        if event.buttons() == Qt.MouseButton.RightButton:
+        if event.buttons() == Qt.MouseButton.LeftButton:
+            delta_y = self._mouse_y - event.position().y()
+            self._mouse_y = event.position().y()
+            drag_dist = (event.position() - self._press_pos).manhattanLength()
+            if drag_dist > 5:
+                self._is_dragging = True
+            if self._is_dragging:
+                zoom_factor = 1.0 + delta_y * _ZOOM_SENSITIVITY
+                if zoom_factor > 0:
+                    self._user_zoomed = True
+                    self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+                    self.scale(zoom_factor, zoom_factor)
+                    self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        elif event.buttons() == Qt.MouseButton.RightButton:
             dx = event.position().x() - self._mouse_x
             dy_px = event.position().y() - self._mouse_y
             self._mouse_x = event.position().x()
@@ -218,3 +247,17 @@ class CctaDisplay(QGraphicsView):
             self.window_width = max(1, int(self.window_width + dy_px))
             self._render()
         super().mouseMoveEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.reset_zoom()
+        super().mouseDoubleClickEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            if not self._is_dragging and self.volume is not None:
+                pos = self.mapToScene(event.position().toPoint())
+                z, y, x = self._scene_to_cursor(int(pos.y()), int(pos.x()))
+                self.cursor_moved.emit(z, y, x)
+            self._is_dragging = False
+        super().mouseReleaseEvent(event)

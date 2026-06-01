@@ -101,6 +101,10 @@ class CctaPage(QWidget):
             Z, Y, X = self.volume.shape
             self._update_labels(z, y, x, Z, Y, X)
 
+    def _reset_zoom(self) -> None:
+        for display in (self._axial, self._coronal, self._sagittal):
+            display.reset_zoom()
+
     def _update_labels(self, z: int, y: int, x: int, Z: int, Y: int, X: int) -> None:
         self._axial_label.setText(f'Axial  Z: {z + 1} / {Z}')
         self._sagittal_label.setText(f'Sagittal  X: {x + 1} / {X}')
