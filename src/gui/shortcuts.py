@@ -45,10 +45,12 @@ def init_shortcuts(main_window):
     QShortcut(QKeySequence(Qt.Key.Key_Right), main_window, lambda: main_window.display_slider.next_frame())
 
 
-def init_menu(main_window):
+def init_menu(main_window, ccta_page):
     file_menu = main_window.menu_bar.addMenu('File')
     open_action = file_menu.addAction('Open File', partial(read_image, main_window))
     open_action.setShortcut('Ctrl+O')
+    open_folder_action = file_menu.addAction('Open DICOM Folder', ccta_page.open_folder)
+    open_folder_action.setShortcut('Ctrl+Shift+O')
     file_menu.addAction('Open Mask', partial(read_nifti_mask, main_window))
     file_menu.addSeparator()
     save_contours = file_menu.addAction('Save Contours', partial(write_contours, main_window))

@@ -24,7 +24,7 @@ from pages.intravascular.right_half.right_half import (
 )
 from pages.intravascular.right_half.gating_display import GatingDisplay
 from pages.intravascular.right_half.longitudinal_view import LongitudinalView
-from pages.intravascular.shortcuts import init_shortcuts, init_menu
+
 from input_output.output.contours import write_contours
 from gating.contour_based_gating import ContourBasedGating
 from segmentation.predict import Predict
@@ -58,8 +58,6 @@ class IntravascularPage(QSplitter):
         self.results_plot = None
 
         self._init_ui()
-        init_shortcuts(self)
-        init_menu(self)
 
     def _init_ui(self) -> None:
         self.file_name = "default_file_name"

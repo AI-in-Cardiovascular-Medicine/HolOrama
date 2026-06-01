@@ -19,6 +19,7 @@ from PyQt6.QtGui import QIcon
 
 from pages.intravascular.page import IntravascularPage
 from pages.ccta.page import CctaPage
+from gui.shortcuts import init_shortcuts, init_menu
 
 
 class _NavButton(QPushButton):
@@ -58,11 +59,13 @@ class Master(QMainWindow):
         self.setStatusBar(self.status_bar)
 
         self.stack = QStackedWidget()
-        self.intravascular_page = IntravascularPage(config, self.menu_bar, self.status_bar)
         self.ccta_page = CctaPage(self.status_bar)
+        self.intravascular_page = IntravascularPage(config, self.menu_bar, self.status_bar)
         self.stack.addWidget(self.intravascular_page)
         self.stack.addWidget(self.ccta_page)
-        self._init_ccta_menu()
+
+        init_shortcuts(self.intravascular_page)
+        init_menu(self.intravascular_page, self.ccta_page)
 
         central = QWidget()
         layout = QHBoxLayout(central)
@@ -94,13 +97,6 @@ class Master(QMainWindow):
         layout.addWidget(ccta_btn)
         layout.addStretch()
         return bar
-
-    def _init_ccta_menu(self) -> None:
-        ccta_menu = self.menu_bar.addMenu('CCTA')
-        assert ccta_menu is not None
-        open_action = ccta_menu.addAction('Open Folder', self.ccta_page.open_folder)
-        assert open_action is not None
-        open_action.setShortcut('Ctrl+Shift+O')
 
     def _switch_page(self, index: int, active_btn: QPushButton, other_btn: QPushButton) -> None:
         self.stack.setCurrentIndex(index)

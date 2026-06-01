@@ -46,8 +46,6 @@ class CctaPage(QWidget):
         for display in (self._axial, self._coronal, self._sagittal):
             display.cursor_moved.connect(self._on_cursor_moved)
 
-    # ----------------------------------------------------------------- public
-
     def open_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(
             self, 'Open CCTA Folder', '..', options=QFileDialog.Option.DontUseNativeDialog
@@ -92,8 +90,6 @@ class CctaPage(QWidget):
         self._update_labels(Z // 2, Y // 2, X // 2, Z, Y, X)
         self.status_bar.showMessage(f'CCTA: {Z} slices  |  pixel spacing {dy:.3f} mm  |  slice thickness {dz:.3f} mm')
 
-    # ---------------------------------------------------------- slot handlers
-
     def _on_cursor_moved(self, z: int, y: int, x: int) -> None:
         for display in (self._axial, self._coronal, self._sagittal):
             display.set_cursor(z, y, x)
@@ -109,8 +105,6 @@ class CctaPage(QWidget):
         self._axial_label.setText(f'Axial  Z: {z + 1} / {Z}')
         self._sagittal_label.setText(f'Sagittal  X: {x + 1} / {X}')
         self._coronal_label.setText(f'Coronal  Y: {y + 1} / {Y}')
-
-    # ----------------------------------------------------------------- layout helpers
 
     @staticmethod
     def _panel(display: CctaDisplay, label: QLabel) -> QWidget:
