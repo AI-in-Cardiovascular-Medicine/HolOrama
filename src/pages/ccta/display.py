@@ -29,6 +29,7 @@ class CctaDisplay(QGraphicsView):
     """
 
     cursor_moved = pyqtSignal(int, int, int)  # z, y, x
+    windowing_changed = pyqtSignal(int, int)  # level, width
 
     _DEFAULT_LEVEL = 200  # HU center — cardiac soft tissue
     _DEFAULT_WIDTH = 700  # HU range
@@ -78,6 +79,18 @@ class CctaDisplay(QGraphicsView):
         self.resetTransform()
         if self.volume is not None:
             self.fitInView(self._scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+
+    def reset_windowing(self) -> None:
+        self.window_level = self._DEFAULT_LEVEL
+        self.window_width = self._DEFAULT_WIDTH
+        self._render()
+
+    def set_windowing(self, level: int, width: int) -> None:
+        if level == self.window_level and width == self.window_width:
+            return
+        self.window_level = level
+        self.window_width = width
+        self._render()
 
     def set_cursor(self, z: int, y: int, x: int) -> None:
         if z == self.cursor_z and y == self.cursor_y and x == self.cursor_x:
@@ -246,6 +259,7 @@ class CctaDisplay(QGraphicsView):
             self.window_level = int(self.window_level + dx)
             self.window_width = max(1, int(self.window_width + dy_px))
             self._render()
+            self.windowing_changed.emit(self.window_level, self.window_width)
         super().mouseMoveEvent(event)
 
     def mouseDoubleClickEvent(self, event) -> None:

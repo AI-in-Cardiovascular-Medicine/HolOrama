@@ -45,6 +45,7 @@ class CctaPage(QWidget):
 
         for display in (self._axial, self._coronal, self._sagittal):
             display.cursor_moved.connect(self._on_cursor_moved)
+            display.windowing_changed.connect(self._on_windowing_changed)
 
     def open_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(
@@ -90,6 +91,10 @@ class CctaPage(QWidget):
         self._update_labels(Z // 2, Y // 2, X // 2, Z, Y, X)
         self.status_bar.showMessage(f'CCTA: {Z} slices  |  pixel spacing {dy:.3f} mm  |  slice thickness {dz:.3f} mm')
 
+    def _on_windowing_changed(self, level: int, width: int) -> None:
+        for display in (self._axial, self._coronal, self._sagittal):
+            display.set_windowing(level, width)
+
     def _on_cursor_moved(self, z: int, y: int, x: int) -> None:
         for display in (self._axial, self._coronal, self._sagittal):
             display.set_cursor(z, y, x)
@@ -97,9 +102,13 @@ class CctaPage(QWidget):
             Z, Y, X = self.volume.shape
             self._update_labels(z, y, x, Z, Y, X)
 
-    def _reset_zoom(self) -> None:
+    def reset_zoom(self) -> None:
         for display in (self._axial, self._coronal, self._sagittal):
             display.reset_zoom()
+
+    def reset_windowing(self) -> None:
+        for display in (self._axial, self._coronal, self._sagittal):
+            display.reset_windowing()
 
     def _update_labels(self, z: int, y: int, x: int, Z: int, Y: int, X: int) -> None:
         self._axial_label.setText(f'Axial  Z: {z + 1} / {Z}')

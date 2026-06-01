@@ -19,7 +19,7 @@ from PyQt6.QtGui import QIcon
 
 from pages.intravascular.page import IntravascularPage
 from pages.ccta.page import CctaPage
-from gui.shortcuts import init_shortcuts, init_menu
+from gui.shortcuts import init_shortcuts, init_ccta_shortcuts, init_menu
 
 
 class _NavButton(QPushButton):
@@ -65,6 +65,7 @@ class Master(QMainWindow):
         self.stack.addWidget(self.ccta_page)
 
         init_shortcuts(self.intravascular_page)
+        init_ccta_shortcuts(self.ccta_page)
         init_menu(self.intravascular_page, self.ccta_page)
 
         central = QWidget()

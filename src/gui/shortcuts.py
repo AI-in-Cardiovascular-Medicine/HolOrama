@@ -24,7 +24,22 @@ from pages.intravascular.popup_windows.results_plot import ResultsPlot
 from domain.all_types import ContourType, SegmentationTool
 
 
+def init_ccta_shortcuts(ccta_page):
+    _wcs('R', ccta_page, ccta_page.reset_windowing)
+    _wcs('F', ccta_page, ccta_page.reset_zoom)
+
+
+def _wcs(key, parent, slot):
+    """Create a QShortcut scoped to parent and its children only."""
+    sc = QShortcut(QKeySequence(key), parent, slot)
+    sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+    return sc
+
+
 def init_shortcuts(main_window):
+    # View — scoped so R/F don't conflict with CCTA shortcuts
+    _wcs('R', main_window, partial(reset_windowing, main_window))
+    _wcs('F', main_window, partial(reset_zoom, main_window))
     # General
     QShortcut(QKeySequence('J'), main_window, partial(jiggle_frame, main_window))
     QShortcut(QKeySequence('Escape'), main_window, partial(stop_all, main_window))
@@ -130,10 +145,8 @@ def init_menu(main_window, ccta_page):
     hide_special_points_action = view_menu.addAction('Hide Measurements', partial(hide_special_points, main_window))
     hide_special_points_action.setShortcut('G')
     view_menu.addSeparator()
-    reset_windowing_action = view_menu.addAction('Reset Windowing', partial(reset_windowing, main_window))
-    reset_windowing_action.setShortcut('R')
-    reset_zoom_action = view_menu.addAction('Reset Zoom', partial(reset_zoom, main_window))
-    reset_zoom_action.setShortcut('F')
+    view_menu.addAction('Reset Windowing', partial(reset_windowing, main_window))
+    view_menu.addAction('Reset Zoom', partial(reset_zoom, main_window))
     toggle_color_action = view_menu.addAction('Toggle Color', partial(toggle_color, main_window))
     toggle_color_action.setShortcut('C')
     view_menu.addSeparator()
