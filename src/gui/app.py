@@ -27,6 +27,28 @@ class ActivePage(Enum):
     INTRAVASCULAR = 0
     CCTA = 1
 
+    @classmethod
+    def from_index(cls, index: int) -> 'ActivePage':
+        for page in cls:
+            if page.value == index:
+                return page
+        raise ValueError(f"No ActivePage with index {index}")
+
+    @classmethod
+    def from_name(cls, name: str) -> 'ActivePage':
+        for page in cls:
+            if page.name == name:
+                return page
+        raise ValueError(f"No ActivePage with name {name}")
+
+    @classmethod
+    def value_to_string(cls, value: int) -> str:
+        mapping = {
+            0: 'Intravascular',
+            1: 'CCTA',
+        }
+        return mapping.get(value, 'Unknown')
+
 
 class _NavButton(QPushButton):
     """Checkable push button with text rotated 90° to fit a narrow sidebar."""
@@ -91,11 +113,11 @@ class Master(QMainWindow):
         layout.setContentsMargins(2, 8, 2, 8)
         layout.setSpacing(4)
 
-        ivus_btn = _NavButton('Intravascular')
+        ivus_btn = _NavButton(ActivePage.value_to_string(ActivePage.INTRAVASCULAR.value))
         ivus_btn.setCheckable(True)
         ivus_btn.setChecked(True)
 
-        ccta_btn = _NavButton('CCTA')
+        ccta_btn = _NavButton(ActivePage.value_to_string(ActivePage.CCTA.value))
         ccta_btn.setCheckable(True)
 
         ivus_btn.clicked.connect(lambda: self._switch_page(ActivePage.INTRAVASCULAR.value, ivus_btn, ccta_btn))
