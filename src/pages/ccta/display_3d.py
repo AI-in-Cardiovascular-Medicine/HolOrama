@@ -3,7 +3,7 @@ import vtkmodules.vtkInteractionStyle  # noqa: F401
 import vtkmodules.vtkRenderingOpenGL2  # noqa: F401
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from vtkmodules.vtkCommonDataModel import vtkImageData
-from vtkmodules.vtkRenderingCore import vtkActor, vtkPolyDataMapper, vtkRenderer
+from vtkmodules.vtkRenderingCore import vtkActor, vtkLightKit, vtkPolyDataMapper, vtkRenderer
 from vtkmodules.util import numpy_support
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QApplication
 
@@ -29,7 +29,6 @@ except ImportError:
         _ALGO = 'marching_cubes'
 
 _BTN_MARGIN = 8
-_SURFACE_OPACITY = 0.85
 
 
 class _3DViewerCCTA(QWidget):
@@ -48,7 +47,17 @@ class _3DViewerCCTA(QWidget):
         self._render_btn.raise_()
 
         self._ren = vtkRenderer()
-        self._ren.SetBackground(0.1, 0.2, 0.4)
+        self._ren.SetBackground(0.0, 0.0, 0.0)
+        self._ren.AutomaticLightCreationOff()  # disable headlight
+
+        light_kit = vtkLightKit()
+        light_kit.SetKeyLightElevation(30)  # degrees above horizon
+        light_kit.SetKeyLightAzimuth(-60)  # from the left
+        light_kit.SetKeyLightIntensity(1.0)
+        light_kit.SetFillLightWarmth(0.4)  # cooler fill from the right
+        light_kit.SetBackLightWarmth(0.35)
+        light_kit.AddLightsToRenderer(self._ren)
+
         self._vtk_widget.GetRenderWindow().AddRenderer(self._ren)
         self._vtk_widget.Initialize()
         self._vtk_widget.Start()
@@ -152,7 +161,7 @@ class _3DViewerCCTA(QWidget):
 
         Runs once for all labels, then splits per-label with vtkThreshold
         on the 2-component BoundaryLabels cell array (component 0 = inside label).
-        This is O(volume) once, not O(volume × N_labels).
+        This is O(volume) once, not O(volume x N_labels).
         """
         sn = _SurfaceNets()
         sn.SetInputData(vtk_img)
@@ -224,7 +233,7 @@ class _3DViewerCCTA(QWidget):
         actor.SetMapper(mapper)
         r, g, b = LABEL_COLORS[color_index % len(LABEL_COLORS)]
         actor.GetProperty().SetColor(r / 255.0, g / 255.0, b / 255.0)
-        actor.GetProperty().SetOpacity(_SURFACE_OPACITY)
+        actor.GetProperty().SetOpacity(1.0)
         actor.GetProperty().SetInterpolationToFlat()
 
         self._ren.AddActor(actor)
