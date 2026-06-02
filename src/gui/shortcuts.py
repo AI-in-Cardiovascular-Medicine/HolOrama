@@ -67,6 +67,7 @@ def init_menu(main_window, ccta_page):
     open_folder_action = file_menu.addAction('Open DICOM Folder', ccta_page.open_folder)
     open_folder_action.setShortcut('Ctrl+Shift+O')
     file_menu.addAction('Open Mask', partial(read_nifti_mask, main_window))
+    file_menu.addAction('Open CCTA Mask', ccta_page.open_mask)
     file_menu.addSeparator()
     save_contours = file_menu.addAction('Save Contours', partial(write_contours, main_window))
     save_contours.setShortcut('Ctrl+S')

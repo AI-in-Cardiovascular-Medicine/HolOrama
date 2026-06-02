@@ -3,6 +3,7 @@ from typing import Any, Callable
 
 import numpy as np
 import pydicom as dcm
+import SimpleITK as sitk
 
 
 def read_ct_volume(
@@ -89,3 +90,66 @@ def read_ct_volume(
         'n_slices': total,
     }
     return volume, metadata
+
+
+def read_nifti_volume(path: str) -> tuple[np.ndarray, dict]:
+    """
+    Read a NIfTI file (.nii or .nii.gz) into the same format as read_ct_volume.
+
+    Returns:
+        volume: (Z, Y, X) int16 array (values passed through as-is, assumed HU)
+        metadata: dict with pixel_spacing (dy, dx) in mm, slice_thickness in mm, n_slices
+
+    Raises:
+        ValueError: if the file cannot be read or is not 3-D
+    """
+    try:
+        img = sitk.ReadImage(path)
+    except Exception as e:
+        raise ValueError(f'Could not read NIfTI file: {e}') from e
+
+    if img.GetDimension() != 3:
+        raise ValueError(f'Expected a 3-D NIfTI volume, got {img.GetDimension()}-D.')
+
+    volume = sitk.GetArrayFromImage(img).astype(np.int16)  # (Z, Y, X)
+    dx, dy, dz = img.GetSpacing()  # SimpleITK order: x, y, z
+
+    metadata = {
+        'pixel_spacing': (dy, dx),  # (row spacing, col spacing) — matches DICOM convention
+        'slice_thickness': dz,
+        'n_slices': volume.shape[0],
+    }
+    return volume, metadata
+
+
+def read_mask_volume(path: str) -> tuple[np.ndarray, dict]:
+    """
+    Read a segmentation mask from a NIfTI file (.nii or .nii.gz).
+
+    Integer label values are preserved as-is (e.g. 0=background, 1=lumen, …).
+    Spatial metadata uses the same convention as read_ct_volume / read_nifti_volume.
+
+    Returns:
+        mask: (Z, Y, X) uint8 array of label values
+        metadata: dict with pixel_spacing (dy, dx) in mm, slice_thickness in mm, n_slices
+
+    Raises:
+        ValueError: if the file cannot be read or is not 3-D
+    """
+    try:
+        img = sitk.ReadImage(path)
+    except Exception as e:
+        raise ValueError(f'Could not read mask file: {e}') from e
+
+    if img.GetDimension() != 3:
+        raise ValueError(f'Expected a 3-D mask volume, got {img.GetDimension()}-D.')
+
+    mask = sitk.GetArrayFromImage(img).astype(np.uint8)  # (Z, Y, X)
+    dx, dy, dz = img.GetSpacing()
+
+    metadata = {
+        'pixel_spacing': (dy, dx),
+        'slice_thickness': dz,
+        'n_slices': mask.shape[0],
+    }
+    return mask, metadata

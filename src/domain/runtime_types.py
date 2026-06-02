@@ -1,9 +1,20 @@
 from __future__ import annotations
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
 
 from domain.io_types import FrameData
+
+
+@dataclass
+class CctaRuntimeData:
+    def __init__(self):
+        self.metadata: dict = {}
+        self.volume: np.ndarray | None = None  # (Z, Y, X) int16 HU
+        self.voxel_spacing: tuple[float, float, float] | None = None  # (dz, dy, dx) mm
+        self.mask: np.ndarray | None = None  # (Z, Y, X) uint8 label values
+        self.labels: list[int] = field(default_factory=list)  # non-background labels present in mask
 
 
 class RuntimeData:

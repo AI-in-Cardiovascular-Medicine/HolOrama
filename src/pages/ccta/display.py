@@ -7,6 +7,25 @@ from PyQt6.QtGui import QImage, QPixmap, QPen, QColor
 
 _CROSSHAIR_COLOR = QColor(255, 255, 0)
 _ZOOM_SENSITIVITY = 0.01  # same magnitude as intravascular display
+_MASK_ALPHA = 0.45
+
+# One visually distinct colour per label index (cycles if > 14 labels)
+_LABEL_COLORS: tuple[tuple[int, int, int], ...] = (
+    (255, 60, 60),  # red
+    (60, 220, 60),  # green
+    (60, 60, 255),  # blue
+    (255, 220, 0),  # yellow
+    (220, 60, 220),  # magenta
+    (0, 210, 210),  # cyan
+    (255, 140, 0),  # orange
+    (160, 60, 255),  # purple
+    (0, 180, 255),  # sky blue
+    (255, 60, 140),  # pink
+    (0, 200, 120),  # mint
+    (180, 255, 0),  # lime
+    (255, 180, 100),  # peach
+    (140, 140, 255),  # lavender
+)
 
 
 class CctaDisplay(QGraphicsView):
@@ -52,12 +71,19 @@ class CctaDisplay(QGraphicsView):
         self._user_zoomed: bool = False
         self._render_buf: np.ndarray | None = None  # kept alive for QImage
 
+        self._mask: np.ndarray | None = None  # (Z, Y, X) uint8 label values
+        self._mask_lut: np.ndarray | None = None  # (256, 3) uint8 colour table
+
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setBackgroundBrush(Qt.GlobalColor.black)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     def set_volume(self, volume: np.ndarray, voxel_spacing: tuple[float, float, float]) -> None:
         self.volume = volume
@@ -70,6 +96,21 @@ class CctaDisplay(QGraphicsView):
         self.window_width = self._DEFAULT_WIDTH
         self._user_zoomed = False
         self.resetTransform()
+        self._render()
+
+    def set_mask(self, mask: np.ndarray, labels: list[int]) -> None:
+        """Attach a segmentation mask and build the colour LUT from its label list."""
+        self._mask = mask
+        lut = np.zeros((256, 3), dtype=np.uint8)
+        for i, label in enumerate(labels):
+            if 0 < label < 256:
+                lut[label] = _LABEL_COLORS[i % len(_LABEL_COLORS)]
+        self._mask_lut = lut
+        self._render()
+
+    def clear_mask(self) -> None:
+        self._mask = None
+        self._mask_lut = None
         self._render()
 
     def reset_zoom(self) -> None:
@@ -98,6 +139,10 @@ class CctaDisplay(QGraphicsView):
         self.cursor_x = x
         self._render()
 
+    # ------------------------------------------------------------------
+    # Slice extraction
+    # ------------------------------------------------------------------
+
     def _get_slice(self) -> np.ndarray:
         """
         Extract and aspect-correct the 2D slice for the current orientation.
@@ -124,6 +169,75 @@ class CctaDisplay(QGraphicsView):
             raw = np.ascontiguousarray(self.volume[::-1, :, self.cursor_x])  # (Z, Y) sup-up
             new_h = max(1, round(Z * dz / dy))
             return cv2.resize(raw.astype(np.float32), (Y, new_h), interpolation=cv2.INTER_LINEAR).astype(np.int16)
+
+    def _get_mask_slice(self) -> np.ndarray | None:
+        """Return the aspect-corrected mask slice matching the CT slice geometry."""
+        if self._mask is None or self.voxel_spacing is None or self.volume is None:
+            return None
+        if self._mask.shape != self.volume.shape:
+            return None
+
+        dz, dy, dx = self.voxel_spacing
+        Z, Y, X = self.volume.shape
+
+        if self.orientation == 'axial':
+            return self._mask[self.cursor_z, :, :]
+
+        elif self.orientation == 'coronal':
+            raw = np.ascontiguousarray(self._mask[::-1, self.cursor_y, :])
+            new_h = max(1, round(Z * dz / dx))
+            return cv2.resize(raw.astype(np.float32), (X, new_h), interpolation=cv2.INTER_NEAREST).astype(np.uint8)
+
+        else:  # sagittal
+            raw = np.ascontiguousarray(self._mask[::-1, :, self.cursor_x])
+            new_h = max(1, round(Z * dz / dy))
+            return cv2.resize(raw.astype(np.float32), (Y, new_h), interpolation=cv2.INTER_NEAREST).astype(np.uint8)
+
+    # ------------------------------------------------------------------
+    # Rendering
+    # ------------------------------------------------------------------
+
+    def _render(self) -> None:
+        if self.volume is None:
+            return
+        img = self._get_slice()
+        lo = self.window_level - self.window_width / 2
+        hi = self.window_level + self.window_width / 2
+        norm = np.clip(img.astype(np.float32), lo, hi)
+        gray = ((norm - lo) / (hi - lo) * 255).astype(np.uint8)
+
+        mask_slice = self._get_mask_slice()
+        if mask_slice is not None and self._mask_lut is not None:
+            rgb = np.stack([gray, gray, gray], axis=-1).astype(np.float32)
+            has_label = mask_slice > 0
+            if has_label.any():
+                colors = self._mask_lut[mask_slice[has_label]]  # (N, 3)
+                rgb[has_label] = (1 - _MASK_ALPHA) * rgb[has_label] + _MASK_ALPHA * colors
+            self._render_buf = np.ascontiguousarray(rgb.astype(np.uint8))
+            h, w = gray.shape
+            q_img = QImage(self._render_buf.data, w, h, w * 3, QImage.Format.Format_RGB888)  # type: ignore[call-overload]
+        else:
+            self._render_buf = np.ascontiguousarray(gray)
+            h, w = gray.shape
+            q_img = QImage(self._render_buf.data, w, h, w, QImage.Format.Format_Grayscale8)  # type: ignore[call-overload]
+
+        pixmap = QPixmap.fromImage(q_img)
+        self._scene.clear()
+        self._scene.addPixmap(pixmap)
+
+        ch_row, ch_col = self._crosshair_pos(h, w)
+        pen = QPen(_CROSSHAIR_COLOR)
+        pen.setCosmetic(True)  # 1 px regardless of view transform
+        self._scene.addLine(0, ch_row, w, ch_row, pen)
+        self._scene.addLine(ch_col, 0, ch_col, h, pen)
+
+        self._scene.setSceneRect(0, 0, w, h)
+        if not self._user_zoomed:
+            self.fitInView(self._scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+
+    # ------------------------------------------------------------------
+    # Coordinate helpers
+    # ------------------------------------------------------------------
 
     def _crosshair_pos(self, img_h: int, img_w: int) -> tuple[int, int]:
         """Return (row, col) of the crosshair in the displayed (possibly scaled) image."""
@@ -165,30 +279,9 @@ class CctaDisplay(QGraphicsView):
             z = max(0, min((Z - 1) - row_orig, Z - 1))
             return z, max(0, min(col, Y - 1)), self.cursor_x
 
-    def _render(self) -> None:
-        if self.volume is None:
-            return
-        img = self._get_slice()
-        lo = self.window_level - self.window_width / 2
-        hi = self.window_level + self.window_width / 2
-        norm = np.clip(img.astype(np.float32), lo, hi)
-        self._render_buf = np.ascontiguousarray(((norm - lo) / (hi - lo) * 255).astype(np.uint8))
-        h, w = self._render_buf.shape
-        q_img = QImage(self._render_buf.data, w, h, w, QImage.Format.Format_Grayscale8)  # type: ignore[call-overload]
-        pixmap = QPixmap.fromImage(q_img)
-
-        self._scene.clear()
-        self._scene.addPixmap(pixmap)
-
-        ch_row, ch_col = self._crosshair_pos(h, w)
-        pen = QPen(_CROSSHAIR_COLOR)
-        pen.setCosmetic(True)  # 1 px regardless of view transform
-        self._scene.addLine(0, ch_row, w, ch_row, pen)
-        self._scene.addLine(ch_col, 0, ch_col, h, pen)
-
-        self._scene.setSceneRect(0, 0, w, h)
-        if not self._user_zoomed:
-            self.fitInView(self._scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+    # ------------------------------------------------------------------
+    # Qt event handlers
+    # ------------------------------------------------------------------
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
