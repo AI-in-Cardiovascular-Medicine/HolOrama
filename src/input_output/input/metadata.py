@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QMainWindow, QTableWidget, QTableWidgetItem
-from domain.io_types import MetaData
+from domain.io_types import MetaDataIntravascular
 
 # callable(title, message, default) → float — injected so callers stay testable
 PromptFn = Callable[[str, str, float], float]
@@ -19,7 +19,7 @@ def parse_metadata_dcm(
     df: pd.DataFrame,
     num_frames: int,
     prompt_fn: Optional[PromptFn] = None,
-) -> MetaData:
+) -> MetaDataIntravascular:
     modality = extract_modality(df)
     patient_name, birthdate, sex = extract_patient_info(df)
     manufacturer, model = extract_manufacturer(df)
@@ -58,7 +58,7 @@ def parse_metadata_dcm(
         pullback_length = extract_pullback_length_ivus(df, pullback_rate or 0.0, num_frames)
         frame_rate = extract_frame_rate(df)
 
-    return MetaData(
+    return MetaDataIntravascular(
         modality=modality,
         patient_name=patient_name,
         birthdate=birthdate,
@@ -79,7 +79,7 @@ def parse_metadata_nifti(
     num_frames: int,
     is_oct: bool = False,
     prompt_fn: Optional[PromptFn] = None,
-) -> MetaData:
+) -> MetaDataIntravascular:
     modality = 'OCT' if is_oct else 'IVUS'
     xy_spacing, z_spacing = extract_nifti_spacing(df)
     dimension = extract_nifti_dimension(df)
@@ -109,7 +109,7 @@ def parse_metadata_nifti(
         pullback_length = np.arange(1, num_frames + 1) * z_spacing if z_spacing else np.zeros(num_frames)
         frame_rate = extract_nifti_frame_rate(df)
 
-    return MetaData(
+    return MetaDataIntravascular(
         modality=modality,
         pullback_speed=pullback_rate,
         pullback_length=pullback_length,
@@ -165,7 +165,7 @@ _METADATA_DESCRIPTIONS = {
     'dim',
 }
 
-_DISPLAY_FIELDS: list[tuple[str, Callable[[MetaData], Optional[str]]]] = [
+_DISPLAY_FIELDS: list[tuple[str, Callable[[MetaDataIntravascular], Optional[str]]]] = [
     ('Modality', lambda m: m.modality),
     ('Patient Name', lambda m: m.patient_name),
     ('Date of Birth', lambda m: m.birthdate),
@@ -181,7 +181,7 @@ _DISPLAY_FIELDS: list[tuple[str, Callable[[MetaData], Optional[str]]]] = [
 
 def populate_metadata_table(
     table: QTableWidget,
-    parsed: MetaData,
+    parsed: MetaDataIntravascular,
     full_df: pd.DataFrame,
 ) -> None:
     main_rows = [(label, fn(parsed)) for label, fn in _DISPLAY_FIELDS]

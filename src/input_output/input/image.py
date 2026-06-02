@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import QFileDialog, QInputDialog, QProgressDialog, QApplica
 
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from input_output.input.metadata import (
-    MetaData,
+    MetaDataIntravascular,
     PromptFn,
     parse_metadata_dcm,
     parse_metadata_nifti,
@@ -215,7 +215,7 @@ def _make_prompt(main_window) -> PromptFn:
     return prompt
 
 
-def _store_metadata(main_window, md: MetaData, num_frames: int) -> None:
+def _store_metadata(main_window, md: MetaDataIntravascular, num_frames: int) -> None:
     main_window.runtime_data.metadata['modality'] = md.modality
     main_window.runtime_data.metadata['pullback_speed'] = md.pullback_speed
     main_window.runtime_data.metadata['pullback_length'] = md.pullback_length

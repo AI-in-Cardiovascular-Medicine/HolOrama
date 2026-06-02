@@ -3,7 +3,6 @@ from __future__ import annotations
 import numpy as np
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
-from enum import Enum
 from domain.all_types import OCT_QUALITY_LABELS
 
 
@@ -54,7 +53,7 @@ class FrameData:
 
 
 @dataclass
-class MetaData:
+class MetaDataIntravascular:
     modality: Optional[str] = None
     patient_name: str = 'Unknown'
     birthdate: str = 'Unknown'
@@ -67,9 +66,17 @@ class MetaData:
     model: str = 'Unknown'
     pullback_start_frame: Optional[int] = None
     frame_rate: Optional[float] = None
+    ...
 
 
-class ProcessableModality(Enum):
-    OCT = ("oct",)
-    IVUS = ("ivus",)
-    NIRS = ("nirs",)
+@dataclass
+class MetaDataCCTA:
+    modality: str = 'CCTA'
+    patient_name: str = 'Unknown'
+    birthdate: str = 'Unknown'
+    sex: str = 'Unknown'
+    slice_thickness: float = 0.0
+    pixel_spacing: Tuple[float, float] = (0.0, 0.0)
+    manufacturer: str = 'Unknown'
+    model: str = 'Unknown'
+    ...

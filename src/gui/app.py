@@ -22,6 +22,8 @@ from pages.intravascular.page import IntravascularPage
 from pages.ccta.page import CctaPage
 from gui.shortcuts import init_shortcuts, init_ccta_shortcuts, init_menu
 
+from domain.io_types import MetaDataIntravascular, MetaDataCCTA
+
 
 class ActivePage(Enum):
     INTRAVASCULAR = 0
@@ -49,6 +51,14 @@ class ActivePage(Enum):
         }
         return mapping.get(value, 'Unknown')
 
+    @classmethod
+    def metadata_type(cls, page: 'ActivePage') -> object | str:
+        mapping = {
+            cls.INTRAVASCULAR: MetaDataIntravascular(),
+            cls.CCTA: MetaDataCCTA(),
+        }
+        return mapping.get(page, 'unknown_metadata')
+
 
 class _NavButton(QPushButton):
     """Checkable push button with text rotated 90° to fit a narrow sidebar."""
@@ -75,6 +85,13 @@ class Master(QMainWindow):
     def __init__(self, config: DictConfig) -> None:
         super().__init__()
         self.config = config
+        for page in ActivePage:
+            metadata_name = f"{ActivePage.value_to_string(page.value).lower()}_metadata"
+            data_type = ActivePage.metadata_type(page)
+            if data_type == 'unknown_metadata':
+                raise ValueError(f"Unknown metadata type for page {page}")
+
+            setattr(self, metadata_name, data_type)
 
         self.setWindowTitle('AIVUS Software')
         icon_path = os.path.join(os.path.dirname(__file__), '..', '..', 'media', 'desktop_img.ico')
