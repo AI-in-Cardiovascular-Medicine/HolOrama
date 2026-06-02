@@ -166,6 +166,7 @@ class CctaPage(QWidget):
             display.set_volume(volume, self.data.voxel_spacing)
             display.clear_mask()
         self._mask_tab.clear_labels()
+        self._3d_viewer.clear_mesh()
 
         Z, Y, X = volume.shape
         self._update_labels(Z // 2, Y // 2, X // 2, Z, Y, X)
@@ -199,6 +200,8 @@ class CctaPage(QWidget):
         for display in (self._axial, self._coronal, self._sagittal):
             display.set_mask(mask, self.data.labels)
         self._mask_tab.set_labels(self.data.labels)
+        if self.data.voxel_spacing is not None:
+            self._3d_viewer.set_mask(mask, self.data.labels, self.data.voxel_spacing)
 
         self.status_bar.showMessage(f'Mask loaded: {len(self.data.labels)} label(s) — {self.data.labels}')
 
@@ -209,6 +212,7 @@ class CctaPage(QWidget):
     def _on_label_visibility_changed(self, label: int, visible: bool) -> None:
         for display in (self._axial, self._coronal, self._sagittal):
             display.set_label_visible(label, visible)
+        self._3d_viewer.set_label_visible(label, visible)
 
     def _on_windowing_changed(self, level: int, width: int) -> None:
         for display in (self._axial, self._coronal, self._sagittal):
