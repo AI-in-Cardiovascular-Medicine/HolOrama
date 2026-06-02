@@ -11,11 +11,13 @@ from PyQt6.QtWidgets import (
     QProgressDialog,
     QApplication,
     QGridLayout,
+    QSplitter,
 )
 from PyQt6.QtCore import Qt
 
 from pages.ccta.display import CctaDisplay
 from pages.ccta.display_3d import _3DViewerCCTA
+from pages.ccta.tool_tab.tab_gui import MaskControlTab
 from input_output.input.dicom_dir import read_ct_volume, read_nifti_volume, read_mask_volume
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from gui.active_page import ActivePage
@@ -77,7 +79,9 @@ class CctaPage(QWidget):
         for lbl in (self._axial_label, self._coronal_label, self._sagittal_label):
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        grid = QGridLayout(self)
+        # 4-view grid
+        views = QWidget()
+        grid = QGridLayout(views)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(2)
         grid.addWidget(self._panel(self._axial, self._axial_label), 0, 0)
@@ -89,6 +93,20 @@ class CctaPage(QWidget):
         grid.setRowStretch(1, 1)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
+
+        # Mask control panel
+        self._mask_tab = MaskControlTab()
+        self._mask_tab.alpha_changed.connect(self._on_mask_alpha_changed)
+        self._mask_tab.label_visibility_changed.connect(self._on_label_visibility_changed)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.addWidget(views)
+        splitter.addWidget(self._mask_tab)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 0)
+        splitter.setSizes([10000, 210])
+
+        QVBoxLayout(self).addWidget(splitter)
 
         for display in (self._axial, self._coronal, self._sagittal):
             display.cursor_moved.connect(self._on_cursor_moved)
@@ -147,6 +165,7 @@ class CctaPage(QWidget):
         for display in (self._axial, self._coronal, self._sagittal):
             display.set_volume(volume, self.data.voxel_spacing)
             display.clear_mask()
+        self._mask_tab.clear_labels()
 
         Z, Y, X = volume.shape
         self._update_labels(Z // 2, Y // 2, X // 2, Z, Y, X)
@@ -179,8 +198,17 @@ class CctaPage(QWidget):
 
         for display in (self._axial, self._coronal, self._sagittal):
             display.set_mask(mask, self.data.labels)
+        self._mask_tab.set_labels(self.data.labels)
 
         self.status_bar.showMessage(f'Mask loaded: {len(self.data.labels)} label(s) — {self.data.labels}')
+
+    def _on_mask_alpha_changed(self, alpha: float) -> None:
+        for display in (self._axial, self._coronal, self._sagittal):
+            display.set_mask_alpha(alpha)
+
+    def _on_label_visibility_changed(self, label: int, visible: bool) -> None:
+        for display in (self._axial, self._coronal, self._sagittal):
+            display.set_label_visible(label, visible)
 
     def _on_windowing_changed(self, level: int, width: int) -> None:
         for display in (self._axial, self._coronal, self._sagittal):

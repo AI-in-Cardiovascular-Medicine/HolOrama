@@ -6,11 +6,11 @@ from PyQt6.QtGui import QImage, QPixmap, QPen, QColor
 
 
 _CROSSHAIR_COLOR = QColor(255, 255, 0)
-_ZOOM_SENSITIVITY = 0.01  # same magnitude as intravascular display
-_MASK_ALPHA = 0.45
+_ZOOM_SENSITIVITY = 0.01
+_DEFAULT_MASK_ALPHA = 0.45
 
-# One visually distinct colour per label index (cycles if > 14 labels)
-_LABEL_COLORS: tuple[tuple[int, int, int], ...] = (
+# Public — imported by tab_gui to build colour swatches
+LABEL_COLORS: tuple[tuple[int, int, int], ...] = (
     (255, 60, 60),  # red
     (60, 220, 60),  # green
     (60, 60, 255),  # blue
@@ -72,7 +72,10 @@ class CctaDisplay(QGraphicsView):
         self._render_buf: np.ndarray | None = None  # kept alive for QImage
 
         self._mask: np.ndarray | None = None  # (Z, Y, X) uint8 label values
-        self._mask_lut: np.ndarray | None = None  # (256, 3) uint8 colour table
+        self._mask_lut: np.ndarray | None = None  # (256, 3) uint8; row = 0 → invisible
+        self._mask_labels: list[int] = []
+        self._hidden_labels: set[int] = set()
+        self._mask_alpha: float = _DEFAULT_MASK_ALPHA
 
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
@@ -99,18 +102,29 @@ class CctaDisplay(QGraphicsView):
         self._render()
 
     def set_mask(self, mask: np.ndarray, labels: list[int]) -> None:
-        """Attach a segmentation mask and build the colour LUT from its label list."""
         self._mask = mask
-        lut = np.zeros((256, 3), dtype=np.uint8)
-        for i, label in enumerate(labels):
-            if 0 < label < 256:
-                lut[label] = _LABEL_COLORS[i % len(_LABEL_COLORS)]
-        self._mask_lut = lut
+        self._mask_labels = labels
+        self._hidden_labels = set()
+        self._rebuild_lut()
         self._render()
 
     def clear_mask(self) -> None:
         self._mask = None
         self._mask_lut = None
+        self._mask_labels = []
+        self._hidden_labels = set()
+        self._render()
+
+    def set_mask_alpha(self, alpha: float) -> None:
+        self._mask_alpha = max(0.0, min(1.0, alpha))
+        self._render()
+
+    def set_label_visible(self, label: int, visible: bool) -> None:
+        if visible:
+            self._hidden_labels.discard(label)
+        else:
+            self._hidden_labels.add(label)
+        self._rebuild_lut()
         self._render()
 
     def reset_zoom(self) -> None:
@@ -140,38 +154,38 @@ class CctaDisplay(QGraphicsView):
         self._render()
 
     # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _rebuild_lut(self) -> None:
+        """Rebuild the 256-entry colour LUT respecting current hidden-label state."""
+        lut = np.zeros((256, 3), dtype=np.uint8)
+        for i, label in enumerate(self._mask_labels):
+            if 0 < label < 256 and label not in self._hidden_labels:
+                lut[label] = LABEL_COLORS[i % len(LABEL_COLORS)]
+        self._mask_lut = lut
+
+    # ------------------------------------------------------------------
     # Slice extraction
     # ------------------------------------------------------------------
 
     def _get_slice(self) -> np.ndarray:
-        """
-        Extract and aspect-correct the 2D slice for the current orientation.
-
-        Coronal  (ZxX image): vertical axis is z-depth with spacing dz,
-                              horizontal is x-width with spacing dx.
-                              Scale so heights represent real mm.
-        Sagittal (ZxY image): same logic with dy.
-        Axial pixels are nearly square so no scaling is applied.
-        """
         assert self.volume is not None and self.voxel_spacing is not None
         dz, dy, dx = self.voxel_spacing
         Z, Y, X = self.volume.shape
 
         if self.orientation == 'axial':
             return self.volume[self.cursor_z, :, :]
-
         elif self.orientation == 'coronal':
-            raw = np.ascontiguousarray(self.volume[::-1, self.cursor_y, :])  # (Z, X) sup-up
+            raw = np.ascontiguousarray(self.volume[::-1, self.cursor_y, :])
             new_h = max(1, round(Z * dz / dx))
             return cv2.resize(raw.astype(np.float32), (X, new_h), interpolation=cv2.INTER_LINEAR).astype(np.int16)
-
         else:  # sagittal
-            raw = np.ascontiguousarray(self.volume[::-1, :, self.cursor_x])  # (Z, Y) sup-up
+            raw = np.ascontiguousarray(self.volume[::-1, :, self.cursor_x])
             new_h = max(1, round(Z * dz / dy))
             return cv2.resize(raw.astype(np.float32), (Y, new_h), interpolation=cv2.INTER_LINEAR).astype(np.int16)
 
     def _get_mask_slice(self) -> np.ndarray | None:
-        """Return the aspect-corrected mask slice matching the CT slice geometry."""
         if self._mask is None or self.voxel_spacing is None or self.volume is None:
             return None
         if self._mask.shape != self.volume.shape:
@@ -182,12 +196,10 @@ class CctaDisplay(QGraphicsView):
 
         if self.orientation == 'axial':
             return self._mask[self.cursor_z, :, :]
-
         elif self.orientation == 'coronal':
             raw = np.ascontiguousarray(self._mask[::-1, self.cursor_y, :])
             new_h = max(1, round(Z * dz / dx))
             return cv2.resize(raw.astype(np.float32), (X, new_h), interpolation=cv2.INTER_NEAREST).astype(np.uint8)
-
         else:  # sagittal
             raw = np.ascontiguousarray(self._mask[::-1, :, self.cursor_x])
             new_h = max(1, round(Z * dz / dy))
@@ -209,10 +221,12 @@ class CctaDisplay(QGraphicsView):
         mask_slice = self._get_mask_slice()
         if mask_slice is not None and self._mask_lut is not None:
             rgb = np.stack([gray, gray, gray], axis=-1).astype(np.float32)
-            has_label = mask_slice > 0
+            colors = self._mask_lut[mask_slice]  # (H, W, 3)
+            has_label = np.any(colors > 0, axis=-1)  # True where label is visible
             if has_label.any():
-                colors = self._mask_lut[mask_slice[has_label]]  # (N, 3)
-                rgb[has_label] = (1 - _MASK_ALPHA) * rgb[has_label] + _MASK_ALPHA * colors
+                rgb[has_label] = (1 - self._mask_alpha) * rgb[has_label] + self._mask_alpha * colors[has_label].astype(
+                    np.float32
+                )
             self._render_buf = np.ascontiguousarray(rgb.astype(np.uint8))
             h, w = gray.shape
             q_img = QImage(self._render_buf.data, w, h, w * 3, QImage.Format.Format_RGB888)  # type: ignore[call-overload]
@@ -227,7 +241,7 @@ class CctaDisplay(QGraphicsView):
 
         ch_row, ch_col = self._crosshair_pos(h, w)
         pen = QPen(_CROSSHAIR_COLOR)
-        pen.setCosmetic(True)  # 1 px regardless of view transform
+        pen.setCosmetic(True)
         self._scene.addLine(0, ch_row, w, ch_row, pen)
         self._scene.addLine(ch_col, 0, ch_col, h, pen)
 
@@ -240,40 +254,30 @@ class CctaDisplay(QGraphicsView):
     # ------------------------------------------------------------------
 
     def _crosshair_pos(self, img_h: int, img_w: int) -> tuple[int, int]:
-        """Return (row, col) of the crosshair in the displayed (possibly scaled) image."""
         assert self.voxel_spacing is not None and self.volume is not None
         dz, dy, dx = self.voxel_spacing
-        Z, Y, X = self.volume.shape
+        Z = self.volume.shape[0]
 
         if self.orientation == 'axial':
             return self.cursor_y, self.cursor_x
-
         elif self.orientation == 'coronal':
             row = round(((Z - 1) - self.cursor_z) * dz / dx)
             return max(0, min(row, img_h - 1)), max(0, min(self.cursor_x, img_w - 1))
-
         else:  # sagittal
             row = round(((Z - 1) - self.cursor_z) * dz / dy)
             return max(0, min(row, img_h - 1)), max(0, min(self.cursor_y, img_w - 1))
 
     def _scene_to_cursor(self, row: int, col: int) -> tuple[int, int, int]:
-        """Map a left-click at (row, col) in scene coordinates to a (z, y, x) cursor."""
         assert self.voxel_spacing is not None and self.volume is not None
         dz, dy, dx = self.voxel_spacing
         Z, Y, X = self.volume.shape
 
         if self.orientation == 'axial':
-            return (
-                self.cursor_z,
-                max(0, min(row, Y - 1)),
-                max(0, min(col, X - 1)),
-            )
-
+            return self.cursor_z, max(0, min(row, Y - 1)), max(0, min(col, X - 1))
         elif self.orientation == 'coronal':
             row_orig = int(row * dx / dz)
             z = max(0, min((Z - 1) - row_orig, Z - 1))
             return z, self.cursor_y, max(0, min(col, X - 1))
-
         else:  # sagittal
             row_orig = int(row * dy / dz)
             z = max(0, min((Z - 1) - row_orig, Z - 1))
@@ -295,23 +299,11 @@ class CctaDisplay(QGraphicsView):
         Z, Y, X = self.volume.shape
         delta = 1 if event.angleDelta().y() > 0 else -1
         if self.orientation == 'axial':
-            self.cursor_moved.emit(
-                max(0, min(self.cursor_z + delta, Z - 1)),
-                self.cursor_y,
-                self.cursor_x,
-            )
+            self.cursor_moved.emit(max(0, min(self.cursor_z + delta, Z - 1)), self.cursor_y, self.cursor_x)
         elif self.orientation == 'coronal':
-            self.cursor_moved.emit(
-                self.cursor_z,
-                max(0, min(self.cursor_y + delta, Y - 1)),
-                self.cursor_x,
-            )
-        else:  # sagittal
-            self.cursor_moved.emit(
-                self.cursor_z,
-                self.cursor_y,
-                max(0, min(self.cursor_x + delta, X - 1)),
-            )
+            self.cursor_moved.emit(self.cursor_z, max(0, min(self.cursor_y + delta, Y - 1)), self.cursor_x)
+        else:
+            self.cursor_moved.emit(self.cursor_z, self.cursor_y, max(0, min(self.cursor_x + delta, X - 1)))
 
     def mousePressEvent(self, event) -> None:
         self.setFocus()
