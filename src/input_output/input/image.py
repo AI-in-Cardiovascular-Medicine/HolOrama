@@ -16,6 +16,7 @@ from input_output.input.metadata import (
     parse_metadata_dcm,
     parse_metadata_nifti,
     populate_metadata_table,
+    extract_modality,
 )
 from input_output.input.contours import read_contours
 from domain.all_types import ContourType, SupportedType
@@ -73,9 +74,10 @@ def read_image(main_window) -> None:
                     ErrorMessage(main_window, 'Data is corrupted. File could not be loaded.')
                     main_window.status_bar.showMessage(main_window.waiting_status)
                     return
-                pixel_array_parsed, is_oct = _parse_pixel_array(pixel_array)
+                is_oct = extract_modality(metadata_df) == 'OCT'
+                pixel_array_parsed, is_oct = _parse_pixel_array(pixel_array, is_oct)
                 md = parse_metadata_dcm(metadata_df, pixel_array_parsed.shape[0], prompt)
-                if is_oct:
+                if is_oct and pixel_array.ndim == 4 and pixel_array.shape[-1] == 3:
                     main_window.runtime_data.images_rgb = pixel_array.clip(0, 255).astype(np.uint8)
             except Exception:
                 traceback.print_exc()
@@ -88,6 +90,8 @@ def read_image(main_window) -> None:
 
         main_window.runtime_data.images = pixel_array_parsed
         num_frames = pixel_array_parsed.shape[0]
+        if is_oct and main_window.runtime_data.images_rgb is None:
+            main_window.runtime_data.images_rgb = _convert_gray_to_oct(pixel_array_parsed)
 
         _store_metadata(main_window, md, num_frames)
         populate_metadata_table(main_window.metadata_table, md, metadata_df)
@@ -305,12 +309,19 @@ def _check_integrity(metadata: pd.DataFrame) -> tuple[bool, Optional[str]]:
         return True, None
 
 
-def _parse_pixel_array(pixel_array: np.ndarray) -> tuple[np.ndarray, bool]:
+def _parse_pixel_array(pixel_array: np.ndarray, is_oct: bool | None = None) -> tuple[np.ndarray, bool]:
+    if is_oct is None:
+        # NIfTI path: auto-detect from shape (3D NIfTI OCT left for future work)
+        is_oct = pixel_array.ndim == 4 and pixel_array.shape[-1] == 3
     if pixel_array.ndim == 4 and pixel_array.shape[-1] == 3:
-        return _convert_oct_to_gray(pixel_array), True
-    return pixel_array, False
+        return _convert_oct_to_gray(pixel_array), is_oct
+    return pixel_array, is_oct
 
 
 def _convert_oct_to_gray(oct_array: np.ndarray) -> np.ndarray:
     weights = np.array([0.299, 0.587, 0.114])
     return np.dot(oct_array[..., :3], weights).astype(np.uint8)
+
+
+def _convert_gray_to_oct(gray_array: np.ndarray) -> np.ndarray:
+    return np.stack([gray_array, gray_array, gray_array], axis=-1)

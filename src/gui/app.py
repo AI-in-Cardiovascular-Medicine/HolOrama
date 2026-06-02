@@ -1,4 +1,5 @@
 import os
+from enum import Enum
 
 from omegaconf import DictConfig
 from PyQt6.QtWidgets import (
@@ -20,6 +21,11 @@ from PyQt6.QtGui import QIcon
 from pages.intravascular.page import IntravascularPage
 from pages.ccta.page import CctaPage
 from gui.shortcuts import init_shortcuts, init_ccta_shortcuts, init_menu
+
+
+class ActivePage(Enum):
+    INTRAVASCULAR = 0
+    CCTA = 1
 
 
 class _NavButton(QPushButton):
@@ -58,6 +64,7 @@ class Master(QMainWindow):
         self.status_bar = QStatusBar(self)
         self.setStatusBar(self.status_bar)
 
+        self.active_page = ActivePage.INTRAVASCULAR
         self.stack = QStackedWidget()
         self.ccta_page = CctaPage(self.status_bar)
         self.intravascular_page = IntravascularPage(config, self.menu_bar, self.status_bar)
@@ -91,15 +98,16 @@ class Master(QMainWindow):
         ccta_btn = _NavButton('CCTA')
         ccta_btn.setCheckable(True)
 
-        ivus_btn.clicked.connect(lambda: self._switch_page(0, ivus_btn, ccta_btn))
-        ccta_btn.clicked.connect(lambda: self._switch_page(1, ccta_btn, ivus_btn))
+        ivus_btn.clicked.connect(lambda: self._switch_page(ActivePage.INTRAVASCULAR.value, ivus_btn, ccta_btn))
+        ccta_btn.clicked.connect(lambda: self._switch_page(ActivePage.CCTA.value, ccta_btn, ivus_btn))
 
         layout.addWidget(ivus_btn)
         layout.addWidget(ccta_btn)
         layout.addStretch()
         return bar
 
-    def _switch_page(self, index: int, active_btn: QPushButton, other_btn: QPushButton) -> None:
-        self.stack.setCurrentIndex(index)
+    def _switch_page(self, active_page_index: int, active_btn: QPushButton, other_btn: QPushButton) -> None:
+        self.stack.setCurrentIndex(active_page_index)
         active_btn.setChecked(True)
         other_btn.setChecked(False)
+        self.active_page = ActivePage(active_page_index)
