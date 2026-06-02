@@ -59,8 +59,6 @@ class CctaDisplay(QGraphicsView):
         self.setBackgroundBrush(Qt.GlobalColor.black)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-    # ------------------------------------------------------------------ public
-
     def set_volume(self, volume: np.ndarray, voxel_spacing: tuple[float, float, float]) -> None:
         self.volume = volume
         self.voxel_spacing = voxel_spacing
@@ -99,8 +97,6 @@ class CctaDisplay(QGraphicsView):
         self.cursor_y = y
         self.cursor_x = x
         self._render()
-
-    # ----------------------------------------------------------------- private
 
     def _get_slice(self) -> np.ndarray:
         """
@@ -193,8 +189,6 @@ class CctaDisplay(QGraphicsView):
         self._scene.setSceneRect(0, 0, w, h)
         if not self._user_zoomed:
             self.fitInView(self._scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
-
-    # ---------------------------------------------------------- Qt overrides
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)

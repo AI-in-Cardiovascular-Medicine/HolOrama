@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from pages.ccta.display import CctaDisplay
+from pages.ccta.display_3d import _3DViewerCCTA
 from input_output.input.dicom_dir import read_ct_volume
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
@@ -37,7 +38,9 @@ class CctaPage(QWidget):
         grid.addWidget(self._panel(self._axial, self._axial_label), 0, 0)
         grid.addWidget(self._panel(self._sagittal, self._sagittal_label), 0, 1)
         grid.addWidget(self._panel(self._coronal, self._coronal_label), 1, 0)
-        grid.addWidget(self._cpr_placeholder(), 1, 1)
+        # grid.addWidget(self._cpr_placeholder(), 1, 1)
+        self._3d_viewer = _3DViewerCCTA()
+        grid.addWidget(self._3d_viewer, 1, 1)
         grid.setRowStretch(0, 1)
         grid.setRowStretch(1, 1)
         grid.setColumnStretch(0, 1)
