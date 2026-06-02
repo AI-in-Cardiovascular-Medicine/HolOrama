@@ -10,10 +10,16 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
+from typing import TYPE_CHECKING, cast
+
 from pages.ccta.display import CctaDisplay
 from pages.ccta.display_3d import _3DViewerCCTA
 from input_output.input.dicom_dir import read_ct_volume
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
+from gui.active_page import ActivePage
+
+if TYPE_CHECKING:
+    from gui.app import Master
 
 
 class CctaPage(QWidget):
@@ -51,6 +57,7 @@ class CctaPage(QWidget):
             display.windowing_changed.connect(self._on_windowing_changed)
 
     def open_folder(self) -> None:
+        cast('Master', self.window())._switch_page(ActivePage.CCTA.value)
         folder = QFileDialog.getExistingDirectory(
             self, 'Open CCTA Folder', '..', options=QFileDialog.Option.DontUseNativeDialog
         )

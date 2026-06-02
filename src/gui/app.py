@@ -1,5 +1,4 @@
 import os
-from enum import Enum
 
 from omegaconf import DictConfig
 from PyQt6.QtWidgets import (
@@ -21,43 +20,7 @@ from PyQt6.QtGui import QIcon
 from pages.intravascular.page import IntravascularPage
 from pages.ccta.page import CctaPage
 from gui.shortcuts import init_shortcuts, init_ccta_shortcuts, init_menu
-
-from domain.io_types import MetaDataIntravascular, MetaDataCCTA
-
-
-class ActivePage(Enum):
-    INTRAVASCULAR = 0
-    CCTA = 1
-
-    @classmethod
-    def from_index(cls, index: int) -> 'ActivePage':
-        for page in cls:
-            if page.value == index:
-                return page
-        raise ValueError(f"No ActivePage with index {index}")
-
-    @classmethod
-    def from_name(cls, name: str) -> 'ActivePage':
-        for page in cls:
-            if page.name == name:
-                return page
-        raise ValueError(f"No ActivePage with name {name}")
-
-    @classmethod
-    def value_to_string(cls, value: int) -> str:
-        mapping = {
-            0: 'Intravascular',
-            1: 'CCTA',
-        }
-        return mapping.get(value, 'Unknown')
-
-    @classmethod
-    def metadata_type(cls, page: 'ActivePage') -> object | str:
-        mapping = {
-            cls.INTRAVASCULAR: MetaDataIntravascular(),
-            cls.CCTA: MetaDataCCTA(),
-        }
-        return mapping.get(page, 'unknown_metadata')
+from gui.active_page import ActivePage
 
 
 class _NavButton(QPushButton):
@@ -118,12 +81,13 @@ class Master(QMainWindow):
         layout = QHBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self._build_nav_bar())
+        self._nav_bar, self._nav_btns = self._build_nav_bar()
+        layout.addWidget(self._nav_bar)
         layout.addWidget(self.stack, 1)  # stretch=1: stack always fills all remaining width
         self.setCentralWidget(central)
         self.showMaximized()
 
-    def _build_nav_bar(self) -> QWidget:
+    def _build_nav_bar(self) -> tuple[QWidget, dict[ActivePage, _NavButton]]:
         bar = QWidget()
         bar.setFixedWidth(40)
         layout = QVBoxLayout(bar)
@@ -137,16 +101,19 @@ class Master(QMainWindow):
         ccta_btn = _NavButton(ActivePage.value_to_string(ActivePage.CCTA.value))
         ccta_btn.setCheckable(True)
 
-        ivus_btn.clicked.connect(lambda: self._switch_page(ActivePage.INTRAVASCULAR.value, ivus_btn, ccta_btn))
-        ccta_btn.clicked.connect(lambda: self._switch_page(ActivePage.CCTA.value, ccta_btn, ivus_btn))
+        btns = {ActivePage.INTRAVASCULAR: ivus_btn, ActivePage.CCTA: ccta_btn}
+
+        ivus_btn.clicked.connect(lambda: self._switch_page(ActivePage.INTRAVASCULAR.value))
+        ccta_btn.clicked.connect(lambda: self._switch_page(ActivePage.CCTA.value))
 
         layout.addWidget(ivus_btn)
         layout.addWidget(ccta_btn)
         layout.addStretch()
-        return bar
+        return bar, btns
 
-    def _switch_page(self, active_page_index: int, active_btn: QPushButton, other_btn: QPushButton) -> None:
+    def _switch_page(self, active_page_index: int) -> None:
         self.stack.setCurrentIndex(active_page_index)
-        active_btn.setChecked(True)
-        other_btn.setChecked(False)
-        self.active_page = ActivePage(active_page_index)
+        active = ActivePage(active_page_index)
+        for page, btn in self._nav_btns.items():
+            btn.setChecked(page == active)
+        self.active_page = active
