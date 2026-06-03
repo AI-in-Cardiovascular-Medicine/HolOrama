@@ -6,6 +6,15 @@ import numpy as np
 from domain.io_types import FrameData
 
 
+class CctaRuntimeData:
+    def __init__(self):
+        self.metadata: dict = {}
+        self.volume: np.ndarray | None = None  # (Z, Y, X) int16 HU
+        self.voxel_spacing: tuple[float, float, float] | None = None  # (dz, dy, dx) mm
+        self.mask: np.ndarray | None = None  # (Z, Y, X) uint8 label values
+        self.labels: list[int] = []  # non-background labels present in mask
+
+
 class RuntimeData:
     def __init__(self):
         self.frame_data_dct: dict[int, FrameData] | None = None

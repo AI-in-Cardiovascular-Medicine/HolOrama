@@ -17,7 +17,7 @@ from domain.all_types import (
 )
 from domain.mask_types import MASK_ALPHA, MASK_SPECS
 from tools.geometry import Point, Spline, SplineGeometry, OpenSplineGeometry, OpenSpline, get_qt_pen
-from gui.utils.metrics import MetricsMixin
+from pages.intravascular.utils.metrics import MetricsMixin
 from tools.geometry import Marker
 from segmentation.segment import downsample
 from input_output.output.imgs_masks import contours_to_mask
@@ -85,6 +85,7 @@ class Display(QGraphicsView, MetricsMixin):
         image = QGraphicsPixmapItem(QPixmap(self.image_size, self.image_size))
         self.graphics_scene.addItem(image)
         self.setScene(self.graphics_scene)
+        self.setSceneRect(0, 0, self.image_size, self.image_size)
 
         self.initial_window_level: int = 128  # window level is the center which determines the brightness of the image
         self.initial_window_width: int = 256  # window width is the range of pixel values that are displayed

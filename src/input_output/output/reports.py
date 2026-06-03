@@ -11,7 +11,7 @@ from shapely.geometry import Polygon
 from shapely.errors import TopologicalError
 from itertools import combinations
 
-from gui.popup_windows.message_boxes import ErrorMessage, SuccessMessage
+from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 
 
 def report(main_window, lower_limit=None, upper_limit=None, suppress_messages=False):

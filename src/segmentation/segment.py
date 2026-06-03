@@ -5,8 +5,8 @@ import matplotlib.path as mplPath
 from loguru import logger
 from skimage import measure
 
-from gui.popup_windows.message_boxes import ErrorMessage, SuccessMessage
-from gui.popup_windows.frame_range_dialog import FrameRangeDialog
+from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
+from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
 
 
 def segment(main_window):

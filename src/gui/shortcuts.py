@@ -8,11 +8,11 @@ from PyQt6.QtGui import QKeySequence, QDesktopServices, QShortcut
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt, QUrl
 
-from gui.popup_windows.frame_range_dialog import FrameRangeDialog
-from gui.popup_windows.message_boxes import ErrorMessage, SuccessMessage
-from gui.popup_windows.video_player import VideoPlayer
-from gui.utils.contours_gui import new_contour, new_contour_append, new_measure, new_angle, set_tool
-from input_output.input.metadata import MetadataWindow
+from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
+from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
+from pages.intravascular.popup_windows.video_player import VideoPlayer
+from pages.intravascular.utils.contours_gui import new_contour, new_contour_append, new_measure, new_angle, set_tool
+from input_output.input.metadata import CctaMetadataWindow, MetadataWindow
 from input_output.input.image import read_image, read_nifti_mask
 from input_output.output.contours import write_contours
 from input_output.output.other_fmt import save_gated_images
@@ -20,11 +20,26 @@ from input_output.output.imgs_masks import save_as_nifti
 from input_output.output.reports import report
 
 
-from gui.popup_windows.results_plot import ResultsPlot
+from pages.intravascular.popup_windows.results_plot import ResultsPlot
 from domain.all_types import ContourType, SegmentationTool
 
 
+def init_ccta_shortcuts(ccta_page):
+    _wcs('R', ccta_page, ccta_page.reset_windowing)
+    _wcs('F', ccta_page, ccta_page.reset_zoom)
+
+
+def _wcs(key, parent, slot):
+    """Create a QShortcut scoped to parent and its children only."""
+    sc = QShortcut(QKeySequence(key), parent, slot)
+    sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+    return sc
+
+
 def init_shortcuts(main_window):
+    # View — scoped so R/F don't conflict with CCTA shortcuts
+    _wcs('R', main_window, partial(reset_windowing, main_window))
+    _wcs('F', main_window, partial(reset_zoom, main_window))
     # General
     QShortcut(QKeySequence('J'), main_window, partial(jiggle_frame, main_window))
     QShortcut(QKeySequence('Escape'), main_window, partial(stop_all, main_window))
@@ -45,11 +60,15 @@ def init_shortcuts(main_window):
     QShortcut(QKeySequence(Qt.Key.Key_Right), main_window, lambda: main_window.display_slider.next_frame())
 
 
-def init_menu(main_window):
+def init_menu(main_window, ccta_page):
     file_menu = main_window.menu_bar.addMenu('File')
-    open_action = file_menu.addAction('Open File', partial(read_image, main_window))
+    open_action = file_menu.addAction('Open Intravascular File', partial(read_image, main_window))
     open_action.setShortcut('Ctrl+O')
-    file_menu.addAction('Open Mask', partial(read_nifti_mask, main_window))
+    file_menu.addAction('Open Intravascular Mask', partial(read_nifti_mask, main_window))
+    file_menu.addSeparator()
+    open_folder_action = file_menu.addAction('Open CCTA Folder/File', ccta_page.open_folder)
+    open_folder_action.setShortcut('Ctrl+Shift+O')
+    file_menu.addAction('Open CCTA Mask', ccta_page.open_mask)
     file_menu.addSeparator()
     save_contours = file_menu.addAction('Save Contours', partial(write_contours, main_window))
     save_contours.setShortcut('Ctrl+S')
@@ -128,10 +147,8 @@ def init_menu(main_window):
     hide_special_points_action = view_menu.addAction('Hide Measurements', partial(hide_special_points, main_window))
     hide_special_points_action.setShortcut('G')
     view_menu.addSeparator()
-    reset_windowing_action = view_menu.addAction('Reset Windowing', partial(reset_windowing, main_window))
-    reset_windowing_action.setShortcut('R')
-    reset_zoom_action = view_menu.addAction('Reset Zoom', partial(reset_zoom, main_window))
-    reset_zoom_action.setShortcut('F')
+    view_menu.addAction('Reset Windowing', partial(reset_windowing, main_window))
+    view_menu.addAction('Reset Zoom', partial(reset_zoom, main_window))
     toggle_color_action = view_menu.addAction('Toggle Color', partial(toggle_color, main_window))
     toggle_color_action.setShortcut('C')
     view_menu.addSeparator()
@@ -283,9 +300,14 @@ def switch_phases(main_window):
 
 
 def show_metadata(main_window):
-    if main_window.image_displayed:
-        metadata_window = MetadataWindow(main_window)
-        metadata_window.show()
+    from gui.active_page import ActivePage
+
+    master = main_window.window()  # Master, not IntravascularPage
+    if hasattr(master, 'active_page') and master.active_page == ActivePage.CCTA:
+        win = CctaMetadataWindow(master, master.ccta_metadata)
+        win.show()
+    elif main_window.image_displayed:
+        MetadataWindow(main_window).show()
 
 
 def open_url(main_window, description=None):

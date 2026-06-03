@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aivus"
-version = "1.4.0"
+version = "1.5.0"
 description = "AIVUS: AIVUS-CAA (coronary artery anomalies) AIVUS-OCT (optical coherence tomography)"
 authors = ["yungselm", "cardionaut", "Pooya Mohammadi Kazaj"]
 
@@ -31,6 +31,7 @@ torchvision = { version = "0.19.0+cu118", source = "pytorch_cu118" }
 # CPU-only (pass --cpu / -Cpu to install scripts):
 # torch = { version = "2.4.0", source = "pytorch_cpu" }
 # torchvision = { version = "0.19.0", source = "pytorch_cpu" }
+vtk = "*"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "*"

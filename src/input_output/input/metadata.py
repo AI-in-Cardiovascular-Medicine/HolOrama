@@ -5,8 +5,8 @@ from typing import Callable, Optional
 import numpy as np
 import pandas as pd
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QMainWindow, QTableWidget, QTableWidgetItem
-from domain.io_types import MetaData
+from PyQt6.QtWidgets import QMainWindow, QTableWidget, QTableWidgetItem, QWidget
+from domain.io_types import MetaDataCCTA, MetaDataIntravascular
 
 # callable(title, message, default) → float — injected so callers stay testable
 PromptFn = Callable[[str, str, float], float]
@@ -19,7 +19,7 @@ def parse_metadata_dcm(
     df: pd.DataFrame,
     num_frames: int,
     prompt_fn: Optional[PromptFn] = None,
-) -> MetaData:
+) -> MetaDataIntravascular:
     modality = extract_modality(df)
     patient_name, birthdate, sex = extract_patient_info(df)
     manufacturer, model = extract_manufacturer(df)
@@ -58,7 +58,7 @@ def parse_metadata_dcm(
         pullback_length = extract_pullback_length_ivus(df, pullback_rate or 0.0, num_frames)
         frame_rate = extract_frame_rate(df)
 
-    return MetaData(
+    return MetaDataIntravascular(
         modality=modality,
         patient_name=patient_name,
         birthdate=birthdate,
@@ -79,7 +79,7 @@ def parse_metadata_nifti(
     num_frames: int,
     is_oct: bool = False,
     prompt_fn: Optional[PromptFn] = None,
-) -> MetaData:
+) -> MetaDataIntravascular:
     modality = 'OCT' if is_oct else 'IVUS'
     xy_spacing, z_spacing = extract_nifti_spacing(df)
     dimension = extract_nifti_dimension(df)
@@ -109,7 +109,7 @@ def parse_metadata_nifti(
         pullback_length = np.arange(1, num_frames + 1) * z_spacing if z_spacing else np.zeros(num_frames)
         frame_rate = extract_nifti_frame_rate(df)
 
-    return MetaData(
+    return MetaDataIntravascular(
         modality=modality,
         pullback_speed=pullback_rate,
         pullback_length=pullback_length,
@@ -135,6 +135,62 @@ class MetadataWindow(QMainWindow):
         w = sum(self.table.columnWidth(i) for i in range(self.table.columnCount()))
         h = sum(self.table.rowHeight(i) for i in range(self.table.rowCount()))
         self.setFixedSize(w, h)
+
+
+_CCTA_DISPLAY_FIELDS: list[tuple[str, Callable[[MetaDataCCTA], Optional[str]]]] = [
+    ('Modality', lambda m: m.modality),
+    ('Patient Name', lambda m: m.patient_name),
+    ('Date of Birth', lambda m: m.birthdate),
+    ('Sex', lambda m: m.sex),
+    ('Manufacturer', lambda m: f'{m.manufacturer} ({m.model})' if m.manufacturer != 'Unknown' else None),
+    ('Slice Thickness', lambda m: f'{m.slice_thickness:.3f} mm' if m.slice_thickness else None),
+    (
+        'Pixel Spacing',
+        lambda m: f'{m.pixel_spacing[0]:.3f} × {m.pixel_spacing[1]:.3f} mm' if m.pixel_spacing != (0.0, 0.0) else None,
+    ),
+]
+
+
+class CctaMetadataWindow(QMainWindow):
+    def __init__(self, parent: QWidget, ccta_metadata: MetaDataCCTA) -> None:
+        super().__init__(parent)
+        self.setWindowTitle('CCTA Metadata')
+
+        main_rows = [(label, fn(ccta_metadata)) for label, fn in _CCTA_DISPLAY_FIELDS]
+        main_rows = [(lbl, v) for lbl, v in main_rows if v is not None]
+        extra_rows = list(ccta_metadata.raw_tags.items())
+
+        total = len(main_rows) + 1 + len(extra_rows)  # +1 for '...' separator
+        table = QTableWidget(total, 2)
+
+        for i, (label, value) in enumerate(main_rows):
+            table.setItem(i, 0, QTableWidgetItem(label))
+            table.setItem(i, 1, QTableWidgetItem(str(value)))
+
+        sep = len(main_rows)
+        sep_item = QTableWidgetItem('...')
+        sep_item.setFlags(Qt.ItemFlag.NoItemFlags)
+        table.setItem(sep, 0, sep_item)
+        table.setItem(sep, 1, QTableWidgetItem(''))
+
+        for j, (tag_name, tag_value) in enumerate(extra_rows):
+            row = sep + 1 + j
+            table.setItem(row, 0, QTableWidgetItem(str(tag_name)))
+            table.setItem(row, 1, QTableWidgetItem(str(tag_value)))
+
+        h_header = table.horizontalHeader()
+        if h_header is not None:
+            h_header.hide()
+        v_header = table.verticalHeader()
+        if v_header is not None:
+            v_header.hide()
+        table.resizeColumnsToContents()
+        table.resizeRowsToContents()
+
+        w = sum(table.columnWidth(i) for i in range(table.columnCount()))
+        h = min(600, sum(table.rowHeight(i) for i in range(table.rowCount())))
+        self.setFixedSize(w, h)
+        self.setCentralWidget(table)
 
 
 # Descriptions consumed by MetaData — excluded from the raw "remaining" section
@@ -165,7 +221,7 @@ _METADATA_DESCRIPTIONS = {
     'dim',
 }
 
-_DISPLAY_FIELDS: list[tuple[str, Callable[[MetaData], Optional[str]]]] = [
+_DISPLAY_FIELDS: list[tuple[str, Callable[[MetaDataIntravascular], Optional[str]]]] = [
     ('Modality', lambda m: m.modality),
     ('Patient Name', lambda m: m.patient_name),
     ('Date of Birth', lambda m: m.birthdate),
@@ -181,14 +237,14 @@ _DISPLAY_FIELDS: list[tuple[str, Callable[[MetaData], Optional[str]]]] = [
 
 def populate_metadata_table(
     table: QTableWidget,
-    parsed: MetaData,
+    parsed: MetaDataIntravascular,
     full_df: pd.DataFrame,
 ) -> None:
     main_rows = [(label, fn(parsed)) for label, fn in _DISPLAY_FIELDS]
     main_rows = [(lbl, v) for lbl, v in main_rows if v is not None]
 
     remaining = full_df[~full_df['Description'].isin(_METADATA_DESCRIPTIONS)][['Description', 'Value']]
-    extra_rows = list(zip(remaining['Description'], remaining['Value'].astype(str)))
+    extra_rows = [(d, _fmt_dicom_value(v)) for d, v in zip(remaining['Description'], remaining['Value'])]
 
     total = len(main_rows) + 1 + len(extra_rows)  # +1 for '...' separator
     table.setRowCount(total)
@@ -221,6 +277,36 @@ def populate_metadata_table(
     table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
 
+# ─── DICOM value formatters ──────────────────────────────────────────────────
+
+
+def _fmt_dicom_date(val: str) -> str:
+    """YYYYMMDD → YYYY/MM/DD, pass through anything else."""
+    s = str(val).strip()
+    if len(s) == 8 and s.isdigit():
+        return f'{s[:4]}/{s[4:6]}/{s[6:]}'
+    return s
+
+
+def _fmt_dicom_time(val: str) -> str:
+    """HHMMSS or HHMMSS.F (possibly stored as float) → HH:MM:SS."""
+    integer_part = str(val).strip().split('.')[0]
+    if len(integer_part) == 6 and integer_part.isdigit():
+        return f'{integer_part[:2]}:{integer_part[2:4]}:{integer_part[4:]}'
+    return str(val)
+
+
+def _fmt_dicom_value(val: str) -> str:
+    """Best-effort formatting for raw DICOM values in the extra rows."""
+    s = str(val).strip()
+    if len(s) == 8 and s.isdigit():
+        return _fmt_dicom_date(s)
+    integer_part = s.split('.')[0]
+    if len(integer_part) == 6 and integer_part.isdigit():
+        return _fmt_dicom_time(s)
+    return s
+
+
 # ─── Pure extraction helpers (no PyQt) ───────────────────────────────────────
 
 
@@ -236,7 +322,7 @@ def extract_modality(df: pd.DataFrame) -> Optional[str]:
 def extract_patient_info(df: pd.DataFrame) -> tuple[str, str, str]:
     # pydicom uses apostrophe in elem.name for some fields
     name = _val(df, "Patient's Name") or _val(df, 'Patient Name') or 'Unknown'
-    birth = str(_val(df, "Patient's Birth Date") or _val(df, 'Patient Birth Date') or 'Unknown')
+    birth = _fmt_dicom_date(str(_val(df, "Patient's Birth Date") or _val(df, 'Patient Birth Date') or 'Unknown'))
     sex = str(_val(df, "Patient's Sex") or _val(df, 'Patient Sex') or 'Unknown')
     return str(name), birth, sex
 

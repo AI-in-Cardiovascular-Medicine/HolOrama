@@ -1,24 +1,19 @@
-import os
 from functools import partial
 
 from omegaconf import DictConfig
 from PyQt6.QtWidgets import (
-    QMainWindow,
-    QMenuBar,
     QSplitter,
     QTableWidget,
-    QStatusBar,
     QCheckBox,
     QPushButton,
     QButtonGroup,
 )
-from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import QTimer, Qt, QSize
 
-from gui.left_half.left_half import LeftHalf
-from gui.left_half.display import Display
-from gui.utils.slider import Slider, Communicate
-from gui.right_half.right_half import (
+from pages.intravascular.left_half.left_half import LeftHalf
+from pages.intravascular.left_half.display import Display
+from pages.intravascular.utils.slider import Slider, Communicate
+from pages.intravascular.right_half.right_half import (
     RightHalf,
     toggle_diastolic_frame,
     toggle_systolic_frame,
@@ -27,9 +22,9 @@ from gui.right_half.right_half import (
     use_tagged,
     set_oct_quality,
 )
-from gui.right_half.gating_display import GatingDisplay
-from gui.right_half.longitudinal_view import LongitudinalView
-from gui.shortcuts import init_shortcuts, init_menu
+from pages.intravascular.right_half.gating_display import GatingDisplay
+from pages.intravascular.right_half.longitudinal_view import LongitudinalView
+
 from input_output.output.contours import write_contours
 from gating.contour_based_gating import ContourBasedGating
 from segmentation.predict import Predict
@@ -37,12 +32,13 @@ from domain.runtime_types import RuntimeData
 from domain.all_types import OCT_QUALITY_LABELS
 
 
-class Master(QMainWindow):
-    """Main Window Class"""
-
-    def __init__(self, config: DictConfig) -> None:
-        super().__init__()
+class IntravascularPage(QSplitter):
+    def __init__(self, config: DictConfig, menu_bar, status_bar) -> None:
+        super().__init__(Qt.Orientation.Horizontal)
         self.config: DictConfig = config
+        self.menu_bar = menu_bar
+        self.status_bar = status_bar
+
         self.file_name: str | None = None
         self.contour_based_gating: ContourBasedGating = ContourBasedGating(self)
         self.predictor: Predict = Predict(self)
@@ -54,27 +50,21 @@ class Master(QMainWindow):
         self.colormap_enabled: bool = False
         self.runtime_data: RuntimeData = RuntimeData()
         self.diastole_color: tuple[int, int, int] = (39, 69, 219)
-        self.diastole_color_plt: tuple[float, ...] = tuple(x / 255 for x in self.diastole_color)  # for matplotlib
+        self.diastole_color_plt: tuple[float, ...] = tuple(x / 255 for x in self.diastole_color)
         self.systole_color: tuple[int, int, int] = (209, 55, 38)
         self.systole_color_plt: tuple[float, ...] = tuple(x / 255 for x in self.systole_color)
         self.waiting_status: str = 'Waiting for user input...'
         self.small_display = None
         self.results_plot = None
-        self.init_gui()
-        init_shortcuts(self)
 
-    def init_gui(self) -> None:
-        self.menu_bar: QMenuBar = QMenuBar(self)
-        self.setMenuBar(self.menu_bar)
-        self.file_name = "default_file_name"  # Initialize file_name with a default value
-        init_menu(self)
+        self._init_ui()
+
+    def _init_ui(self) -> None:
+        self.file_name = "default_file_name"
         self.metadata_table: QTableWidget = QTableWidget()
 
-        self.status_bar: QStatusBar = QStatusBar(self)
-        self.setStatusBar(self.status_bar)
         self.status_bar.showMessage(self.waiting_status)
 
-        # Left-half widgets
         self.display: Display = Display(self)
         self.display_frame_comms: Communicate = Communicate()
         self.display_frame_comms.updateBW[int].connect(self.display.set_frame)
@@ -86,7 +76,6 @@ class Master(QMainWindow):
         self.mask_mode_box: QCheckBox = QCheckBox('&Mask mode')
         self.mask_mode_box.setChecked(False)
 
-        # Right-half widgets
         self.diastolic_frame_box: QCheckBox = QCheckBox('Diastolic Frame')
         self.diastolic_frame_box.setChecked(False)
         self.diastolic_frame_box.stateChanged.connect(partial(toggle_diastolic_frame, self))
@@ -102,7 +91,6 @@ class Master(QMainWindow):
         self.gating_display: GatingDisplay = GatingDisplay(self)
         self.longitudinal_view: LongitudinalView = LongitudinalView(self)
 
-        # OCT-specific widgets
         self.tagged_frame_button: QCheckBox = QCheckBox('Tagged Frame')
         self.tagged_frame_button.setChecked(False)
         self.tagged_frame_button.stateChanged.connect(partial(toggle_tagged_frame, self))
@@ -120,21 +108,31 @@ class Master(QMainWindow):
             self.oct_quality_button_group.addButton(btn)
         self.oct_quality_buttons[OCT_QUALITY_LABELS[-1]].setChecked(True)
 
-        main_window_splitter: QSplitter = QSplitter()
         self.left_half: LeftHalf = LeftHalf(self)
-        main_window_splitter.addWidget(self.left_half())
+        self.addWidget(self.left_half())
         self.right_half: RightHalf = RightHalf(self)
-        main_window_splitter.addWidget(self.right_half())
-
-        self.setWindowTitle('AIVUS Software')
-        icon_path: str = os.path.join(os.path.dirname(__file__), '..', '..', 'media', 'desktop_img.ico')
-        self.setWindowIcon(QIcon(icon_path))
-        self.setCentralWidget(main_window_splitter)
-        self.showMaximized()
+        self.addWidget(self.right_half())
+        self.setChildrenCollapsible(False)
 
         timer: QTimer = QTimer(self)
         timer.timeout.connect(self.auto_save)
-        timer.start(self.config.save.autosave_interval)  # autosave interval in milliseconds
+        timer.start(self.config.save.autosave_interval)
+
+    def sizeHint(self) -> QSize:
+        return QSize(0, 0)
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(0, 0)
+
+    def style(self):
+        from PyQt6.QtWidgets import QApplication
+
+        return QApplication.style()
+
+    def close(self):
+        top = self.window()
+        if top is not None and top is not self:
+            top.close()
 
     def auto_save(self) -> None:
         if self.image_displayed:
@@ -155,4 +153,4 @@ class Master(QMainWindow):
         self.hide_special_points = False
         self.colormap_enabled = False
         self.runtime_data = RuntimeData()
-        self.init_gui()
+        self.status_bar.showMessage(self.waiting_status)

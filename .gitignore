@@ -178,3 +178,6 @@ main.build
 main.dist
 
 .vscode/
+
+DICOM
+PLAN.md

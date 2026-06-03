@@ -8,7 +8,7 @@ from skimage.draw import polygon2mask
 
 from domain.all_types import ContourType
 from domain.mask_types import MASK_SPECS
-from gui.popup_windows.message_boxes import ErrorMessage
+from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
 
 def save_as_nifti(main_window, mode=None):

@@ -3,6 +3,35 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] - 2026-06-03
+
+Initial CCTA module with orthogonal viewer, 3D mesh renderer, and mask overlay.
+
+### Added
+- CCTA tri-plane viewer (axial / coronal / sagittal) with aspect-corrected slicing, synchronised crosshair, window/level, and zoom
+- VTK-based 3D surface renderer for segmentation masks with per-label colouring; camera resets to fit geometry on each render
+- Mask overlay panel with per-label visibility toggles, editable names, colour swatches, and opacity slider
+- CCTA I/O: DICOM-series reader with HU calibration; NIfTI volume and mask reader; BIDS JSON sidecar support
+- Sidebar navigation to switch between Intravascular and CCTA pages
+- `domain/ccta_display_types.py` and `domain/oct_display_types.py` for display constants and the OCT false-colour LUT
+- `WarningMessage` popup class
+- Error dialogs when clicking Render 3D without a mask loaded or with all labels hidden
+- Warning when a grayscale OCT NIfTI receives the false-colour LUT automatically
+- Auto-prompt to load a mask after opening a NIfTI file (IVUS or CCTA); file picker starts in the image folder
+- Open Mask remembers the last image folder; resets on new image load
+
+### Changed
+- New image load now fully reinstantiates the page (`Master.reload_intravascular` / `reload_ccta`) instead of per-field reset, guaranteeing clean state
+- `dicom_dir.py` -> `ccta_io.py`; `_3DViewerCCTA` -> `CctaViewer3D`; `MaskControlTab` -> `MaskPanel`; `tool_tab/` flattened to `mask_panel.py`
+- 3D render button moved out of the OpenGL surface into a Qt layout row to fix painting artefacts
+
+### Fixed
+- `CctaRuntimeData` initialised `labels` to a `Field` object instead of `[]` due to `field(default_factory=list)` being called inside a manual `__init__`
+- Stale runtime state could silently persist across image loads in both Intravascular and CCTA
+- VTK `wglMakeCurrent` errors on CCTA page reload; `Finalize()` now called before widget removal
+- Re-rendering after hiding labels still rendered all labels; `_hidden_labels` is now tracked and respected
+- "Rendering…" label appeared only after rendering completed instead of immediately on click
+
 ## [1.4.0] - 2026-05-28
 
 Major refactor ensuring seperation of concerns and identifying several bugs like this.
@@ -145,6 +174,7 @@ Now runs on PyQt6
 - Declared first stable release (after paper publication).
 - Updated citation from medRxiv to *Computer Methods and Programs in Biomedicine*.
 
+[1.5.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.4.0...v1.5.0
 [1.3.1]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.2.0...v1.2.1

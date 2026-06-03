@@ -6,17 +6,18 @@ import numpy as np
 import pandas as pd
 import nibabel as nib
 import pydicom as dcm
-import matplotlib.pyplot as plt
 from skimage import measure as sk_measure
-from PyQt6.QtWidgets import QFileDialog, QInputDialog, QProgressDialog, QApplication
+from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMessageBox, QProgressDialog, QApplication
 
-from gui.popup_windows.message_boxes import ErrorMessage
+from pages.intravascular.popup_windows.message_boxes import ErrorMessage, WarningMessage
+from domain.oct_display_types import OCT_LUT
 from input_output.input.metadata import (
-    MetaData,
+    MetaDataIntravascular,
     PromptFn,
     parse_metadata_dcm,
     parse_metadata_nifti,
     populate_metadata_table,
+    extract_modality,
 )
 from input_output.input.contours import read_contours
 from domain.all_types import ContourType, SupportedType
@@ -27,6 +28,12 @@ from tools.geometry import SplineGeometry
 
 
 def read_image(main_window) -> None:
+    from gui.active_page import ActivePage
+
+    master = main_window.window()
+    if hasattr(master, '_switch_page'):
+        master._switch_page(ActivePage.INTRAVASCULAR.value)
+
     main_window.status_bar.showMessage('Reading image file...')
     file_name, _ = QFileDialog.getOpenFileName(
         main_window, 'Open File', '..', 'All files (*)', options=QFileDialog.Option.DontUseNativeDialog
@@ -35,9 +42,8 @@ def read_image(main_window) -> None:
         main_window.status_bar.showMessage(main_window.waiting_status)
         return
 
-    main_window.reset_state()
-    main_window.gating_display.fig.clear()
-    plt.draw()
+    master.reload_intravascular()
+    main_window = master.intravascular_page
 
     root, ext = os.path.splitext(file_name)
     if ext == '.gz':
@@ -52,6 +58,7 @@ def read_image(main_window) -> None:
     QApplication.processEvents()
     QApplication.processEvents()  # second flush processes the paint event queued by show
 
+    _gray_oct_warning = False
     try:
         prompt = _make_prompt(main_window)
 
@@ -62,10 +69,21 @@ def read_image(main_window) -> None:
                 ErrorMessage(main_window, 'Data is corrupted. File could not be loaded.')
                 main_window.status_bar.showMessage(main_window.waiting_status)
                 return
-            pixel_array_parsed, is_oct = _parse_pixel_array(pixel_array)
+
+            msg = QMessageBox(main_window)
+            msg.setWindowTitle('Select Modality')
+            msg.setText('Is this an IVUS or OCT NIfTI file?')
+            msg.addButton('IVUS', QMessageBox.ButtonRole.ActionRole)
+            oct_btn = msg.addButton('OCT', QMessageBox.ButtonRole.ActionRole)
+            msg.exec()
+            is_oct = msg.clickedButton() == oct_btn
+
+            pixel_array_parsed, is_oct = _parse_pixel_array(pixel_array, is_oct)
             md = parse_metadata_nifti(metadata_df, pixel_array_parsed.shape[0], is_oct, prompt)
-            if is_oct:
+            if is_oct and pixel_array.ndim == 4 and pixel_array.shape[-1] == 3:
+                # 4-D RGB NIfTI — use colour channels directly (same guard as DICOM path)
                 main_window.runtime_data.images_rgb = pixel_array.clip(0, 255).astype(np.uint8)
+            # 3-D grayscale OCT: images_rgb stays None → _convert_gray_to_oct runs below
         else:
             try:
                 pixel_array, metadata_df = _read_dicom(file_name)
@@ -74,9 +92,10 @@ def read_image(main_window) -> None:
                     ErrorMessage(main_window, 'Data is corrupted. File could not be loaded.')
                     main_window.status_bar.showMessage(main_window.waiting_status)
                     return
-                pixel_array_parsed, is_oct = _parse_pixel_array(pixel_array)
+                is_oct = extract_modality(metadata_df) == 'OCT'
+                pixel_array_parsed, is_oct = _parse_pixel_array(pixel_array, is_oct)
                 md = parse_metadata_dcm(metadata_df, pixel_array_parsed.shape[0], prompt)
-                if is_oct:
+                if is_oct and pixel_array.ndim == 4 and pixel_array.shape[-1] == 3:
                     main_window.runtime_data.images_rgb = pixel_array.clip(0, 255).astype(np.uint8)
             except Exception:
                 traceback.print_exc()
@@ -89,6 +108,9 @@ def read_image(main_window) -> None:
 
         main_window.runtime_data.images = pixel_array_parsed
         num_frames = pixel_array_parsed.shape[0]
+        if is_oct and main_window.runtime_data.images_rgb is None:
+            main_window.runtime_data.images_rgb = _convert_gray_to_oct(pixel_array_parsed)
+            _gray_oct_warning = True
 
         _store_metadata(main_window, md, num_frames)
         populate_metadata_table(main_window.metadata_table, md, metadata_df)
@@ -131,6 +153,25 @@ def read_image(main_window) -> None:
     finally:
         progress.close()
 
+    if _gray_oct_warning:
+        WarningMessage(
+            main_window,
+            'The OCT file contained a grayscale image rather than true RGB.\n'
+            'A sepia/copper false-colour lookup table has been applied automatically.',
+        )
+
+    if ext in ('.gz', '.nii'):
+        main_window._last_image_dir = os.path.dirname(os.path.abspath(file_name))
+        reply = QMessageBox.question(
+            main_window,
+            'Load Mask?',
+            'Would you like to load a segmentation mask for this image?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            read_nifti_mask(main_window)
+
 
 def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) -> None:
     if not main_window.image_displayed:
@@ -144,7 +185,7 @@ def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) 
     file_name, _ = QFileDialog.getOpenFileName(
         main_window,
         'Open NIfTI Mask',
-        '..',
+        getattr(main_window, '_last_image_dir', None) or '..',
         'NIfTI files (*.nii *.nii.gz)',
         options=QFileDialog.Option.DontUseNativeDialog,
     )
@@ -212,7 +253,7 @@ def _make_prompt(main_window) -> PromptFn:
     return prompt
 
 
-def _store_metadata(main_window, md: MetaData, num_frames: int) -> None:
+def _store_metadata(main_window, md: MetaDataIntravascular, num_frames: int) -> None:
     main_window.runtime_data.metadata['modality'] = md.modality
     main_window.runtime_data.metadata['pullback_speed'] = md.pullback_speed
     main_window.runtime_data.metadata['pullback_length'] = md.pullback_length
@@ -306,12 +347,28 @@ def _check_integrity(metadata: pd.DataFrame) -> tuple[bool, Optional[str]]:
         return True, None
 
 
-def _parse_pixel_array(pixel_array: np.ndarray) -> tuple[np.ndarray, bool]:
+def _parse_pixel_array(pixel_array: np.ndarray, is_oct: bool | None = None) -> tuple[np.ndarray, bool]:
+    if is_oct is None:
+        # NIfTI path: auto-detect from shape (3D NIfTI OCT left for future work)
+        is_oct = pixel_array.ndim == 4 and pixel_array.shape[-1] == 3
     if pixel_array.ndim == 4 and pixel_array.shape[-1] == 3:
-        return _convert_oct_to_gray(pixel_array), True
-    return pixel_array, False
+        return _convert_oct_to_gray(pixel_array), is_oct
+    return pixel_array, is_oct
 
 
 def _convert_oct_to_gray(oct_array: np.ndarray) -> np.ndarray:
     weights = np.array([0.299, 0.587, 0.114])
     return np.dot(oct_array[..., :3], weights).astype(np.uint8)
+
+
+def _convert_gray_to_oct(gray_array: np.ndarray) -> np.ndarray:
+    """
+    Convert (N, H, W) grayscale → (N, H, W, 3) uint8 with the OCT false-colour LUT.
+    Normalises the full volume to [0, 255] before LUT lookup so the result is
+    correct regardless of whether the input is float [0,1], raw HU, or uint8.
+    """
+    arr = gray_array.astype(np.float32)
+    lo, hi = float(arr.min()), float(arr.max())
+    if hi > lo:
+        arr = (arr - lo) / (hi - lo) * 255.0
+    return OCT_LUT[arr.clip(0, 255).astype(np.uint8)]

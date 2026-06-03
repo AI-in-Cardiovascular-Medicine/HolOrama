@@ -36,11 +36,11 @@ class TestExtractHelpers:
 
     def test_patient_info_apostrophe_keys(self):
         d = _df(("Patient's Name", 'Doe^John'), ("Patient's Birth Date", '19800101'), ("Patient's Sex", 'M'))
-        assert extract_patient_info(d) == ('Doe^John', '19800101', 'M')
+        assert extract_patient_info(d) == ('Doe^John', '1980/01/01', 'M')
 
     def test_patient_info_plain_keys(self):
         d = _df(('Patient Name', 'Smith'), ('Patient Birth Date', '19900215'), ('Patient Sex', 'F'))
-        assert extract_patient_info(d) == ('Smith', '19900215', 'F')
+        assert extract_patient_info(d) == ('Smith', '1990/02/15', 'F')
 
     def test_patient_info_defaults_to_unknown(self):
         assert extract_patient_info(_df(('Other', 'x'))) == ('Unknown', 'Unknown', 'Unknown')
