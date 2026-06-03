@@ -123,7 +123,6 @@ class CctaViewer3D(QWidget):
         self._render_btn.setText('Rendering…')
         QApplication.processEvents()
 
-        first_render = not self._actors
         self.clear_mesh()
 
         vtk_img = self._build_vtk_image()
@@ -133,8 +132,7 @@ class CctaViewer3D(QWidget):
         else:
             self._render_flying_edges(vtk_img, active)
 
-        if first_render:
-            self._ren.ResetCamera()
+        self._ren.ResetCamera()
         self._vtk_widget.GetRenderWindow().Render()
 
         self._render_btn.setText('Render 3D')
