@@ -115,6 +115,35 @@ class Master(QMainWindow):
         layout.addStretch()
         return bar, btns
 
+    def reload_intravascular(self) -> None:
+        old = self.intravascular_page
+        self.stack.removeWidget(old)
+        old.deleteLater()
+
+        new_page = IntravascularPage(self.config, self.menu_bar, self.status_bar)
+        self.stack.insertWidget(ActivePage.INTRAVASCULAR.value, new_page)
+        self.intravascular_page = new_page
+        self.stack.setCurrentIndex(ActivePage.INTRAVASCULAR.value)
+
+        init_shortcuts(new_page)
+        self.menu_bar.clear()
+        init_menu(new_page, self.ccta_page)
+
+    def reload_ccta(self) -> None:
+        old = self.ccta_page
+        old.shutdown()  # release VTK OpenGL context before HWND is invalidated
+        self.stack.removeWidget(old)
+        old.deleteLater()
+
+        new_page = CctaPage(self.status_bar)
+        self.stack.insertWidget(ActivePage.CCTA.value, new_page)
+        self.ccta_page = new_page
+        self.stack.setCurrentIndex(ActivePage.CCTA.value)
+
+        init_ccta_shortcuts(new_page)
+        self.menu_bar.clear()
+        init_menu(self.intravascular_page, new_page)
+
     def _switch_page(self, active_page_index: int) -> None:
         self.stack.setCurrentIndex(active_page_index)
         active = ActivePage(active_page_index)

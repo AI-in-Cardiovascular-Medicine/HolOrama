@@ -98,12 +98,11 @@ class CctaViewer3D(QWidget):
             actor.SetVisibility(int(visible))
             self._vtk_widget.GetRenderWindow().Render()
 
-    def reset(self) -> None:
-        self._mask = None
-        self._labels = []
-        self._voxel_spacing = None
-        self._hidden_labels = set()
-        self.clear_mesh()
+    def shutdown(self) -> None:
+        """Finalize the VTK OpenGL context while the HWND is still valid."""
+        rw = self._vtk_widget.GetRenderWindow()
+        rw.Finalize()
+        rw.SetInteractor(None)
 
     def clear_mesh(self) -> None:
         for actor in self._actors.values():

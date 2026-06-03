@@ -75,19 +75,12 @@ class CctaPage(QWidget):
             display.cursor_moved.connect(self._on_cursor_moved)
             display.windowing_changed.connect(self._on_windowing_changed)
 
-    def reset_state(self) -> None:
-        self.data = CctaRuntimeData()
-        for display in (self._axial, self._coronal, self._sagittal):
-            display.clear()
-        self._axial_label.setText('Axial')
-        self._coronal_label.setText('Coronal')
-        self._sagittal_label.setText('Sagittal')
-        self._mask_tab.clear_labels()
-        self._3d_viewer.reset()
-        self.status_bar.showMessage('Ready')
+    def shutdown(self) -> None:
+        self._3d_viewer.shutdown()
 
     def open_folder(self) -> None:
-        cast('Master', self.window())._switch_page(ActivePage.CCTA.value)
+        master = cast('Master', self.window())
+        master._switch_page(ActivePage.CCTA.value)
 
         msg = QMessageBox(self)
         msg.setWindowTitle('Open CT Data')
@@ -122,9 +115,12 @@ class CctaPage(QWidget):
         else:
             return
 
-        self.reset_state()
+        # Path confirmed — reinstantiate for a guaranteed clean state.
+        # `self` must not be used after this point.
+        master.reload_ccta()
+        page = master.ccta_page
 
-        progress = QProgressDialog('', '', 0, 0, self)
+        progress = QProgressDialog('', '', 0, 0, page)
         progress.setWindowTitle('Loading CCTA')
         progress.setMinimumDuration(0)
         progress.setCancelButton(None)
@@ -150,28 +146,28 @@ class CctaPage(QWidget):
                 volume, metadata = read_nifti_volume(path)
         except ValueError as e:
             progress.close()
-            ErrorMessage(self, str(e))
-            self.status_bar.showMessage('Ready')
+            ErrorMessage(page, str(e))
+            page.status_bar.showMessage('Ready')
             return
         finally:
             progress.close()
 
         dz = metadata['slice_thickness']
         dy, dx = metadata['pixel_spacing']
-        self.data.volume = volume
-        self.data.voxel_spacing = (dz, dy, dx)
+        page.data.volume = volume
+        page.data.voxel_spacing = (dz, dy, dx)
 
         ccta_meta = metadata.get('ccta_metadata')
         if ccta_meta is not None:
-            cast('Master', self.window()).ccta_metadata = ccta_meta
+            master.ccta_metadata = ccta_meta
 
-        for display in (self._axial, self._coronal, self._sagittal):
-            display.set_volume(volume, self.data.voxel_spacing)
+        for display in (page._axial, page._coronal, page._sagittal):
+            display.set_volume(volume, page.data.voxel_spacing)
 
         Z, Y, X = volume.shape
-        self._update_labels(Z // 2, Y // 2, X // 2, Z, Y, X)
+        page._update_labels(Z // 2, Y // 2, X // 2, Z, Y, X)
         fmt = 'NIfTI' if mode == 'nifti' else 'CCTA'
-        self.status_bar.showMessage(f'{fmt}: {Z} slices  |  pixel spacing {dy:.3f} mm  |  slice thickness {dz:.3f} mm')
+        page.status_bar.showMessage(f'{fmt}: {Z} slices  |  pixel spacing {dy:.3f} mm  |  slice thickness {dz:.3f} mm')
 
     def open_mask(self) -> None:
         if self.data.volume is None:

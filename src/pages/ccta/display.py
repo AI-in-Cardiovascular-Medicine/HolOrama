@@ -68,24 +68,6 @@ class CctaDisplay(QGraphicsView):
     # Public API
     # ------------------------------------------------------------------
 
-    def clear(self) -> None:
-        self.volume = None
-        self.voxel_spacing = None
-        self.cursor_z = 0
-        self.cursor_y = 0
-        self.cursor_x = 0
-        self.window_level = DEFAULT_CT_LEVEL
-        self.window_width = DEFAULT_CT_WIDTH
-        self._user_zoomed = False
-        self.resetTransform()
-        self._mask = None
-        self._mask_lut = None
-        self._mask_labels = []
-        self._hidden_labels = set()
-        self._mask_alpha = DEFAULT_MASK_ALPHA
-        self._render_buf = None
-        self._scene.clear()
-
     def set_volume(self, volume: np.ndarray, voxel_spacing: tuple[float, float, float]) -> None:
         self.volume = volume
         self.voxel_spacing = voxel_spacing

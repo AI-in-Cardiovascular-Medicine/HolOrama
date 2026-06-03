@@ -42,9 +42,8 @@ def read_image(main_window) -> None:
         main_window.status_bar.showMessage(main_window.waiting_status)
         return
 
-    main_window.reset_state()
-    main_window.gating_display.fig.clear()
-    main_window.gating_display.fig.canvas.draw_idle()
+    master.reload_intravascular()
+    main_window = master.intravascular_page
 
     root, ext = os.path.splitext(file_name)
     if ext == '.gz':
