@@ -15,9 +15,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from pages.ccta.display import CctaDisplay
-from pages.ccta.display_3d import _3DViewerCCTA
-from pages.ccta.tool_tab.tab_gui import MaskControlTab
-from input_output.input.dicom_dir import read_ct_volume, read_nifti_volume, read_mask_volume
+from pages.ccta.display_3d import CctaViewer3D
+from pages.ccta.mask_panel import MaskPanel
+from input_output.input.ccta_io import read_ct_volume, read_nifti_volume, read_mask_volume
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from gui.active_page import ActivePage
 from domain.runtime_types import CctaRuntimeData
@@ -50,7 +50,7 @@ class CctaPage(QWidget):
         grid.addWidget(self._panel(self._axial, self._axial_label), 0, 0)
         grid.addWidget(self._panel(self._sagittal, self._sagittal_label), 0, 1)
         grid.addWidget(self._panel(self._coronal, self._coronal_label), 1, 0)
-        self._3d_viewer = _3DViewerCCTA()
+        self._3d_viewer = CctaViewer3D()
         grid.addWidget(self._3d_viewer, 1, 1)
         grid.setRowStretch(0, 1)
         grid.setRowStretch(1, 1)
@@ -58,7 +58,7 @@ class CctaPage(QWidget):
         grid.setColumnStretch(1, 1)
 
         # Mask control panel
-        self._mask_tab = MaskControlTab()
+        self._mask_tab = MaskPanel()
         self._mask_tab.alpha_changed.connect(self._on_mask_alpha_changed)
         self._mask_tab.label_visibility_changed.connect(self._on_label_visibility_changed)
 
@@ -238,13 +238,4 @@ class CctaPage(QWidget):
         layout.setSpacing(0)
         layout.addWidget(display, 1)
         layout.addWidget(label)
-        return w
-
-    @staticmethod
-    def _cpr_placeholder() -> QWidget:
-        w = QWidget()
-        layout = QVBoxLayout(w)
-        lbl = QLabel('3D / CPR')
-        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(lbl)
         return w

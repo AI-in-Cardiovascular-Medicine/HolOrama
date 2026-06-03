@@ -4,28 +4,10 @@ from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene
 from PyQt6.QtCore import Qt, QPointF, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap, QPen, QColor
 
+from domain.ccta_display_types import LABEL_COLORS, DEFAULT_MASK_ALPHA, DEFAULT_CT_LEVEL, DEFAULT_CT_WIDTH
 
 _CROSSHAIR_COLOR = QColor(255, 255, 0)
 _ZOOM_SENSITIVITY = 0.01
-_DEFAULT_MASK_ALPHA = 0.45
-
-# Public — imported by tab_gui to build colour swatches
-LABEL_COLORS: tuple[tuple[int, int, int], ...] = (
-    (255, 60, 60),  # red
-    (60, 220, 60),  # green
-    (60, 60, 255),  # blue
-    (255, 220, 0),  # yellow
-    (220, 60, 220),  # magenta
-    (0, 210, 210),  # cyan
-    (255, 140, 0),  # orange
-    (160, 60, 255),  # purple
-    (0, 180, 255),  # sky blue
-    (255, 60, 140),  # pink
-    (0, 200, 120),  # mint
-    (180, 255, 0),  # lime
-    (255, 180, 100),  # peach
-    (140, 140, 255),  # lavender
-)
 
 
 class CctaDisplay(QGraphicsView):
@@ -51,9 +33,6 @@ class CctaDisplay(QGraphicsView):
     cursor_moved = pyqtSignal(int, int, int)  # z, y, x
     windowing_changed = pyqtSignal(int, int)  # level, width
 
-    _DEFAULT_LEVEL = 200  # HU center — cardiac soft tissue
-    _DEFAULT_WIDTH = 700  # HU range
-
     def __init__(self, orientation: str, parent=None) -> None:
         super().__init__(parent)
         assert orientation in ('axial', 'coronal', 'sagittal')
@@ -63,8 +42,8 @@ class CctaDisplay(QGraphicsView):
         self.cursor_z = 0
         self.cursor_y = 0
         self.cursor_x = 0
-        self.window_level: int = self._DEFAULT_LEVEL
-        self.window_width: int = self._DEFAULT_WIDTH
+        self.window_level: int = DEFAULT_CT_LEVEL
+        self.window_width: int = DEFAULT_CT_WIDTH
         self._mouse_x: float = 0.0
         self._mouse_y: float = 0.0
         self._press_pos: QPointF = QPointF(0.0, 0.0)
@@ -76,7 +55,7 @@ class CctaDisplay(QGraphicsView):
         self._mask_lut: np.ndarray | None = None  # (256, 3) uint8; row = 0 → invisible
         self._mask_labels: list[int] = []
         self._hidden_labels: set[int] = set()
-        self._mask_alpha: float = _DEFAULT_MASK_ALPHA
+        self._mask_alpha: float = DEFAULT_MASK_ALPHA
 
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
@@ -96,8 +75,8 @@ class CctaDisplay(QGraphicsView):
         self.cursor_z = Z // 2
         self.cursor_y = Y // 2
         self.cursor_x = X // 2
-        self.window_level = self._DEFAULT_LEVEL
-        self.window_width = self._DEFAULT_WIDTH
+        self.window_level = DEFAULT_CT_LEVEL
+        self.window_width = DEFAULT_CT_WIDTH
         self._user_zoomed = False
         self.resetTransform()
         self._render()
@@ -135,8 +114,8 @@ class CctaDisplay(QGraphicsView):
             self.fitInView(self._scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
     def reset_windowing(self) -> None:
-        self.window_level = self._DEFAULT_LEVEL
-        self.window_width = self._DEFAULT_WIDTH
+        self.window_level = DEFAULT_CT_LEVEL
+        self.window_width = DEFAULT_CT_WIDTH
         self._render()
 
     def set_windowing(self, level: int, width: int) -> None:

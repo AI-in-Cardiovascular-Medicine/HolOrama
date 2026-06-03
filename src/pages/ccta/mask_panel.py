@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
-from pages.ccta.display import LABEL_COLORS, _DEFAULT_MASK_ALPHA
+from domain.ccta_display_types import LABEL_COLORS, DEFAULT_MASK_ALPHA
 
 
 class _LabelRow(QWidget):
@@ -57,7 +57,7 @@ class _LabelRow(QWidget):
         return self._checkbox.isChecked()
 
 
-class MaskControlTab(QWidget):
+class MaskPanel(QWidget):
     """Side panel for controlling mask overlay: opacity and per-label visibility + names."""
 
     alpha_changed = pyqtSignal(float)  # 0.0–1.0
@@ -75,8 +75,8 @@ class MaskControlTab(QWidget):
         alpha_row = QHBoxLayout()
         self._alpha_slider = QSlider(Qt.Orientation.Horizontal)
         self._alpha_slider.setRange(0, 100)
-        self._alpha_slider.setValue(round(_DEFAULT_MASK_ALPHA * 100))
-        self._alpha_value_lbl = QLabel(f'{round(_DEFAULT_MASK_ALPHA * 100)}%')
+        self._alpha_slider.setValue(round(DEFAULT_MASK_ALPHA * 100))
+        self._alpha_value_lbl = QLabel(f'{round(DEFAULT_MASK_ALPHA * 100)}%')
         self._alpha_value_lbl.setFixedWidth(34)
         self._alpha_value_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._alpha_slider.valueChanged.connect(self._on_alpha_changed)

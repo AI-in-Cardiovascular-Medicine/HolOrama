@@ -7,7 +7,7 @@ from vtkmodules.vtkRenderingCore import vtkActor, vtkLightKit, vtkPolyDataMapper
 from vtkmodules.util import numpy_support
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QApplication
 
-from pages.ccta.display import LABEL_COLORS
+from domain.ccta_display_types import LABEL_COLORS
 
 # ---------------------------------------------------------------------------
 # Algorithm selection — prefer fastest available in installed VTK build
@@ -31,7 +31,7 @@ except ImportError:
 _BTN_MARGIN = 8
 
 
-class _3DViewerCCTA(QWidget):
+class CctaViewer3D(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
