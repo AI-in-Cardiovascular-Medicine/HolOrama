@@ -5,7 +5,7 @@ from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from vtkmodules.vtkCommonDataModel import vtkImageData
 from vtkmodules.vtkRenderingCore import vtkActor, vtkLightKit, vtkPolyDataMapper, vtkRenderer
 from vtkmodules.util import numpy_support
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QApplication
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QApplication
 
 from domain.ccta_display_types import LABEL_COLORS
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
@@ -29,8 +29,6 @@ except ImportError:
 
         _ALGO = 'marching_cubes'
 
-_BTN_MARGIN = 8
-
 
 class CctaViewer3D(QWidget):
     def __init__(self, parent=None):
@@ -38,14 +36,19 @@ class CctaViewer3D(QWidget):
 
         self._vtk_widget = QVTKRenderWindowInteractor(self)
 
+        self._render_btn = QPushButton('Render 3D')
+        self._render_btn.clicked.connect(self._on_render)
+
+        btn_bar = QHBoxLayout()
+        btn_bar.setContentsMargins(4, 2, 4, 2)
+        btn_bar.addStretch()
+        btn_bar.addWidget(self._render_btn)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self._vtk_widget)
-
-        self._render_btn = QPushButton('Render 3D', self)
-        self._render_btn.adjustSize()
-        self._render_btn.clicked.connect(self._on_render)
-        self._render_btn.raise_()
+        layout.setSpacing(0)
+        layout.addWidget(self._vtk_widget, 1)
+        layout.addLayout(btn_bar)
 
         self._ren = vtkRenderer()
         self._ren.SetBackground(0.0, 0.0, 0.0)
@@ -67,6 +70,7 @@ class CctaViewer3D(QWidget):
         self._labels: list[int] = []
         self._voxel_spacing: tuple[float, float, float] | None = None
         self._actors: dict[int, vtkActor] = {}
+        self._hidden_labels: set[int] = set()
 
     # ------------------------------------------------------------------
     # Public API
@@ -81,9 +85,14 @@ class CctaViewer3D(QWidget):
         self._mask = mask
         self._labels = labels
         self._voxel_spacing = voxel_spacing
+        self._hidden_labels = set()
         self.clear_mesh()
 
     def set_label_visible(self, label: int, visible: bool) -> None:
+        if visible:
+            self._hidden_labels.discard(label)
+        else:
+            self._hidden_labels.add(label)
         actor = self._actors.get(label)
         if actor is not None:
             actor.SetVisibility(int(visible))
@@ -104,20 +113,28 @@ class CctaViewer3D(QWidget):
             ErrorMessage(self, 'Load a mask before rendering the 3D view.')
             return
 
+        # (color_index, label_value) for every label that is currently checked
+        active = [(i, lbl) for i, lbl in enumerate(self._labels) if lbl not in self._hidden_labels]
+        if not active:
+            ErrorMessage(self, 'No labels are currently visible. Enable at least one label to render.')
+            return
+
         self._render_btn.setEnabled(False)
         self._render_btn.setText('Rendering…')
         QApplication.processEvents()
 
+        first_render = not self._actors
         self.clear_mesh()
 
         vtk_img = self._build_vtk_image()
 
         if _ALGO == 'surface_nets':
-            self._render_surface_nets(vtk_img)
+            self._render_surface_nets(vtk_img, active)
         else:
-            self._render_flying_edges(vtk_img)
+            self._render_flying_edges(vtk_img, active)
 
-        self._ren.ResetCamera()
+        if first_render:
+            self._ren.ResetCamera()
         self._vtk_widget.GetRenderWindow().Render()
 
         self._render_btn.setText('Render 3D')
@@ -157,24 +174,24 @@ class CctaViewer3D(QWidget):
     # Algorithm implementations
     # ------------------------------------------------------------------
 
-    def _render_surface_nets(self, vtk_img: vtkImageData) -> None:
+    def _render_surface_nets(self, vtk_img: vtkImageData, active: list[tuple[int, int]]) -> None:
         """
         Single-pass extraction with vtkSurfaceNets3D (VTK ≥ 9.2).
 
-        Runs once for all labels, then splits per-label with vtkThreshold
+        Runs once for all active labels, then splits per-label with vtkThreshold
         on the 2-component BoundaryLabels cell array (component 0 = inside label).
         This is O(volume) once, not O(volume x N_labels).
         """
         sn = _SurfaceNets()
         sn.SetInputData(vtk_img)
-        for i, label in enumerate(self._labels):
-            sn.SetValue(i, float(label))
+        for j, (_, label) in enumerate(active):
+            sn.SetValue(j, float(label))
         sn.SetOutputMeshTypeToTriangles()
         sn.SmoothingOff()
         sn.Update()
         combined = sn.GetOutput()
 
-        for i, label in enumerate(self._labels):
+        for color_index, label in active:
             QApplication.processEvents()
 
             thresh = vtkThreshold()
@@ -203,14 +220,14 @@ class CctaViewer3D(QWidget):
             if geom.GetOutput().GetNumberOfPoints() == 0:
                 continue
 
-            self._add_actor(i, label, geom.GetOutputPort())
+            self._add_actor(color_index, label, geom.GetOutputPort())
 
-    def _render_flying_edges(self, vtk_img: vtkImageData) -> None:
+    def _render_flying_edges(self, vtk_img: vtkImageData, active: list[tuple[int, int]]) -> None:
         """
         Per-label extraction with vtkDiscreteFlyingEdges3D (multi-threaded).
         Runs once per label but each pass is fast (O(volume), multi-threaded).
         """
-        for i, label in enumerate(self._labels):
+        for color_index, label in active:
             QApplication.processEvents()
 
             fe = _DiscreteFE()
@@ -224,7 +241,7 @@ class CctaViewer3D(QWidget):
             if fe.GetOutput().GetNumberOfPoints() == 0:
                 continue
 
-            self._add_actor(i, label, fe.GetOutputPort())
+            self._add_actor(color_index, label, fe.GetOutputPort())
 
     def _add_actor(self, color_index: int, label: int, output_port) -> None:
         mapper = vtkPolyDataMapper()
@@ -240,18 +257,3 @@ class CctaViewer3D(QWidget):
 
         self._ren.AddActor(actor)
         self._actors[label] = actor
-
-    # ------------------------------------------------------------------
-    # Qt event handlers
-    # ------------------------------------------------------------------
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        self._reposition_button()
-
-    def _reposition_button(self) -> None:
-        btn = self._render_btn
-        btn.move(
-            self.width() - btn.width() - _BTN_MARGIN,
-            self.height() - btn.height() - _BTN_MARGIN,
-        )
