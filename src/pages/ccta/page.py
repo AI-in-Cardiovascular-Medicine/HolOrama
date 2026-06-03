@@ -1,3 +1,4 @@
+import os
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
@@ -31,6 +32,7 @@ class CctaPage(QWidget):
         super().__init__()
         self.status_bar = status_bar
         self.data = CctaRuntimeData()
+        self._last_image_dir: str | None = None
 
         self._axial = CctaDisplay('axial')
         self._coronal = CctaDisplay('coronal')
@@ -169,6 +171,18 @@ class CctaPage(QWidget):
         fmt = 'NIfTI' if mode == 'nifti' else 'CCTA'
         page.status_bar.showMessage(f'{fmt}: {Z} slices  |  pixel spacing {dy:.3f} mm  |  slice thickness {dz:.3f} mm')
 
+        if mode == 'nifti':
+            page._last_image_dir = os.path.dirname(os.path.abspath(path))
+            reply = QMessageBox.question(
+                page,
+                'Load Mask?',
+                'Would you like to load a segmentation mask for this volume?',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                page.open_mask()
+
     def open_mask(self) -> None:
         if self.data.volume is None:
             ErrorMessage(self, 'Load a CT volume before opening a mask.')
@@ -177,7 +191,7 @@ class CctaPage(QWidget):
         path, _ = QFileDialog.getOpenFileName(
             self,
             'Open CCTA Mask',
-            '..',
+            self._last_image_dir or '..',
             'NIfTI files (*.nii *.nii.gz);;All Files (*)',
             options=QFileDialog.Option.DontUseNativeDialog,
         )

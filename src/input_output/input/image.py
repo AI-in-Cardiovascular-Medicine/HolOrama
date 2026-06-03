@@ -160,6 +160,18 @@ def read_image(main_window) -> None:
             'A sepia/copper false-colour lookup table has been applied automatically.',
         )
 
+    if ext in ('.gz', '.nii'):
+        main_window._last_image_dir = os.path.dirname(os.path.abspath(file_name))
+        reply = QMessageBox.question(
+            main_window,
+            'Load Mask?',
+            'Would you like to load a segmentation mask for this image?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            read_nifti_mask(main_window)
+
 
 def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) -> None:
     if not main_window.image_displayed:
@@ -173,7 +185,7 @@ def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) 
     file_name, _ = QFileDialog.getOpenFileName(
         main_window,
         'Open NIfTI Mask',
-        '..',
+        getattr(main_window, '_last_image_dir', None) or '..',
         'NIfTI files (*.nii *.nii.gz)',
         options=QFileDialog.Option.DontUseNativeDialog,
     )
