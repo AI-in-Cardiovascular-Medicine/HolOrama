@@ -98,6 +98,13 @@ class CctaViewer3D(QWidget):
             actor.SetVisibility(int(visible))
             self._vtk_widget.GetRenderWindow().Render()
 
+    def reset(self) -> None:
+        self._mask = None
+        self._labels = []
+        self._voxel_spacing = None
+        self._hidden_labels = set()
+        self.clear_mesh()
+
     def clear_mesh(self) -> None:
         for actor in self._actors.values():
             self._ren.RemoveActor(actor)

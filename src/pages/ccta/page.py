@@ -75,6 +75,17 @@ class CctaPage(QWidget):
             display.cursor_moved.connect(self._on_cursor_moved)
             display.windowing_changed.connect(self._on_windowing_changed)
 
+    def reset_state(self) -> None:
+        self.data = CctaRuntimeData()
+        for display in (self._axial, self._coronal, self._sagittal):
+            display.clear()
+        self._axial_label.setText('Axial')
+        self._coronal_label.setText('Coronal')
+        self._sagittal_label.setText('Sagittal')
+        self._mask_tab.clear_labels()
+        self._3d_viewer.reset()
+        self.status_bar.showMessage('Ready')
+
     def open_folder(self) -> None:
         cast('Master', self.window())._switch_page(ActivePage.CCTA.value)
 
@@ -110,6 +121,8 @@ class CctaPage(QWidget):
             mode = 'nifti'
         else:
             return
+
+        self.reset_state()
 
         progress = QProgressDialog('', '', 0, 0, self)
         progress.setWindowTitle('Loading CCTA')
@@ -151,14 +164,9 @@ class CctaPage(QWidget):
         ccta_meta = metadata.get('ccta_metadata')
         if ccta_meta is not None:
             cast('Master', self.window()).ccta_metadata = ccta_meta
-        self.data.mask = None
-        self.data.labels = []
 
         for display in (self._axial, self._coronal, self._sagittal):
             display.set_volume(volume, self.data.voxel_spacing)
-            display.clear_mask()
-        self._mask_tab.clear_labels()
-        self._3d_viewer.clear_mesh()
 
         Z, Y, X = volume.shape
         self._update_labels(Z // 2, Y // 2, X // 2, Z, Y, X)
