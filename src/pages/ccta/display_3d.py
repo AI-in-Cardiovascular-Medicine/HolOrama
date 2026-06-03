@@ -8,6 +8,7 @@ from vtkmodules.util import numpy_support
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QApplication
 
 from domain.ccta_display_types import LABEL_COLORS
+from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
 # ---------------------------------------------------------------------------
 # Algorithm selection — prefer fastest available in installed VTK build
@@ -100,6 +101,7 @@ class CctaViewer3D(QWidget):
 
     def _on_render(self) -> None:
         if self._mask is None or not self._labels or self._voxel_spacing is None:
+            ErrorMessage(self, 'Load a mask before rendering the 3D view.')
             return
 
         self._render_btn.setEnabled(False)
