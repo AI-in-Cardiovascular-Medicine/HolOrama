@@ -79,4 +79,5 @@ class MetaDataCCTA:
     pixel_spacing: Tuple[float, float] = (0.0, 0.0)
     manufacturer: str = 'Unknown'
     model: str = 'Unknown'
+    raw_tags: dict = field(default_factory=dict)  # all remaining DICOM / NIfTI tags
     ...

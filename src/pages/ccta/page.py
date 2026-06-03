@@ -6,8 +6,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QLabel,
     QFileDialog,
-    QDialogButtonBox,
-    QPushButton,
+    QMessageBox,
     QProgressDialog,
     QApplication,
     QGridLayout,
@@ -25,42 +24,6 @@ from domain.runtime_types import CctaRuntimeData
 
 if TYPE_CHECKING:
     from gui.app import Master
-
-
-class _CTOpenDialog(QFileDialog):
-    """File dialog that lets the user pick either a NIfTI file or a DICOM folder.
-
-    - Navigate to a .nii / .nii.gz file and click "Open" → NIfTI mode.
-    - Browse into any folder and click "Open DICOM Folder" → DICOM mode
-      (uses the directory currently shown in the dialog).
-    """
-
-    def __init__(self, parent: QWidget) -> None:
-        super().__init__(parent, 'Open CT Data', '..')
-        self.setOption(QFileDialog.Option.DontUseNativeDialog)
-        self.setFileMode(QFileDialog.FileMode.ExistingFile)
-        self.setNameFilters(['NIfTI files (*.nii *.nii.gz)', 'All Files (*)'])
-
-        self._dicom_path: str | None = None
-
-        dicom_btn = QPushButton('Open DICOM Folder')
-        dicom_btn.clicked.connect(self._select_dicom)
-        btn_box = self.findChild(QDialogButtonBox)
-        if btn_box is not None:
-            btn_box.addButton(dicom_btn, QDialogButtonBox.ButtonRole.ActionRole)
-
-    def _select_dicom(self) -> None:
-        self._dicom_path = self.directory().absolutePath()
-        self.accept()
-
-    def result_path_and_mode(self) -> tuple[str, str] | None:
-        """Return (path, 'dicom'|'nifti'), or None if nothing was selected."""
-        if self._dicom_path is not None:
-            return self._dicom_path, 'dicom'
-        files = self.selectedFiles()
-        if files:
-            return files[0], 'nifti'
-        return None
 
 
 class CctaPage(QWidget):
@@ -115,13 +78,38 @@ class CctaPage(QWidget):
     def open_folder(self) -> None:
         cast('Master', self.window())._switch_page(ActivePage.CCTA.value)
 
-        dialog = _CTOpenDialog(self)
-        if not dialog.exec():
+        msg = QMessageBox(self)
+        msg.setWindowTitle('Open CT Data')
+        msg.setText('Select data format:')
+        dicom_btn = msg.addButton('DICOM Folder', QMessageBox.ButtonRole.ActionRole)
+        nifti_btn = msg.addButton('NIfTI File', QMessageBox.ButtonRole.ActionRole)
+        msg.addButton(QMessageBox.StandardButton.Cancel)
+        msg.exec()
+
+        clicked = msg.clickedButton()
+        if clicked == dicom_btn:
+            path = QFileDialog.getExistingDirectory(
+                self,
+                'Open DICOM Folder',
+                '',
+                options=QFileDialog.Option.DontUseNativeDialog,
+            )
+            if not path:
+                return
+            mode = 'dicom'
+        elif clicked == nifti_btn:
+            path, _ = QFileDialog.getOpenFileName(
+                self,
+                'Open NIfTI File',
+                '',
+                'NIfTI files (*.nii *.nii.gz);;All Files (*)',
+                options=QFileDialog.Option.DontUseNativeDialog,
+            )
+            if not path:
+                return
+            mode = 'nifti'
+        else:
             return
-        result = dialog.result_path_and_mode()
-        if result is None:
-            return
-        path, mode = result
 
         progress = QProgressDialog('', '', 0, 0, self)
         progress.setWindowTitle('Loading CCTA')
@@ -159,6 +147,10 @@ class CctaPage(QWidget):
         dy, dx = metadata['pixel_spacing']
         self.data.volume = volume
         self.data.voxel_spacing = (dz, dy, dx)
+
+        ccta_meta = metadata.get('ccta_metadata')
+        if ccta_meta is not None:
+            cast('Master', self.window()).ccta_metadata = ccta_meta
         self.data.mask = None
         self.data.labels = []
 

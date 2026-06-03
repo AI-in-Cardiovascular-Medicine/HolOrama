@@ -5,8 +5,8 @@ from typing import Callable, Optional
 import numpy as np
 import pandas as pd
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QMainWindow, QTableWidget, QTableWidgetItem
-from domain.io_types import MetaDataIntravascular
+from PyQt6.QtWidgets import QMainWindow, QTableWidget, QTableWidgetItem, QWidget
+from domain.io_types import MetaDataCCTA, MetaDataIntravascular
 
 # callable(title, message, default) → float — injected so callers stay testable
 PromptFn = Callable[[str, str, float], float]
@@ -135,6 +135,62 @@ class MetadataWindow(QMainWindow):
         w = sum(self.table.columnWidth(i) for i in range(self.table.columnCount()))
         h = sum(self.table.rowHeight(i) for i in range(self.table.rowCount()))
         self.setFixedSize(w, h)
+
+
+_CCTA_DISPLAY_FIELDS: list[tuple[str, Callable[[MetaDataCCTA], Optional[str]]]] = [
+    ('Modality', lambda m: m.modality),
+    ('Patient Name', lambda m: m.patient_name),
+    ('Date of Birth', lambda m: m.birthdate),
+    ('Sex', lambda m: m.sex),
+    ('Manufacturer', lambda m: f'{m.manufacturer} ({m.model})' if m.manufacturer != 'Unknown' else None),
+    ('Slice Thickness', lambda m: f'{m.slice_thickness:.3f} mm' if m.slice_thickness else None),
+    (
+        'Pixel Spacing',
+        lambda m: f'{m.pixel_spacing[0]:.3f} × {m.pixel_spacing[1]:.3f} mm' if m.pixel_spacing != (0.0, 0.0) else None,
+    ),
+]
+
+
+class CctaMetadataWindow(QMainWindow):
+    def __init__(self, parent: QWidget, ccta_metadata: MetaDataCCTA) -> None:
+        super().__init__(parent)
+        self.setWindowTitle('CCTA Metadata')
+
+        main_rows = [(label, fn(ccta_metadata)) for label, fn in _CCTA_DISPLAY_FIELDS]
+        main_rows = [(lbl, v) for lbl, v in main_rows if v is not None]
+        extra_rows = list(ccta_metadata.raw_tags.items())
+
+        total = len(main_rows) + 1 + len(extra_rows)  # +1 for '...' separator
+        table = QTableWidget(total, 2)
+
+        for i, (label, value) in enumerate(main_rows):
+            table.setItem(i, 0, QTableWidgetItem(label))
+            table.setItem(i, 1, QTableWidgetItem(str(value)))
+
+        sep = len(main_rows)
+        sep_item = QTableWidgetItem('...')
+        sep_item.setFlags(Qt.ItemFlag.NoItemFlags)
+        table.setItem(sep, 0, sep_item)
+        table.setItem(sep, 1, QTableWidgetItem(''))
+
+        for j, (tag_name, tag_value) in enumerate(extra_rows):
+            row = sep + 1 + j
+            table.setItem(row, 0, QTableWidgetItem(str(tag_name)))
+            table.setItem(row, 1, QTableWidgetItem(str(tag_value)))
+
+        h_header = table.horizontalHeader()
+        if h_header is not None:
+            h_header.hide()
+        v_header = table.verticalHeader()
+        if v_header is not None:
+            v_header.hide()
+        table.resizeColumnsToContents()
+        table.resizeRowsToContents()
+
+        w = sum(table.columnWidth(i) for i in range(table.columnCount()))
+        h = min(600, sum(table.rowHeight(i) for i in range(table.rowCount())))
+        self.setFixedSize(w, h)
+        self.setCentralWidget(table)
 
 
 # Descriptions consumed by MetaData — excluded from the raw "remaining" section

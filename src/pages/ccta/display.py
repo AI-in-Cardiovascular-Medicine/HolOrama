@@ -39,8 +39,9 @@ class CctaDisplay(QGraphicsView):
     Scroll wheel        → steps the slice axis for this view
     Left click          → updates the crosshair / cursor in orthogonal axes
     Left drag (up/down) → zoom in / out (anchored under the cursor)
-    Double-click        → reset zoom to fit
+    Key F               → reset zoom to fit for all images
     Right drag          → window/level (horizontal=level, vertical=width)
+    Key R               → reset window/level to defaults
 
     cursor_moved(z, y, x) is emitted by scroll and click events.
     set_cursor(z, y, x)   is called by CctaPage to synchronise all views;

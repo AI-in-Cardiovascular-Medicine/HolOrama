@@ -12,7 +12,7 @@ from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialo
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 from pages.intravascular.popup_windows.video_player import VideoPlayer
 from pages.intravascular.utils.contours_gui import new_contour, new_contour_append, new_measure, new_angle, set_tool
-from input_output.input.metadata import MetadataWindow
+from input_output.input.metadata import CctaMetadataWindow, MetadataWindow
 from input_output.input.image import read_image, read_nifti_mask
 from input_output.output.contours import write_contours
 from input_output.output.other_fmt import save_gated_images
@@ -299,9 +299,14 @@ def switch_phases(main_window):
 
 
 def show_metadata(main_window):
-    if main_window.image_displayed:
-        metadata_window = MetadataWindow(main_window)
-        metadata_window.show()
+    from gui.active_page import ActivePage
+
+    master = main_window.window()  # Master, not IntravascularPage
+    if hasattr(master, 'active_page') and master.active_page == ActivePage.CCTA:
+        win = CctaMetadataWindow(master, master.ccta_metadata)
+        win.show()
+    elif main_window.image_displayed:
+        MetadataWindow(main_window).show()
 
 
 def open_url(main_window, description=None):

@@ -1,9 +1,12 @@
+import json
 import os
 from typing import Any, Callable
 
 import numpy as np
 import pydicom as dcm
 import SimpleITK as sitk
+
+from domain.io_types import MetaDataCCTA
 
 
 def read_ct_volume(
@@ -84,12 +87,125 @@ def read_ct_volume(
     else:
         slice_thickness = float(getattr(first_ds, 'SliceThickness', 1.0))
 
+    try:
+        ccta_meta = parse_metadata_ccta(first_ds)
+    except Exception:
+        ccta_meta = MetaDataCCTA()
+
     metadata = {
         'pixel_spacing': (float(px_spacing[0]), float(px_spacing[1])),
         'slice_thickness': slice_thickness,
         'n_slices': total,
+        'ccta_metadata': ccta_meta,
     }
     return volume, metadata
+
+
+_CCTA_KNOWN_KEYWORDS = frozenset(
+    {
+        'PatientName',
+        'PatientBirthDate',
+        'PatientSex',
+        'Manufacturer',
+        'ManufacturerModelName',
+        'PixelSpacing',
+        'SliceThickness',
+    }
+)
+
+# Binary VRs that can't be meaningfully stringified
+_BINARY_VRS = frozenset({'OB', 'OW', 'UN', 'OD', 'OF', 'OL', 'OV', 'UR'})
+
+
+def parse_metadata_ccta(ds: Any) -> MetaDataCCTA:
+    """Extract patient, device, and all remaining DICOM tags from a pydicom CT Dataset."""
+
+    def _str(attr: str, default: str = 'Unknown') -> str:
+        val = getattr(ds, attr, None)
+        return str(val).strip() if val is not None else default
+
+    birthdate = _str('PatientBirthDate')
+    if len(birthdate) == 8 and birthdate.isdigit():
+        birthdate = f'{birthdate[:4]}/{birthdate[4:6]}/{birthdate[6:]}'
+
+    px = getattr(ds, 'PixelSpacing', [0.0, 0.0])
+    st = float(getattr(ds, 'SliceThickness', 0.0) or 0.0)
+
+    # Collect all remaining tags (mirrors the intravascular "extra rows" pattern)
+    raw_tags: dict = {}
+    try:
+        for elem in ds:
+            if elem.tag == (0x7FE0, 0x0010):  # PixelData — skip
+                continue
+            if elem.VR in _BINARY_VRS:
+                continue
+            if elem.keyword in _CCTA_KNOWN_KEYWORDS:
+                continue
+            try:
+                name = elem.name or elem.keyword or str(elem.tag)
+                raw_tags[name] = str(elem.value)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    return MetaDataCCTA(
+        modality='CCTA',
+        patient_name=_str('PatientName'),
+        birthdate=birthdate,
+        sex=_str('PatientSex'),
+        slice_thickness=st,
+        pixel_spacing=(float(px[0]), float(px[1])),
+        manufacturer=_str('Manufacturer'),
+        model=_str('ManufacturerModelName'),
+        raw_tags=raw_tags,
+    )
+
+
+def parse_metadata_ccta_nifti(path: str, img: Any) -> MetaDataCCTA:
+    """
+    Parse CCTA metadata from a NIfTI file.
+
+    Spacing comes from the SimpleITK image header.
+    Patient / device fields are read from a BIDS JSON sidecar if present
+    (dcm2niix writes one with the same basename: e.g. scan.json beside scan.nii.gz).
+    """
+    dx, dy, dz = img.GetSpacing()
+
+    # Strip .nii or .nii.gz to find the sidecar
+    base = path
+    for ext in ('.nii.gz', '.nii'):
+        if base.endswith(ext):
+            base = base[: -len(ext)]
+            break
+    sidecar = base + '.json'
+
+    patient_name = birthdate = sex = manufacturer = model = 'Unknown'
+    if os.path.isfile(sidecar):
+        try:
+            with open(sidecar, encoding='utf-8') as f:
+                info = json.load(f)
+            patient_name = str(info.get('PatientName', 'Unknown'))
+            raw_bd = str(info.get('PatientBirthDate', 'Unknown'))
+            if len(raw_bd) == 8 and raw_bd.isdigit():
+                raw_bd = f'{raw_bd[:4]}/{raw_bd[4:6]}/{raw_bd[6:]}'
+            birthdate = raw_bd
+            sex = str(info.get('PatientSex', 'Unknown'))
+            manufacturer = str(info.get('Manufacturer', 'Unknown'))
+            model = str(info.get('ManufacturerModelName', 'Unknown'))
+        except Exception:
+            pass
+
+    return MetaDataCCTA(
+        modality='CCTA',
+        patient_name=patient_name,
+        birthdate=birthdate,
+        sex=sex,
+        slice_thickness=dz,
+        pixel_spacing=(dy, dx),
+        manufacturer=manufacturer,
+        model=model,
+    )
 
 
 def read_nifti_volume(path: str) -> tuple[np.ndarray, dict]:
@@ -118,6 +234,7 @@ def read_nifti_volume(path: str) -> tuple[np.ndarray, dict]:
         'pixel_spacing': (dy, dx),  # (row spacing, col spacing) — matches DICOM convention
         'slice_thickness': dz,
         'n_slices': volume.shape[0],
+        'ccta_metadata': parse_metadata_ccta_nifti(path, img),
     }
     return volume, metadata
 

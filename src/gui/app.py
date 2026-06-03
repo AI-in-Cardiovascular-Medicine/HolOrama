@@ -21,6 +21,7 @@ from pages.intravascular.page import IntravascularPage
 from pages.ccta.page import CctaPage
 from gui.shortcuts import init_shortcuts, init_ccta_shortcuts, init_menu
 from gui.active_page import ActivePage
+from domain.io_types import MetaDataCCTA, MetaDataIntravascular
 
 
 class _NavButton(QPushButton):
@@ -45,6 +46,9 @@ class _NavButton(QPushButton):
 
 
 class Master(QMainWindow):
+    intravascular_metadata: MetaDataIntravascular
+    ccta_metadata: MetaDataCCTA
+
     def __init__(self, config: DictConfig) -> None:
         super().__init__()
         self.config = config

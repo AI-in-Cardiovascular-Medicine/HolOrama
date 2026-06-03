@@ -7,7 +7,7 @@ import pandas as pd
 import nibabel as nib
 import pydicom as dcm
 from skimage import measure as sk_measure
-from PyQt6.QtWidgets import QFileDialog, QInputDialog, QProgressDialog, QApplication
+from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMessageBox, QProgressDialog, QApplication
 
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from input_output.input.metadata import (
@@ -27,6 +27,12 @@ from tools.geometry import SplineGeometry
 
 
 def read_image(main_window) -> None:
+    from gui.active_page import ActivePage
+
+    master = main_window.window()
+    if hasattr(master, '_switch_page'):
+        master._switch_page(ActivePage.INTRAVASCULAR.value)
+
     main_window.status_bar.showMessage('Reading image file...')
     file_name, _ = QFileDialog.getOpenFileName(
         main_window, 'Open File', '..', 'All files (*)', options=QFileDialog.Option.DontUseNativeDialog
@@ -62,10 +68,21 @@ def read_image(main_window) -> None:
                 ErrorMessage(main_window, 'Data is corrupted. File could not be loaded.')
                 main_window.status_bar.showMessage(main_window.waiting_status)
                 return
-            pixel_array_parsed, is_oct = _parse_pixel_array(pixel_array)
+
+            msg = QMessageBox(main_window)
+            msg.setWindowTitle('Select Modality')
+            msg.setText('Is this an IVUS or OCT NIfTI file?')
+            msg.addButton('IVUS', QMessageBox.ButtonRole.ActionRole)
+            oct_btn = msg.addButton('OCT', QMessageBox.ButtonRole.ActionRole)
+            msg.exec()
+            is_oct = msg.clickedButton() == oct_btn
+
+            pixel_array_parsed, is_oct = _parse_pixel_array(pixel_array, is_oct)
             md = parse_metadata_nifti(metadata_df, pixel_array_parsed.shape[0], is_oct, prompt)
-            if is_oct:
+            if is_oct and pixel_array.ndim == 4 and pixel_array.shape[-1] == 3:
+                # 4-D RGB NIfTI — use colour channels directly (same guard as DICOM path)
                 main_window.runtime_data.images_rgb = pixel_array.clip(0, 255).astype(np.uint8)
+            # 3-D grayscale OCT: images_rgb stays None → _convert_gray_to_oct runs below
         else:
             try:
                 pixel_array, metadata_df = _read_dicom(file_name)
@@ -323,5 +340,35 @@ def _convert_oct_to_gray(oct_array: np.ndarray) -> np.ndarray:
     return np.dot(oct_array[..., :3], weights).astype(np.uint8)
 
 
+# Sepia/copper false-colour LUT matching clinical IVOCT viewers (Abbott OPTIS-style).
+# Same hues as before, but anchor positions shifted earlier so the yellow/light
+# tones appear at lower pixel values (slightly brighter overall).
+# Shape (256, 3) uint8.
+_OCT_ANCHORS = np.array(
+    [
+        [0.00, 0, 0, 0],  # black
+        [0.14, 52, 17, 6],  # dark maroon
+        [0.32, 135, 56, 18],  # orange-brown
+        [0.52, 208, 108, 40],  # full orange
+        [0.71, 240, 170, 84],  # orange-tan
+        [0.86, 251, 218, 140],  # warm yellow-cream
+        [1.00, 255, 242, 190],  # pale warm yellow (highlights)
+    ]
+)
+_x = np.arange(256) / 255.0
+_OCT_LUT: np.ndarray = np.column_stack(
+    [np.interp(_x, _OCT_ANCHORS[:, 0], _OCT_ANCHORS[:, c]) for c in (1, 2, 3)]
+).astype(np.uint8)
+
+
 def _convert_gray_to_oct(gray_array: np.ndarray) -> np.ndarray:
-    return np.stack([gray_array, gray_array, gray_array], axis=-1)
+    """
+    Convert (N, H, W) grayscale → (N, H, W, 3) uint8 with the OCT false-colour LUT.
+    Normalises the full volume to [0, 255] before LUT lookup so the result is
+    correct regardless of whether the input is float [0,1], raw HU, or uint8.
+    """
+    arr = gray_array.astype(np.float32)
+    lo, hi = float(arr.min()), float(arr.max())
+    if hi > lo:
+        arr = (arr - lo) / (hi - lo) * 255.0
+    return _OCT_LUT[arr.clip(0, 255).astype(np.uint8)]
