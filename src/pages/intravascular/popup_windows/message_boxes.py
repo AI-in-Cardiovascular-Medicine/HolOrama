@@ -21,3 +21,14 @@ class SuccessMessage(QMessageBox):
         self.setWindowTitle('Status')
         self.setText(task + ' has been successfully completed')
         self.exec()
+
+
+class WarningMessage(QMessageBox):
+    """Warning message box"""
+
+    def __init__(self, main_window, message):
+        super().__init__(main_window)
+        self.setIcon(QMessageBox.Icon.Warning)
+        self.setWindowTitle('Warning')
+        self.setText(message)
+        self.exec()

@@ -9,7 +9,8 @@ import pydicom as dcm
 from skimage import measure as sk_measure
 from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMessageBox, QProgressDialog, QApplication
 
-from pages.intravascular.popup_windows.message_boxes import ErrorMessage
+from pages.intravascular.popup_windows.message_boxes import ErrorMessage, WarningMessage
+from domain.oct_display_types import OCT_LUT
 from input_output.input.metadata import (
     MetaDataIntravascular,
     PromptFn,
@@ -58,6 +59,7 @@ def read_image(main_window) -> None:
     QApplication.processEvents()
     QApplication.processEvents()  # second flush processes the paint event queued by show
 
+    _gray_oct_warning = False
     try:
         prompt = _make_prompt(main_window)
 
@@ -109,6 +111,7 @@ def read_image(main_window) -> None:
         num_frames = pixel_array_parsed.shape[0]
         if is_oct and main_window.runtime_data.images_rgb is None:
             main_window.runtime_data.images_rgb = _convert_gray_to_oct(pixel_array_parsed)
+            _gray_oct_warning = True
 
         _store_metadata(main_window, md, num_frames)
         populate_metadata_table(main_window.metadata_table, md, metadata_df)
@@ -150,6 +153,13 @@ def read_image(main_window) -> None:
         main_window.status_bar.showMessage(main_window.waiting_status)
     finally:
         progress.close()
+
+    if _gray_oct_warning:
+        WarningMessage(
+            main_window,
+            'The OCT file contained a grayscale image rather than true RGB.\n'
+            'A sepia/copper false-colour lookup table has been applied automatically.',
+        )
 
 
 def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) -> None:
@@ -340,27 +350,6 @@ def _convert_oct_to_gray(oct_array: np.ndarray) -> np.ndarray:
     return np.dot(oct_array[..., :3], weights).astype(np.uint8)
 
 
-# Sepia/copper false-colour LUT matching clinical IVOCT viewers (Abbott OPTIS-style).
-# Same hues as before, but anchor positions shifted earlier so the yellow/light
-# tones appear at lower pixel values (slightly brighter overall).
-# Shape (256, 3) uint8.
-_OCT_ANCHORS = np.array(
-    [
-        [0.00, 0, 0, 0],  # black
-        [0.14, 52, 17, 6],  # dark maroon
-        [0.32, 135, 56, 18],  # orange-brown
-        [0.52, 208, 108, 40],  # full orange
-        [0.71, 240, 170, 84],  # orange-tan
-        [0.86, 251, 218, 140],  # warm yellow-cream
-        [1.00, 255, 242, 190],  # pale warm yellow (highlights)
-    ]
-)
-_x = np.arange(256) / 255.0
-_OCT_LUT: np.ndarray = np.column_stack(
-    [np.interp(_x, _OCT_ANCHORS[:, 0], _OCT_ANCHORS[:, c]) for c in (1, 2, 3)]
-).astype(np.uint8)
-
-
 def _convert_gray_to_oct(gray_array: np.ndarray) -> np.ndarray:
     """
     Convert (N, H, W) grayscale → (N, H, W, 3) uint8 with the OCT false-colour LUT.
@@ -371,4 +360,4 @@ def _convert_gray_to_oct(gray_array: np.ndarray) -> np.ndarray:
     lo, hi = float(arr.min()), float(arr.max())
     if hi > lo:
         arr = (arr - lo) / (hi - lo) * 255.0
-    return _OCT_LUT[arr.clip(0, 255).astype(np.uint8)]
+    return OCT_LUT[arr.clip(0, 255).astype(np.uint8)]
