@@ -61,6 +61,17 @@ def set_tool(main_window, segmentation_tool: SegmentationTool):
         ErrorMessage(main_window, 'Cannot set tool before reading input file')
         return
 
+    if segmentation_tool == SegmentationTool.BRUSH:
+        if not getattr(main_window, 'mask_mode_box', None) or not main_window.mask_mode_box.isChecked():
+            ErrorMessage(main_window, 'Enable Mask Mode to use the brush tool')
+            main_window.left_half.closed_spline_btn.setChecked(True)
+            return
+        main_window.display.active_segmentation_tool = segmentation_tool
+        main_window.display.enable_brush()
+        return
+
+    # Any other tool: deactivate brush if it was on.
+    main_window.display.disable_brush()
     main_window.display.active_segmentation_tool = segmentation_tool
 
 

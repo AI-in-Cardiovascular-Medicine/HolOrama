@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QTimer, Qt, QSize
 
 from pages.intravascular.left_half.left_half import LeftHalf
+from pages.intravascular.brush_panel import BrushSettingsPopup
 from pages.intravascular.left_half.display import Display
 from pages.intravascular.utils.slider import Slider, Communicate
 from pages.intravascular.right_half.right_half import (
@@ -107,6 +108,11 @@ class IntravascularPage(QSplitter):
             self.oct_quality_buttons[label] = btn
             self.oct_quality_button_group.addButton(btn)
         self.oct_quality_buttons[OCT_QUALITY_LABELS[-1]].setChecked(True)
+
+        self.brush_settings_popup: BrushSettingsPopup = BrushSettingsPopup(self)
+        self.brush_settings_popup._radius_slider.valueChanged.connect(
+            lambda: self.display._update_brush_cursor() if self.display._brush_active else None
+        )
 
         self.left_half: LeftHalf = LeftHalf(self)
         self.addWidget(self.left_half())
