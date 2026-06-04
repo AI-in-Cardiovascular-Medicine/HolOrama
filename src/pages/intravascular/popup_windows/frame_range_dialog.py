@@ -1,5 +1,13 @@
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QDialog, QLineEdit, QDialogButtonBox, QFormLayout
+from PyQt6.QtWidgets import (
+    QDialog,
+    QLineEdit,
+    QDialogButtonBox,
+    QFormLayout,
+    QRadioButton,
+    QHBoxLayout,
+    QWidget,
+)
 
 
 class FrameRangeDialog(QDialog):
@@ -10,9 +18,19 @@ class FrameRangeDialog(QDialog):
         self.lower_limit.setText('1')
         self.upper_limit = QLineEdit(self)
         self.upper_limit.setText(str(main_window.runtime_data.images.shape[0]))
+
         if step:
-            self.step_layout = QLineEdit(self)
-            self.step_layout.setText('1')
+            self.radio_mm = QRadioButton('mm', self)
+            self.radio_frames = QRadioButton('Frames', self)
+            self.radio_mm.setChecked(True)
+
+            self.step_mm = QLineEdit(self)
+            self.step_mm.setText('1')
+            self.step_frames = QLineEdit(self)
+            self.step_frames.setText('10')
+            self.step_frames.setEnabled(False)
+
+            self.radio_mm.toggled.connect(self._on_mode_toggled)
 
         buttonBox = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
 
@@ -20,11 +38,22 @@ class FrameRangeDialog(QDialog):
         layout.addRow('Lower limit', self.lower_limit)
         layout.addRow('Upper limit', self.upper_limit)
         if step:
-            layout.addRow('Step (mm)', self.step_layout)
+            radio_row = QWidget(self)
+            radio_layout = QHBoxLayout(radio_row)
+            radio_layout.setContentsMargins(0, 0, 0, 0)
+            radio_layout.addWidget(self.radio_mm)
+            radio_layout.addWidget(self.radio_frames)
+            layout.addRow('Step mode', radio_row)
+            layout.addRow('Step (mm)', self.step_mm)
+            layout.addRow('Step (frames)', self.step_frames)
         layout.addWidget(buttonBox)
 
         buttonBox.accepted.connect(self.accept)
         buttonBox.rejected.connect(self.reject)
+
+    def _on_mode_toggled(self, mm_checked: bool):
+        self.step_mm.setEnabled(mm_checked)
+        self.step_frames.setEnabled(not mm_checked)
 
     def getInputs(self):
         lower_limit = int(self.lower_limit.text()) - 1
@@ -36,8 +65,14 @@ class FrameRangeDialog(QDialog):
             lower_limit, upper_limit = upper_limit, lower_limit
         return lower_limit, upper_limit
 
-    def getStep(self):
-        return float(self.step_layout.text())
+    def getStepMm(self) -> float:
+        return float(self.step_mm.text())
+
+    def getStepFrames(self) -> int:
+        return int(self.step_frames.text())
+
+    def isStepByMm(self) -> bool:
+        return self.radio_mm.isChecked()
 
 
 class StartFramesDialog(QDialog):
