@@ -1,11 +1,12 @@
 import os
 import time
 import cv2
+import numpy as np
 
 from loguru import logger
 from functools import partial
 from PyQt6.QtGui import QKeySequence, QDesktopServices, QShortcut
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QProgressDialog
 from PyQt6.QtCore import Qt, QUrl
 
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
@@ -466,14 +467,47 @@ def save_video_pullback(main_window):
         ErrorMessage(main_window, 'Cannot save video pullback before reading the image.')
         return
     main_window.status_bar.showMessage('Saving video pullback...')
-    image_stack = main_window.runtime_data.images
-    size = (image_stack[0].shape[1], image_stack[0].shape[0])
-    fps = main_window.runtime_data.metadata['frame_rate']
-    duration = len(image_stack) // fps
+
+    images_rgb = main_window.runtime_data.images_rgb
+    images_gray = main_window.runtime_data.images
+    use_color = images_rgb is not None
+    image_stack = images_rgb if use_color else images_gray
+    if image_stack is None:
+        ErrorMessage(main_window, 'No image data available.')
+        return
+
+    n_frames = len(image_stack)
+    fps = int(main_window.runtime_data.metadata.get('frame_rate', 30))
+    if fps <= 0:
+        fps = 30
+
+    H, W = image_stack[0].shape[:2]
     out_path = os.path.splitext(main_window.file_name)[0] + '_pullback.mp4'
-    out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (size[1], size[0]), False)  # type: ignore[attr-defined]
-    for frame in range(fps * duration):
-        out.write(image_stack[frame, :, :])
+    out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (W, H), use_color)  # type: ignore[attr-defined]
+    wl = main_window.display.window_level
+    ww = main_window.display.window_width
+    lo, hi = wl - ww / 2, wl + ww / 2
+
+    progress = QProgressDialog('Saving video pullback...', 'Cancel', 0, n_frames, main_window)
+    progress.setWindowTitle('Saving Video')
+    progress.setMinimumDuration(0)
+    progress.setModal(True)
+    progress.setValue(0)
+    QApplication.processEvents()
+
+    for i in range(n_frames):
+        progress.setValue(i)
+        QApplication.processEvents()
+        if progress.wasCanceled():
+            break
+        frame_data = image_stack[i]
+        if use_color:
+            out.write(cv2.cvtColor(frame_data, cv2.COLOR_RGB2BGR))
+        else:
+            windowed = ((np.clip(frame_data.astype(float), lo, hi) - lo) / (hi - lo) * 255).astype(np.uint8)
+            out.write(windowed)
+
     out.release()
+    progress.close()
     SuccessMessage(main_window, 'Saving video')
     main_window.status_bar.showMessage(main_window.waiting_status)
