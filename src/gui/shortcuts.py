@@ -357,7 +357,12 @@ def jiggle_frame(main_window):
 
 
 def stop_all(main_window):
+    main_window.display.disable_brush()
     main_window.display._interrupt_drawing_mode()
+    main_window.display.active_contour_type = ContourType.LUMEN
+    main_window.display.active_segmentation_tool = SegmentationTool.CLOSED_SPLINE
+    main_window.left_half.brush_btn.setChecked(False)
+    main_window.left_half.closed_spline_btn.setChecked(True)
 
 
 def delete_contour(main_window):

@@ -136,6 +136,7 @@ class Display(QGraphicsView, MetricsMixin):
 
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)  # ensures keyPressEvent fires after a click
 
     def reset(self) -> None:
         """Reset all per-image interaction state. Called before a new image is loaded."""
@@ -591,16 +592,19 @@ class Display(QGraphicsView, MetricsMixin):
         """
         try:
             assert self.images is not None
-            # Reuse cached base mask while brush canvas is non-empty (contours unchanged).
-            if self._base_mask_cache is None or self._base_mask_cache_frame != self.frame:
-                self._base_mask_cache = contours_to_mask(
+            # Cache the contour-derived mask only while a brush stroke is in progress.
+            # At any other time (knot drag, contour edit, frame change) always recompute.
+            if self._brush_active and self._base_mask_cache is not None and self._base_mask_cache_frame == self.frame:
+                frame_mask = self._base_mask_cache.copy()
+            else:
+                frame_mask = contours_to_mask(
                     self.images[self.frame : self.frame + 1],
                     [self.frame],
                     self.main_window.runtime_data.frame_data_dct,
                 )[0]
-                self._base_mask_cache_frame = self.frame
-
-            frame_mask = self._base_mask_cache.copy()
+                if self._brush_active:
+                    self._base_mask_cache = frame_mask.copy()
+                    self._base_mask_cache_frame = self.frame
 
             # Overlay live brush canvas on top of the contour-derived mask.
             if self._brush_add is not None:
@@ -637,7 +641,12 @@ class Display(QGraphicsView, MetricsMixin):
     # ------------------------------------------------------------------
 
     def enable_brush(self) -> None:
-        """Activate brush mode and update the cursor circle."""
+        """Activate brush mode and update the cursor circle.
+
+        Interrupts any in-progress spline/measure/reference drawing first so
+        leftover graphics don't conflict with brush mouse handling.
+        """
+        self._interrupt_drawing_mode()  # safe no-op when nothing is in progress
         self._brush_active = True
         self._brush_add = None
         self._brush_erase = None
@@ -1756,6 +1765,16 @@ class Display(QGraphicsView, MetricsMixin):
             self.main_window.display_slider.next_frame()
         else:
             self.main_window.display_slider.last_frame()
+
+    def keyPressEvent(self, event):
+        # The global Esc shortcut in shortcuts.py normally handles this first.
+        # This is a fallback for cases where the display has focus directly.
+        if event.key() == Qt.Key.Key_Escape:
+            from gui.shortcuts import stop_all
+
+            stop_all(self.main_window)
+            return
+        super().keyPressEvent(event)
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
