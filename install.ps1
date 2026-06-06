@@ -1,5 +1,5 @@
 # Usage: .\install.ps1 [-Dev] [-NnUZoo] [-Cpu] [-Cuda 121]
-# Default installs CUDA 11.8 (cu118) torch — GPU-ready out of the box.
+# Default installs CUDA 11.8 (cu118) torch -- GPU-ready out of the box.
 # -Dev             also install dev dependencies
 # -NnUZoo          install nnUZoo from GitHub
 # -Cpu             install CPU-only torch instead (overrides default GPU build)
@@ -15,56 +15,71 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# ── 1. Create and activate virtual environment ──────────────────────────────
-python -m venv env
-.\env\Scripts\Activate.ps1
-
-# ── 2. Install poetry and project dependencies ──────────────────────────────
-pip install --quiet poetry
-
-if ($Dev) {
-    poetry install --with dev
-} else {
-    poetry install
+# -- 1. Ensure uv is available ------------------------------------------------
+if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+    Write-Host "uv not found -- installing via pip..."
+    pip install uv
+    if ($LASTEXITCODE -ne 0) { throw "Failed to install uv" }
 }
 
-# ── 3. Optional: nnUZoo ─────────────────────────────────────────────────────
+# -- 2. Install project dependencies (uv auto-creates .venv) ------------------
+# pyqt6-qt6 is ~900 MB; increase timeout for slow connections
+$env:UV_HTTP_TIMEOUT = '300'
+
+$syncArgs = @('sync')
+if ($Dev) { $syncArgs += '--group', 'dev' }
+uv @syncArgs
+if ($LASTEXITCODE -ne 0) { throw "uv sync failed with exit code $LASTEXITCODE" }
+
+$python = '.\.venv\Scripts\python.exe'
+
+# -- 3. Optional: nnUZoo ------------------------------------------------------
 if ($NnUZoo) {
     Write-Host "Installing nnUZoo..."
-    poetry run pip install git+https://github.com/AI-in-Cardiovascular-Medicine/nnUZoo@main
+    uv pip install --python $python git+https://github.com/AI-in-Cardiovascular-Medicine/nnUZoo@main
+    if ($LASTEXITCODE -ne 0) { throw "nnUZoo install failed" }
 }
 
-# ── 4. Override torch build if requested ────────────────────────────────────
+# -- 4. Override torch build if requested -------------------------------------
+# uv sync installed the default cu118 build via pyproject.toml sources.
+# For alternate builds we reinstall torch/torchvision directly.
 if ($Cpu) {
     Write-Host "Switching to CPU-only torch build..."
-    pip install "torch==2.4.0" "torchvision==0.19.0" --index-url https://download.pytorch.org/whl/cpu
+    uv pip install --python $python --reinstall "torch==2.4.0" "torchvision==0.19.0" --index-url https://download.pytorch.org/whl/cpu
+    if ($LASTEXITCODE -ne 0) { throw "torch CPU install failed" }
 } elseif ($Cuda -eq '121') {
     Write-Host "Switching to CUDA 12.1 torch build..."
-    pip install "torch==2.4.0+cu121" "torchvision==0.19.0+cu121" --index-url https://download.pytorch.org/whl/cu121
+    uv pip install --python $python --reinstall "torch==2.4.0+cu121" "torchvision==0.19.0+cu121" --index-url https://download.pytorch.org/whl/cu121
+    if ($LASTEXITCODE -ne 0) { throw "torch CUDA 12.1 install failed" }
 }
-# default (cu118) is already installed via pyproject.toml
+# default (cu118) already installed by uv sync
 
-# ── 5. Windows fix: missing libomp140.x86_64.dll (required by PyTorch) ──────
+# -- 5. Windows fix: missing libomp140.x86_64.dll (required by PyTorch) -------
 Write-Host "Applying Windows fix: downloading libomp140.x86_64.dll..."
-$libompScript = @"
+$libompScript = @'
 import urllib.request, tarfile, io, os, sys
 url = 'https://conda.anaconda.org/conda-forge/win-64/llvm-openmp-14.0.0-h2d74725_0.tar.bz2'
-data = urllib.request.urlopen(url).read()
-dest = os.path.join(sys.prefix, 'Lib', 'site-packages', 'torch', 'lib', 'libomp140.x86_64.dll')
-with tarfile.open(fileobj=io.BytesIO(data), mode='r:bz2') as t:
-    f = t.extractfile('Library/bin/libomp.dll')
-    with open(dest, 'wb') as out:
-        out.write(f.read())
-print('libomp140 installed to:', dest)
-"@
-$libompScript | python
+try:
+    data = urllib.request.urlopen(url, timeout=60).read()
+    dest = os.path.join(sys.prefix, 'Lib', 'site-packages', 'torch', 'lib', 'libomp140.x86_64.dll')
+    with tarfile.open(fileobj=io.BytesIO(data), mode='r:bz2') as t:
+        f = t.extractfile('Library/bin/libomp.dll')
+        with open(dest, 'wb') as out:
+            out.write(f.read())
+    print('libomp140 installed to:', dest)
+except Exception as e:
+    print(f'WARNING: libomp140 fix skipped ({e}). Install manually if torch fails to import.')
+    sys.exit(0)
+'@
+$libompScript | & $python
 
-# ── 6. Windows fix: downgrade optree (>=0.14 crashes with torch 2.4.0) ──────
+# -- 6. Windows fix: downgrade optree (>=0.14 crashes with torch 2.4.0) -------
 Write-Host "Applying Windows fix: pinning optree to 0.13.1..."
-pip install "optree==0.13.1"
+uv pip install --python $python "optree==0.13.1"
+if ($LASTEXITCODE -ne 0) { throw "optree pin failed" }
 
 Write-Host ""
 Write-Host "Done. Activate the environment with:"
-Write-Host "  .\env\Scripts\Activate.ps1"
+Write-Host "  .\.venv\Scripts\Activate.ps1"
 Write-Host "Then run the app with:"
 Write-Host "  python src\main.py"
