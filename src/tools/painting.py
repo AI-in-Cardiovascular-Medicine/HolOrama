@@ -42,10 +42,6 @@ class BrushCursor:
         self._radius_px: int = 10
         self._color: tuple[int, int, int] = (255, 60, 60)
 
-    # ------------------------------------------------------------------
-    # Public properties
-    # ------------------------------------------------------------------
-
     @property
     def radius_px(self) -> int:
         return self._radius_px
@@ -53,10 +49,6 @@ class BrushCursor:
     @property
     def color(self) -> tuple[int, int, int]:
         return self._color
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def update_from_geometry(self, geometry: BrushGeometry) -> None:
         self._radius_px = geometry.radius_px

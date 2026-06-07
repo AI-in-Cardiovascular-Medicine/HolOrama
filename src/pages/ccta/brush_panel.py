@@ -22,8 +22,8 @@ class BrushPanel(QWidget):
     Brush controls embedded below the mask label list.
 
     Signals:
-        brush_enabled_changed(bool)  — Enable checkbox toggled
-        geometry_changed(BrushGeometry) — any control changed while enabled
+        brush_enabled_changed(bool) -> Enable checkbox toggled
+        geometry_changed(BrushGeometry) -> any control changed while enabled
     """
 
     brush_enabled_changed = pyqtSignal(bool)
@@ -93,10 +93,6 @@ class BrushPanel(QWidget):
         root.addWidget(self._controls)
         self._controls.setEnabled(False)
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def set_labels(self, labels: list[int]) -> None:
         """Populate the label combo. Call whenever a mask is loaded or created."""
         self._labels = labels
@@ -122,10 +118,6 @@ class BrushPanel(QWidget):
         color = LABEL_COLORS[idx % len(LABEL_COLORS)]
         return BrushGeometry(label=label, color=color, radius_px=radius)
 
-    # ------------------------------------------------------------------
-    # Slots
-    # ------------------------------------------------------------------
-
     def _on_enabled_toggled(self, checked: bool) -> None:
         self._controls.setEnabled(checked)
         self.brush_enabled_changed.emit(checked)
@@ -137,10 +129,6 @@ class BrushPanel(QWidget):
     def _on_radius_changed(self, value: int) -> None:
         self._radius_lbl.setText(str(value))
         self._emit()
-
-    # ------------------------------------------------------------------
-    # Internal
-    # ------------------------------------------------------------------
 
     def _update_swatch(self) -> None:
         idx = self._combo.currentIndex()

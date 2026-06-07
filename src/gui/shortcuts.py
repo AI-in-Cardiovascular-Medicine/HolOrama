@@ -229,12 +229,11 @@ def _redraw_phase_views(main_window):
     """Refresh display, longitudinal view and gating plot after any phase change."""
     main_window.display.update_display()
     main_window.longitudinal_view.plot_areas()
-    main_window.contour_based_gating.remove_lines()
-    main_window.contour_based_gating.draw_existing_lines(
-        main_window.runtime_data.gated_frames_dia, main_window.diastole_color_plt
-    )
-    main_window.contour_based_gating.draw_existing_lines(
-        main_window.runtime_data.gated_frames_sys, main_window.systole_color_plt
+    main_window.contour_based_gating.redraw_phase_lines(
+        main_window.runtime_data.gated_frames_dia,
+        main_window.diastole_color_plt,
+        main_window.runtime_data.gated_frames_sys,
+        main_window.systole_color_plt,
     )
 
 

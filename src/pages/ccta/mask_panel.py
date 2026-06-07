@@ -116,10 +116,6 @@ class MaskPanel(QWidget):
 
         self._rows: dict[int, _LabelRow] = {}
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def set_labels(self, labels: list[int]) -> None:
         """Populate the label list. Colors are assigned by position in LABEL_COLORS."""
         self._clear_rows()
@@ -149,10 +145,6 @@ class MaskPanel(QWidget):
         root.addWidget(panel)
         root.addStretch(1)  # remaining space below the brush panel
 
-    # ------------------------------------------------------------------
-    # Slots
-    # ------------------------------------------------------------------
-
     def _on_alpha_changed(self, value: int) -> None:
         self._alpha_value_lbl.setText(f'{value}%')
         self.alpha_changed.emit(value / 100.0)
@@ -163,10 +155,6 @@ class MaskPanel(QWidget):
             row._checkbox.setChecked(checked)
             row._checkbox.blockSignals(False)
             self.label_visibility_changed.emit(row.label_value, checked)
-
-    # ------------------------------------------------------------------
-    # Internal
-    # ------------------------------------------------------------------
 
     def _clear_rows(self) -> None:
         for row in self._rows.values():

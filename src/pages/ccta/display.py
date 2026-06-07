@@ -19,12 +19,12 @@ class CctaDisplay(QGraphicsView):
     Coronal/sagittal images are aspect-corrected using voxel_spacing so anatomy
     looks proportional (slice_thickness often differs from pixel_spacing).
 
-    Scroll wheel        → steps the slice axis for this view
-    Left click          → updates the crosshair / cursor in orthogonal axes
-    Left drag (up/down) → zoom in / out (anchored under the cursor)
-    Key F               → reset zoom to fit for all images
-    Right drag          → window/level (horizontal=level, vertical=width)
-    Key R               → reset window/level to defaults
+    Scroll wheel        -> steps the slice axis for this view
+    Left click          -> updates the crosshair / cursor in orthogonal axes
+    Left drag (up/down) -> zoom in / out (anchored under the cursor)
+    Key F               -> reset zoom to fit for all images
+    Right drag          -> window/level (horizontal=level, vertical=width)
+    Key R               -> reset window/level to defaults
 
     cursor_moved(z, y, x) is emitted by scroll and click events.
     set_cursor(z, y, x)   is called by CctaPage to synchronise all views;
@@ -73,10 +73,6 @@ class CctaDisplay(QGraphicsView):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setBackgroundBrush(Qt.GlobalColor.black)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def set_volume(self, volume: np.ndarray, voxel_spacing: tuple[float, float, float]) -> None:
         self.volume = volume
@@ -161,10 +157,6 @@ class CctaDisplay(QGraphicsView):
         self.cursor_x = x
         self._render()
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
     def _rebuild_lut(self) -> None:
         """Rebuild the 256-entry colour LUT respecting current hidden-label state."""
         lut = np.zeros((256, 3), dtype=np.uint8)
@@ -172,10 +164,6 @@ class CctaDisplay(QGraphicsView):
             if 0 < label < 256 and label not in self._hidden_labels:
                 lut[label] = LABEL_COLORS[i % len(LABEL_COLORS)]
         self._mask_lut = lut
-
-    # ------------------------------------------------------------------
-    # Slice extraction
-    # ------------------------------------------------------------------
 
     def _get_slice(self) -> np.ndarray:
         assert self.volume is not None and self.voxel_spacing is not None
@@ -212,10 +200,6 @@ class CctaDisplay(QGraphicsView):
             raw = np.ascontiguousarray(self._mask[::-1, :, self.cursor_x])
             new_h = max(1, round(Z * dz / dy))
             return cv2.resize(raw.astype(np.float32), (Y, new_h), interpolation=cv2.INTER_NEAREST).astype(np.uint8)
-
-    # ------------------------------------------------------------------
-    # Rendering
-    # ------------------------------------------------------------------
 
     def _render(self) -> None:
         if self.volume is None:
@@ -262,11 +246,6 @@ class CctaDisplay(QGraphicsView):
         self._scene.setSceneRect(0, 0, w, h)
         if not self._user_zoomed:
             self.fitInView(self._scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
-        # Cursor lives at z=1000 and stays in the scene; no action needed here.
-
-    # ------------------------------------------------------------------
-    # Coordinate helpers
-    # ------------------------------------------------------------------
 
     def _crosshair_pos(self, img_h: int, img_w: int) -> tuple[int, int]:
         assert self.voxel_spacing is not None and self.volume is not None

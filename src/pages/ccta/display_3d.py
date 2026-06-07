@@ -72,10 +72,6 @@ class CctaViewer3D(QWidget):
         self._actors: dict[int, vtkActor] = {}
         self._hidden_labels: set[int] = set()
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def set_mask(
         self,
         mask: np.ndarray,
@@ -110,10 +106,6 @@ class CctaViewer3D(QWidget):
         self._actors.clear()
         self._vtk_widget.GetRenderWindow().Render()
 
-    # ------------------------------------------------------------------
-    # Render slot
-    # ------------------------------------------------------------------
-
     def _on_render(self) -> None:
         if self._mask is None or not self._labels or self._voxel_spacing is None:
             ErrorMessage(self, 'Load a mask before rendering the 3D view.')
@@ -144,10 +136,6 @@ class CctaViewer3D(QWidget):
         self._render_btn.setText('Render 3D')
         self._render_btn.setEnabled(True)
 
-    # ------------------------------------------------------------------
-    # vtkImageData construction
-    # ------------------------------------------------------------------
-
     def _build_vtk_image(self) -> vtkImageData:
         """
         Convert the (Z, Y, X) uint8 mask to vtkImageData.
@@ -173,10 +161,6 @@ class CctaViewer3D(QWidget):
         img.SetOrigin(0.0, 0.0, 0.0)
         img.GetPointData().SetScalars(vtk_arr)
         return img
-
-    # ------------------------------------------------------------------
-    # Algorithm implementations
-    # ------------------------------------------------------------------
 
     def _render_surface_nets(self, vtk_img: vtkImageData, active: list[tuple[int, int]]) -> None:
         """
@@ -207,7 +191,6 @@ class CctaViewer3D(QWidget):
                 vtkImageData.FIELD_ASSOCIATION_CELLS,
                 'BoundaryLabels',
             )
-            # Keep cells whose component-0 (inside label) equals this label
             try:
                 thresh.SetThresholdFunction(vtkThreshold.THRESHOLD_BETWEEN)
                 thresh.SetLowerThreshold(float(label) - 0.5)
