@@ -71,23 +71,28 @@ The script automatically applies all Windows-specific fixes (missing OpenMP DLL,
 #### Linux / macOS
 
 ```bash
-python3 -m venv env
-source env/bin/activate
-pip install poetry
-poetry install
+pip install uv
+uv sync
+source .venv/bin/activate
 ```
 
-Sometimes the nnUZoo can be problematic to install over GitHub, so as a default it is commented out in `pyproject.toml`. In this case install it separately:
+For developers:
 ```bash
-poetry run pip install git+https://github.com/AI-in-Cardiovascular-Medicine/nnUZoo@main
+uv sync --group dev
 ```
 
-For developers, install the dev dependencies additionally:
+For nnUZoo (automatic segmentation):
 ```bash
-poetry install --with dev
+uv pip install git+https://github.com/AI-in-Cardiovascular-Medicine/nnUZoo@main
 ```
 
-If you plan on using GPU acceleration, make sure to install the required NVIDIA drivers and CUDA toolkit beforehand, e.g.:
+For GPU (CUDA 11.8):
+```bash
+uv pip install --reinstall "torch==2.4.0+cu118" "torchvision==0.19.0+cu118" \
+    --index-url https://download.pytorch.org/whl/cu118
+```
+
+If you plan on using GPU acceleration, install the required NVIDIA drivers and CUDA toolkit beforehand:
 ```bash
 sudo apt update && sudo apt upgrade
 sudo apt install build-essential dkms
@@ -97,8 +102,6 @@ nvidia-smi  # verify driver installation
 sudo apt install nvidia-cuda-toolkit
 ```
 
-The program was tested on Ubuntu 22.04.5 with Python 3.10.12.
-
 #### Windows — step by step
 
 ##### 1. Install Visual C++ Redistributable
@@ -107,11 +110,10 @@ Download and install the [Visual C++ Redistributable 2022 (x64)](https://aka.ms/
 
 ##### 2. Base install
 
-```bash
-python -m venv env
-.\env\Scripts\Activate.ps1
-pip install poetry
-poetry install
+```powershell
+pip install uv
+uv sync
+.\.venv\Scripts\Activate.ps1
 ```
 
 ##### 3. Fix missing LLVM OpenMP runtime (`libomp140.x86_64.dll`)
@@ -139,25 +141,16 @@ print('Done:', dest)
 `optree >= 0.14` is incompatible with `torch 2.4.0` and causes a C-level access violation. Downgrade it:
 
 ```bash
-pip install "optree==0.13.1"
+uv pip install "optree==0.13.1"
 ```
 
-##### 5. Fix torch + tensorflow DLL conflict
-
-When both torch and tensorflow are loaded in the same process, their OpenMP runtimes conflict on Windows. The fix is already applied in `src/main.py` via:
-
-```python
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
-```
-
-This must appear before any torch or tensorflow imports.
-
-##### 6. GPU acceleration (CUDA)
+##### 5. GPU acceleration (CUDA)
 
 Install the CUDA-enabled torch build matching your driver. With CUDA driver ≤ 12.0 (check with `nvidia-smi`), use the CUDA 11.8 build:
 
 ```bash
-pip install "torch==2.4.0+cu118" "torchvision==0.19.0+cu118" --index-url https://download.pytorch.org/whl/cu118
+uv pip install --reinstall "torch==2.4.0+cu118" "torchvision==0.19.0+cu118" \
+    --index-url https://download.pytorch.org/whl/cu118
 ```
 
 After installing the CUDA build, re-run the `libomp140.x86_64.dll` script from step 3.
