@@ -26,11 +26,11 @@ from domain.all_types import ContourType, SegmentationTool
 
 
 def init_ccta_shortcuts(ccta_page):
-    _wcs('R', ccta_page, ccta_page.reset_windowing)
-    _wcs('F', ccta_page, ccta_page.reset_zoom)
+    _widget_children_shortcut('R', ccta_page, ccta_page.reset_windowing)
+    _widget_children_shortcut('F', ccta_page, ccta_page.reset_zoom)
 
 
-def _wcs(key, parent, slot):
+def _widget_children_shortcut(key, parent, slot):
     """Create a QShortcut scoped to parent and its children only."""
     sc = QShortcut(QKeySequence(key), parent, slot)
     sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
@@ -38,9 +38,9 @@ def _wcs(key, parent, slot):
 
 
 def init_shortcuts(main_window):
-    # View — scoped so R/F don't conflict with CCTA shortcuts
-    _wcs('R', main_window, partial(reset_windowing, main_window))
-    _wcs('F', main_window, partial(reset_zoom, main_window))
+    # scoped so R/F don't conflict with CCTA shortcuts
+    _widget_children_shortcut('R', main_window, partial(reset_windowing, main_window))
+    _widget_children_shortcut('F', main_window, partial(reset_zoom, main_window))
     # General
     QShortcut(QKeySequence('J'), main_window, partial(jiggle_frame, main_window))
     QShortcut(QKeySequence('Escape'), main_window, partial(stop_all, main_window))
@@ -171,23 +171,6 @@ def init_menu(main_window, ccta_page):
     help_menu.addAction('About', partial(open_url, main_window))
 
 
-def is_gating_display_active(main_window):
-    """
-    Checks if an image is displayed in the gating display box.
-
-    Parameters:
-        main_window: The main window containing the gating display.
-
-    Returns:
-        bool: True if the gating display contains an image, False otherwise.
-    """
-    return (
-        main_window.gating_display is not None
-        and main_window.gating_display.fig.axes  # Check if axes exist
-        and any(ax.has_data() for ax in main_window.gating_display.fig.axes)  # Check if any axis has data
-    )
-
-
 def remove_contours(main_window):
     if main_window.image_displayed:
         dialog = FrameRangeDialog(main_window)
@@ -239,20 +222,26 @@ def reset_phases(main_window):
             main_window.runtime_data.gated_frames_sys.sort()
             main_window.status_bar.showMessage(main_window.waiting_status)
 
-            main_window.contour_based_gating.remove_lines()
-            main_window.contour_based_gating.draw_existing_lines(
-                main_window.runtime_data.gated_frames_dia, main_window.diastole_color_plt
-            )
-            main_window.contour_based_gating.draw_existing_lines(
-                main_window.runtime_data.gated_frames_sys, main_window.systole_color_plt
-            )  # somehow only updates after first user input
+            _redraw_phase_views(main_window)
 
-            main_window.display.update_display()
+
+def _redraw_phase_views(main_window):
+    """Refresh display, longitudinal view and gating plot after any phase change."""
+    main_window.display.update_display()
+    main_window.longitudinal_view.plot_areas()
+    main_window.contour_based_gating.remove_lines()
+    main_window.contour_based_gating.draw_existing_lines(
+        main_window.runtime_data.gated_frames_dia, main_window.diastole_color_plt
+    )
+    main_window.contour_based_gating.draw_existing_lines(
+        main_window.runtime_data.gated_frames_sys, main_window.systole_color_plt
+    )
 
 
 def switch_phases(main_window):
-    # Check if gating display is active; if not, show a message and return
-    if not is_gating_display_active(main_window):
+    if main_window.runtime_data.metadata.get('modality') == 'OCT':
+        return
+    if not _is_gating_display_active(main_window):
         ErrorMessage(main_window, 'Please extract diastolic and systolic frames first.')
         return
 
@@ -288,16 +277,24 @@ def switch_phases(main_window):
         main_window.runtime_data.gated_frames_sys.sort()
         main_window.status_bar.showMessage(main_window.waiting_status)
 
-        # Call draw_existing_lines on the ContourBasedGating instance, but first remove all existing lines to live update plot
-        main_window.contour_based_gating.remove_lines()
-        main_window.contour_based_gating.draw_existing_lines(
-            main_window.runtime_data.gated_frames_dia, main_window.diastole_color_plt
-        )
-        main_window.contour_based_gating.draw_existing_lines(
-            main_window.runtime_data.gated_frames_sys, main_window.systole_color_plt
-        )
+        _redraw_phase_views(main_window)
 
-        main_window.display.update_display()
+
+def _is_gating_display_active(main_window):
+    """
+    Checks if an image is displayed in the gating display box.
+
+    Parameters:
+        main_window: The main window containing the gating display.
+
+    Returns:
+        bool: True if the gating display contains an image, False otherwise.
+    """
+    return (
+        main_window.gating_display is not None
+        and main_window.gating_display.fig.axes  # Check if axes exist
+        and any(ax.has_data() for ax in main_window.gating_display.fig.axes)  # Check if any axis has data
+    )
 
 
 def show_metadata(main_window):
@@ -369,7 +366,7 @@ def stop_all(main_window):
 def delete_contour(main_window):
     if main_window.image_displayed:
         key = main_window.display.contour_key()
-        ci = main_window.display.active_contour_index
+        c_idx = main_window.display.active_contour_index
 
         if not hasattr(main_window, 'tmp_contours'):
             main_window.runtime_data.tmp_contours = {}
@@ -378,42 +375,43 @@ def delete_contour(main_window):
         fd = main_window.runtime_data.frame_data_dct.get(frame)
         if fd:
             contour_obj = getattr(fd, key, None)
-            if contour_obj and contour_obj.contours and ci < len(contour_obj.contours):
-                c = contour_obj.contours[ci]
+            if contour_obj and contour_obj.contours and c_idx < len(contour_obj.contours):
+                c = contour_obj.contours[c_idx]
                 xlist = list(c[0]) if c and c[0] else []
                 ylist = list(c[1]) if c and len(c) > 1 else []
-                start = contour_obj.start_coords[ci] if len(contour_obj.start_coords) > ci else []
-                end = contour_obj.end_coords[ci] if len(contour_obj.end_coords) > ci else []
-                closed = contour_obj.closed[ci] if len(contour_obj.closed) > ci else True
+                start = contour_obj.start_coords[c_idx] if len(contour_obj.start_coords) > c_idx else []
+                end = contour_obj.end_coords[c_idx] if len(contour_obj.end_coords) > c_idx else []
+                closed = contour_obj.closed[c_idx] if len(contour_obj.closed) > c_idx else True
             else:
                 xlist, ylist, start, end, closed = [], [], [], [], True
 
-            main_window.runtime_data.tmp_contours[key] = (ci, xlist, ylist, start, end, closed)
+            main_window.runtime_data.tmp_contours[key] = (c_idx, xlist, ylist, start, end, closed)
 
-            if contour_obj and ci < len(contour_obj.contours):
-                del contour_obj.contours[ci]
-                if ci < len(contour_obj.start_coords):
-                    del contour_obj.start_coords[ci]
-                if ci < len(contour_obj.end_coords):
-                    del contour_obj.end_coords[ci]
-                if ci < len(contour_obj.closed):
-                    del contour_obj.closed[ci]
+            if contour_obj and c_idx < len(contour_obj.contours):
+                del contour_obj.contours[c_idx]
+                if c_idx < len(contour_obj.start_coords):
+                    del contour_obj.start_coords[c_idx]
+                if c_idx < len(contour_obj.end_coords):
+                    del contour_obj.end_coords[c_idx]
+                if c_idx < len(contour_obj.closed):
+                    del contour_obj.closed[c_idx]
 
                 # Update finalized_splines
                 lst = main_window.display.finalized_splines.get(key)
-                if lst and ci < len(lst):
-                    del lst[ci]
+                if lst and c_idx < len(lst):
+                    del lst[c_idx]
 
                 # Clamp active index
                 remaining = len(contour_obj.contours)
                 if remaining > 0:
-                    main_window.display.active_contour_index = min(ci, remaining - 1)
+                    main_window.display.active_contour_index = min(c_idx, remaining - 1)
                 else:
                     main_window.display.active_contour_index = 0
 
         main_window.display.display_image(update_contours=True)
 
 
+# TODO: Not working as intended
 def undo_delete(main_window):
     if main_window.image_displayed:
         key = main_window.display.contour_key()
