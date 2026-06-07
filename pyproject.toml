@@ -1,6 +1,6 @@
 [project]
 name = "aivus"
-version = "1.5.0"
+version = "1.6.0"
 description = "AIVUS: AIVUS-CAA (coronary artery anomalies) AIVUS-OCT (optical coherence tomography)"
 authors = [
     { name = "yungselm" },

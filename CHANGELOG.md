@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.6.0] - 2026-06-07
+
+Brush tool for manual mask editing, uv migration, and gating plot interactivity fix.
+
+### Added
+- Brush tool for manual mask painting on the intravascular page; radius and color configurable
+
+### Changed
+- Switched dependency manager from Poetry to uv and `pyproject.toml` converted to new format
+
+### Fixed
+- Gating plot click-to-add and drag-to-move lines broken in PyQt6 due to `cursor().shape() != 0` always evaluating `True` (strict enum vs. bare int) is now replaced with `toolbar.mode` check
+- Missing segmentation model file no longer silently swallowed -> shows an error dialog pointing to `config.yaml`
+
 ## [1.5.0] - 2026-06-03
 
 Initial CCTA module with orthogonal viewer, 3D mesh renderer, and mask overlay.
@@ -174,6 +188,7 @@ Now runs on PyQt6
 - Declared first stable release (after paper publication).
 - Updated citation from medRxiv to *Computer Methods and Programs in Biomedicine*.
 
+[1.6.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.4.0...v1.5.0
 [1.3.1]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.2.1...v1.3.0
