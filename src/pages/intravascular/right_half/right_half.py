@@ -97,7 +97,7 @@ class RightHalf:
         segment_button.setToolTip('Run deep learning based segmentation of lumen')
         segment_button.clicked.connect(partial(segment, mw))
         if oct:
-            right_button = QPushButton('Tag every X mm')
+            right_button = QPushButton('Tag Frames by Distance')
             right_button.setToolTip('Tag frames at regular distance intervals within a frame range')
             right_button.clicked.connect(partial(tag_frames_by_distance, mw))
         else:
@@ -141,22 +141,27 @@ def tag_frames_by_distance(main_window):
     if not main_window.image_displayed:
         return
     dialog = FrameRangeDialog(main_window, step=True)
-    dialog.setWindowTitle('Tag every X mm')
+    dialog.setWindowTitle('Tag Frames by Distance')
     if not dialog.exec():
         return
 
     lower_limit, upper_limit = dialog.getInputs()
-    step_mm = dialog.getStep()
-    if step_mm <= 0.0:
-        return
 
-    speed = main_window.runtime_data.metadata['pullback_speed']  # mm/s
-    frame_rate = main_window.runtime_data.metadata['frame_rate']  # frames/s
-    mm_per_frame = speed / frame_rate
-    step_frames = step_mm / mm_per_frame
+    if dialog.isStepByMm():
+        step_mm = dialog.getStepMm()
+        if step_mm <= 0.0:
+            return
+        speed = main_window.runtime_data.metadata['pullback_speed']  # mm/s
+        frame_rate = main_window.runtime_data.metadata['frame_rate']  # frames/s
+        step_frames = step_mm / (speed / frame_rate)
+    else:
+        step_frames = dialog.getStepFrames()
+        if step_frames <= 0:
+            return
 
-    for idx in range(lower_limit, upper_limit):
+    for idx in main_window.runtime_data.tagged_frames:
         main_window.runtime_data.frame_data_dct[idx].phase = '-'
+    main_window.runtime_data.tagged_frames.clear()
 
     i = 0
     while True:

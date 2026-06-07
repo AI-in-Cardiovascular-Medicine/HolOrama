@@ -18,6 +18,7 @@ from PyQt6.QtCore import Qt
 from pages.ccta.display import CctaDisplay
 from pages.ccta.display_3d import CctaViewer3D
 from pages.ccta.mask_panel import MaskPanel
+from pages.ccta.brush_panel import BrushPanel
 from input_output.input.ccta_io import read_ct_volume, read_nifti_volume, read_mask_volume
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from gui.active_page import ActivePage
@@ -59,23 +60,29 @@ class CctaPage(QWidget):
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
 
-        # Mask control panel
+        # Right panel: Mask labels (top, stretches) + Brush controls (bottom, fixed)
         self._mask_tab = MaskPanel()
         self._mask_tab.alpha_changed.connect(self._on_mask_alpha_changed)
         self._mask_tab.label_visibility_changed.connect(self._on_label_visibility_changed)
+
+        self._brush_panel = BrushPanel()
+        self._brush_panel.brush_enabled_changed.connect(self._on_brush_enabled_changed)
+        self._brush_panel.geometry_changed.connect(self._on_brush_geometry_changed)
+        self._mask_tab.set_brush_panel(self._brush_panel)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(views)
         splitter.addWidget(self._mask_tab)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 0)
-        splitter.setSizes([10000, 210])
+        splitter.setSizes([10000, 220])
 
         QVBoxLayout(self).addWidget(splitter)
 
         for display in (self._axial, self._coronal, self._sagittal):
             display.cursor_moved.connect(self._on_cursor_moved)
             display.windowing_changed.connect(self._on_windowing_changed)
+            display.mask_painted.connect(self._on_mask_painted)
 
     def shutdown(self) -> None:
         self._3d_viewer.shutdown()
@@ -168,6 +175,7 @@ class CctaPage(QWidget):
 
         Z, Y, X = volume.shape
         page._update_labels(Z // 2, Y // 2, X // 2, Z, Y, X)
+        page._initialize_empty_mask()
         fmt = 'NIfTI' if mode == 'nifti' else 'CCTA'
         page.status_bar.showMessage(f'{fmt}: {Z} slices  |  pixel spacing {dy:.3f} mm  |  slice thickness {dz:.3f} mm')
 
@@ -210,10 +218,43 @@ class CctaPage(QWidget):
         for display in (self._axial, self._coronal, self._sagittal):
             display.set_mask(mask, self.data.labels)
         self._mask_tab.set_labels(self.data.labels)
+        self._brush_panel.set_labels(self.data.labels)
         if self.data.voxel_spacing is not None:
             self._3d_viewer.set_mask(mask, self.data.labels, self.data.voxel_spacing)
 
         self.status_bar.showMessage(f'Mask loaded: {len(self.data.labels)} label(s) — {self.data.labels}')
+
+    def _on_brush_enabled_changed(self, enabled: bool) -> None:
+        if enabled:
+            geo = self._brush_panel.current_geometry()
+            if geo is not None:
+                for d in (self._axial, self._coronal, self._sagittal):
+                    d.enable_brush(geo)
+        else:
+            for d in (self._axial, self._coronal, self._sagittal):
+                d.disable_brush()
+
+    def _initialize_empty_mask(self, n_labels: int = 4) -> None:
+        """Create a blank mask for the loaded volume so the brush works without a mask file."""
+        assert self.data.volume is not None
+        Z, Y, X = self.data.volume.shape
+        mask = np.zeros((Z, Y, X), dtype=np.uint8)
+        self.data.mask = mask
+        self.data.labels = list(range(1, n_labels + 1))
+        for display in (self._axial, self._coronal, self._sagittal):
+            display.set_mask(mask, self.data.labels)
+        self._mask_tab.set_labels(self.data.labels)
+        self._brush_panel.set_labels(self.data.labels)
+
+    def _on_brush_geometry_changed(self, geometry) -> None:
+        for d in (self._axial, self._coronal, self._sagittal):
+            d.update_brush(geometry)
+
+    def _on_mask_painted(self) -> None:
+        sender_display = self.sender()
+        for d in (self._axial, self._coronal, self._sagittal):
+            if d is not sender_display:
+                d._render()
 
     def _on_mask_alpha_changed(self, alpha: float) -> None:
         for display in (self._axial, self._coronal, self._sagittal):

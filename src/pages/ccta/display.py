@@ -5,6 +5,7 @@ from PyQt6.QtCore import Qt, QPointF, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap, QPen, QColor
 
 from domain.ccta_display_types import LABEL_COLORS, DEFAULT_MASK_ALPHA, DEFAULT_CT_LEVEL, DEFAULT_CT_WIDTH
+from tools.painting import BrushGeometry, BrushCursor
 
 _CROSSHAIR_COLOR = QColor(255, 255, 0)
 _ZOOM_SENSITIVITY = 0.01
@@ -18,12 +19,12 @@ class CctaDisplay(QGraphicsView):
     Coronal/sagittal images are aspect-corrected using voxel_spacing so anatomy
     looks proportional (slice_thickness often differs from pixel_spacing).
 
-    Scroll wheel        → steps the slice axis for this view
-    Left click          → updates the crosshair / cursor in orthogonal axes
-    Left drag (up/down) → zoom in / out (anchored under the cursor)
-    Key F               → reset zoom to fit for all images
-    Right drag          → window/level (horizontal=level, vertical=width)
-    Key R               → reset window/level to defaults
+    Scroll wheel        -> steps the slice axis for this view
+    Left click          -> updates the crosshair / cursor in orthogonal axes
+    Left drag (up/down) -> zoom in / out (anchored under the cursor)
+    Key F               -> reset zoom to fit for all images
+    Right drag          -> window/level (horizontal=level, vertical=width)
+    Key R               -> reset window/level to defaults
 
     cursor_moved(z, y, x) is emitted by scroll and click events.
     set_cursor(z, y, x)   is called by CctaPage to synchronise all views;
@@ -32,6 +33,7 @@ class CctaDisplay(QGraphicsView):
 
     cursor_moved = pyqtSignal(int, int, int)  # z, y, x
     windowing_changed = pyqtSignal(int, int)  # level, width
+    mask_painted = pyqtSignal()  # emitted after any brush stroke modifies the mask
 
     def __init__(self, orientation: str, parent=None) -> None:
         super().__init__(parent)
@@ -57,16 +59,20 @@ class CctaDisplay(QGraphicsView):
         self._hidden_labels: set[int] = set()
         self._mask_alpha: float = DEFAULT_MASK_ALPHA
 
+        self._brush_mode: bool = False
+        self._brush_geometry: BrushGeometry | None = None
+        self._brush_cursor: BrushCursor = BrushCursor()
+        self._brush_painting: bool = False
+
+        # Rendered items replaced each frame so we never need scene.clear().
+        self._render_items: list = []
+
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setBackgroundBrush(Qt.GlobalColor.black)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def set_volume(self, volume: np.ndarray, voxel_spacing: tuple[float, float, float]) -> None:
         self.volume = volume
@@ -94,6 +100,24 @@ class CctaDisplay(QGraphicsView):
         self._mask_labels = []
         self._hidden_labels = set()
         self._render()
+
+    def enable_brush(self, geometry: BrushGeometry) -> None:
+        self._brush_geometry = geometry
+        self._brush_mode = True
+        self._brush_cursor.update_from_geometry(geometry)
+        self.setCursor(self._brush_cursor.make_cursor(self.transform().m11()))
+
+    def disable_brush(self) -> None:
+        self._brush_mode = False
+        self._brush_painting = False
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+
+    def update_brush(self, geometry: BrushGeometry) -> None:
+        """Update geometry and refresh the cursor pixmap (called on slider/combo change)."""
+        self._brush_geometry = geometry
+        self._brush_cursor.update_from_geometry(geometry)
+        if self._brush_mode:
+            self.setCursor(self._brush_cursor.make_cursor(self.transform().m11()))
 
     def set_mask_alpha(self, alpha: float) -> None:
         self._mask_alpha = max(0.0, min(1.0, alpha))
@@ -133,10 +157,6 @@ class CctaDisplay(QGraphicsView):
         self.cursor_x = x
         self._render()
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
     def _rebuild_lut(self) -> None:
         """Rebuild the 256-entry colour LUT respecting current hidden-label state."""
         lut = np.zeros((256, 3), dtype=np.uint8)
@@ -144,10 +164,6 @@ class CctaDisplay(QGraphicsView):
             if 0 < label < 256 and label not in self._hidden_labels:
                 lut[label] = LABEL_COLORS[i % len(LABEL_COLORS)]
         self._mask_lut = lut
-
-    # ------------------------------------------------------------------
-    # Slice extraction
-    # ------------------------------------------------------------------
 
     def _get_slice(self) -> np.ndarray:
         assert self.volume is not None and self.voxel_spacing is not None
@@ -185,13 +201,16 @@ class CctaDisplay(QGraphicsView):
             new_h = max(1, round(Z * dz / dy))
             return cv2.resize(raw.astype(np.float32), (Y, new_h), interpolation=cv2.INTER_NEAREST).astype(np.uint8)
 
-    # ------------------------------------------------------------------
-    # Rendering
-    # ------------------------------------------------------------------
-
     def _render(self) -> None:
         if self.volume is None:
             return
+
+        # Remove only the image + crosshair items from the previous frame.
+        # The brush cursor is a persistent item (z=1000) and is never cleared here.
+        for item in self._render_items:
+            self._scene.removeItem(item)
+        self._render_items.clear()
+
         img = self._get_slice()
         lo = self.window_level - self.window_width / 2
         hi = self.window_level + self.window_width / 2
@@ -202,7 +221,7 @@ class CctaDisplay(QGraphicsView):
         if mask_slice is not None and self._mask_lut is not None:
             rgb = np.stack([gray, gray, gray], axis=-1).astype(np.float32)
             colors = self._mask_lut[mask_slice]  # (H, W, 3)
-            has_label = np.any(colors > 0, axis=-1)  # True where label is visible
+            has_label = np.any(colors > 0, axis=-1)
             if has_label.any():
                 rgb[has_label] = (1 - self._mask_alpha) * rgb[has_label] + self._mask_alpha * colors[has_label].astype(
                     np.float32
@@ -216,22 +235,17 @@ class CctaDisplay(QGraphicsView):
             q_img = QImage(self._render_buf.data, w, h, w, QImage.Format.Format_Grayscale8)  # type: ignore[call-overload]
 
         pixmap = QPixmap.fromImage(q_img)
-        self._scene.clear()
-        self._scene.addPixmap(pixmap)
+        self._render_items.append(self._scene.addPixmap(pixmap))
 
         ch_row, ch_col = self._crosshair_pos(h, w)
         pen = QPen(_CROSSHAIR_COLOR)
         pen.setCosmetic(True)
-        self._scene.addLine(0, ch_row, w, ch_row, pen)
-        self._scene.addLine(ch_col, 0, ch_col, h, pen)
+        self._render_items.append(self._scene.addLine(0, ch_row, w, ch_row, pen))
+        self._render_items.append(self._scene.addLine(ch_col, 0, ch_col, h, pen))
 
         self._scene.setSceneRect(0, 0, w, h)
         if not self._user_zoomed:
             self.fitInView(self._scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
-
-    # ------------------------------------------------------------------
-    # Coordinate helpers
-    # ------------------------------------------------------------------
 
     def _crosshair_pos(self, img_h: int, img_w: int) -> tuple[int, int]:
         assert self.voxel_spacing is not None and self.volume is not None
@@ -263,6 +277,37 @@ class CctaDisplay(QGraphicsView):
             z = max(0, min((Z - 1) - row_orig, Z - 1))
             return z, max(0, min(col, Y - 1)), self.cursor_x
 
+    def _paint_at_scene(self, scene_row: float, scene_col: float) -> None:
+        """Paint a brush disc at (scene_row, scene_col) into the 3-D mask."""
+        if self._mask is None or self._brush_geometry is None:
+            return
+        assert self.volume is not None and self.voxel_spacing is not None
+        dz, dy, dx = self.voxel_spacing
+        Z, Y, X = self.volume.shape
+        r = self._brush_geometry.radius_px
+
+        if self.orientation == 'axial':
+            h, w = Y, X
+        elif self.orientation == 'coronal':
+            h = max(1, round(Z * dz / dx))
+            w = X
+        else:  # sagittal
+            h = max(1, round(Z * dz / dy))
+            w = Y
+
+        label = self._brush_geometry.label
+        for dr in range(-r, r + 1):
+            for dc in range(-r, r + 1):
+                if dr * dr + dc * dc <= r * r:
+                    row = int(scene_row) + dr
+                    col = int(scene_col) + dc
+                    if 0 <= row < h and 0 <= col < w:
+                        z, y, x = self._scene_to_cursor(row, col)
+                        self._mask[z, y, x] = label
+
+        self._render()
+        self.mask_painted.emit()
+
     # ------------------------------------------------------------------
     # Qt event handlers
     # ------------------------------------------------------------------
@@ -287,6 +332,14 @@ class CctaDisplay(QGraphicsView):
 
     def mousePressEvent(self, event) -> None:
         self.setFocus()
+        if self._brush_mode and event.button() == Qt.MouseButton.LeftButton:
+            self._brush_painting = True
+            pos = self.mapToScene(event.position().toPoint())
+            sr = self._scene.sceneRect()
+            cx = max(sr.left(), min(pos.x(), sr.right()))
+            cy = max(sr.top(), min(pos.y(), sr.bottom()))
+            self._paint_at_scene(cy, cx)
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             self._press_pos = event.position()
             self._mouse_y = event.position().y()
@@ -297,6 +350,25 @@ class CctaDisplay(QGraphicsView):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
+        if self._brush_mode:
+            pos = self.mapToScene(event.position().toPoint())
+            # Clamp to image bounds so the cursor stays visible even in letterbox margins
+            sr = self._scene.sceneRect()
+            cx = max(sr.left(), min(pos.x(), sr.right()))
+            cy = max(sr.top(), min(pos.y(), sr.bottom()))
+            if event.buttons() == Qt.MouseButton.LeftButton and self._brush_painting:
+                self._paint_at_scene(cy, cx)
+            elif event.buttons() == Qt.MouseButton.RightButton:
+                dx = event.position().x() - self._mouse_x
+                dy_px = event.position().y() - self._mouse_y
+                self._mouse_x = event.position().x()
+                self._mouse_y = event.position().y()
+                self.window_level = int(self.window_level + dx)
+                self.window_width = max(1, int(self.window_width + dy_px))
+                self._render()
+                self.windowing_changed.emit(self.window_level, self.window_width)
+            return
+
         if event.buttons() == Qt.MouseButton.LeftButton:
             delta_y = self._mouse_y - event.position().y()
             self._mouse_y = event.position().y()
@@ -324,9 +396,14 @@ class CctaDisplay(QGraphicsView):
     def mouseDoubleClickEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             self.reset_zoom()
+            if self._brush_mode:
+                self.setCursor(self._brush_cursor.make_cursor(self.transform().m11()))
         super().mouseDoubleClickEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
+        if self._brush_mode and event.button() == Qt.MouseButton.LeftButton:
+            self._brush_painting = False
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             if not self._is_dragging and self.volume is not None:
                 pos = self.mapToScene(event.position().toPoint())

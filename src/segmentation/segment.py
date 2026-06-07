@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -14,6 +15,15 @@ def segment(main_window):
     main_window.status_bar.showMessage('Segmenting frames...')
     if not main_window.image_displayed:
         ErrorMessage(main_window, 'Cannot perform automatic segmentation before reading input file')
+        main_window.status_bar.showMessage(main_window.waiting_status)
+        return
+
+    model_path = Path(main_window.config.segmentation.model_file)
+    if not model_path.exists():
+        ErrorMessage(
+            main_window,
+            f'Segmentation model not found:\n{model_path}\n\nPlease set segmentation.model_file in config.yaml.',
+        )
         main_window.status_bar.showMessage(main_window.waiting_status)
         return
 

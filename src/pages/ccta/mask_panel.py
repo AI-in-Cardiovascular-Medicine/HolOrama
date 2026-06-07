@@ -103,6 +103,8 @@ class MaskPanel(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setMinimumHeight(50)
+        scroll.setMaximumHeight(240)  # ~8 label rows; scrollbar appears beyond that
 
         self._rows_widget = QWidget()
         self._rows_layout = QVBoxLayout(self._rows_widget)
@@ -110,13 +112,9 @@ class MaskPanel(QWidget):
         self._rows_layout.setSpacing(0)
         self._rows_layout.addStretch()
         scroll.setWidget(self._rows_widget)
-        root.addWidget(scroll, 1)
+        root.addWidget(scroll)  # no stretch — height capped above
 
         self._rows: dict[int, _LabelRow] = {}
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def set_labels(self, labels: list[int]) -> None:
         """Populate the label list. Colors are assigned by position in LABEL_COLORS."""
@@ -137,9 +135,15 @@ class MaskPanel(QWidget):
         """Return the current user-defined name for every label."""
         return {label: row.name for label, row in self._rows.items()}
 
-    # ------------------------------------------------------------------
-    # Slots
-    # ------------------------------------------------------------------
+    def set_brush_panel(self, panel: 'QWidget') -> None:
+        """Attach a widget below the label scroll area (called once at setup)."""
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFrameShadow(QFrame.Shadow.Sunken)
+        root: QVBoxLayout = self.layout()  # type: ignore[assignment]
+        root.addWidget(sep)
+        root.addWidget(panel)
+        root.addStretch(1)  # remaining space below the brush panel
 
     def _on_alpha_changed(self, value: int) -> None:
         self._alpha_value_lbl.setText(f'{value}%')
@@ -151,10 +155,6 @@ class MaskPanel(QWidget):
             row._checkbox.setChecked(checked)
             row._checkbox.blockSignals(False)
             self.label_visibility_changed.emit(row.label_value, checked)
-
-    # ------------------------------------------------------------------
-    # Internal
-    # ------------------------------------------------------------------
 
     def _clear_rows(self) -> None:
         for row in self._rows.values():

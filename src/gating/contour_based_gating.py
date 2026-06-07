@@ -22,10 +22,6 @@ class ContourBasedGating:
         self.default_line_color = 'grey'
         self.default_linestyle = (0, (1, 3))
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
     def _draw(self):
         """Redraw the embedded gating canvas without touching any other figure."""
         try:
@@ -38,9 +34,15 @@ class ContourBasedGating:
         """True once plot_data() has been called and axes exist."""
         return hasattr(self, 'ax') and hasattr(self, 'fig')
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+    def _toolbar_active(self) -> bool:
+        """Return True when the matplotlib toolbar has zoom/pan mode active.
+
+        Replaces the old cursor().shape() != 0 check, which broke in PyQt6
+        because Qt.CursorShape enums are strict Python enums and never compare
+        equal to bare integers.
+        """
+        toolbar = getattr(self.main_window.gating_display, 'toolbar', None)
+        return toolbar is not None and bool(toolbar.mode)
 
     def __call__(self):
         self.main_window.status_bar.showMessage('Contour-based gating...')
@@ -138,7 +140,7 @@ class ContourBasedGating:
         return True
 
     def on_click(self, event):
-        if self.fig.canvas.cursor().shape() != 0:
+        if self._toolbar_active():
             return
         if event.button is MouseButton.LEFT and event.inaxes:
             new_line = True
@@ -181,7 +183,7 @@ class ContourBasedGating:
                 toggle_systolic_frame(self.main_window, False, drag=True)
 
     def on_release(self, event):
-        if self.fig.canvas.cursor().shape() != 0:
+        if self._toolbar_active():
             return
         if event.button is MouseButton.LEFT and event.inaxes:
             if self.tmp_phase == 'D':
@@ -193,7 +195,7 @@ class ContourBasedGating:
         self.tmp_phase = None
 
     def on_motion(self, event):
-        if self.fig.canvas.cursor().shape() != 0:
+        if self._toolbar_active():
             return
         if event.button is MouseButton.LEFT and self.selected_line:
             self.selected_line.set_xdata(np.array([event.xdata]))
@@ -226,6 +228,13 @@ class ContourBasedGating:
         for line in self.vertical_lines:
             line.remove()
         self.vertical_lines = []
+        self._draw()
+
+    def redraw_phase_lines(self, frames_dia, color_dia, frames_sys, color_sys):
+        """Remove all phase lines, redraw them, and flush the canvas in one step."""
+        self.remove_lines()
+        self.draw_existing_lines(frames_dia, color_dia)
+        self.draw_existing_lines(frames_sys, color_sys)
         self._draw()
 
     def update_color(self, color=None):

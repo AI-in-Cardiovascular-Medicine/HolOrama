@@ -17,6 +17,7 @@ from domain.all_types import (
 )
 from domain.mask_types import MASK_ALPHA, MASK_SPECS
 from tools.geometry import Point, Spline, SplineGeometry, OpenSplineGeometry, OpenSpline, get_qt_pen
+from tools.painting import BrushCursor
 from pages.intravascular.utils.metrics import MetricsMixin
 from tools.geometry import Marker
 from segmentation.segment import downsample
@@ -125,8 +126,17 @@ class Display(QGraphicsView, MetricsMixin):
         self._display_updating: bool = False
         #####################################################################################################
 
+        # Brush tool state
+        self._brush_active: bool = False
+        self._brush_add: np.ndarray | None = None  # (H, W) bool – pixels to add
+        self._brush_erase: np.ndarray | None = None  # (H, W) bool – pixels to erase
+        self._brush_cursor: BrushCursor = BrushCursor()
+        self._base_mask_cache: np.ndarray | None = None  # cached contour-derived mask
+        self._base_mask_cache_frame: int = -1
+
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)  # ensures keyPressEvent fires after a click
 
     def reset(self) -> None:
         """Reset all per-image interaction state. Called before a new image is loaded."""
@@ -157,6 +167,11 @@ class Display(QGraphicsView, MetricsMixin):
         self.angle_clicks = []
         self.window_level = self.initial_window_level
         self.window_width = self.initial_window_width
+        self._brush_active = False
+        self._brush_add = None
+        self._brush_erase = None
+        self._base_mask_cache = None
+        self._base_mask_cache_frame = -1
         self.setCursor(Qt.CursorShape.ArrowCursor)
 
     # initialize data from main_window data
@@ -335,6 +350,8 @@ class Display(QGraphicsView, MetricsMixin):
     def set_frame(self, value):
         self.frame = value
         self.active_contour_index = 0
+        self._brush_add = None  # discard unpainted strokes on frame switch
+        self._brush_erase = None
         self._interrupt_drawing_mode()
         if self.measure_index is not None:
             self.stop_measure(self.measure_index)
@@ -519,6 +536,7 @@ class Display(QGraphicsView, MetricsMixin):
 
     def update_display(self):
         """Syntax sugar method to update the entire display after changes to contours or image."""
+        self._base_mask_cache = None  # contours may have changed; stale cache must be dropped
         self.display_image(update_image=True, update_contours=True, update_phase=True)
 
     def _remove_non_image_items(self, image_types):
@@ -567,16 +585,35 @@ class Display(QGraphicsView, MetricsMixin):
         """
         Alpha-blend per-label segmentation colours into the display image array.
         Returns (rgb_array, bytes_per_line, QImage_format).
+
+        The contour-derived base mask is cached so brush painting (which calls
+        display_image many times per stroke) does not re-run contours_to_mask on
+        every mouse move.  The cache is invalidated by update_display().
         """
         try:
             assert self.images is not None
-            frame_mask = contours_to_mask(
-                self.images[self.frame : self.frame + 1],
-                [self.frame],
-                self.main_window.runtime_data.frame_data_dct,
-            )[
-                0
-            ]  # (H, W) uint8
+            # Cache the contour-derived mask only while a brush stroke is in progress.
+            # At any other time (knot drag, contour edit, frame change) always recompute.
+            if self._brush_active and self._base_mask_cache is not None and self._base_mask_cache_frame == self.frame:
+                frame_mask = self._base_mask_cache.copy()
+            else:
+                frame_mask = contours_to_mask(
+                    self.images[self.frame : self.frame + 1],
+                    [self.frame],
+                    self.main_window.runtime_data.frame_data_dct,
+                )[0]
+                if self._brush_active:
+                    self._base_mask_cache = frame_mask.copy()
+                    self._base_mask_cache_frame = self.frame
+
+            # Overlay live brush canvas on top of the contour-derived mask.
+            if self._brush_add is not None:
+                spec = MASK_SPECS.get(self.active_contour_type)
+                if spec is not None:
+                    frame_mask[self._brush_add] = spec.label
+            if self._brush_erase is not None:
+                frame_mask[self._brush_erase] = 0
+
         except Exception as e:
             logger.warning(f'Mask overlay failed for frame {self.frame}: {e}')
             if display_data.ndim == 2:
@@ -598,6 +635,181 @@ class Display(QGraphicsView, MetricsMixin):
 
         result = np.clip(rgb, 0, 255).astype(np.uint8)
         return np.ascontiguousarray(result), w * 3, QImage.Format.Format_RGB888
+
+    # ------------------------------------------------------------------
+    # Brush tool – enable/disable, painting, and commit
+    # ------------------------------------------------------------------
+
+    def enable_brush(self) -> None:
+        """Activate brush mode and update the cursor circle.
+
+        Interrupts any in-progress spline/measure/reference drawing first so
+        leftover graphics don't conflict with brush mouse handling.
+        """
+        self._interrupt_drawing_mode()  # safe no-op when nothing is in progress
+        self._brush_active = True
+        self._brush_add = None
+        self._brush_erase = None
+        self._update_brush_cursor()
+
+    def disable_brush(self) -> None:
+        """Deactivate brush mode and restore the arrow cursor."""
+        self._brush_active = False
+        self._brush_add = None
+        self._brush_erase = None
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+
+    def _update_brush_cursor(self) -> None:
+        """Rebuild the OS cursor circle to match current radius and contour-type colour."""
+        if not self._brush_active:
+            return
+        popup = getattr(self.main_window, 'brush_settings_popup', None)
+        radius = popup.radius_px if popup is not None else 10
+        spec = MASK_SPECS.get(self.active_contour_type)
+        color = spec.overlay_color if spec is not None else (255, 60, 60)
+        self._brush_cursor._radius_px = radius
+        self._brush_cursor._color = color
+        view_scale = self.scaling_factor * self.transform().m11()
+        self.setCursor(self._brush_cursor.make_cursor(view_scale))
+
+    def _paint_brush(self, scene_pos: QPointF) -> None:
+        """Paint a disc on the add or erase canvas at *scene_pos* and refresh the image."""
+        if self.images is None:
+            return
+        popup = getattr(self.main_window, 'brush_settings_popup', None)
+        if popup is None:
+            return
+
+        H, W = self.images.shape[1:3]
+        if self._brush_add is None:
+            self._brush_add = np.zeros((H, W), dtype=bool)
+        if self._brush_erase is None:
+            self._brush_erase = np.zeros((H, W), dtype=bool)
+
+        radius = popup.radius_px
+        row = int(scene_pos.y() / self.scaling_factor)
+        col = int(scene_pos.x() / self.scaling_factor)
+
+        # Rasterise a filled disc at (row, col) with the given radius.
+        r = radius
+        row_lo = max(0, row - r)
+        row_hi = min(H, row + r + 1)
+        col_lo = max(0, col - r)
+        col_hi = min(W, col + r + 1)
+        rows = np.arange(row_lo, row_hi)[:, None] - row
+        cols = np.arange(col_lo, col_hi)[None, :] - col
+        disc = rows**2 + cols**2 <= r**2
+
+        if popup.is_erase:
+            self._brush_erase[row_lo:row_hi, col_lo:col_hi][disc] = True
+        else:
+            self._brush_add[row_lo:row_hi, col_lo:col_hi][disc] = True
+
+        # Refresh image only (contours unchanged); the cached base mask is reused.
+        self.display_image(update_image=True)
+
+    def _commit_brush_stroke(self) -> None:
+        """
+        Merge the brush canvas with the current contour-derived mask, extract a new
+        closed contour boundary with OpenCV, downsample to knot points, and save it.
+
+        After commit the canvas is cleared and the display is fully refreshed.
+        """
+        has_paint = (self._brush_add is not None and self._brush_add.any()) or (
+            self._brush_erase is not None and self._brush_erase.any()
+        )
+        if not has_paint:
+            self._brush_add = None
+            self._brush_erase = None
+            return
+
+        ct = self.active_contour_type
+        spec = MASK_SPECS.get(ct)
+        if spec is None:
+            self._brush_add = None
+            self._brush_erase = None
+            return
+
+        assert self.images is not None
+        frame = self.frame
+
+        # 1. Generate fresh base mask (ignore cache – we need the authoritative version).
+        base_mask = contours_to_mask(
+            self.images[frame : frame + 1],
+            [frame],
+            self.main_window.runtime_data.frame_data_dct,
+        )[0].copy()
+
+        # 2. Apply brush strokes.
+        if self._brush_add is not None and self._brush_add.any():
+            base_mask[self._brush_add] = spec.label
+        if self._brush_erase is not None and self._brush_erase.any():
+            # Only erase pixels of this specific label, never pixels of other types.
+            base_mask[self._brush_erase & (base_mask == spec.label)] = 0
+
+        # 3. Extract binary region for this contour type.
+        #    EEM uses read_predicate = isin(a, [1, 2]) so the contour wraps lumen+wall.
+        if spec.read_predicate is not None:
+            binary = spec.read_predicate(base_mask).astype(np.uint8)
+        else:
+            binary = (base_mask == spec.label).astype(np.uint8)
+
+        # 4. Find boundary with OpenCV.
+        contours_cv, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        if not contours_cv:
+            logger.warning(f'Brush commit: no region left for {ct} – keeping existing contour')
+            self._brush_add = None
+            self._brush_erase = None
+            self._base_mask_cache = None
+            self.display_image(update_image=True)
+            return
+
+        largest = max(contours_cv, key=cv2.contourArea)
+        pts = largest.squeeze()
+        if pts.ndim < 2 or len(pts) < 3:
+            logger.warning(f'Brush commit: degenerate contour for {ct}')
+            self._brush_add = None
+            self._brush_erase = None
+            self._base_mask_cache = None
+            self.display_image(update_image=True)
+            return
+
+        x_dense: list[float] = pts[:, 0].tolist()
+        y_dense: list[float] = pts[:, 1].tolist()
+
+        # 5. Downsample to sparse knot points (same target counts as spline drawing).
+        n_knots = (
+            self.n_interactive_points if ct in (ContourType.LUMEN, ContourType.EEM) else self.n_interactive_points // 2
+        )
+        result = downsample(([x_dense], [y_dense]), n_knots)
+        x_sparse: list[float] = result[0] if result[0] else x_dense[:: max(1, len(x_dense) // n_knots)]
+        y_sparse: list[float] = result[1] if result[1] else y_dense[:: max(1, len(y_dense) // n_knots)]
+
+        # 6. Save as a single closed contour for this frame.
+        key = ct.value
+        fd = self.main_window.runtime_data.frame_data_dct.get(frame)
+        if fd is None:
+            logger.warning(f'Brush commit: no FrameData for frame {frame}')
+            self._brush_add = None
+            self._brush_erase = None
+            return
+
+        contour_obj = getattr(fd, key)
+        contour_obj.contours = [[list(x_sparse), list(y_sparse)]]
+        contour_obj.closed = [True]
+        contour_obj.start_coords = [[]]
+        contour_obj.end_coords = [[]]
+
+        # 7. Clear canvas and refresh.
+        self._brush_add = None
+        self._brush_erase = None
+        self._base_mask_cache = None
+        self.update_display()
+
+        try:
+            self.main_window.longitudinal_view.plot_areas()
+        except Exception as e:
+            logger.debug(f'Could not update longitudinal view after brush commit: {e}')
 
     def _add_center_marker(self, height):
         cx = int((self.image_width // 2) * self.scaling_factor)
@@ -1208,6 +1420,10 @@ class Display(QGraphicsView, MetricsMixin):
                 self._pan_last_pos = event.pos()
                 self.setCursor(Qt.CursorShape.ClosedHandCursor)
                 return
+            # Brush mode takes priority over all other left-click interactions.
+            if self._brush_active:
+                self._paint_brush(pos)
+                return
             if self.drawing_mode:
                 self.add_contour(pos, self.active_segmentation_tool)
             elif self.measure_index is not None:
@@ -1464,6 +1680,10 @@ class Display(QGraphicsView, MetricsMixin):
             self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())  # type: ignore[union-attr]
             self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())  # type: ignore[union-attr]
             return
+        if self._brush_active and event.buttons() & Qt.MouseButton.LeftButton:
+            pos = self.mapToScene(event.pos())
+            self._paint_brush(pos)
+            return
         if event.buttons() == Qt.MouseButton.LeftButton:
             if self.active_point_index is not None:
                 item = self.active_point
@@ -1498,6 +1718,9 @@ class Display(QGraphicsView, MetricsMixin):
             self._panning = False
             self._pan_last_pos = None
             self.setCursor(Qt.CursorShape.ArrowCursor)
+            return
+        if event.button() == Qt.MouseButton.LeftButton and self._brush_active:
+            self._commit_brush_stroke()
             return
         if event.button() == Qt.MouseButton.LeftButton:
             if self.active_point_index is not None and self.working_spline:
@@ -1542,6 +1765,16 @@ class Display(QGraphicsView, MetricsMixin):
             self.main_window.display_slider.next_frame()
         else:
             self.main_window.display_slider.last_frame()
+
+    def keyPressEvent(self, event):
+        # The global Esc shortcut in shortcuts.py normally handles this first.
+        # This is a fallback for cases where the display has focus directly.
+        if event.key() == Qt.Key.Key_Escape:
+            from gui.shortcuts import stop_all
+
+            stop_all(self.main_window)
+            return
+        super().keyPressEvent(event)
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:

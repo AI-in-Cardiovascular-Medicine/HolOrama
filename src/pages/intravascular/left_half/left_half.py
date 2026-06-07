@@ -17,6 +17,7 @@ from PyQt6.QtCore import Qt
 from domain.all_types import ContourType, SegmentationTool
 from pages.intravascular.utils.contours_gui import new_measure, new_reference, new_angle, set_tool
 from pages.intravascular.utils.helpers import SplitterPane
+from pages.intravascular.brush_panel import HoverButton
 
 
 class LeftHalf:
@@ -42,10 +43,13 @@ class LeftHalf:
         self.open_spline_btn.setToolTip("Set drawing mode to open spline")
         self.open_spline_btn.clicked.connect(partial(set_tool, main_window, SegmentationTool.OPEN_SPLINE))
 
-        self.brush_btn = QPushButton('🖌️ Brush')
+        self.brush_btn = HoverButton('🖌️ Brush')
         self.brush_btn.setCheckable(True)
-        self.brush_btn.setToolTip("Set drawing mode to brush")
+        self.brush_btn.setToolTip("Set drawing mode to brush (requires Mask Mode)")
         self.brush_btn.clicked.connect(partial(set_tool, main_window, SegmentationTool.BRUSH))
+        popup = main_window.brush_settings_popup
+        self.brush_btn._on_hover_enter = lambda: popup.show_near(self.brush_btn)
+        self.brush_btn._on_hover_leave = popup.schedule_hide
 
         self.reference_btn = QPushButton('🟡 Reference')
         self.reference_btn.setCheckable(True)
@@ -182,4 +186,8 @@ class LeftHalf:
 
     def toggle_mask_mode(self, _):
         if self.main_window.image_displayed:
+            if not self.main_window.mask_mode_box.isChecked():
+                if self.main_window.display._brush_active:
+                    self.main_window.display.disable_brush()
+                    self.closed_spline_btn.setChecked(True)
             self.main_window.display.update_display()
