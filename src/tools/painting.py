@@ -79,9 +79,3 @@ class BrushCursor:
 
         center = size // 2
         return QCursor(pixmap, center, center)
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat alias — remove once intravascular is updated
-# ---------------------------------------------------------------------------
-BrushCursorItem = BrushCursor
