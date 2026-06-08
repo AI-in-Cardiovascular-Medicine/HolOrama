@@ -1,8 +1,8 @@
 import pytest
 import sys
 import os
+from types import SimpleNamespace
 from unittest.mock import Mock
-from omegaconf import DictConfig
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SRC = os.path.join(ROOT, "src")
@@ -13,7 +13,7 @@ if SRC not in sys.path:
 @pytest.fixture
 def simple_config():
     # Minimal config used by Master.__init__ (it reads config.save.autosave_interval)
-    return DictConfig({"save": {"autosave_interval": 1000}})
+    return SimpleNamespace(save=SimpleNamespace(autosave_interval=1000))
 
 
 @pytest.fixture(scope='session')

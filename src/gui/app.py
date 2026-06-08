@@ -118,6 +118,7 @@ class Master(QMainWindow):
 
     def reload_intravascular(self) -> None:
         old = self.intravascular_page
+        old.hide()
         self.stack.removeWidget(old)
         old.deleteLater()
 
@@ -133,6 +134,7 @@ class Master(QMainWindow):
     def reload_ccta(self) -> None:
         old = self.ccta_page
         old.shutdown()  # release VTK OpenGL context before HWND is invalidated
+        old.hide()
         self.stack.removeWidget(old)
         old.deleteLater()
 

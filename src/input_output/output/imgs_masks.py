@@ -17,7 +17,7 @@ def save_as_nifti(main_window, mode=None):
         ErrorMessage(main_window, 'Cannot save as NIfTi before reading input file')
         return
 
-    out_path = os.path.join(main_window.config.save.nifti_dir, f'{mode}_frames')
+    out_path = os.path.join(os.path.dirname(main_window.file_name), f'{mode}_frames')
     if mode == 'contoured':
         frames_to_save = [
             frame
