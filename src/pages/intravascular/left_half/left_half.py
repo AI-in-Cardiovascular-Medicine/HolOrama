@@ -202,6 +202,9 @@ class LeftHalf:
         self.main_window.display.update_display()
         self.frame_number_label.setText(f'Frame {value + 1}')
 
+        # diastolic_frame_box is absent in OCT mode (_build_oct never adds it)
+        if sip.isdeleted(self.main_window.diastolic_frame_box):
+            return
         if value in self.main_window.runtime_data.gated_frames_dia:
             self.main_window.diastolic_frame_box.setChecked(True)
         else:
