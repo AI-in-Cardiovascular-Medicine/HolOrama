@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.6.2] - 2026-06-08
+
+### Added
+- Second toolbar row on the intravascular page: contour-type dropdown (Lumen / EEM / Calcium / Branch / Lipid / Macrophage), **New Contour** button, and **+ Add Contour** button
+- Drawing-tool buttons (Closed Spline, Open Spline, Brush) are automatically greyed out for tools not permitted by the selected contour type (`ALLOWED_TOOLS`)
+- Keyboard shortcuts (E, Q, 7–0, Ctrl+7–0) now also sync the contour-type dropdown
+
 ## [1.6.1] - 2026-06-08
 
 ### Changed
