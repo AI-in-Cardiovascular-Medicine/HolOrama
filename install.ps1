@@ -78,6 +78,12 @@ Write-Host "Applying Windows fix: pinning optree to 0.13.1..."
 uv pip install --python $python "optree==0.13.1"
 if ($LASTEXITCODE -ne 0) { throw "optree pin failed" }
 
+# -- 7. Re-pin numpy (nnunetv2 and torch cuda installs upgrade it to 2.x) ------
+# torch 2.4.0 was built against numpy 1.x C API; numpy 2.x breaks torch.from_numpy
+Write-Host "Re-pinning numpy to 1.26.4 (torch 2.4.0 / numpy 1.x compatibility)..."
+uv pip install --python $python "numpy==1.26.4"
+if ($LASTEXITCODE -ne 0) { throw "numpy re-pin failed" }
+
 Write-Host ""
 Write-Host "Done. Activate the environment with:"
 Write-Host "  .\.venv\Scripts\Activate.ps1"
