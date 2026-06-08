@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.6.1] - 2026-06-08
+
+### Changed
+- Remove hydra dependency, because overkill
+
 ## [1.6.0] - 2026-06-07
 
 Brush tool for manual mask editing, uv migration, and gating plot interactivity fix.
