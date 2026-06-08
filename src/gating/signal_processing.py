@@ -83,17 +83,19 @@ def prepare_data(main_window, frames, report_data, x1=50, x2=450, y1=50, y2=450)
 
 def normalize_data(data, step):
     # z-score normalization either for full set, or defined steps
+    # Cast to float so None values become NaN instead of crashing np.mean
+    data = np.asarray(data, dtype=float)
     if step == 0:
-        return (data - np.mean(data)) / np.std(data)
+        std = np.nanstd(data)
+        return (data - np.nanmean(data)) / std if std != 0 else np.zeros_like(data)
     else:
-        normalized_data = np.zeros_like(data)
+        normalized_data = np.zeros(len(data), dtype=float)
 
         for i in range(0, len(data), step):
             segment = data[i : i + step]
-
-            segment_normalized = (segment - np.mean(segment)) / np.std(segment)
-
-            normalized_data[i : i + step] = segment_normalized
+            std = np.nanstd(segment)
+            if std != 0:
+                normalized_data[i : i + step] = (segment - np.nanmean(segment)) / std
 
         return normalized_data
 
