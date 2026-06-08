@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from domain.all_types import ContourType, SegmentationTool
+from domain.all_types import ALLOWED_TOOLS, ContourType, SegmentationTool
 from pages.intravascular.utils.contours_gui import (
     new_contour,
     new_contour_append,
@@ -225,12 +225,30 @@ class LeftHalf:
             self.main_window.display.update_display()
 
     def _on_contour_type_changed(self, index: int):
-        _, _, new_key, add_key = _CONTOUR_TYPE_ITEMS[index]
+        _, contour_type, new_key, add_key = _CONTOUR_TYPE_ITEMS[index]
         self.new_contour_btn.setToolTip(f"Draw new contour ({new_key})" if new_key else "Draw new contour")
         self.add_contour_btn.setEnabled(add_key is not None)
         self.add_contour_btn.setToolTip(
             f"Append contour ({add_key})" if add_key else "No append shortcut for this type"
         )
+
+        allowed = ALLOWED_TOOLS.get(contour_type, set())
+        tool_btns = [
+            (self.closed_spline_btn, SegmentationTool.CLOSED_SPLINE),
+            (self.open_spline_btn, SegmentationTool.OPEN_SPLINE),
+            (self.brush_btn, SegmentationTool.BRUSH),
+        ]
+        for btn, tool in tool_btns:
+            btn.setEnabled(tool in allowed)
+
+        # If the active tool button is now disabled, switch to the first allowed one
+        if not any(btn.isChecked() and btn.isEnabled() for btn, _ in tool_btns):
+            for btn, tool in tool_btns:
+                if tool in allowed:
+                    btn.setChecked(True)
+                    if self.main_window.image_displayed:
+                        set_tool(self.main_window, tool)
+                    break
 
     def _on_new_contour(self):
         _, contour_type, _, _ = _CONTOUR_TYPE_ITEMS[self.contour_type_combo.currentIndex()]
