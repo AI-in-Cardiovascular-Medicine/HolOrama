@@ -60,6 +60,11 @@ elif [[ -n "$CUDA" ]]; then
 fi
 # default (cu118) already installed by uv sync
 
+# -- 5. Re-pin numpy (nnunetv2 and torch cuda installs upgrade it to 2.x) ------
+# torch 2.4.0 was built against numpy 1.x C API; numpy 2.x breaks torch.from_numpy
+echo "Re-pinning numpy to 1.26.4 (torch 2.4.0 / numpy 1.x compatibility)..."
+uv pip install --python "$PYTHON" "numpy==1.26.4"
+
 echo ""
 echo "Done. Run the app with:"
 echo "  source .venv/bin/activate && python3 src/main.py"
