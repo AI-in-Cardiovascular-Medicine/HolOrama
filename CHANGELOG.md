@@ -9,6 +9,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - Second toolbar row on the intravascular page: contour-type dropdown (Lumen / EEM / Calcium / Branch / Lipid / Macrophage), **New Contour** button, and **+ Add Contour** button
 - Drawing-tool buttons (Closed Spline, Open Spline, Brush) are automatically greyed out for tools not permitted by the selected contour type (`ALLOWED_TOOLS`)
 - Keyboard shortcuts (E, Q, 7-0, Ctrl+7-0) now also sync the contour-type dropdown
+- NIfTI files are now saved next to the opened input file (in a `contoured_frames/`, `gated_frames/`, or `all_frames/` subdirectory) instead of the `nifti_dir` path from `config.yaml`
+- `QWidgetWindow must be a top level window` Qt warning on page reload suppressed by calling `hide()` before `removeWidget`
+- `RuntimeError: wrapped C/C++ object of type QCheckBox has been deleted` on page reload suppressed with `sip.isdeleted()` guard in `change_value`
 
 ## [1.6.1] - 2026-06-08
 
