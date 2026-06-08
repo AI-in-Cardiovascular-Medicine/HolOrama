@@ -75,7 +75,7 @@ def prepare_data(main_window, frames, report_data, x1=50, x2=450, y1=50, y2=450)
         'contour_based_gating': list(contour_based_gating),
         'image_based_gating_filtered': list(image_based_gating_filtered),
         'contour_based_gating_filtered': list(contour_based_gating_filtered),
-        'gating_config': dict(main_window.config.gating),
+        'gating_config': vars(main_window.config.gating),
     }
 
     return image_based_gating, contour_based_gating, image_based_gating_filtered, contour_based_gating_filtered
@@ -202,10 +202,16 @@ def combined_signal(
         variability.append(np.std(np.diff(extrema)))
 
     # calculate sum of all variabilities and then create a combined signal with weights as percent of variability
-    # sum_variability = np.sum(variability)
-    # weights = [(var / sum_variability) ** -1 for var in variability]
-    inverse_variability = [(1 / var) for var in variability]
-    weights = [inv_var / sum(inverse_variability) for inv_var in inverse_variability]
+    # Fall back to equal weights when any variability is NaN or zero (e.g. flat signal with no detectable extrema)
+    n = len(signal_list)
+    valid = [v for v in variability if v and not np.isnan(v)]
+    if len(valid) < n:
+        logger.warning(f'Could not compute variability for all signals ({variability}); using equal weights')
+        weights = [1 / n] * n
+    else:
+        inverse_variability = [1 / v for v in variability]
+        total = sum(inverse_variability)
+        weights = [inv_v / total for inv_v in inverse_variability]
 
     # print the chosen weights per variable
     if len(signal_list) == 3:
