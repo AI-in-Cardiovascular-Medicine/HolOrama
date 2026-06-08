@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QLayout,
 )
+from PyQt6 import sip
 from PyQt6.QtCore import Qt
 
 from domain.all_types import ALLOWED_TOOLS, ContourType, SegmentationTool
@@ -195,6 +196,8 @@ class LeftHalf:
         self.play_button.setIcon(self.play_icon)
 
     def change_value(self, value: int):
+        if sip.isdeleted(self.main_window):
+            return
         self.main_window.display_frame_comms.updateBW.emit(value)
         self.main_window.display.update_display()
         self.frame_number_label.setText(f'Frame {value + 1}')
