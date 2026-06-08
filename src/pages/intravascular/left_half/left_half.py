@@ -4,6 +4,7 @@ from functools import partial
 from PyQt6.QtWidgets import (
     QPushButton,
     QButtonGroup,
+    QComboBox,
     QStyle,
     QApplication,
     QLabel,
@@ -15,9 +16,26 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from domain.all_types import ContourType, SegmentationTool
-from pages.intravascular.utils.contours_gui import new_measure, new_reference, new_angle, set_tool
+from pages.intravascular.utils.contours_gui import (
+    new_contour,
+    new_contour_append,
+    new_measure,
+    new_reference,
+    new_angle,
+    set_tool,
+)
 from pages.intravascular.utils.helpers import SplitterPane
 from pages.intravascular.brush_panel import HoverButton
+
+# (label, ContourType, new-shortcut, append-shortcut or None)
+_CONTOUR_TYPE_ITEMS = [
+    ('Lumen', ContourType.LUMEN, 'E', None),
+    ('EEM', ContourType.EEM, 'Q', None),
+    ('Calcium', ContourType.CALCIUM, '7', 'Ctrl+7'),
+    ('Branch', ContourType.BRANCH, '8', 'Ctrl+8'),
+    ('Lipid', ContourType.LIPID, '9', 'Ctrl+9'),
+    ('Macrophage', ContourType.MACROPHAGE, '0', 'Ctrl+0'),
+]
 
 
 class LeftHalf:
@@ -88,6 +106,28 @@ class LeftHalf:
             self.display_button_group.addButton(btn)
             display_buttons_hbox.addWidget(btn)
         left_vbox.addLayout(display_buttons_hbox)
+
+        # Second row: contour type selector + new/add buttons
+        contour_row_hbox = QHBoxLayout()
+
+        self.contour_type_combo = QComboBox()
+        for label, _, _, _ in _CONTOUR_TYPE_ITEMS:
+            self.contour_type_combo.addItem(label)
+        self.contour_type_combo.setToolTip("Select contour type")
+        self.contour_type_combo.currentIndexChanged.connect(self._on_contour_type_changed)
+
+        self.new_contour_btn = QPushButton('New Contour')
+        self.new_contour_btn.clicked.connect(self._on_new_contour)
+
+        self.add_contour_btn = QPushButton('+ Add Contour')
+        self.add_contour_btn.clicked.connect(self._on_add_contour)
+
+        contour_row_hbox.addWidget(self.contour_type_combo)
+        contour_row_hbox.addWidget(self.new_contour_btn)
+        contour_row_hbox.addWidget(self.add_contour_btn)
+        left_vbox.addLayout(contour_row_hbox)
+
+        self._on_contour_type_changed(0)  # set initial tooltips and button state
 
         left_vbox.addWidget(main_window.display)
 
@@ -183,6 +223,28 @@ class LeftHalf:
         if self.main_window.image_displayed:
             self.main_window.hide_special_points = bool(value)
             self.main_window.display.update_display()
+
+    def _on_contour_type_changed(self, index: int):
+        _, _, new_key, add_key = _CONTOUR_TYPE_ITEMS[index]
+        self.new_contour_btn.setToolTip(f"Draw new contour ({new_key})" if new_key else "Draw new contour")
+        self.add_contour_btn.setEnabled(add_key is not None)
+        self.add_contour_btn.setToolTip(
+            f"Append contour ({add_key})" if add_key else "No append shortcut for this type"
+        )
+
+    def _on_new_contour(self):
+        _, contour_type, _, _ = _CONTOUR_TYPE_ITEMS[self.contour_type_combo.currentIndex()]
+        new_contour(self.main_window, contour_type)
+
+    def _on_add_contour(self):
+        _, contour_type, _, _ = _CONTOUR_TYPE_ITEMS[self.contour_type_combo.currentIndex()]
+        new_contour_append(self.main_window, contour_type)
+
+    def set_active_contour_type_ui(self, contour_type: ContourType):
+        for i, (_, ct, _, _) in enumerate(_CONTOUR_TYPE_ITEMS):
+            if ct == contour_type:
+                self.contour_type_combo.setCurrentIndex(i)
+                break
 
     def toggle_mask_mode(self, _):
         if self.main_window.image_displayed:
