@@ -1,15 +1,15 @@
 import os
 import sys
 import atexit
-import hydra
+import yaml
 import logging
 from pathlib import Path
 from datetime import datetime
+from types import SimpleNamespace
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 import qdarktheme
 
-from omegaconf import DictConfig
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import qInstallMessageHandler, QtMsgType
 
@@ -30,8 +30,6 @@ logging.basicConfig(
     ],
 )
 log = logging.getLogger(__name__)
-logging.getLogger("hydra").setLevel(logging.WARNING)
-logging.getLogger("omegaconf").setLevel(logging.WARNING)
 
 
 def _cleanup_empty_log():
@@ -92,8 +90,18 @@ if os.environ.get("AIVUS_SILENT", "0") == "0":
     _print_banner()
 
 
-@hydra.main(version_base=None, config_path='.', config_name='config')
-def main(config: DictConfig) -> None:
+def _load_config(path: Path) -> SimpleNamespace:
+    def _to_ns(obj):
+        if isinstance(obj, dict):
+            return SimpleNamespace(**{k: _to_ns(v) for k, v in obj.items()})
+        return obj
+
+    with open(path, encoding="utf-8") as f:
+        return _to_ns(yaml.safe_load(f))
+
+
+def main() -> None:
+    config = _load_config(Path(__file__).parent / 'config.yaml')
     app = QApplication(sys.argv)
     app.setApplicationVersion(__version__)
 

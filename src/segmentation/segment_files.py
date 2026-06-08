@@ -1,12 +1,13 @@
 import os
 import glob
-import hydra
 import json
+import yaml
+from pathlib import Path
+from types import SimpleNamespace
 
 import pydicom as dcm
 import SimpleITK as sitk
 from dataclasses import asdict
-from omegaconf import DictConfig
 from loguru import logger
 from tqdm import tqdm
 
@@ -15,8 +16,18 @@ from segmentation.predict import Predict
 from segmentation.segment import mask_to_contours
 
 
-@hydra.main(version_base=None, config_path='..', config_name='config')
-def segment_files(config: DictConfig) -> None:
+def _load_config(path: Path) -> SimpleNamespace:
+    def _to_ns(obj):
+        if isinstance(obj, dict):
+            return SimpleNamespace(**{k: _to_ns(v) for k, v in obj.items()})
+        return obj
+
+    with open(path, encoding="utf-8") as f:
+        return _to_ns(yaml.safe_load(f))
+
+
+def segment_files() -> None:
+    config = _load_config(Path(__file__).parent.parent / 'config.yaml')
     input_dir = config.segmentation.input_dir
     files = glob.glob(input_dir + '/NARCO_*/Run*/*', recursive=True)
     files = [file for file in files if '_' not in os.path.basename(file)]  # exclude subdirs (all have _ in name)

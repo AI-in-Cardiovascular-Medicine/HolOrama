@@ -17,8 +17,6 @@ dependencies = [
     "scikit-image",
     "seaborn",
     "pylint",
-    "hydra-core",
-    "omegaconf",
     "numpy==1.26.4",
     "pydicom==2.4.4",
     "pylibjpeg",

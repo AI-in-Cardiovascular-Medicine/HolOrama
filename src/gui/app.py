@@ -1,6 +1,7 @@
 import os
 
-from omegaconf import DictConfig
+from types import SimpleNamespace
+
 from PyQt6.QtWidgets import (
     QMainWindow,
     QMenuBar,
@@ -49,7 +50,7 @@ class Master(QMainWindow):
     intravascular_metadata: MetaDataIntravascular
     ccta_metadata: MetaDataCCTA
 
-    def __init__(self, config: DictConfig) -> None:
+    def __init__(self, config: SimpleNamespace) -> None:
         super().__init__()
         self.config = config
         for page in ActivePage:

@@ -1,6 +1,7 @@
 from functools import partial
 
-from omegaconf import DictConfig
+from types import SimpleNamespace
+
 from PyQt6.QtWidgets import (
     QSplitter,
     QTableWidget,
@@ -34,9 +35,9 @@ from domain.all_types import OCT_QUALITY_LABELS
 
 
 class IntravascularPage(QSplitter):
-    def __init__(self, config: DictConfig, menu_bar, status_bar) -> None:
+    def __init__(self, config: SimpleNamespace, menu_bar, status_bar) -> None:
         super().__init__(Qt.Orientation.Horizontal)
-        self.config: DictConfig = config
+        self.config: SimpleNamespace = config
         self.menu_bar = menu_bar
         self.status_bar = status_bar
 
