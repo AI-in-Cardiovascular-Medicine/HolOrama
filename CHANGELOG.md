@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.6.3] - 2026-06-09
+
+### Added
+- Autosave functionality for CCTA images (same naming convention as for JSON but as nifti mask)
+- Both intravascular and CCTA do saving on thread that copied data, ensuring no interruption of main thread
+
 ## [1.6.2] - 2026-06-08
 
 ### Added
