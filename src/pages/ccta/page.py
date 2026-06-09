@@ -21,10 +21,10 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer
 
-from pages.ccta.display import CctaDisplay
-from pages.ccta.display_3d import CctaViewer3D
-from pages.ccta.mask_panel import MaskPanel
-from pages.ccta.brush_panel import BrushPanel
+from pages.ccta.left_half.display import CctaDisplay
+from pages.ccta.left_half.display_3d import CctaViewer3D
+from pages.ccta.right_half.mask_panel import MaskPanel
+from pages.ccta.right_half.brush_panel import BrushPanel
 from input_output.input.ccta_io import read_ct_volume, read_nifti_volume, read_mask_volume
 from version import version_file_str
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
