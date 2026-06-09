@@ -250,16 +250,17 @@ class CctaDisplay(QGraphicsView):
     def _crosshair_pos(self, img_h: int, img_w: int) -> tuple[int, int]:
         assert self.voxel_spacing is not None and self.volume is not None
         dz, dy, dx = self.voxel_spacing
-        Z = self.volume.shape[0]
+        Z, Y, _ = self.volume.shape
 
         if self.orientation == 'axial':
-            return self.cursor_y, self.cursor_x
+            return (Y - 1) - self.cursor_y, self.cursor_x
         elif self.orientation == 'coronal':
             row = round(((Z - 1) - self.cursor_z) * dz / dx)
             return max(0, min(row, img_h - 1)), max(0, min(self.cursor_x, img_w - 1))
         else:  # sagittal
             row = round(((Z - 1) - self.cursor_z) * dz / dy)
-            return max(0, min(row, img_h - 1)), max(0, min(self.cursor_y, img_w - 1))
+            col = max(0, min((Y - 1) - self.cursor_y, img_w - 1))
+            return max(0, min(row, img_h - 1)), col
 
     def _scene_to_cursor(self, row: int, col: int) -> tuple[int, int, int]:
         assert self.voxel_spacing is not None and self.volume is not None
@@ -267,7 +268,8 @@ class CctaDisplay(QGraphicsView):
         Z, Y, X = self.volume.shape
 
         if self.orientation == 'axial':
-            return self.cursor_z, max(0, min(row, Y - 1)), max(0, min(col, X - 1))
+            y = max(0, min((Y - 1) - row, Y - 1))
+            return self.cursor_z, y, max(0, min(col, X - 1))
         elif self.orientation == 'coronal':
             row_orig = int(row * dx / dz)
             z = max(0, min((Z - 1) - row_orig, Z - 1))
@@ -275,7 +277,8 @@ class CctaDisplay(QGraphicsView):
         else:  # sagittal
             row_orig = int(row * dy / dz)
             z = max(0, min((Z - 1) - row_orig, Z - 1))
-            return z, max(0, min(col, Y - 1)), self.cursor_x
+            y = max(0, min((Y - 1) - col, Y - 1))
+            return z, y, self.cursor_x
 
     def _paint_at_scene(self, scene_row: float, scene_col: float) -> None:
         """Paint a brush disc at (scene_row, scene_col) into the 3-D mask."""
