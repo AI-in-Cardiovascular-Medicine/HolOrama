@@ -8,6 +8,7 @@ from domain.ccta_display_types import LABEL_COLORS, DEFAULT_MASK_ALPHA, DEFAULT_
 from tools.painting import BrushGeometry, BrushCursor
 
 _CROSSHAIR_COLOR = QColor(255, 255, 0)
+_CUT_LINE_COLOR = QColor(180, 180, 180)
 _ZOOM_SENSITIVITY = 0.01
 
 
@@ -67,6 +68,7 @@ class CctaDisplay(QGraphicsView):
 
         self._line_draw_mode: bool = False
         self._line_draw_pending: tuple[int, int, int] | None = None
+        self._cut_lines: list[tuple] = []  # list of (p1_zyx, p2_zyx) confirmed cut lines
 
         # Rendered items replaced each frame so we never need scene.clear().
         self._render_items: list = []
@@ -129,6 +131,11 @@ class CctaDisplay(QGraphicsView):
         self._line_draw_mode = False
         self._line_draw_pending = None
         self.setCursor(Qt.CursorShape.ArrowCursor)
+        self._render()
+
+    def set_cut_lines(self, lines: list[tuple]) -> None:
+        """Replace the displayed cut-line overlays and re-render."""
+        self._cut_lines = lines
         self._render()
 
     def _voxel_to_scene(self, z: int, y: int, x: int) -> tuple[float, float]:
@@ -273,6 +280,28 @@ class CctaDisplay(QGraphicsView):
         pen.setCosmetic(True)
         self._render_items.append(self._scene.addLine(0, ch_row, w, ch_row, pen))
         self._render_items.append(self._scene.addLine(ch_col, 0, ch_col, h, pen))
+
+        if self._cut_lines:
+            cut_pen = QPen(_CUT_LINE_COLOR)
+            cut_pen.setCosmetic(True)
+            cut_pen.setStyle(Qt.PenStyle.DashLine)
+            ext = max(w, h) * 2  # extend well past image edge; viewport clips the rest
+            for p1_zyx, p2_zyx in self._cut_lines:
+                sr1, sc1 = self._voxel_to_scene(*p1_zyx)
+                sr2, sc2 = self._voxel_to_scene(*p2_zyx)
+                dr, dc = sr2 - sr1, sc2 - sc1
+                length = (dr**2 + dc**2) ** 0.5
+                if length > 0:
+                    dr, dc = dr / length, dc / length
+                    self._render_items.append(
+                        self._scene.addLine(
+                            sc1 - dc * ext,
+                            sr1 - dr * ext,
+                            sc1 + dc * ext,
+                            sr1 + dr * ext,
+                            cut_pen,
+                        )
+                    )
 
         if self._line_draw_mode and self._line_draw_pending is not None:
             sr, sc = self._voxel_to_scene(*self._line_draw_pending)

@@ -391,6 +391,13 @@ class CctaPage(QWidget):
         else:
             self._aorta_cut_line = (p1, p2)
         self._stl_panel.set_line_drawn(index)
+        self._refresh_cut_line_overlays()
+
+    def _refresh_cut_line_overlays(self) -> None:
+        axial_lines = [self._cut_line_0] if self._cut_line_0 else []
+        coronal_lines = [line for line in (self._cut_line_1, self._aorta_cut_line) if line is not None]
+        self._axial.set_cut_lines(axial_lines)
+        self._coronal.set_cut_lines(coronal_lines)
 
     def _on_extract_requested(self, cor_label: int, aorta_label: int, lv_label: int, fmt: str) -> None:
         if self.data.mask is None or self.data.voxel_spacing is None:
