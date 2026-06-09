@@ -1,6 +1,10 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "aivus"
-version = "1.6.3"
+dynamic = ["version"]
 description = "AIVUS: AIVUS-CAA (coronary artery anomalies) AIVUS-OCT (optical coherence tomography)"
 authors = [
     { name = "yungselm" },
@@ -45,6 +49,9 @@ dev = [
     "mypy",
     "ruff",
 ]
+
+[tool.hatch.version]
+path = "src/version.py"
 
 [tool.uv]
 package = false
