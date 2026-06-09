@@ -1,7 +1,13 @@
 import os
+import shutil
+import tempfile
+import threading
 from typing import TYPE_CHECKING, cast
+from types import SimpleNamespace
 
 import numpy as np
+import SimpleITK as sitk
+from loguru import logger
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -13,13 +19,14 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QSplitter,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 
 from pages.ccta.display import CctaDisplay
 from pages.ccta.display_3d import CctaViewer3D
 from pages.ccta.mask_panel import MaskPanel
 from pages.ccta.brush_panel import BrushPanel
 from input_output.input.ccta_io import read_ct_volume, read_nifti_volume, read_mask_volume
+from version import version_file_str
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from gui.active_page import ActivePage
 from domain.runtime_types import CctaRuntimeData
@@ -29,11 +36,14 @@ if TYPE_CHECKING:
 
 
 class CctaPage(QWidget):
-    def __init__(self, status_bar) -> None:
+    def __init__(self, config: SimpleNamespace, status_bar) -> None:
         super().__init__()
+        self.config: SimpleNamespace = config
         self.status_bar = status_bar
         self.data = CctaRuntimeData()
         self._last_image_dir: str | None = None
+        self._source_path: str | None = None
+        self._mask_dirty: bool = False
 
         self._axial = CctaDisplay('axial')
         self._coronal = CctaDisplay('coronal')
@@ -83,6 +93,10 @@ class CctaPage(QWidget):
             display.cursor_moved.connect(self._on_cursor_moved)
             display.windowing_changed.connect(self._on_windowing_changed)
             display.mask_painted.connect(self._on_mask_painted)
+
+        timer: QTimer = QTimer(self)
+        timer.timeout.connect(self._auto_save)
+        timer.start(self.config.save.autosave_interval)
 
     def shutdown(self) -> None:
         self._3d_viewer.shutdown()
@@ -181,6 +195,12 @@ class CctaPage(QWidget):
 
         if mode == 'nifti':
             page._last_image_dir = os.path.dirname(os.path.abspath(path))
+            nifti_base = path
+            for ext in ('.nii.gz', '.nii'):
+                if nifti_base.endswith(ext):
+                    nifti_base = nifti_base[: -len(ext)]
+                    break
+            page._source_path = nifti_base
             reply = QMessageBox.question(
                 page,
                 'Load Mask?',
@@ -190,6 +210,8 @@ class CctaPage(QWidget):
             )
             if reply == QMessageBox.StandardButton.Yes:
                 page.open_mask()
+        else:
+            page._source_path = os.path.join(path, os.path.basename(path))
 
     def open_mask(self) -> None:
         if self.data.volume is None:
@@ -224,6 +246,35 @@ class CctaPage(QWidget):
 
         self.status_bar.showMessage(f'Mask loaded: {len(self.data.labels)} label(s) — {self.data.labels}')
 
+    def _auto_save(self) -> None:
+        if not self._mask_dirty or self.data.mask is None or self._source_path is None:
+            return
+        self._mask_dirty = False
+        snapshot = self.data.mask.copy()
+        spacing = self.data.voxel_spacing if self.data.voxel_spacing else (1.0, 1.0, 1.0)
+        out_path = f'{self._source_path}_ccta_seg_{version_file_str}.nii.gz'
+        threading.Thread(target=self._save_mask_snapshot, args=(snapshot, spacing, out_path), daemon=True).start()
+
+    @staticmethod
+    def _save_mask_snapshot(snapshot: np.ndarray, spacing: tuple, out_path: str) -> None:
+        dz, dy, dx = spacing
+        out_dir = os.path.dirname(out_path) or '.'
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=out_dir, suffix='.nii.gz')
+        os.close(tmp_fd)
+        try:
+            img = sitk.GetImageFromArray(snapshot)  # snapshot is (Z, Y, X); sitk reverses to (X, Y, Z)
+            img.SetSpacing((dx, dy, dz))  # sitk spacing order: (x, y, z)
+            sitk.WriteImage(img, tmp_path)
+            shutil.move(tmp_path, out_path)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            logger.exception('Failed to auto-save CCTA mask')
+        else:
+            logger.info(f'Auto-saved CCTA mask to {out_path}')
+
     def _on_brush_enabled_changed(self, enabled: bool) -> None:
         if enabled:
             geo = self._brush_panel.current_geometry()
@@ -251,6 +302,7 @@ class CctaPage(QWidget):
             d.update_brush(geometry)
 
     def _on_mask_painted(self) -> None:
+        self._mask_dirty = True
         sender_display = self.sender()
         for d in (self._axial, self._coronal, self._sagittal):
             if d is not sender_display:
