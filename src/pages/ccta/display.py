@@ -171,13 +171,13 @@ class CctaDisplay(QGraphicsView):
         Z, Y, X = self.volume.shape
 
         if self.orientation == 'axial':
-            return self.volume[self.cursor_z, :, :]
+            return self.volume[self.cursor_z, ::-1, :]
         elif self.orientation == 'coronal':
             raw = np.ascontiguousarray(self.volume[::-1, self.cursor_y, :])
             new_h = max(1, round(Z * dz / dx))
             return cv2.resize(raw.astype(np.float32), (X, new_h), interpolation=cv2.INTER_LINEAR).astype(np.int16)
         else:  # sagittal
-            raw = np.ascontiguousarray(self.volume[::-1, :, self.cursor_x])
+            raw = np.ascontiguousarray(self.volume[::-1, ::-1, self.cursor_x])
             new_h = max(1, round(Z * dz / dy))
             return cv2.resize(raw.astype(np.float32), (Y, new_h), interpolation=cv2.INTER_LINEAR).astype(np.int16)
 
@@ -191,13 +191,13 @@ class CctaDisplay(QGraphicsView):
         Z, Y, X = self.volume.shape
 
         if self.orientation == 'axial':
-            return self._mask[self.cursor_z, :, :]
+            return self._mask[self.cursor_z, ::-1, :]
         elif self.orientation == 'coronal':
             raw = np.ascontiguousarray(self._mask[::-1, self.cursor_y, :])
             new_h = max(1, round(Z * dz / dx))
             return cv2.resize(raw.astype(np.float32), (X, new_h), interpolation=cv2.INTER_NEAREST).astype(np.uint8)
         else:  # sagittal
-            raw = np.ascontiguousarray(self._mask[::-1, :, self.cursor_x])
+            raw = np.ascontiguousarray(self._mask[::-1, ::-1, self.cursor_x])
             new_h = max(1, round(Z * dz / dy))
             return cv2.resize(raw.astype(np.float32), (Y, new_h), interpolation=cv2.INTER_NEAREST).astype(np.uint8)
 
