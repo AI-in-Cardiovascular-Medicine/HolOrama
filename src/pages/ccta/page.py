@@ -25,7 +25,9 @@ from pages.ccta.left_half.display import CctaDisplay
 from pages.ccta.left_half.display_3d import CctaViewer3D
 from pages.ccta.right_half.mask_panel import MaskPanel
 from pages.ccta.right_half.brush_panel import BrushPanel
+from pages.ccta.right_half.stl_extraction_panel import StlExtractionPanel
 from input_output.input.ccta_io import read_ct_volume, read_nifti_volume, read_mask_volume
+from input_output.output.stl_export import export_nifti, export_stl
 from version import version_file_str
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from gui.active_page import ActivePage
@@ -81,9 +83,23 @@ class CctaPage(QWidget):
         self._mask_tab.label_name_changed.connect(self._brush_panel.update_label_name)
         self._mask_tab.set_brush_panel(self._brush_panel)
 
+        self._stl_panel = StlExtractionPanel()
+        self._stl_panel.line_draw_requested.connect(self._on_line_draw_requested)
+        self._stl_panel.extract_requested.connect(self._on_extract_requested)
+        self._mask_tab.label_name_changed.connect(self._stl_panel.update_label_name)
+        self._cut_line_0: tuple | None = None  # (p1_zyx, p2_zyx) from coronal view
+        self._cut_line_1: tuple | None = None  # (p1_zyx, p2_zyx) from sagittal view
+
+        right_col = QWidget()
+        right_vbox = QVBoxLayout(right_col)
+        right_vbox.setContentsMargins(0, 0, 0, 0)
+        right_vbox.setSpacing(0)
+        right_vbox.addWidget(self._mask_tab, 1)
+        right_vbox.addWidget(self._stl_panel, 0)
+
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(views)
-        splitter.addWidget(self._mask_tab)
+        splitter.addWidget(right_col)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 0)
         splitter.setSizes([10000, 220])
@@ -94,6 +110,9 @@ class CctaPage(QWidget):
             display.cursor_moved.connect(self._on_cursor_moved)
             display.windowing_changed.connect(self._on_windowing_changed)
             display.mask_painted.connect(self._on_mask_painted)
+
+        self._coronal.line_drawn.connect(lambda p1, p2: self._on_line_drawn(0, p1, p2))
+        self._sagittal.line_drawn.connect(lambda p1, p2: self._on_line_drawn(1, p1, p2))
 
         timer: QTimer = QTimer(self)
         timer.timeout.connect(self._auto_save)
@@ -242,6 +261,7 @@ class CctaPage(QWidget):
             display.set_mask(mask, self.data.labels)
         self._mask_tab.set_labels(self.data.labels)
         self._brush_panel.set_labels(self.data.labels)
+        self._stl_panel.set_labels(self.data.labels, self._mask_tab.label_names())
         if self.data.voxel_spacing is not None:
             self._3d_viewer.set_mask(mask, self.data.labels, self.data.voxel_spacing)
 
@@ -307,6 +327,7 @@ class CctaPage(QWidget):
             display.set_mask(mask, self.data.labels)
         self._mask_tab.set_labels(self.data.labels)
         self._brush_panel.set_labels(self.data.labels)
+        self._stl_panel.set_labels(self.data.labels, self._mask_tab.label_names())
 
     def _on_brush_geometry_changed(self, geometry) -> None:
         for d in (self._axial, self._coronal, self._sagittal):
@@ -351,6 +372,90 @@ class CctaPage(QWidget):
         self._axial_label.setText(f'Axial  Z: {z + 1} / {Z}')
         self._sagittal_label.setText(f'Sagittal  X: {x + 1} / {X}')
         self._coronal_label.setText(f'Coronal  Y: {y + 1} / {Y}')
+
+    def _on_line_draw_requested(self, index: int) -> None:
+        display = self._coronal if index == 0 else self._sagittal
+        display.start_line_draw()
+
+    def _on_line_drawn(self, index: int, p1: tuple, p2: tuple) -> None:
+        if index == 0:
+            self._cut_line_0 = (p1, p2)
+        else:
+            self._cut_line_1 = (p1, p2)
+        self._stl_panel.set_line_drawn(index)
+
+    def _on_extract_requested(self, cor_label: int, aorta_label: int, lv_label: int, fmt: str) -> None:
+        if self.data.mask is None or self.data.voxel_spacing is None:
+            ErrorMessage(self, 'No mask or volume loaded.')
+            return
+        if self._cut_line_0 is None or self._cut_line_1 is None:
+            ErrorMessage(self, 'Both cut lines must be drawn first.')
+            return
+
+        mask = self.data.mask
+
+        coronaries = mask == cor_label
+        aorta = mask == aorta_label
+        lv = mask == lv_label
+
+        # Build cutting plane from the two line direction vectors.
+        # Line 0 (coronal view): d0 moves in (z, 0, x); line 1 (sagittal view): d1 moves in (z, y, 0).
+        p00 = np.array(self._cut_line_0[0], dtype=float)
+        p01 = np.array(self._cut_line_0[1], dtype=float)
+        p10 = np.array(self._cut_line_1[0], dtype=float)
+        p11 = np.array(self._cut_line_1[1], dtype=float)
+        d0 = p01 - p00
+        d1 = p11 - p10
+        normal = np.cross(d0, d1)
+        if np.linalg.norm(normal) < 1e-6:
+            ErrorMessage(self, 'Cut lines are parallel — cannot define a plane. Please redraw.')
+            return
+        anchor = (p00 + p01) / 2  # midpoint of the coronal line
+
+        aorta_voxels = np.argwhere(aorta)
+        if len(aorta_voxels) == 0:
+            ErrorMessage(self, 'Aorta mask is empty.')
+            return
+        aorta_centroid = aorta_voxels.mean(axis=0)
+        aorta_side = np.dot(normal, aorta_centroid - anchor)
+
+        # Keep only the LV half on the same side as the aorta centroid (= LVOT).
+        Z, Y, X = mask.shape
+        iz, iy, ix = np.mgrid[0:Z, 0:Y, 0:X]
+        coords = np.stack([iz, iy, ix], axis=-1).astype(float)
+        signed_dist = ((coords - anchor) * normal).sum(axis=-1)
+        lvot = lv & ((signed_dist > 0) == (aorta_side > 0))
+
+        combined = (coronaries | aorta | lvot).astype(np.uint8)
+
+        if fmt == 'nifti':
+            path, _ = QFileDialog.getSaveFileName(
+                self,
+                'Save NIfTI Mask',
+                '',
+                'NIfTI (*.nii.gz)',
+                options=QFileDialog.Option.DontUseNativeDialog,
+            )
+            if not path:
+                return
+            if not path.endswith('.nii.gz'):
+                path += '.nii.gz'
+            export_nifti(combined, self.data.voxel_spacing, path)
+        else:
+            path, _ = QFileDialog.getSaveFileName(
+                self,
+                'Save STL',
+                '',
+                'STL (*.stl)',
+                options=QFileDialog.Option.DontUseNativeDialog,
+            )
+            if not path:
+                return
+            if not path.endswith('.stl'):
+                path += '.stl'
+            export_stl(combined, self.data.voxel_spacing, path)
+
+        self.status_bar.showMessage(f'Exported: {os.path.basename(path)}')
 
     @staticmethod
     def _panel(display: CctaDisplay, label: QLabel) -> QWidget:

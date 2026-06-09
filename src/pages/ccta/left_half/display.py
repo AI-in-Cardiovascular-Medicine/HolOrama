@@ -34,6 +34,7 @@ class CctaDisplay(QGraphicsView):
     cursor_moved = pyqtSignal(int, int, int)  # z, y, x
     windowing_changed = pyqtSignal(int, int)  # level, width
     mask_painted = pyqtSignal()  # emitted after any brush stroke modifies the mask
+    line_drawn = pyqtSignal(object, object)  # (p1_zyx, p2_zyx) voxel tuples
 
     def __init__(self, orientation: str, parent=None) -> None:
         super().__init__(parent)
@@ -63,6 +64,9 @@ class CctaDisplay(QGraphicsView):
         self._brush_geometry: BrushGeometry | None = None
         self._brush_cursor: BrushCursor = BrushCursor()
         self._brush_painting: bool = False
+
+        self._line_draw_mode: bool = False
+        self._line_draw_pending: tuple[int, int, int] | None = None
 
         # Rendered items replaced each frame so we never need scene.clear().
         self._render_items: list = []
@@ -111,6 +115,33 @@ class CctaDisplay(QGraphicsView):
         self._brush_mode = False
         self._brush_painting = False
         self.setCursor(Qt.CursorShape.ArrowCursor)
+
+    def start_line_draw(self) -> None:
+        """Enter line-draw mode: first click sets point 1, second click emits line_drawn."""
+        self._brush_mode = False
+        self._brush_painting = False
+        self._line_draw_mode = True
+        self._line_draw_pending = None
+        self.setCursor(Qt.CursorShape.CrossCursor)
+
+    def stop_line_draw(self) -> None:
+        """Exit line-draw mode without storing a result."""
+        self._line_draw_mode = False
+        self._line_draw_pending = None
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        self._render()
+
+    def _voxel_to_scene(self, z: int, y: int, x: int) -> tuple[float, float]:
+        """Map voxel (z, y, x) → (scene_row, scene_col) for the current orientation."""
+        assert self.voxel_spacing is not None and self.volume is not None
+        dz, dy, dx = self.voxel_spacing
+        Z, Y, _ = self.volume.shape
+        if self.orientation == 'axial':
+            return float((Y - 1) - y), float(x)
+        elif self.orientation == 'coronal':
+            return float((Z - 1 - z) * dz / dx), float(x)
+        else:  # sagittal
+            return float((Z - 1 - z) * dz / dy), float((Y - 1) - y)
 
     def update_brush(self, geometry: BrushGeometry) -> None:
         """Update geometry and refresh the cursor pixmap (called on slider/combo change)."""
@@ -242,6 +273,14 @@ class CctaDisplay(QGraphicsView):
         pen.setCosmetic(True)
         self._render_items.append(self._scene.addLine(0, ch_row, w, ch_row, pen))
         self._render_items.append(self._scene.addLine(ch_col, 0, ch_col, h, pen))
+
+        if self._line_draw_mode and self._line_draw_pending is not None:
+            sr, sc = self._voxel_to_scene(*self._line_draw_pending)
+            dot_pen = QPen(QColor(0, 200, 255))
+            dot_pen.setWidth(2)
+            dot_pen.setCosmetic(True)
+            r = 5
+            self._render_items.append(self._scene.addEllipse(sc - r, sr - r, 2 * r, 2 * r, dot_pen))
 
         self._scene.setSceneRect(0, 0, w, h)
         if not self._user_zoomed:
@@ -406,6 +445,22 @@ class CctaDisplay(QGraphicsView):
     def mouseReleaseEvent(self, event) -> None:
         if self._brush_mode and event.button() == Qt.MouseButton.LeftButton:
             self._brush_painting = False
+            return
+        if self._line_draw_mode and event.button() == Qt.MouseButton.LeftButton:
+            if not self._is_dragging and self.volume is not None:
+                pos = self.mapToScene(event.position().toPoint())
+                voxel = self._scene_to_cursor(int(pos.y()), int(pos.x()))
+                if self._line_draw_pending is None:
+                    self._line_draw_pending = voxel
+                    self._render()
+                else:
+                    p1 = self._line_draw_pending
+                    self._line_draw_pending = None
+                    self._line_draw_mode = False
+                    self.setCursor(Qt.CursorShape.ArrowCursor)
+                    self._render()
+                    self.line_drawn.emit(p1, voxel)
+            self._is_dragging = False
             return
         if event.button() == Qt.MouseButton.LeftButton:
             if not self._is_dragging and self.volume is not None:
