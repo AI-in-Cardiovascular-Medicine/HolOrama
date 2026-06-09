@@ -1,3 +1,4 @@
+import glob
 import os
 import shutil
 import tempfile
@@ -223,17 +224,47 @@ class CctaPage(QWidget):
                     nifti_base = nifti_base[: -len(ext)]
                     break
             page._source_path = nifti_base
-            reply = QMessageBox.question(
-                page,
-                'Load Mask?',
-                'Would you like to load a segmentation mask for this volume?',
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                page.open_mask()
+            if not page._try_auto_load_mask():
+                reply = QMessageBox.question(
+                    page,
+                    'Load Mask?',
+                    'Would you like to load a segmentation mask for this volume?',
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    page.open_mask()
         else:
             page._source_path = os.path.join(path, os.path.basename(path))
+            page._try_auto_load_mask()
+
+    def _try_auto_load_mask(self) -> bool:
+        """Load the most recent versioned mask for the current source path, if one exists."""
+        if self._source_path is None:
+            return False
+        matches = glob.glob(f'{self._source_path}_ccta_seg_*.nii.gz')
+        if not matches:
+            return False
+        mask_path = max(matches, key=os.path.getmtime)
+        try:
+            mask, _ = read_mask_volume(mask_path)
+        except ValueError:
+            return False
+        self._apply_mask(mask)
+        self.status_bar.showMessage(f'Mask auto-loaded: {os.path.basename(mask_path)}')
+        return True
+
+    def _apply_mask(self, mask: np.ndarray) -> None:
+        """Apply a loaded mask array to all displays and panels."""
+        self.data.mask = mask
+        self.data.labels = sorted(int(v) for v in np.unique(mask) if v != 0)
+        for display in (self._axial, self._coronal, self._sagittal):
+            display.set_mask(mask, self.data.labels)
+        self._mask_tab.set_labels(self.data.labels)
+        self._brush_panel.set_labels(self.data.labels)
+        self._stl_panel.set_labels(self.data.labels, self._mask_tab.label_names())
+        if self.data.voxel_spacing is not None:
+            self._3d_viewer.set_mask(mask, self.data.labels, self.data.voxel_spacing)
 
     def open_mask(self) -> None:
         if self.data.volume is None:
@@ -256,17 +287,7 @@ class CctaPage(QWidget):
             ErrorMessage(self, str(e))
             return
 
-        self.data.mask = mask
-        self.data.labels = sorted(int(v) for v in np.unique(mask) if v != 0)
-
-        for display in (self._axial, self._coronal, self._sagittal):
-            display.set_mask(mask, self.data.labels)
-        self._mask_tab.set_labels(self.data.labels)
-        self._brush_panel.set_labels(self.data.labels)
-        self._stl_panel.set_labels(self.data.labels, self._mask_tab.label_names())
-        if self.data.voxel_spacing is not None:
-            self._3d_viewer.set_mask(mask, self.data.labels, self.data.voxel_spacing)
-
+        self._apply_mask(mask)
         self.status_bar.showMessage(f'Mask loaded: {len(self.data.labels)} label(s) — {self.data.labels}')
 
     def save_mask(self) -> None:
