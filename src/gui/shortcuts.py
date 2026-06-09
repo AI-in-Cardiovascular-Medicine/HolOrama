@@ -77,6 +77,16 @@ def init_shortcuts(main_window):
     QShortcut(QKeySequence(Qt.Key.Key_Right), main_window, lambda: main_window.display_slider.next_frame())
 
 
+def _save_current_page(main_window, ccta_page) -> None:
+    from gui.active_page import ActivePage
+
+    master = main_window.window()
+    if hasattr(master, 'active_page') and master.active_page == ActivePage.CCTA:
+        ccta_page.save_mask()
+    else:
+        write_contours(main_window)
+
+
 def init_menu(main_window, ccta_page):
     file_menu = main_window.menu_bar.addMenu('File')
     open_action = file_menu.addAction('Open Intravascular File', partial(read_image, main_window))
@@ -87,7 +97,7 @@ def init_menu(main_window, ccta_page):
     open_folder_action.setShortcut('Ctrl+Shift+O')
     file_menu.addAction('Open CCTA Mask', ccta_page.open_mask)
     file_menu.addSeparator()
-    save_contours = file_menu.addAction('Save Contours', partial(write_contours, main_window))
+    save_contours = file_menu.addAction('Save', partial(_save_current_page, main_window, ccta_page))
     save_contours.setShortcut('Ctrl+S')
     nifti_menu = file_menu.addMenu('Save NIfTis')
     nifti_menu.addAction('Contoured Frames', partial(save_as_nifti, main_window, mode='contoured'))

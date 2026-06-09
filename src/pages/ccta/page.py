@@ -246,6 +246,16 @@ class CctaPage(QWidget):
 
         self.status_bar.showMessage(f'Mask loaded: {len(self.data.labels)} label(s) — {self.data.labels}')
 
+    def save_mask(self) -> None:
+        if self.data.mask is None or self._source_path is None:
+            ErrorMessage(self, 'No mask loaded.')
+            return
+        self._mask_dirty = False
+        spacing = self.data.voxel_spacing if self.data.voxel_spacing else (1.0, 1.0, 1.0)
+        out_path = f'{self._source_path}_ccta_seg_{version_file_str}.nii.gz'
+        self._save_mask_snapshot(self.data.mask.copy(), spacing, out_path)
+        self.status_bar.showMessage(f'Mask saved: {os.path.basename(out_path)}')
+
     def _auto_save(self) -> None:
         if not self._mask_dirty or self.data.mask is None or self._source_path is None:
             return
