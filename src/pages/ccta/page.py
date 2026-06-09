@@ -78,6 +78,7 @@ class CctaPage(QWidget):
         self._brush_panel = BrushPanel()
         self._brush_panel.brush_enabled_changed.connect(self._on_brush_enabled_changed)
         self._brush_panel.geometry_changed.connect(self._on_brush_geometry_changed)
+        self._mask_tab.label_name_changed.connect(self._brush_panel.update_label_name)
         self._mask_tab.set_brush_panel(self._brush_panel)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
