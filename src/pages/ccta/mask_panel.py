@@ -6,7 +6,6 @@ from PyQt6.QtWidgets import (
     QSlider,
     QCheckBox,
     QLineEdit,
-    QScrollArea,
     QFrame,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -99,20 +98,12 @@ class MaskPanel(QWidget):
         header_row.addWidget(self._all_cb)
         root.addLayout(header_row)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setMinimumHeight(50)
-        scroll.setMaximumHeight(240)  # ~8 label rows; scrollbar appears beyond that
-
         self._rows_widget = QWidget()
         self._rows_layout = QVBoxLayout(self._rows_widget)
         self._rows_layout.setContentsMargins(0, 0, 0, 0)
         self._rows_layout.setSpacing(0)
         self._rows_layout.addStretch()
-        scroll.setWidget(self._rows_widget)
-        root.addWidget(scroll)  # no stretch — height capped above
+        root.addWidget(self._rows_widget)
 
         self._rows: dict[int, _LabelRow] = {}
 

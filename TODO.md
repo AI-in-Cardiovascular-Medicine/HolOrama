@@ -6,7 +6,7 @@
 - [x] two sets of metadata (intravascular and ccta), if not from the same patient should automatically drop the data from the other case.
 - [x] include the possible contour types
 - [x] handle output write to nifti for images together with masks
-- [] drop menu for reading in nifti files
+- [x] drop menu for reading in nifti files
 - [x] when clicking render 3d it overrides the previous button somehow
 - [] rotation of the geometry is unintuitive
 
