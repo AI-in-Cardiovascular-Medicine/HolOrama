@@ -125,6 +125,10 @@ class BrushPanel(QWidget):
         color = LABEL_COLORS[idx % len(LABEL_COLORS)]
         return BrushGeometry(label=label, color=color, radius_px=radius)
 
+    def set_enabled(self, enabled: bool) -> None:
+        """Programmatically toggle the brush enable checkbox."""
+        self._enable_cb.setChecked(enabled)
+
     def _on_enabled_toggled(self, checked: bool) -> None:
         self._controls.setEnabled(checked)
         self.brush_enabled_changed.emit(checked)

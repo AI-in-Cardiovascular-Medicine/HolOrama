@@ -331,6 +331,12 @@ class CctaPage(QWidget):
         self._brush_panel.set_labels(self.data.labels)
         self._stl_panel.set_labels(self.data.labels, self._mask_tab.label_names())
 
+    def reset_to_neutral(self) -> None:
+        """Return to neutral state: deactivate brush and cancel any active line draw."""
+        for d in (self._axial, self._coronal, self._sagittal):
+            d.stop_line_draw()
+        self._brush_panel.set_enabled(False)
+
     def _on_brush_geometry_changed(self, geometry) -> None:
         for d in (self._axial, self._coronal, self._sagittal):
             d.update_brush(geometry)

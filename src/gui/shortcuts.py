@@ -44,6 +44,7 @@ def _new_contour_append_synced(main_window, contour_type):
 def init_ccta_shortcuts(ccta_page):
     _widget_children_shortcut('R', ccta_page, ccta_page.reset_windowing)
     _widget_children_shortcut('F', ccta_page, ccta_page.reset_zoom)
+    _widget_children_shortcut('Escape', ccta_page, ccta_page.reset_to_neutral)
 
 
 def _widget_children_shortcut(key, parent, slot):

@@ -464,13 +464,6 @@ class CctaDisplay(QGraphicsView):
             self.windowing_changed.emit(self.window_level, self.window_width)
         super().mouseMoveEvent(event)
 
-    def mouseDoubleClickEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.reset_zoom()
-            if self._brush_mode:
-                self.setCursor(self._brush_cursor.make_cursor(self.transform().m11()))
-        super().mouseDoubleClickEvent(event)
-
     def mouseReleaseEvent(self, event) -> None:
         if self._brush_mode and event.button() == Qt.MouseButton.LeftButton:
             self._brush_painting = False
