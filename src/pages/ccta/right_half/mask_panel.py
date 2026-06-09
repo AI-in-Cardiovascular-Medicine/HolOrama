@@ -15,6 +15,7 @@ from domain.ccta_display_types import LABEL_COLORS, DEFAULT_MASK_ALPHA
 
 class _LabelRow(QWidget):
     visibility_changed = pyqtSignal(bool)
+    name_changed = pyqtSignal(str)
 
     def __init__(self, label: int, color: tuple[int, int, int], parent=None) -> None:
         super().__init__(parent)
@@ -36,6 +37,7 @@ class _LabelRow(QWidget):
 
         self._name_edit = QLineEdit(f'Label {label}')
         self._name_edit.setPlaceholderText(f'Label {label}')
+        self._name_edit.textChanged.connect(self._on_name_changed)
 
         num_lbl = QLabel(str(label))
         num_lbl.setFixedWidth(22)
@@ -55,12 +57,16 @@ class _LabelRow(QWidget):
     def visible(self) -> bool:
         return self._checkbox.isChecked()
 
+    def _on_name_changed(self, text: str) -> None:
+        self.name_changed.emit(text or f'Label {self.label_value}')
+
 
 class MaskPanel(QWidget):
     """Side panel for controlling mask overlay: opacity and per-label visibility + names."""
 
     alpha_changed = pyqtSignal(float)  # 0.0–1.0
     label_visibility_changed = pyqtSignal(int, bool)  # label_value, visible
+    label_name_changed = pyqtSignal(int, str)  # label_value, name
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -114,6 +120,7 @@ class MaskPanel(QWidget):
             color = LABEL_COLORS[i % len(LABEL_COLORS)]
             row = _LabelRow(label, color)
             row.visibility_changed.connect(lambda visible, lbl=label: self.label_visibility_changed.emit(lbl, visible))
+            row.name_changed.connect(lambda name, lbl=label: self.label_name_changed.emit(lbl, name))
             # Insert before the trailing stretch
             self._rows_layout.insertWidget(self._rows_layout.count() - 1, row)
             self._rows[label] = row

@@ -8,6 +8,7 @@ from domain.ccta_display_types import LABEL_COLORS, DEFAULT_MASK_ALPHA, DEFAULT_
 from tools.painting import BrushGeometry, BrushCursor
 
 _CROSSHAIR_COLOR = QColor(255, 255, 0)
+_CUT_LINE_COLOR = QColor(180, 180, 180)
 _ZOOM_SENSITIVITY = 0.01
 
 
@@ -34,6 +35,7 @@ class CctaDisplay(QGraphicsView):
     cursor_moved = pyqtSignal(int, int, int)  # z, y, x
     windowing_changed = pyqtSignal(int, int)  # level, width
     mask_painted = pyqtSignal()  # emitted after any brush stroke modifies the mask
+    line_drawn = pyqtSignal(object, object)  # (p1_zyx, p2_zyx) voxel tuples
 
     def __init__(self, orientation: str, parent=None) -> None:
         super().__init__(parent)
@@ -63,6 +65,10 @@ class CctaDisplay(QGraphicsView):
         self._brush_geometry: BrushGeometry | None = None
         self._brush_cursor: BrushCursor = BrushCursor()
         self._brush_painting: bool = False
+
+        self._line_draw_mode: bool = False
+        self._line_draw_pending: tuple[int, int, int] | None = None
+        self._cut_lines: list[tuple] = []  # list of (p1_zyx, p2_zyx) confirmed cut lines
 
         # Rendered items replaced each frame so we never need scene.clear().
         self._render_items: list = []
@@ -111,6 +117,38 @@ class CctaDisplay(QGraphicsView):
         self._brush_mode = False
         self._brush_painting = False
         self.setCursor(Qt.CursorShape.ArrowCursor)
+
+    def start_line_draw(self) -> None:
+        """Enter line-draw mode: first click sets point 1, second click emits line_drawn."""
+        self._brush_mode = False
+        self._brush_painting = False
+        self._line_draw_mode = True
+        self._line_draw_pending = None
+        self.setCursor(Qt.CursorShape.CrossCursor)
+
+    def stop_line_draw(self) -> None:
+        """Exit line-draw mode without storing a result."""
+        self._line_draw_mode = False
+        self._line_draw_pending = None
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        self._render()
+
+    def set_cut_lines(self, lines: list[tuple]) -> None:
+        """Replace the displayed cut-line overlays and re-render."""
+        self._cut_lines = lines
+        self._render()
+
+    def _voxel_to_scene(self, z: int, y: int, x: int) -> tuple[float, float]:
+        """Map voxel (z, y, x) → (scene_row, scene_col) for the current orientation."""
+        assert self.voxel_spacing is not None and self.volume is not None
+        dz, dy, dx = self.voxel_spacing
+        Z, Y, _ = self.volume.shape
+        if self.orientation == 'axial':
+            return float((Y - 1) - y), float(x)
+        elif self.orientation == 'coronal':
+            return float((Z - 1 - z) * dz / dx), float(x)
+        else:  # sagittal
+            return float((Z - 1 - z) * dz / dy), float((Y - 1) - y)
 
     def update_brush(self, geometry: BrushGeometry) -> None:
         """Update geometry and refresh the cursor pixmap (called on slider/combo change)."""
@@ -242,6 +280,36 @@ class CctaDisplay(QGraphicsView):
         pen.setCosmetic(True)
         self._render_items.append(self._scene.addLine(0, ch_row, w, ch_row, pen))
         self._render_items.append(self._scene.addLine(ch_col, 0, ch_col, h, pen))
+
+        if self._cut_lines:
+            cut_pen = QPen(_CUT_LINE_COLOR)
+            cut_pen.setCosmetic(True)
+            cut_pen.setStyle(Qt.PenStyle.DashLine)
+            ext = max(w, h) * 2  # extend well past image edge; viewport clips the rest
+            for p1_zyx, p2_zyx in self._cut_lines:
+                sr1, sc1 = self._voxel_to_scene(*p1_zyx)
+                sr2, sc2 = self._voxel_to_scene(*p2_zyx)
+                dr, dc = sr2 - sr1, sc2 - sc1
+                length = (dr**2 + dc**2) ** 0.5
+                if length > 0:
+                    dr, dc = dr / length, dc / length
+                    self._render_items.append(
+                        self._scene.addLine(
+                            sc1 - dc * ext,
+                            sr1 - dr * ext,
+                            sc1 + dc * ext,
+                            sr1 + dr * ext,
+                            cut_pen,
+                        )
+                    )
+
+        if self._line_draw_mode and self._line_draw_pending is not None:
+            sr, sc = self._voxel_to_scene(*self._line_draw_pending)
+            dot_pen = QPen(QColor(0, 200, 255))
+            dot_pen.setWidth(2)
+            dot_pen.setCosmetic(True)
+            r = 5
+            self._render_items.append(self._scene.addEllipse(sc - r, sr - r, 2 * r, 2 * r, dot_pen))
 
         self._scene.setSceneRect(0, 0, w, h)
         if not self._user_zoomed:
@@ -396,16 +464,25 @@ class CctaDisplay(QGraphicsView):
             self.windowing_changed.emit(self.window_level, self.window_width)
         super().mouseMoveEvent(event)
 
-    def mouseDoubleClickEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.reset_zoom()
-            if self._brush_mode:
-                self.setCursor(self._brush_cursor.make_cursor(self.transform().m11()))
-        super().mouseDoubleClickEvent(event)
-
     def mouseReleaseEvent(self, event) -> None:
         if self._brush_mode and event.button() == Qt.MouseButton.LeftButton:
             self._brush_painting = False
+            return
+        if self._line_draw_mode and event.button() == Qt.MouseButton.LeftButton:
+            if not self._is_dragging and self.volume is not None:
+                pos = self.mapToScene(event.position().toPoint())
+                voxel = self._scene_to_cursor(int(pos.y()), int(pos.x()))
+                if self._line_draw_pending is None:
+                    self._line_draw_pending = voxel
+                    self._render()
+                else:
+                    p1 = self._line_draw_pending
+                    self._line_draw_pending = None
+                    self._line_draw_mode = False
+                    self.setCursor(Qt.CursorShape.ArrowCursor)
+                    self._render()
+                    self.line_drawn.emit(p1, voxel)
+            self._is_dragging = False
             return
         if event.button() == Qt.MouseButton.LeftButton:
             if not self._is_dragging and self.volume is not None:

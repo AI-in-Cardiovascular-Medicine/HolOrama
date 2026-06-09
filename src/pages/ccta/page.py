@@ -1,3 +1,4 @@
+import glob
 import os
 import shutil
 import tempfile
@@ -25,7 +26,9 @@ from pages.ccta.left_half.display import CctaDisplay
 from pages.ccta.left_half.display_3d import CctaViewer3D
 from pages.ccta.right_half.mask_panel import MaskPanel
 from pages.ccta.right_half.brush_panel import BrushPanel
+from pages.ccta.right_half.stl_extraction_panel import StlExtractionPanel
 from input_output.input.ccta_io import read_ct_volume, read_nifti_volume, read_mask_volume
+from input_output.output.stl_export import export_nifti, export_stl
 from version import version_file_str
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from gui.active_page import ActivePage
@@ -78,11 +81,27 @@ class CctaPage(QWidget):
         self._brush_panel = BrushPanel()
         self._brush_panel.brush_enabled_changed.connect(self._on_brush_enabled_changed)
         self._brush_panel.geometry_changed.connect(self._on_brush_geometry_changed)
+        self._mask_tab.label_name_changed.connect(self._brush_panel.update_label_name)
         self._mask_tab.set_brush_panel(self._brush_panel)
+
+        self._stl_panel = StlExtractionPanel()
+        self._stl_panel.line_draw_requested.connect(self._on_line_draw_requested)
+        self._stl_panel.extract_requested.connect(self._on_extract_requested)
+        self._mask_tab.label_name_changed.connect(self._stl_panel.update_label_name)
+        self._cut_line_0: tuple | None = None  # (p1_zyx, p2_zyx) from axial view   (LVOT)
+        self._cut_line_1: tuple | None = None  # (p1_zyx, p2_zyx) from coronal view (LVOT)
+        self._aorta_cut_line: tuple | None = None  # (p1_zyx, p2_zyx) from coronal view (aorta top, optional)
+
+        right_col = QWidget()
+        right_vbox = QVBoxLayout(right_col)
+        right_vbox.setContentsMargins(0, 0, 0, 0)
+        right_vbox.setSpacing(0)
+        right_vbox.addWidget(self._mask_tab, 1)
+        right_vbox.addWidget(self._stl_panel, 0)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(views)
-        splitter.addWidget(self._mask_tab)
+        splitter.addWidget(right_col)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 0)
         splitter.setSizes([10000, 220])
@@ -93,6 +112,10 @@ class CctaPage(QWidget):
             display.cursor_moved.connect(self._on_cursor_moved)
             display.windowing_changed.connect(self._on_windowing_changed)
             display.mask_painted.connect(self._on_mask_painted)
+
+        self._pending_coronal_cut: int = 1  # 1 = LVOT, 2 = aorta top
+        self._axial.line_drawn.connect(lambda p1, p2: self._on_line_drawn(0, p1, p2))
+        self._coronal.line_drawn.connect(lambda p1, p2: self._on_line_drawn(self._pending_coronal_cut, p1, p2))
 
         timer: QTimer = QTimer(self)
         timer.timeout.connect(self._auto_save)
@@ -201,17 +224,47 @@ class CctaPage(QWidget):
                     nifti_base = nifti_base[: -len(ext)]
                     break
             page._source_path = nifti_base
-            reply = QMessageBox.question(
-                page,
-                'Load Mask?',
-                'Would you like to load a segmentation mask for this volume?',
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                page.open_mask()
+            if not page._try_auto_load_mask():
+                reply = QMessageBox.question(
+                    page,
+                    'Load Mask?',
+                    'Would you like to load a segmentation mask for this volume?',
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    page.open_mask()
         else:
             page._source_path = os.path.join(path, os.path.basename(path))
+            page._try_auto_load_mask()
+
+    def _try_auto_load_mask(self) -> bool:
+        """Load the most recent versioned mask for the current source path, if one exists."""
+        if self._source_path is None:
+            return False
+        matches = glob.glob(f'{self._source_path}_ccta_seg_*.nii.gz')
+        if not matches:
+            return False
+        mask_path = max(matches, key=os.path.getmtime)
+        try:
+            mask, _ = read_mask_volume(mask_path)
+        except ValueError:
+            return False
+        self._apply_mask(mask)
+        self.status_bar.showMessage(f'Mask auto-loaded: {os.path.basename(mask_path)}')
+        return True
+
+    def _apply_mask(self, mask: np.ndarray) -> None:
+        """Apply a loaded mask array to all displays and panels."""
+        self.data.mask = mask
+        self.data.labels = sorted(int(v) for v in np.unique(mask) if v != 0)
+        for display in (self._axial, self._coronal, self._sagittal):
+            display.set_mask(mask, self.data.labels)
+        self._mask_tab.set_labels(self.data.labels)
+        self._brush_panel.set_labels(self.data.labels)
+        self._stl_panel.set_labels(self.data.labels, self._mask_tab.label_names())
+        if self.data.voxel_spacing is not None:
+            self._3d_viewer.set_mask(mask, self.data.labels, self.data.voxel_spacing)
 
     def open_mask(self) -> None:
         if self.data.volume is None:
@@ -234,16 +287,7 @@ class CctaPage(QWidget):
             ErrorMessage(self, str(e))
             return
 
-        self.data.mask = mask
-        self.data.labels = sorted(int(v) for v in np.unique(mask) if v != 0)
-
-        for display in (self._axial, self._coronal, self._sagittal):
-            display.set_mask(mask, self.data.labels)
-        self._mask_tab.set_labels(self.data.labels)
-        self._brush_panel.set_labels(self.data.labels)
-        if self.data.voxel_spacing is not None:
-            self._3d_viewer.set_mask(mask, self.data.labels, self.data.voxel_spacing)
-
+        self._apply_mask(mask)
         self.status_bar.showMessage(f'Mask loaded: {len(self.data.labels)} label(s) — {self.data.labels}')
 
     def save_mask(self) -> None:
@@ -306,6 +350,13 @@ class CctaPage(QWidget):
             display.set_mask(mask, self.data.labels)
         self._mask_tab.set_labels(self.data.labels)
         self._brush_panel.set_labels(self.data.labels)
+        self._stl_panel.set_labels(self.data.labels, self._mask_tab.label_names())
+
+    def reset_to_neutral(self) -> None:
+        """Return to neutral state: deactivate brush and cancel any active line draw."""
+        for d in (self._axial, self._coronal, self._sagittal):
+            d.stop_line_draw()
+        self._brush_panel.set_enabled(False)
 
     def _on_brush_geometry_changed(self, geometry) -> None:
         for d in (self._axial, self._coronal, self._sagittal):
@@ -350,6 +401,148 @@ class CctaPage(QWidget):
         self._axial_label.setText(f'Axial  Z: {z + 1} / {Z}')
         self._sagittal_label.setText(f'Sagittal  X: {x + 1} / {X}')
         self._coronal_label.setText(f'Coronal  Y: {y + 1} / {Y}')
+
+    def _on_line_draw_requested(self, index: int) -> None:
+        # index 0: axial (LVOT), index 1: coronal (LVOT), index 2: coronal (aorta top)
+        if index == 0:
+            self._axial.start_line_draw()
+        else:
+            self._pending_coronal_cut = index
+            self._coronal.start_line_draw()
+
+    def _on_line_drawn(self, index: int, p1: tuple, p2: tuple) -> None:
+        if index == 0:
+            self._cut_line_0 = (p1, p2)
+        elif index == 1:
+            self._cut_line_1 = (p1, p2)
+        else:
+            self._aorta_cut_line = (p1, p2)
+        self._stl_panel.set_line_drawn(index)
+        self._refresh_cut_line_overlays()
+
+    def _refresh_cut_line_overlays(self) -> None:
+        axial_lines = [self._cut_line_0] if self._cut_line_0 else []
+        coronal_lines = [line for line in (self._cut_line_1, self._aorta_cut_line) if line is not None]
+        self._axial.set_cut_lines(axial_lines)
+        self._coronal.set_cut_lines(coronal_lines)
+
+    def _on_extract_requested(self, cor_label: int, aorta_label: int, lv_label: int, fmt: str) -> None:
+        if self.data.mask is None or self.data.voxel_spacing is None:
+            ErrorMessage(self, 'No mask or volume loaded.')
+            return
+        if self._cut_line_0 is None or self._cut_line_1 is None:
+            ErrorMessage(self, 'Both cut lines must be drawn first.')
+            return
+
+        # Ask for destination first so the user isn't waiting on computation before seeing the dialog.
+        if fmt == 'nifti':
+            path, _ = QFileDialog.getSaveFileName(
+                self,
+                'Save NIfTI Mask',
+                '',
+                'NIfTI (*.nii.gz)',
+                options=QFileDialog.Option.DontUseNativeDialog,
+            )
+            if not path:
+                return
+            if not path.endswith('.nii.gz'):
+                path += '.nii.gz'
+        else:
+            path, _ = QFileDialog.getSaveFileName(
+                self,
+                'Save STL',
+                '',
+                'STL (*.stl)',
+                options=QFileDialog.Option.DontUseNativeDialog,
+            )
+            if not path:
+                return
+            if not path.endswith('.stl'):
+                path += '.stl'
+
+        label = 'NIfTI' if fmt == 'nifti' else 'STL'
+        progress = QProgressDialog(f'Preparing {label} export…', 'Cancel', 0, 4, self)
+        progress.setWindowTitle(f'Export {label}')
+        progress.setMinimumDuration(0)
+        progress.setModal(True)
+        progress.setValue(0)
+        QApplication.processEvents()
+
+        mask = self.data.mask
+        coronaries = mask == cor_label
+        aorta = mask == aorta_label
+        lv = mask == lv_label
+
+        aorta_voxels = np.argwhere(aorta)
+        if len(aorta_voxels) == 0:
+            progress.close()
+            ErrorMessage(self, 'Aorta mask is empty.')
+            return
+        aorta_centroid = aorta_voxels.mean(axis=0)
+
+        # LVOT cut plane: line 0 (axial, moves in y/x) × line 1 (coronal, moves in z/x).
+        p00 = np.array(self._cut_line_0[0], dtype=float)
+        p01 = np.array(self._cut_line_0[1], dtype=float)
+        p10 = np.array(self._cut_line_1[0], dtype=float)
+        p11 = np.array(self._cut_line_1[1], dtype=float)
+        d0 = p01 - p00
+        d1 = p11 - p10
+        lvot_normal = np.cross(d0, d1)
+        if np.linalg.norm(lvot_normal) < 1e-6:
+            progress.close()
+            ErrorMessage(self, 'LVOT cut lines are parallel — cannot define a plane. Please redraw.')
+            return
+        lvot_anchor = (p00 + p01) / 2
+
+        progress.setLabelText('Computing LVOT cut…')
+        progress.setValue(1)
+        QApplication.processEvents()
+        if progress.wasCanceled():
+            return
+
+        Z, Y, X = mask.shape
+        iz, iy, ix = np.mgrid[0:Z, 0:Y, 0:X]
+        coords = np.stack([iz, iy, ix], axis=-1).astype(float)
+        lvot_dist = ((coords - lvot_anchor) * lvot_normal).sum(axis=-1)
+        aorta_side = np.dot(lvot_normal, aorta_centroid - lvot_anchor)
+        lvot = lv & ((lvot_dist > 0) == (aorta_side > 0))
+
+        progress.setLabelText('Applying aorta cut…')
+        progress.setValue(2)
+        QApplication.processEvents()
+        if progress.wasCanceled():
+            return
+
+        # Optional aorta top cut: single coronal line, plane extends through all Y.
+        if self._aorta_cut_line is not None:
+            q0 = np.array(self._aorta_cut_line[0], dtype=float)
+            q1 = np.array(self._aorta_cut_line[1], dtype=float)
+            d_aorta = q1 - q0
+            aorta_cut_normal = np.cross(d_aorta, np.array([0.0, 1.0, 0.0]))
+            if np.linalg.norm(aorta_cut_normal) > 1e-6:
+                aorta_anchor = (q0 + q1) / 2
+                coronaries_voxels = np.argwhere(coronaries)
+                ref_centroid = coronaries_voxels.mean(axis=0) if len(coronaries_voxels) > 0 else aorta_centroid
+                ref_side = np.dot(aorta_cut_normal, ref_centroid - aorta_anchor)
+                aorta_dist = ((coords - aorta_anchor) * aorta_cut_normal).sum(axis=-1)
+                aorta = aorta & ((aorta_dist > 0) == (ref_side > 0))
+
+        combined = (coronaries | aorta | lvot).astype(np.uint8)
+
+        progress.setLabelText(f'Writing {label}…')
+        progress.setValue(3)
+        QApplication.processEvents()
+        if progress.wasCanceled():
+            return
+
+        if fmt == 'nifti':
+            export_nifti(combined, self.data.voxel_spacing, path)
+        else:
+            export_stl(combined, self.data.voxel_spacing, path)
+
+        progress.setValue(4)
+        progress.close()
+        self.status_bar.showMessage(f'Exported: {os.path.basename(path)}')
 
     @staticmethod
     def _panel(display: CctaDisplay, label: QLabel) -> QWidget:

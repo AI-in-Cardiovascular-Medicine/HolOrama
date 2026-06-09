@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.7.0] - 2026-06-09
+
+Aortic root STL extraction with cut-plane workflow and QoL improvements for the CCTA module.
+
+### Added
+- Cut-line overlays rendered as dashed grey lines on the 2D CCTA views after a cut plane is drawn
+- Progress bars for NIfTI and STL export; file dialog now opens before computation starts so the UI is responsive
+- Escape key on CCTA page returns to neutral state: deactivates brush and cancels any active line draw
+- Versioned mask auto-loaded on volume open if a matching `_ccta_seg_*.nii.gz` file exists next to the source; falls back to the manual load dialog if none is found
+
+### Changed
+- Binary STL write vectorised using a numpy structured dtype (50 bytes per triangle in one `tobytes()` call)
+
+### Fixed
+- STL export vertex coordinates now replicate the VTK display coordinate system (Y-flip only), correcting coronary LR orientation and aortic root upright alignment
+- STL face winding flipped to produce outward-facing normals (skimage marching cubes emits inward normals by default)
+
 ## [1.6.3] - 2026-06-09
 
 ### Added
@@ -209,6 +226,7 @@ Now runs on PyQt6
 - Declared first stable release (after paper publication).
 - Updated citation from medRxiv to *Computer Methods and Programs in Biomedicine*.
 
+[1.7.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.6.3...v1.7.0
 [1.6.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.4.0...v1.5.0
 [1.3.1]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.3.0...v1.3.1

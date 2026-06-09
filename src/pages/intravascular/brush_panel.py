@@ -81,10 +81,6 @@ class BrushSettingsPopup(QFrame):
 
         self.adjustSize()
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     @property
     def is_erase(self) -> bool:
         return self._erase_rb.isChecked()
@@ -107,10 +103,6 @@ class BrushSettingsPopup(QFrame):
 
     def cancel_hide(self) -> None:
         self._hide_timer.stop()
-
-    # ------------------------------------------------------------------
-    # Qt overrides – keep popup alive while mouse is inside it
-    # ------------------------------------------------------------------
 
     def enterEvent(self, event):
         self._hide_timer.stop()

@@ -106,6 +106,13 @@ class BrushPanel(QWidget):
         if self._enable_cb.isChecked() and labels:
             self._emit()
 
+    def update_label_name(self, label: int, name: str) -> None:
+        """Update the combo box text for a label when its name changes in the mask panel."""
+        for i in range(self._combo.count()):
+            if self._combo.itemData(i) == label:
+                self._combo.setItemText(i, name)
+                break
+
     def current_geometry(self) -> BrushGeometry | None:
         """Return brush geometry for the current control state, or None if no labels."""
         radius = self._radius_slider.value()
@@ -117,6 +124,10 @@ class BrushPanel(QWidget):
         label = self._labels[idx]
         color = LABEL_COLORS[idx % len(LABEL_COLORS)]
         return BrushGeometry(label=label, color=color, radius_px=radius)
+
+    def set_enabled(self, enabled: bool) -> None:
+        """Programmatically toggle the brush enable checkbox."""
+        self._enable_cb.setChecked(enabled)
 
     def _on_enabled_toggled(self, checked: bool) -> None:
         self._controls.setEnabled(checked)
