@@ -400,59 +400,7 @@ class CctaPage(QWidget):
             ErrorMessage(self, 'Both cut lines must be drawn first.')
             return
 
-        mask = self.data.mask
-
-        coronaries = mask == cor_label
-        aorta = mask == aorta_label
-        lv = mask == lv_label
-
-        aorta_voxels = np.argwhere(aorta)
-        if len(aorta_voxels) == 0:
-            ErrorMessage(self, 'Aorta mask is empty.')
-            return
-        aorta_centroid = aorta_voxels.mean(axis=0)
-
-        # LVOT cut plane: line 0 (axial, moves in y/x) × line 1 (coronal, moves in z/x).
-        p00 = np.array(self._cut_line_0[0], dtype=float)
-        p01 = np.array(self._cut_line_0[1], dtype=float)
-        p10 = np.array(self._cut_line_1[0], dtype=float)
-        p11 = np.array(self._cut_line_1[1], dtype=float)
-        d0 = p01 - p00  # axial line direction:   (0,  dy, dx)
-        d1 = p11 - p10  # coronal line direction:  (dz,  0, dx)
-        lvot_normal = np.cross(d0, d1)
-        if np.linalg.norm(lvot_normal) < 1e-6:
-            ErrorMessage(self, 'LVOT cut lines are parallel — cannot define a plane. Please redraw.')
-            return
-        lvot_anchor = (p00 + p01) / 2
-
-        Z, Y, X = mask.shape
-        iz, iy, ix = np.mgrid[0:Z, 0:Y, 0:X]
-        coords = np.stack([iz, iy, ix], axis=-1).astype(float)
-
-        lvot_dist = ((coords - lvot_anchor) * lvot_normal).sum(axis=-1)
-        aorta_side = np.dot(lvot_normal, aorta_centroid - lvot_anchor)
-        lvot = lv & ((lvot_dist > 0) == (aorta_side > 0))
-
-        # Optional aorta top cut: single coronal line, plane extends through all Y.
-        # normal = cross(line_dir, Y_axis) has no Y component → cuts across all slices.
-        if self._aorta_cut_line is not None:
-            q0 = np.array(self._aorta_cut_line[0], dtype=float)
-            q1 = np.array(self._aorta_cut_line[1], dtype=float)
-            d_aorta = q1 - q0
-            aorta_cut_normal = np.cross(d_aorta, np.array([0.0, 1.0, 0.0]))
-            if np.linalg.norm(aorta_cut_normal) > 1e-6:
-                aorta_anchor = (q0 + q1) / 2
-                coronaries_voxels = np.argwhere(coronaries)
-                if len(coronaries_voxels) > 0:
-                    ref_centroid = coronaries_voxels.mean(axis=0)
-                else:
-                    ref_centroid = aorta_centroid
-                ref_side = np.dot(aorta_cut_normal, ref_centroid - aorta_anchor)
-                aorta_dist = ((coords - aorta_anchor) * aorta_cut_normal).sum(axis=-1)
-                aorta = aorta & ((aorta_dist > 0) == (ref_side > 0))
-
-        combined = (coronaries | aorta | lvot).astype(np.uint8)
-
+        # Ask for destination first so the user isn't waiting on computation before seeing the dialog.
         if fmt == 'nifti':
             path, _ = QFileDialog.getSaveFileName(
                 self,
@@ -465,7 +413,6 @@ class CctaPage(QWidget):
                 return
             if not path.endswith('.nii.gz'):
                 path += '.nii.gz'
-            export_nifti(combined, self.data.voxel_spacing, path)
         else:
             path, _ = QFileDialog.getSaveFileName(
                 self,
@@ -478,8 +425,89 @@ class CctaPage(QWidget):
                 return
             if not path.endswith('.stl'):
                 path += '.stl'
+
+        label = 'NIfTI' if fmt == 'nifti' else 'STL'
+        progress = QProgressDialog(f'Preparing {label} export…', 'Cancel', 0, 4, self)
+        progress.setWindowTitle(f'Export {label}')
+        progress.setMinimumDuration(0)
+        progress.setModal(True)
+        progress.setValue(0)
+        QApplication.processEvents()
+
+        mask = self.data.mask
+        coronaries = mask == cor_label
+        aorta = mask == aorta_label
+        lv = mask == lv_label
+
+        aorta_voxels = np.argwhere(aorta)
+        if len(aorta_voxels) == 0:
+            progress.close()
+            ErrorMessage(self, 'Aorta mask is empty.')
+            return
+        aorta_centroid = aorta_voxels.mean(axis=0)
+
+        # LVOT cut plane: line 0 (axial, moves in y/x) × line 1 (coronal, moves in z/x).
+        p00 = np.array(self._cut_line_0[0], dtype=float)
+        p01 = np.array(self._cut_line_0[1], dtype=float)
+        p10 = np.array(self._cut_line_1[0], dtype=float)
+        p11 = np.array(self._cut_line_1[1], dtype=float)
+        d0 = p01 - p00
+        d1 = p11 - p10
+        lvot_normal = np.cross(d0, d1)
+        if np.linalg.norm(lvot_normal) < 1e-6:
+            progress.close()
+            ErrorMessage(self, 'LVOT cut lines are parallel — cannot define a plane. Please redraw.')
+            return
+        lvot_anchor = (p00 + p01) / 2
+
+        progress.setLabelText('Computing LVOT cut…')
+        progress.setValue(1)
+        QApplication.processEvents()
+        if progress.wasCanceled():
+            return
+
+        Z, Y, X = mask.shape
+        iz, iy, ix = np.mgrid[0:Z, 0:Y, 0:X]
+        coords = np.stack([iz, iy, ix], axis=-1).astype(float)
+        lvot_dist = ((coords - lvot_anchor) * lvot_normal).sum(axis=-1)
+        aorta_side = np.dot(lvot_normal, aorta_centroid - lvot_anchor)
+        lvot = lv & ((lvot_dist > 0) == (aorta_side > 0))
+
+        progress.setLabelText('Applying aorta cut…')
+        progress.setValue(2)
+        QApplication.processEvents()
+        if progress.wasCanceled():
+            return
+
+        # Optional aorta top cut: single coronal line, plane extends through all Y.
+        if self._aorta_cut_line is not None:
+            q0 = np.array(self._aorta_cut_line[0], dtype=float)
+            q1 = np.array(self._aorta_cut_line[1], dtype=float)
+            d_aorta = q1 - q0
+            aorta_cut_normal = np.cross(d_aorta, np.array([0.0, 1.0, 0.0]))
+            if np.linalg.norm(aorta_cut_normal) > 1e-6:
+                aorta_anchor = (q0 + q1) / 2
+                coronaries_voxels = np.argwhere(coronaries)
+                ref_centroid = coronaries_voxels.mean(axis=0) if len(coronaries_voxels) > 0 else aorta_centroid
+                ref_side = np.dot(aorta_cut_normal, ref_centroid - aorta_anchor)
+                aorta_dist = ((coords - aorta_anchor) * aorta_cut_normal).sum(axis=-1)
+                aorta = aorta & ((aorta_dist > 0) == (ref_side > 0))
+
+        combined = (coronaries | aorta | lvot).astype(np.uint8)
+
+        progress.setLabelText(f'Writing {label}…')
+        progress.setValue(3)
+        QApplication.processEvents()
+        if progress.wasCanceled():
+            return
+
+        if fmt == 'nifti':
+            export_nifti(combined, self.data.voxel_spacing, path)
+        else:
             export_stl(combined, self.data.voxel_spacing, path)
 
+        progress.setValue(4)
+        progress.close()
         self.status_bar.showMessage(f'Exported: {os.path.basename(path)}')
 
     @staticmethod

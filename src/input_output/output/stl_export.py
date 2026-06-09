@@ -39,18 +39,23 @@ def export_stl(mask: np.ndarray, voxel_spacing: tuple[float, float, float], outp
 
 
 def _write_binary_stl(verts: np.ndarray, faces: np.ndarray, path: str) -> None:
-    n_tri = len(faces)
+    v0 = verts[faces[:, 0]]
+    v1 = verts[faces[:, 1]]
+    v2 = verts[faces[:, 2]]
+    normals = np.cross(v1 - v0, v2 - v0).astype(np.float32)
+    norms = np.linalg.norm(normals, axis=1, keepdims=True)
+    normals /= np.where(norms > 0, norms, 1.0)
+
+    # Pack all triangles at once: 50 bytes each (12 normal + 36 verts + 2 attr)
+    buf = np.zeros(
+        len(faces), dtype=[('n', '<f4', 3), ('v0', '<f4', 3), ('v1', '<f4', 3), ('v2', '<f4', 3), ('a', '<u2')]
+    )
+    buf['n'] = normals
+    buf['v0'] = v0.astype(np.float32)
+    buf['v1'] = v1.astype(np.float32)
+    buf['v2'] = v2.astype(np.float32)
+
     with open(path, 'wb') as f:
-        f.write(b'\0' * 80)  # 80-byte header
-        f.write(struct.pack('<I', n_tri))
-        for face in faces:
-            v0, v1, v2 = verts[face[0]], verts[face[1]], verts[face[2]]
-            normal = np.cross(v1 - v0, v2 - v0)
-            norm = np.linalg.norm(normal)
-            if norm > 0:
-                normal /= norm
-            f.write(struct.pack('<fff', *normal))
-            f.write(struct.pack('<fff', *v0))
-            f.write(struct.pack('<fff', *v1))
-            f.write(struct.pack('<fff', *v2))
-            f.write(struct.pack('<H', 0))  # attribute byte count
+        f.write(b'\0' * 80)
+        f.write(struct.pack('<I', len(faces)))
+        f.write(buf.tobytes())
