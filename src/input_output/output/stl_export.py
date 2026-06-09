@@ -21,9 +21,20 @@ def export_stl(mask: np.ndarray, voxel_spacing: tuple[float, float, float], outp
     has a closed exterior even when the mask touches the volume boundary.
     The padding offset is subtracted from vertex coordinates afterwards.
     """
+    _, dy, _ = voxel_spacing
     padded = np.pad(mask > 0, pad_width=1, mode='constant', constant_values=0)
     verts, faces, _, _ = marching_cubes(padded, level=0.5, spacing=voxel_spacing)
-    verts = verts - np.array(voxel_spacing)  # undo the 1-voxel offset
+    verts -= np.array(voxel_spacing)  # undo 1-voxel padding offset
+
+    y_ext = (mask.shape[1] - 1) * dy
+    verts = np.column_stack(
+        [
+            verts[:, 2],
+            y_ext - verts[:, 1],
+            verts[:, 0],
+        ]
+    )
+    faces = faces[:, [0, 2, 1]]
     _write_binary_stl(verts, faces, output_path)
 
 
