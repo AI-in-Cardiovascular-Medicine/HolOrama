@@ -143,7 +143,7 @@ class IntravascularPage(QSplitter):
 
     def auto_save(self) -> None:
         if self.image_displayed:
-            write_contours(self)
+            write_contours(self, force=False)
 
     def reset_state(self) -> None:
         if self.results_plot is not None:
