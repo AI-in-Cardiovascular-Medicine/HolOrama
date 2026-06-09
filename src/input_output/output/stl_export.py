@@ -15,8 +15,15 @@ def export_nifti(mask: np.ndarray, voxel_spacing: tuple[float, float, float], ou
 
 
 def export_stl(mask: np.ndarray, voxel_spacing: tuple[float, float, float], output_path: str) -> None:
-    """Run marching cubes on the binary mask and write a binary STL."""
-    verts, faces, _, _ = marching_cubes(mask > 0, level=0.5, spacing=voxel_spacing)
+    """Run marching cubes on the binary mask and write a binary STL.
+
+    A 1-voxel zero-padding is added before marching cubes so every surface
+    has a closed exterior even when the mask touches the volume boundary.
+    The padding offset is subtracted from vertex coordinates afterwards.
+    """
+    padded = np.pad(mask > 0, pad_width=1, mode='constant', constant_values=0)
+    verts, faces, _, _ = marching_cubes(padded, level=0.5, spacing=voxel_spacing)
+    verts = verts - np.array(voxel_spacing)  # undo the 1-voxel offset
     _write_binary_stl(verts, faces, output_path)
 
 

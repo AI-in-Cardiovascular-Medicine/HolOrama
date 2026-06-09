@@ -58,9 +58,10 @@ class StlExtractionPanel(QWidget):
 
         root.addWidget(_separator())
 
-        # Cut-line buttons with status indicators
+        # LVOT cut-line buttons (required — gates the Extract button)
+        root.addWidget(QLabel('LVOT cut plane:'))
         self._line_status: list[QLabel] = []
-        for i, view in enumerate(['coronal', 'sagittal']):
+        for i, view in enumerate(['axial', 'coronal']):
             row = QHBoxLayout()
             btn = QPushButton(f'Draw cut line ({view})')
             btn.clicked.connect(lambda _, idx=i: self.line_draw_requested.emit(idx))
@@ -71,6 +72,20 @@ class StlExtractionPanel(QWidget):
             row.addWidget(status)
             root.addLayout(row)
             self._line_status.append(status)
+
+        root.addWidget(_separator())
+
+        # Aorta top cut (optional — applied if drawn, skipped otherwise)
+        root.addWidget(QLabel('Aorta top cut (optional):'))
+        aorta_row = QHBoxLayout()
+        self._aorta_cut_btn = QPushButton('Draw cut line (coronal)')
+        self._aorta_cut_btn.clicked.connect(lambda: self.line_draw_requested.emit(2))
+        self._aorta_cut_status = QLabel('○')
+        self._aorta_cut_status.setFixedWidth(18)
+        self._aorta_cut_status.setStyleSheet('color: #888; font-size: 14px;')
+        aorta_row.addWidget(self._aorta_cut_btn, 1)
+        aorta_row.addWidget(self._aorta_cut_status)
+        root.addLayout(aorta_row)
 
         root.addWidget(_separator())
 
@@ -114,10 +129,15 @@ class StlExtractionPanel(QWidget):
 
     def set_line_drawn(self, index: int) -> None:
         """Mark a cut line as complete (called by page.py after line_drawn signal)."""
-        self._lines_drawn[index] = True
-        self._line_status[index].setText('●')
-        self._line_status[index].setStyleSheet('color: #44cc44; font-size: 14px;')
-        self._update_extract_btn()
+        if index < 2:
+            self._lines_drawn[index] = True
+            self._line_status[index].setText('●')
+            self._line_status[index].setStyleSheet('color: #44cc44; font-size: 14px;')
+            self._update_extract_btn()
+        else:
+            # index 2 = optional aorta top cut
+            self._aorta_cut_status.setText('●')
+            self._aorta_cut_status.setStyleSheet('color: #44cc44; font-size: 14px;')
 
     def _update_extract_btn(self) -> None:
         labels_ok = all(c.count() > 0 for c in (self._coronaries_combo, self._aorta_combo, self._lv_combo))

@@ -87,8 +87,9 @@ class CctaPage(QWidget):
         self._stl_panel.line_draw_requested.connect(self._on_line_draw_requested)
         self._stl_panel.extract_requested.connect(self._on_extract_requested)
         self._mask_tab.label_name_changed.connect(self._stl_panel.update_label_name)
-        self._cut_line_0: tuple | None = None  # (p1_zyx, p2_zyx) from coronal view
-        self._cut_line_1: tuple | None = None  # (p1_zyx, p2_zyx) from sagittal view
+        self._cut_line_0: tuple | None = None  # (p1_zyx, p2_zyx) from axial view   (LVOT)
+        self._cut_line_1: tuple | None = None  # (p1_zyx, p2_zyx) from coronal view (LVOT)
+        self._aorta_cut_line: tuple | None = None  # (p1_zyx, p2_zyx) from coronal view (aorta top, optional)
 
         right_col = QWidget()
         right_vbox = QVBoxLayout(right_col)
@@ -111,8 +112,9 @@ class CctaPage(QWidget):
             display.windowing_changed.connect(self._on_windowing_changed)
             display.mask_painted.connect(self._on_mask_painted)
 
-        self._coronal.line_drawn.connect(lambda p1, p2: self._on_line_drawn(0, p1, p2))
-        self._sagittal.line_drawn.connect(lambda p1, p2: self._on_line_drawn(1, p1, p2))
+        self._pending_coronal_cut: int = 1  # 1 = LVOT, 2 = aorta top
+        self._axial.line_drawn.connect(lambda p1, p2: self._on_line_drawn(0, p1, p2))
+        self._coronal.line_drawn.connect(lambda p1, p2: self._on_line_drawn(self._pending_coronal_cut, p1, p2))
 
         timer: QTimer = QTimer(self)
         timer.timeout.connect(self._auto_save)
@@ -374,14 +376,20 @@ class CctaPage(QWidget):
         self._coronal_label.setText(f'Coronal  Y: {y + 1} / {Y}')
 
     def _on_line_draw_requested(self, index: int) -> None:
-        display = self._coronal if index == 0 else self._sagittal
-        display.start_line_draw()
+        # index 0: axial (LVOT), index 1: coronal (LVOT), index 2: coronal (aorta top)
+        if index == 0:
+            self._axial.start_line_draw()
+        else:
+            self._pending_coronal_cut = index
+            self._coronal.start_line_draw()
 
     def _on_line_drawn(self, index: int, p1: tuple, p2: tuple) -> None:
         if index == 0:
             self._cut_line_0 = (p1, p2)
-        else:
+        elif index == 1:
             self._cut_line_1 = (p1, p2)
+        else:
+            self._aorta_cut_line = (p1, p2)
         self._stl_panel.set_line_drawn(index)
 
     def _on_extract_requested(self, cor_label: int, aorta_label: int, lv_label: int, fmt: str) -> None:
@@ -398,33 +406,50 @@ class CctaPage(QWidget):
         aorta = mask == aorta_label
         lv = mask == lv_label
 
-        # Build cutting plane from the two line direction vectors.
-        # Line 0 (coronal view): d0 moves in (z, 0, x); line 1 (sagittal view): d1 moves in (z, y, 0).
-        p00 = np.array(self._cut_line_0[0], dtype=float)
-        p01 = np.array(self._cut_line_0[1], dtype=float)
-        p10 = np.array(self._cut_line_1[0], dtype=float)
-        p11 = np.array(self._cut_line_1[1], dtype=float)
-        d0 = p01 - p00
-        d1 = p11 - p10
-        normal = np.cross(d0, d1)
-        if np.linalg.norm(normal) < 1e-6:
-            ErrorMessage(self, 'Cut lines are parallel — cannot define a plane. Please redraw.')
-            return
-        anchor = (p00 + p01) / 2  # midpoint of the coronal line
-
         aorta_voxels = np.argwhere(aorta)
         if len(aorta_voxels) == 0:
             ErrorMessage(self, 'Aorta mask is empty.')
             return
         aorta_centroid = aorta_voxels.mean(axis=0)
-        aorta_side = np.dot(normal, aorta_centroid - anchor)
 
-        # Keep only the LV half on the same side as the aorta centroid (= LVOT).
+        # LVOT cut plane: line 0 (axial, moves in y/x) × line 1 (coronal, moves in z/x).
+        p00 = np.array(self._cut_line_0[0], dtype=float)
+        p01 = np.array(self._cut_line_0[1], dtype=float)
+        p10 = np.array(self._cut_line_1[0], dtype=float)
+        p11 = np.array(self._cut_line_1[1], dtype=float)
+        d0 = p01 - p00  # axial line direction:   (0,  dy, dx)
+        d1 = p11 - p10  # coronal line direction:  (dz,  0, dx)
+        lvot_normal = np.cross(d0, d1)
+        if np.linalg.norm(lvot_normal) < 1e-6:
+            ErrorMessage(self, 'LVOT cut lines are parallel — cannot define a plane. Please redraw.')
+            return
+        lvot_anchor = (p00 + p01) / 2
+
         Z, Y, X = mask.shape
         iz, iy, ix = np.mgrid[0:Z, 0:Y, 0:X]
         coords = np.stack([iz, iy, ix], axis=-1).astype(float)
-        signed_dist = ((coords - anchor) * normal).sum(axis=-1)
-        lvot = lv & ((signed_dist > 0) == (aorta_side > 0))
+
+        lvot_dist = ((coords - lvot_anchor) * lvot_normal).sum(axis=-1)
+        aorta_side = np.dot(lvot_normal, aorta_centroid - lvot_anchor)
+        lvot = lv & ((lvot_dist > 0) == (aorta_side > 0))
+
+        # Optional aorta top cut: single coronal line, plane extends through all Y.
+        # normal = cross(line_dir, Y_axis) has no Y component → cuts across all slices.
+        if self._aorta_cut_line is not None:
+            q0 = np.array(self._aorta_cut_line[0], dtype=float)
+            q1 = np.array(self._aorta_cut_line[1], dtype=float)
+            d_aorta = q1 - q0
+            aorta_cut_normal = np.cross(d_aorta, np.array([0.0, 1.0, 0.0]))
+            if np.linalg.norm(aorta_cut_normal) > 1e-6:
+                aorta_anchor = (q0 + q1) / 2
+                coronaries_voxels = np.argwhere(coronaries)
+                if len(coronaries_voxels) > 0:
+                    ref_centroid = coronaries_voxels.mean(axis=0)
+                else:
+                    ref_centroid = aorta_centroid
+                ref_side = np.dot(aorta_cut_normal, ref_centroid - aorta_anchor)
+                aorta_dist = ((coords - aorta_anchor) * aorta_cut_normal).sum(axis=-1)
+                aorta = aorta & ((aorta_dist > 0) == (ref_side > 0))
 
         combined = (coronaries | aorta | lvot).astype(np.uint8)
 
