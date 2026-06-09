@@ -3,6 +3,7 @@ import vtkmodules.vtkInteractionStyle  # noqa: F401
 import vtkmodules.vtkRenderingOpenGL2  # noqa: F401
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from vtkmodules.vtkCommonDataModel import vtkImageData
+from vtkmodules.vtkInteractionStyle import vtkInteractorStyleTrackballCamera
 from vtkmodules.vtkRenderingCore import vtkActor, vtkLightKit, vtkPolyDataMapper, vtkRenderer
 from vtkmodules.util import numpy_support
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QApplication
@@ -65,6 +66,9 @@ class CctaViewer3D(QWidget):
         self._vtk_widget.GetRenderWindow().AddRenderer(self._ren)
         self._vtk_widget.Initialize()
         self._vtk_widget.Start()
+        trackball = vtkInteractorStyleTrackballCamera()
+        trackball.SetMotionFactor(7.5)
+        self._vtk_widget.SetInteractorStyle(trackball)
 
         self._mask: np.ndarray | None = None
         self._labels: list[int] = []
