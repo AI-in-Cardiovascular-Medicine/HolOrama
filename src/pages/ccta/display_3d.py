@@ -154,7 +154,7 @@ class CctaViewer3D(QWidget):
         Z, Y, X = self._mask.shape
 
         vtk_arr = numpy_support.numpy_to_vtk(
-            np.ascontiguousarray(self._mask).ravel(),  # x-fastest ✓
+            np.ascontiguousarray(self._mask[:, ::-1, :]).ravel(),  # x-fastest ✓; Y flipped to match 2-D views
             deep=True,
             array_type=numpy_support.get_vtk_array_type(np.uint8),
         )
