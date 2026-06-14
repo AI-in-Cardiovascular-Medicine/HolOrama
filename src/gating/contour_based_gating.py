@@ -105,7 +105,10 @@ class ContourBasedGating:
         image_based_gating_filtered,
         contour_based_gating_filtered,
     ):
-        # Shift unfiltered signals below the filtered ones
+        # Shift unfiltered signals below the filtered ones (work on copies — originals
+        # are still referenced by prepare_data's return values)
+        image_based_gating = image_based_gating.copy()
+        contour_based_gating = contour_based_gating.copy()
         min_sig = min(np.nanmin(image_based_gating), np.nanmin(contour_based_gating))
         for sig in (image_based_gating, contour_based_gating):
             sig += min_sig - np.nanmax(sig)
@@ -230,10 +233,12 @@ class ContourBasedGating:
             new_filt = normalize_data(new_filt, step=cfg.normalize_step)
             self._img_line.set_ydata(new_filt)
             self.fig.canvas.draw_idle()
-
-            gs['image_based_gating_filtered'] = new_filt.tolist()
+            # Do NOT write back to gs['image_based_gating_filtered']: the sweep is
+            # purely visual.  Writing there would poison the cache so re-opening the
+            # gating dialog returns a low-pass (not bandpass) signal to auto-gating.
 
         sweep_fig.canvas.mpl_connect('button_press_event', on_sweep_click)
+        self._sweep_fig = sweep_fig  # keep reference so Qt GC doesn't destroy it
         sweep_fig.show()
 
     # ──────────────────────────────── mouse interaction ────

@@ -7,7 +7,8 @@ Image signal  (always available)
     s[n] = 1 - NCC(frame_n, frame_{n+1})        (CCB s0, Maso Talou 2015)
     Bandpass at [0.7, 2.2] × f_heart removes both the slow pullback
     trend (DC) and high-frequency speckle noise.
-    Minima of filtered signal = stable cardiac phases.
+    Peaks of filtered signal = maximum-motion frames (mid-systole and
+    mid-diastole); used as timing landmarks, not stable-phase gating points.
 
 Contour signal  (when ≥50% of frames have drawn contours)
     s[n] = lumen_area[n]  (mm², from report_data)
@@ -33,6 +34,7 @@ Notes
 
 import time
 import numpy as np
+import pandas as pd
 from loguru import logger
 from scipy.signal import find_peaks, butter, filtfilt
 
@@ -114,6 +116,17 @@ def detect_heart_rate(
         return (f_min + f_max) / 2
     f_heart = float(freqs[mask][np.argmax(spectrum[mask])])
     logger.info(f"Heart rate: {f_heart:.3f} Hz  ({f_heart * 60:.0f} BPM)")
+
+    # The 1-NCC signal has strong power at 2×f_heart (two motion events per cycle).
+    # If the actual heart rate is below f_min/2, the harmonic rather than the
+    # fundamental may be the dominant peak in [f_min, f_max].
+    if f_heart > f_max / 2:
+        logger.warning(
+            f"Detected f_heart={f_heart:.2f} Hz is above half of f_max={f_max} Hz. "
+            "The 2×f_heart harmonic of a slower heart rate may have been picked up. "
+            "If gating looks wrong, try halving f_cardiac_max in config."
+        )
+
     return f_heart
 
 
@@ -182,7 +195,7 @@ def compute_lumen_area_signal(
         idx = int(row['frame']) - 1 - lower_limit
         if 0 <= idx < N:
             v = row.get('lumen_area', np.nan)
-            if v is not None and not (isinstance(v, float) and np.isnan(v)):
+            if not pd.isna(v):
                 area[idx] = float(v)
 
     coverage = float(np.sum(~np.isnan(area))) / N
@@ -249,7 +262,8 @@ def identify_extrema(main_window, signal: np.ndarray, x_lim_override: int | None
     min_h = np.percentile(signal, y_lim)
 
     maxima_idx, _ = find_peaks(signal, distance=x_lim, height=min_h)
-    minima_idx, _ = find_peaks(-signal, distance=x_lim, height=-min_h)
+    # Symmetric threshold: peaks of -signal ≥ min_h → troughs of signal ≤ -min_h
+    minima_idx, _ = find_peaks(-signal, distance=x_lim, height=min_h)
 
     extrema_idx = np.sort(np.concatenate((maxima_idx, minima_idx)))
     return extrema_idx, maxima_idx
@@ -307,7 +321,7 @@ def prepare_data(
     # ── Cache ──────────────────────────────────────────────────────────────
     try:
         gs = main_window.runtime_data.gating_signal
-        if gs and gs.get('gating_config') == vars(cfg) and len(gs.get('image_based_gating', [])) == N:
+        if gs and gs.get('gating_config') == dict(vars(cfg)) and len(gs.get('image_based_gating', [])) == N:
             return (
                 np.array(gs['image_based_gating']),
                 np.array(gs['contour_based_gating']),
@@ -363,7 +377,7 @@ def prepare_data(
         'contour_based_gating': contour_raw.tolist(),
         'image_based_gating_filtered': image_filtered.tolist(),
         'contour_based_gating_filtered': contour_filtered.tolist(),
-        'gating_config': vars(cfg),
+        'gating_config': dict(vars(cfg)),
         'f_heart': f_heart,
         'f_heart_bpm': f_heart * 60,
         'freq_sweep_bpm_cuts': bpm_cuts.tolist(),
