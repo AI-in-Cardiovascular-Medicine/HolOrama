@@ -1,9 +1,11 @@
 import warnings
 import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 from matplotlib.backend_bases import MouseButton
+from matplotlib.widgets import Button
 
-from gating.signal_processing import prepare_data
-from pages.intravascular.utils.helpers import connect_consecutive_frames
+from gating.signal_processing import prepare_data, lowpass_filter, normalize_data
 from gating.automatic_gating import AutomaticGating
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
@@ -19,11 +21,11 @@ class ContourBasedGating:
         self.current_phase = None
         self.tmp_phase = None
         self.frame_marker = None
+        self.lower_limit = 0
         self.default_line_color = 'grey'
         self.default_linestyle = (0, (1, 3))
 
     def _draw(self):
-        """Redraw the embedded gating canvas without touching any other figure."""
         try:
             self.fig.canvas.draw_idle()
         except AttributeError:
@@ -31,21 +33,14 @@ class ContourBasedGating:
 
     @property
     def _ready(self) -> bool:
-        """True once plot_data() has been called and axes exist."""
         return hasattr(self, 'ax') and hasattr(self, 'fig')
 
     def _toolbar_active(self) -> bool:
-        """Return True when the matplotlib toolbar has zoom/pan mode active.
-
-        Replaces the old cursor().shape() != 0 check, which broke in PyQt6
-        because Qt.CursorShape enums are strict Python enums and never compare
-        equal to bare integers.
-        """
         toolbar = getattr(self.main_window.gating_display, 'toolbar', None)
         return toolbar is not None and bool(toolbar.mode)
 
     def __call__(self):
-        self.main_window.status_bar.showMessage('Contour-based gating...')
+        self.main_window.status_bar.showMessage('Contour-based gating…')
         dialog_success = self.define_roi()
         if not dialog_success:
             self.main_window.status_bar.showMessage(self.main_window.waiting_status)
@@ -55,89 +50,193 @@ class ContourBasedGating:
             contour_based_gating,
             image_based_gating_filtered,
             contour_based_gating_filtered,
-        ) = prepare_data(self.main_window, self.frames, self.report_data)
+        ) = prepare_data(
+            self.main_window,
+            self.frames,
+            self.report_data,
+            lower_limit=self.lower_limit,
+        )
         self.plot_data(
-            image_based_gating, contour_based_gating, image_based_gating_filtered, contour_based_gating_filtered
+            image_based_gating,
+            contour_based_gating,
+            image_based_gating_filtered,
+            contour_based_gating_filtered,
         )
         self.main_window.status_bar.showMessage(self.main_window.waiting_status)
 
     def define_roi(self):
         dialog = FrameRangeDialog(self.main_window)
-        if dialog.exec():
-            lower_limit, upper_limit = dialog.getInputs()
-            self.report_data = report(self.main_window, lower_limit, upper_limit, suppress_messages=True)
-            if self.report_data is None:
-                ErrorMessage(self.main_window, 'Please ensure that an input file was read and contours were drawn')
-                self.main_window.status_bar.showMessage(self.main_window.waiting_status)
-                return False
+        if not dialog.exec():
+            return False
 
-            if len(self.report_data) != upper_limit - lower_limit:
-                missing_frames = [
-                    frame
-                    for frame in range(lower_limit + 1, upper_limit + 1)
-                    if frame not in self.report_data['frame'].values
-                ]
-                str_missing = connect_consecutive_frames(missing_frames)
-                ErrorMessage(self.main_window, f'Please add contours to frames {str_missing}')
+        lower_limit, upper_limit = dialog.getInputs()
+        self.lower_limit = lower_limit
+
+        # Try to get report data; gating does NOT require all frames to have contours
+        self.report_data = report(self.main_window, lower_limit, upper_limit, suppress_messages=True)
+
+        if self.report_data is None:
+            # report() returns None either when no images are loaded or when the
+            # runtime data is completely empty.  Check if the problem is "no images".
+            if not self.main_window.image_displayed:
+                ErrorMessage(self.main_window, 'Please ensure that an input file was read')
                 return False
-            self.frames = self.main_window.runtime_data.images[lower_limit:upper_limit]
-            self.x = self.report_data['frame'].values
-            return True
-        return False
+            # No contours at all — proceed with image-only gating
+            self.report_data = pd.DataFrame()
+
+        # Warn (don't block) when only a subset of frames has contours
+        n_range = upper_limit - lower_limit
+        if len(self.report_data) < n_range:
+            coverage = len(self.report_data) / n_range if n_range > 0 else 0
+            if coverage < 0.5:
+                self.main_window.status_bar.showMessage(
+                    f'Gating: only {coverage:.0%} of frames have contours — image-only mode'
+                )
+
+        self.frames = self.main_window.runtime_data.images[lower_limit:upper_limit]
+        # x covers ALL frames in the range (1-indexed), not just contoured ones
+        self.x = np.arange(lower_limit + 1, upper_limit + 1)
+        return True
 
     def plot_data(
-        self, image_based_gating, contour_based_gating, image_based_gating_filtered, contour_based_gating_filtered
+        self,
+        image_based_gating,
+        contour_based_gating,
+        image_based_gating_filtered,
+        contour_based_gating_filtered,
     ):
-        min_signal_range = min(np.min(image_based_gating), np.min(contour_based_gating))
-
-        shift_amount = min_signal_range - np.max(image_based_gating)
-        image_based_gating += shift_amount
-
-        shift_amount = min_signal_range - np.max(contour_based_gating)
-        contour_based_gating += shift_amount
+        # Shift unfiltered signals below the filtered ones
+        min_sig = min(np.nanmin(image_based_gating), np.nanmin(contour_based_gating))
+        for sig in (image_based_gating, contour_based_gating):
+            sig += min_sig - np.nanmax(sig)
 
         self.fig = self.main_window.gating_display.fig
         self.fig.clear()
         self.ax = self.fig.add_subplot()
 
-        self.ax.plot(self.x, image_based_gating_filtered, color='green', label='Image based gating')
-        self.ax.plot(self.x, contour_based_gating_filtered, color='yellow', label='Contour based gating')
-        self.ax.plot(
-            self.x, image_based_gating, color='green', linestyle='dashed', label='Image based gating (unfiltered)'
+        # Filtered signals — primary visual focus
+        (self._img_line,) = self.ax.plot(
+            self.x, image_based_gating_filtered, color='green', lw=2, label='Image (filtered)'
         )
-        self.ax.plot(
-            self.x, contour_based_gating, color='yellow', linestyle='dashed', label='Contour based gating (unfiltered)'
+        (self._cnt_line,) = self.ax.plot(
+            self.x, contour_based_gating_filtered, color='yellow', lw=2, label='Contour (filtered)'
         )
+        # Raw signals — subtle background reference
+        self.ax.plot(self.x, image_based_gating, color='green', ls='dashed', alpha=0.15)
+        self.ax.plot(self.x, contour_based_gating, color='yellow', ls='dashed', alpha=0.15)
 
         self.ax.set_xlabel('Frame')
         self.ax.get_yaxis().set_visible(False)
         legend = self.ax.legend(ncol=2, loc='lower right')
         legend.set_draggable(True)
 
-        # Connect mouse events to the embedded canvas only — not to pyplot global state
+        # Frequency-sweep button (bottom-left corner)
+        ax_btn = self.fig.add_axes([0.01, 0.01, 0.12, 0.06])
+        self._sweep_btn = Button(ax_btn, 'Freq. sweep', color='#333333', hovercolor='#555555')
+        self._sweep_btn.label.set_color('white')
+        self._sweep_btn.on_clicked(self._show_frequency_sweep)
+
         self.fig.canvas.mpl_connect('button_press_event', self.on_click)
         self.fig.canvas.mpl_connect('motion_notify_event', self.on_motion)
         self.fig.canvas.mpl_connect('button_release_event', self.on_release)
 
         with warnings.catch_warnings(record=True):
-            warnings.simplefilter("always")
+            warnings.simplefilter('always')
             self.fig.tight_layout()
 
         self._draw()
 
-        self.draw_existing_lines(self.main_window.runtime_data.gated_frames_dia, self.main_window.diastole_color_plt)
-        self.draw_existing_lines(self.main_window.runtime_data.gated_frames_sys, self.main_window.systole_color_plt)
+        self.draw_existing_lines(
+            self.main_window.runtime_data.gated_frames_dia,
+            self.main_window.diastole_color_plt,
+        )
+        self.draw_existing_lines(
+            self.main_window.runtime_data.gated_frames_sys,
+            self.main_window.systole_color_plt,
+        )
 
         if not self.main_window.runtime_data.gated_frames_dia and not self.main_window.runtime_data.gated_frames_sys:
-            auto_gating = AutomaticGating(self.main_window, self.report_data)
+            auto_gating = AutomaticGating(self.main_window, self.report_data, self.lower_limit)
             auto_gating.automatic_gating(image_based_gating_filtered, contour_based_gating_filtered)
             self.draw_existing_lines(
-                self.main_window.runtime_data.gated_frames_dia, self.main_window.diastole_color_plt
+                self.main_window.runtime_data.gated_frames_dia,
+                self.main_window.diastole_color_plt,
             )
-            self.draw_existing_lines(self.main_window.runtime_data.gated_frames_sys, self.main_window.systole_color_plt)
+            self.draw_existing_lines(
+                self.main_window.runtime_data.gated_frames_sys,
+                self.main_window.systole_color_plt,
+            )
             self._draw()
 
         return True
+
+    def _show_frequency_sweep(self, *_):
+        """Heatmap: image signal low-pass filtered at increasing BPM cutoffs.
+
+        Click a row to interactively apply that cutoff to the main gating plot.
+        The yellow line marks the currently active cutoff.
+        """
+        gs = getattr(self.main_window.runtime_data, 'gating_signal', None)
+        if not gs or 'freq_sweep_signals' not in gs:
+            return
+
+        bpm_cuts = np.array(gs['freq_sweep_bpm_cuts'])
+        sweep = np.array(gs['freq_sweep_signals'])
+        f_heart = gs.get('f_heart', 1.0)
+        image_raw = np.array(gs['image_based_gating'])
+        fs = self.main_window.runtime_data.metadata['frame_rate']
+        cfg = self.main_window.config.gating
+
+        hi_frac = getattr(cfg, 'bandpass_hi_frac', 2.2)
+        active_bpm = hi_frac * f_heart * 60  # upper bandpass edge as starting marker
+
+        sweep_fig, ax_sw = plt.subplots(figsize=(13, 5))
+        sweep_fig.patch.set_facecolor('#1e1e1e')
+        ax_sw.set_facecolor('#1e1e1e')
+
+        im = ax_sw.pcolormesh(self.x, bpm_cuts, sweep, cmap='RdBu_r', shading='auto')
+        (active_line,) = ax_sw.plot(
+            [self.x[0], self.x[-1]],
+            [active_bpm, active_bpm],
+            color='yellow',
+            lw=2,
+            label=f'LP cutoff: {active_bpm:.0f} BPM',
+        )
+        hr_bpm = f_heart * 60
+        ax_sw.axhline(hr_bpm, color='lime', lw=1.2, ls='--', label=f'HR = {hr_bpm:.0f} BPM')
+        ax_sw.axhline(2 * hr_bpm, color='cyan', lw=1.0, ls=':', label=f'2×HR = {2*hr_bpm:.0f} BPM')
+
+        ax_sw.set_xlabel('Frame', color='white')
+        ax_sw.set_ylabel('Low-pass cutoff (BPM)', color='white')
+        ax_sw.set_title('Frequency sweep — click a row to apply that cutoff', color='white')
+        ax_sw.tick_params(colors='white')
+        for sp in ax_sw.spines.values():
+            sp.set_edgecolor('#555')
+        legend = ax_sw.legend(loc='upper right', facecolor='#333', labelcolor='white')
+        sweep_fig.colorbar(im, ax=ax_sw, label='Normalised amplitude')
+        sweep_fig.tight_layout()
+
+        def on_sweep_click(ev):
+            if ev.inaxes != ax_sw or ev.ydata is None:
+                return
+            new_bpm = float(np.clip(ev.ydata, bpm_cuts[0], bpm_cuts[-1]))
+            new_hz = new_bpm / 60.0
+
+            active_line.set_ydata([new_bpm, new_bpm])
+            legend.get_texts()[0].set_text(f'LP cutoff: {new_bpm:.0f} BPM')
+            sweep_fig.canvas.draw_idle()
+
+            new_filt = lowpass_filter(image_raw, new_hz, fs)
+            new_filt = normalize_data(new_filt, step=cfg.normalize_step)
+            self._img_line.set_ydata(new_filt)
+            self.fig.canvas.draw_idle()
+
+            gs['image_based_gating_filtered'] = new_filt.tolist()
+
+        sweep_fig.canvas.mpl_connect('button_press_event', on_sweep_click)
+        sweep_fig.show()
+
+    # ──────────────────────────────── mouse interaction ────
 
     def on_click(self, event):
         if self._toolbar_active():
@@ -147,15 +246,18 @@ class ContourBasedGating:
             set_dia = False
             set_sys = False
             set_slider_to = event.xdata
+
             if self.selected_line is not None:
                 self.selected_line.set_linestyle(self.default_linestyle)
                 self.selected_line = None
+
             if self.vertical_lines:
                 distances = [abs(line.get_xdata()[0] - event.xdata) for line in self.vertical_lines]
                 if min(distances) < len(self.frames) / 100:
                     self.selected_line = self.vertical_lines[np.argmin(distances)]
                     new_line = False
                     set_slider_to = self.selected_line.get_xdata()[0]
+
             if new_line:
                 if self.current_phase == 'D':
                     color = self.main_window.diastole_color_plt
@@ -208,6 +310,8 @@ class ContourBasedGating:
                 self.tmp_phase = None
                 self._draw()
 
+    # ──────────────────────────────── display helpers ────
+
     def set_frame(self, frame):
         if not self._ready:
             return
@@ -220,9 +324,11 @@ class ContourBasedGating:
     def draw_existing_lines(self, frames, color):
         if not self._ready:
             return
-        frames = [frame for frame in frames if frame in (self.x - 1)]
+        # Only draw lines whose frame numbers fall within the current x range
+        in_range = set(self.x)
         for frame in frames:
-            self.vertical_lines.append(self.ax.axvline(x=frame + 1, color=color, linestyle=self.default_linestyle))
+            if (frame + 1) in in_range:
+                self.vertical_lines.append(self.ax.axvline(x=frame + 1, color=color, linestyle=self.default_linestyle))
 
     def remove_lines(self):
         for line in self.vertical_lines:
@@ -231,7 +337,6 @@ class ContourBasedGating:
         self._draw()
 
     def redraw_phase_lines(self, frames_dia, color_dia, frames_sys, color_sys):
-        """Remove all phase lines, redraw them, and flush the canvas in one step."""
         self.remove_lines()
         self.draw_existing_lines(frames_dia, color_dia)
         self.draw_existing_lines(frames_sys, color_sys)

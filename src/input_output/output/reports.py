@@ -190,13 +190,25 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
 
         # skip frames already computed (defensive check)
         if lumen_area[frame] and elliptic_ratio[frame] is not None and elliptic_ratio[frame] != 0:
-            # compute EEM area if not present
             fd = main_window.runtime_data.frame_data_dct.get(frame)
+            # compute EEM area if not present
             if eem_x and eem_x[frame] is not None and fd and not fd.eem.measurements.area:
                 area = _safe_polygon_area(
                     eem_x[frame], eem_y[frame], frame=frame, contour_name="eem", main_window=main_window
                 )
                 fd.eem.measurements.area = area
+            # compute centroid and vector metrics if not already available
+            # (these are not persisted to disk, so must be re-derived on load)
+            if centroid_x[frame] is None and lumen_x[frame] is not None:
+                try:
+                    polygon = Polygon([(x, y) for x, y in zip(lumen_x[frame], lumen_y[frame])])
+                    _, _, centroid_x[frame], centroid_y[frame] = compute_polygon_metrics(main_window, polygon, frame)
+                except Exception:
+                    pass
+            if centroid_x[frame] is not None and centroid_y[frame] is not None:
+                vector_length[frame], vector_angle[frame] = centroid_center_vector(
+                    main_window, centroid_x[frame], centroid_y[frame]
+                )
             continue
 
         # dmake sure lumen contour exists

@@ -20,13 +20,15 @@ display:
 
 gating:
   normalize_step: 100
-  # butterworth filter for gating
-  lowcut: 1.33  # lowcut frequency for Butterworth filter [Hz]
-  highcut: 6.0  # highcut frequency for Butterworth filter [Hz]
-  order: 6  # order of Butterworth filter
-  # identify extrema
-  extrema_y_lim: 50  # percentile of how much higher next peak has to be (y-component)
-  extrema_x_lim: 6  # minimum distance between peaks (x-component)
+  # Heart rate search range [Hz] — covers rest (~60 BPM) to stress (~210 BPM)
+  f_cardiac_min: 1.0         # lower bound (~60 BPM)
+  f_cardiac_max: 3.5         # upper bound (~210 BPM)
+  # Bandpass filter fractions relative to detected f_heart
+  bandpass_lo_frac: 0.7      # lower cut: removes slow pullback trend (sub-cardiac drift)
+  bandpass_hi_frac: 2.2      # upper cut: passes 2nd harmonic, removes speckle noise
+  # Extrema detection
+  extrema_y_lim: 50          # percentile height threshold for peak detection
+  extrema_x_lim: 6           # minimum frame distance between consecutive peaks
   maxima_only: False
 
 report:
