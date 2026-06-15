@@ -3,7 +3,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.backend_bases import MouseButton
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.widgets import Button
+from PyQt6.QtWidgets import QMainWindow, QVBoxLayout, QWidget
 
 from gating.signal_processing import prepare_data, lowpass_filter, normalize_data
 from gating.automatic_gating import AutomaticGating
@@ -237,9 +239,19 @@ class ContourBasedGating:
             # purely visual.  Writing there would poison the cache so re-opening the
             # gating dialog returns a low-pass (not bandpass) signal to auto-gating.
 
-        sweep_fig.canvas.mpl_connect('button_press_event', on_sweep_click)
-        self._sweep_fig = sweep_fig  # keep reference so Qt GC doesn't destroy it
-        sweep_fig.show()
+        canvas = FigureCanvasQTAgg(sweep_fig)
+        canvas.mpl_connect('button_press_event', on_sweep_click)
+
+        win = QMainWindow(self.main_window)
+        win.setWindowTitle('Frequency sweep')
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(canvas)
+        win.setCentralWidget(container)
+        win.resize(1300, 500)
+        win.show()
+        self._sweep_win = win  # keep reference so Qt GC doesn't destroy it
 
     # ──────────────────────────────── mouse interaction ────
 
@@ -337,7 +349,10 @@ class ContourBasedGating:
 
     def remove_lines(self):
         for line in self.vertical_lines:
-            line.remove()
+            try:
+                line.remove()
+            except NotImplementedError:
+                pass
         self.vertical_lines = []
         self._draw()
 
