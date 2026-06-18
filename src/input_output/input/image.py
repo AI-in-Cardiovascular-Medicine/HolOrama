@@ -323,11 +323,18 @@ def _read_nifti(filename: str) -> tuple[np.ndarray, pd.DataFrame]:
     return pixel_array, pd.DataFrame(rows_nft)
 
 
+_DICOM_MODALITY_ALIASES: dict[str, str] = {
+    'US': 'IVUS',  # standard DICOM ultrasound
+    'OPT': 'OCT',  # standard DICOM ophthalmic tomography
+}
+
+
 def _check_integrity(metadata: pd.DataFrame) -> tuple[bool, Optional[str]]:
     is_dicom = not metadata[metadata['Description'] == 'Modality'].empty
     if is_dicom:
         modality = metadata[metadata['Description'] == 'Modality']['Value']
-        if modality.empty or not modality.isin([t.value for t in SupportedType]).any():
+        _accepted = {t.value for t in SupportedType} | set(_DICOM_MODALITY_ALIASES.keys())
+        if modality.empty or not modality.isin(_accepted).any():
             return False, None
         num_frames = metadata[metadata['Description'] == 'Number of Frames']['Value']
         if not num_frames.empty and int(num_frames.iloc[0]) < 1:

@@ -13,8 +13,6 @@ class AutomaticGating:
     def _sig_to_frame_key(self, sig_idx: int) -> int:
         return self.lower_limit + int(sig_idx)
 
-    # ── public API ──────────────────────────────────────────────────────────
-
     def automatic_gating(self, image_filtered: np.ndarray, contour_filtered: np.ndarray):
         """Classify frames as systole or diastole.
 

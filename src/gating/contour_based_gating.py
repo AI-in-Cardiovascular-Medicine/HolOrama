@@ -127,8 +127,8 @@ class ContourBasedGating:
             self.x, contour_based_gating_filtered, color='yellow', lw=2, label='Contour (filtered)'
         )
         # Raw signals — subtle background reference
-        self.ax.plot(self.x, image_based_gating, color='green', ls='dashed', alpha=0.15)
-        self.ax.plot(self.x, contour_based_gating, color='yellow', ls='dashed', alpha=0.15)
+        self.ax.plot(self.x, image_based_gating, color='green', ls='dashed', alpha=0.25)
+        self.ax.plot(self.x, contour_based_gating, color='yellow', ls='dashed', alpha=0.25)
 
         self.ax.set_xlabel('Frame')
         self.ax.get_yaxis().set_visible(False)

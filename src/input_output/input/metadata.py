@@ -320,8 +320,15 @@ def _val(df: pd.DataFrame, description: str):
     return rows.iloc[0] if not rows.empty else None
 
 
+_MODALITY_ALIAS_MAP: dict[str, str] = {
+    'US': 'IVUS',
+    'OPT': 'OCT',
+}
+
+
 def extract_modality(df: pd.DataFrame) -> Optional[str]:
-    return _val(df, 'Modality')
+    val = _val(df, 'Modality')
+    return _MODALITY_ALIAS_MAP.get(val, val) if val is not None else None
 
 
 def extract_patient_info(df: pd.DataFrame) -> tuple[str, str, str]:
