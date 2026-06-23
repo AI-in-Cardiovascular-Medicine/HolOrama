@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
     QGraphicsScene,
     QGraphicsPixmapItem,
     QGraphicsEllipseItem,
+    QGraphicsLineItem,
     QSizePolicy,
 )
 from PyQt6.QtCore import Qt
@@ -34,6 +35,8 @@ class LongitudinalView(QGraphicsView):
         self.setScene(self.graphics_scene)
 
         self._area_items: list[QGraphicsEllipseItem] = []
+        self._phase_line_items: list = []
+        self._current_marker = None
         self._areas_hidden = False
         self.num_frames = 0
         self.image_height = 0
@@ -147,14 +150,33 @@ class LongitudinalView(QGraphicsView):
         """Called when contours are deleted for a range; refresh area overlay."""
         self.plot_areas()
 
-    def update_marker(self, frame):
-        for item in self.graphics_scene.items():
-            if isinstance(item, Marker):
-                if item.scene() == self.graphics_scene:
-                    self.graphics_scene.removeItem(item)
+    def _update_phase_lines(self):
+        for item in self._phase_line_items:
+            if item.scene() == self.graphics_scene:
+                self.graphics_scene.removeItem(item)
+        self._phase_line_items = []
 
-        marker = Marker(frame, 0, frame, self.image_height)
-        self.graphics_scene.addItem(marker)
+        mw = self.main_window
+        dia_frames = getattr(mw.runtime_data, 'gated_frames_dia', [])
+        sys_frames = getattr(mw.runtime_data, 'gated_frames_sys', [])
+
+        for frame, rgb in [(f, mw.diastole_color) for f in dia_frames] + [(f, mw.systole_color) for f in sys_frames]:
+            color = QColor(*rgb)
+            color.setAlpha(200)
+            pen = QPen(color, 0.5, Qt.PenStyle.DotLine)
+            item = QGraphicsLineItem(frame, 0, frame, self.image_height)
+            item.setPen(pen)
+            self.graphics_scene.addItem(item)
+            self._phase_line_items.append(item)
+
+    def update_marker(self, frame):
+        if self._current_marker is not None and self._current_marker.scene() == self.graphics_scene:
+            self.graphics_scene.removeItem(self._current_marker)
+
+        self._update_phase_lines()
+
+        self._current_marker = Marker(frame, 0, frame, self.image_height)
+        self.graphics_scene.addItem(self._current_marker)
 
     def stretch_to_fit(self):
         if self.graphics_scene.items():
