@@ -163,7 +163,8 @@ class LongitudinalView(QGraphicsView):
         for frame, rgb in [(f, mw.diastole_color) for f in dia_frames] + [(f, mw.systole_color) for f in sys_frames]:
             color = QColor(*rgb)
             color.setAlpha(200)
-            pen = QPen(color, 0.5, Qt.PenStyle.DotLine)
+            pen = QPen(color, (self.DOT_RADIUS / 2), Qt.PenStyle.DotLine)
+            pen.setCosmetic(True)
             item = QGraphicsLineItem(frame, 0, frame, self.image_height)
             item.setPen(pen)
             self.graphics_scene.addItem(item)
