@@ -191,10 +191,8 @@ class CctaViewer3D(QWidget):
             else:
                 if t == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
                     self._press_qt = event.pos()
-                    print(f'[3D] Qt press at {event.pos().x()}, {event.pos().y()}')
                 elif t == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
                     dp = event.pos() - self._press_qt
-                    print(f'[3D] Qt release at {event.pos().x()}, {event.pos().y()}, delta {dp.x()}, {dp.y()}')
                     if abs(dp.x()) <= 3 and abs(dp.y()) <= 3:
                         vtk_y = self._vtk_widget.height() - 1 - event.pos().y()
                         self._click_pick(event.pos().x(), vtk_y)
@@ -208,16 +206,13 @@ class CctaViewer3D(QWidget):
         self._place_crosshair_marker(wx, wy, wz)
 
     def _click_pick(self, sx: int, sy: int) -> None:
-        print(f'[3D] _click_pick vtk=({sx},{sy}), mask={self._mask is not None}, spacing={self._voxel_spacing}')
         if self._mask is None or self._voxel_spacing is None:
             return
         hit = self.pick_nearest_along_ray(sx, sy)
-        print(f'[3D] ray hit: {hit}')
         if hit is None:
             return
         z, y_vox, x_vox = hit
         wx, wy, wz = self.voxel_to_world(z, y_vox, x_vox)
-        print(f'[3D] emitting cursor_moved({z}, {y_vox}, {x_vox}), world=({wx:.1f},{wy:.1f},{wz:.1f})')
         self._place_crosshair_marker(wx, wy, wz)
         self.cursor_moved.emit(z, y_vox, x_vox)
 
@@ -233,12 +228,8 @@ class CctaViewer3D(QWidget):
         Z, Y, X = self._mask.shape
 
         near, far = self.screen_to_ray(sx, sy)
-        print(f'[3D] ray near={near}, far={far}')
         ray = far - near
         length = float(np.linalg.norm(ray))
-        print(
-            f'[3D] ray length={length:.1f}, step={min(dx,dy,dz)*0.5:.3f}, n_steps={int(length/(min(dx,dy,dz)*0.5))+1}'
-        )
         if length < 1e-6:
             return None
         ray_dir = ray / length
@@ -395,7 +386,7 @@ class CctaViewer3D(QWidget):
         inside = MplPath(polygon).contains_points(screen)
         self._mask[z_idx[inside], y_idx[inside], x_idx[inside]] = 0
         self.mask_erased.emit()
-        self._on_render()  # re-render the 3D mesh with the updated mask
+        self._rerender_after_erase()
 
     def _project_world_batch(self, wx: np.ndarray, wy: np.ndarray, wz: np.ndarray) -> np.ndarray:
         """Vectorised world → VTK display-pixel projection. Returns (N, 2) float array."""
@@ -462,6 +453,30 @@ class CctaViewer3D(QWidget):
         actor.GetProperty().SetColor(1.0, 1.0, 0.0)
         actor.GetProperty().SetLineWidth(2)
         return actor
+
+    def _rerender_after_erase(self) -> None:
+        if not self._actors:
+            return
+        camera = self._ren.GetActiveCamera()
+        pos, focal, up = camera.GetPosition(), camera.GetFocalPoint(), camera.GetViewUp()
+
+        active = [(i, lbl) for i, lbl in enumerate(self._labels) if lbl not in self._hidden_labels]
+        for _, lbl in active:
+            actor = self._actors.pop(lbl, None)
+            if actor is not None:
+                self._ren.RemoveActor(actor)
+
+        if active:
+            vtk_img = self._build_vtk_image()
+            if _ALGO == 'surface_nets':
+                self._render_surface_nets(vtk_img, active)
+            else:
+                self._render_flying_edges(vtk_img, active)
+
+        camera.SetPosition(pos)
+        camera.SetFocalPoint(focal)
+        camera.SetViewUp(up)
+        self._vtk_widget.GetRenderWindow().Render()
 
     def _on_render(self) -> None:
         if self._mask is None or not self._labels or self._voxel_spacing is None:
