@@ -112,6 +112,7 @@ class CctaPage(QWidget):
             display.cursor_moved.connect(self._on_cursor_moved)
             display.windowing_changed.connect(self._on_windowing_changed)
             display.mask_painted.connect(self._on_mask_painted)
+        self._3d_viewer.cursor_moved.connect(self._on_cursor_moved)
 
         self._pending_coronal_cut: int = 1  # 1 = LVOT, 2 = aorta top
         self._axial.line_drawn.connect(lambda p1, p2: self._on_line_drawn(0, p1, p2))
@@ -385,6 +386,7 @@ class CctaPage(QWidget):
     def _on_cursor_moved(self, z: int, y: int, x: int) -> None:
         for display in (self._axial, self._coronal, self._sagittal):
             display.set_cursor(z, y, x)
+        self._3d_viewer.set_cursor(z, y, x)
         if self.data.volume is not None:
             Z, Y, X = self.data.volume.shape
             self._update_labels(z, y, x, Z, Y, X)

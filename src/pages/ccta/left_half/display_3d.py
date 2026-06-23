@@ -3,9 +3,11 @@ import vtkmodules.vtkInteractionStyle  # noqa: F401
 import vtkmodules.vtkRenderingOpenGL2  # noqa: F401
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from vtkmodules.vtkCommonDataModel import vtkImageData
+from vtkmodules.vtkFiltersSources import vtkSphereSource
 from vtkmodules.vtkInteractionStyle import vtkInteractorStyleTrackballCamera
 from vtkmodules.vtkRenderingCore import vtkActor, vtkLightKit, vtkPolyDataMapper, vtkRenderer
 from vtkmodules.util import numpy_support
+from PyQt6.QtCore import pyqtSignal, QEvent, QPoint, Qt
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QApplication
 
 from domain.ccta_display_types import LABEL_COLORS
@@ -32,6 +34,8 @@ except ImportError:
 
 
 class CctaViewer3D(QWidget):
+    cursor_moved = pyqtSignal(int, int, int)  # z, y, x voxel coords
+
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -75,6 +79,10 @@ class CctaViewer3D(QWidget):
         self._voxel_spacing: tuple[float, float, float] | None = None
         self._actors: dict[int, vtkActor] = {}
         self._hidden_labels: set[int] = set()
+        self._crosshair_actor: vtkActor | None = None
+        self._press_qt: QPoint = QPoint()
+
+        self._vtk_widget.installEventFilter(self)
 
     def set_mask(
         self,
@@ -108,6 +116,142 @@ class CctaViewer3D(QWidget):
         for actor in self._actors.values():
             self._ren.RemoveActor(actor)
         self._actors.clear()
+        if self._crosshair_actor is not None:
+            self._ren.RemoveActor(self._crosshair_actor)
+            self._crosshair_actor = None
+        self._vtk_widget.GetRenderWindow().Render()
+
+    # ── screen ↔ world ↔ voxel projection ──────────────────────────────────
+    # These three utilities are the shared foundation for both the crosshair
+    # pick (single ray) and the future lasso erase (polygon → depth extrusion).
+
+    def voxel_to_world(self, z: int, y_vox: int, x_vox: int) -> tuple[float, float, float]:
+        """Voxel index → VTK world coordinate (accounts for the Y-flip in _build_vtk_image)."""
+        assert self._voxel_spacing is not None and self._mask is not None
+        dz, dy, dx = self._voxel_spacing
+        Y = self._mask.shape[1]
+        return x_vox * dx, (Y - 1 - y_vox) * dy, z * dz
+
+    def world_to_screen(self, wx: float, wy: float, wz: float) -> tuple[float, float]:
+        """VTK world coordinate → screen pixel (sx, sy in VTK bottom-left convention)."""
+        self._ren.SetWorldPoint(wx, wy, wz, 1.0)
+        self._ren.WorldToDisplay()
+        sx, sy, _ = self._ren.GetDisplayPoint()
+        return sx, sy
+
+    def screen_to_ray(self, sx: int, sy: int) -> tuple[np.ndarray, np.ndarray]:
+        """Screen pixel → (near_world, far_world) defining the camera ray through that pixel."""
+
+        def _display_to_world(depth: float) -> np.ndarray:
+            self._ren.SetDisplayPoint(float(sx), float(sy), depth)
+            self._ren.DisplayToWorld()
+            wp = self._ren.GetWorldPoint()
+            w = wp[3] if wp[3] != 0.0 else 1.0
+            return np.array([wp[0] / w, wp[1] / w, wp[2] / w])
+
+        return _display_to_world(0.0), _display_to_world(1.0)
+
+    # ── crosshair pick (ray march through mask) ─────────────────────────────
+
+    def eventFilter(self, obj, event) -> bool:
+        if obj is self._vtk_widget:
+            t = event.type()
+            if t == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+                self._press_qt = event.pos()
+                print(f'[3D] Qt press at {event.pos().x()}, {event.pos().y()}')
+            elif t == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
+                dp = event.pos() - self._press_qt
+                print(f'[3D] Qt release at {event.pos().x()}, {event.pos().y()}, delta {dp.x()}, {dp.y()}')
+                if abs(dp.x()) <= 3 and abs(dp.y()) <= 3:
+                    # Qt y=0 is top; VTK y=0 is bottom
+                    vtk_y = self._vtk_widget.height() - 1 - event.pos().y()
+                    self._click_pick(event.pos().x(), vtk_y)
+        return super().eventFilter(obj, event)
+
+    def set_cursor(self, z: int, y_vox: int, x_vox: int) -> None:
+        """Place the 3-D marker at a voxel position (called from 2-D view crosshair moves)."""
+        if self._mask is None or self._voxel_spacing is None:
+            return
+        wx, wy, wz = self.voxel_to_world(z, y_vox, x_vox)
+        self._place_crosshair_marker(wx, wy, wz)
+
+    def _click_pick(self, sx: int, sy: int) -> None:
+        print(f'[3D] _click_pick vtk=({sx},{sy}), mask={self._mask is not None}, spacing={self._voxel_spacing}')
+        if self._mask is None or self._voxel_spacing is None:
+            return
+        hit = self.pick_nearest_along_ray(sx, sy)
+        print(f'[3D] ray hit: {hit}')
+        if hit is None:
+            return
+        z, y_vox, x_vox = hit
+        wx, wy, wz = self.voxel_to_world(z, y_vox, x_vox)
+        print(f'[3D] emitting cursor_moved({z}, {y_vox}, {x_vox}), world=({wx:.1f},{wy:.1f},{wz:.1f})')
+        self._place_crosshair_marker(wx, wy, wz)
+        self.cursor_moved.emit(z, y_vox, x_vox)
+
+    def pick_nearest_along_ray(self, sx: int, sy: int) -> tuple[int, int, int] | None:
+        """Cast a ray through screen pixel (sx, sy) and return the first non-zero
+        mask voxel hit, as (z, y_vox, x_vox).  Returns None if the ray misses.
+
+        This is the building block for the lasso erase: call world_to_screen() on
+        every non-zero voxel and check if its projection falls inside the polygon.
+        """
+        assert self._mask is not None and self._voxel_spacing is not None
+        dz, dy, dx = self._voxel_spacing
+        Z, Y, X = self._mask.shape
+
+        near, far = self.screen_to_ray(sx, sy)
+        print(f'[3D] ray near={near}, far={far}')
+        ray = far - near
+        length = float(np.linalg.norm(ray))
+        print(
+            f'[3D] ray length={length:.1f}, step={min(dx,dy,dz)*0.5:.3f}, n_steps={int(length/(min(dx,dy,dz)*0.5))+1}'
+        )
+        if length < 1e-6:
+            return None
+        ray_dir = ray / length
+
+        step = min(dx, dy, dz) * 0.5
+        n_steps = int(length / step) + 1
+
+        prev_ijk = (-1, -1, -1)
+        for i in range(n_steps):
+            wp = near + ray_dir * (i * step)
+            xi = int(round(wp[0] / dx))
+            yi = int((Y - 1) - round(wp[1] / dy))
+            zi = int(round(wp[2] / dz))
+            ijk = (zi, yi, xi)
+            if ijk == prev_ijk:
+                continue
+            prev_ijk = ijk
+            if 0 <= zi < Z and 0 <= yi < Y and 0 <= xi < X:
+                label = int(self._mask[zi, yi, xi])
+                if label != 0 and label not in self._hidden_labels:
+                    return zi, yi, xi
+
+        return None
+
+    def _place_crosshair_marker(self, wx: float, wy: float, wz: float) -> None:
+        if self._crosshair_actor is not None:
+            self._ren.RemoveActor(self._crosshair_actor)
+
+        sphere = vtkSphereSource()
+        sphere.SetCenter(wx, wy, wz)
+        sphere.SetRadius(2.0)
+        sphere.SetPhiResolution(16)
+        sphere.SetThetaResolution(16)
+        sphere.Update()
+
+        mapper = vtkPolyDataMapper()
+        mapper.SetInputConnection(sphere.GetOutputPort())
+
+        actor = vtkActor()
+        actor.SetMapper(mapper)
+        actor.GetProperty().SetColor(1.0, 1.0, 0.0)  # yellow
+        actor.GetProperty().SetOpacity(0.9)
+
+        self._ren.AddActor(actor)
+        self._crosshair_actor = actor
         self._vtk_widget.GetRenderWindow().Render()
 
     def _on_render(self) -> None:
