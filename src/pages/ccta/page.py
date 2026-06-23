@@ -113,6 +113,7 @@ class CctaPage(QWidget):
             display.windowing_changed.connect(self._on_windowing_changed)
             display.mask_painted.connect(self._on_mask_painted)
         self._3d_viewer.cursor_moved.connect(self._on_cursor_moved)
+        self._3d_viewer.mask_erased.connect(self._on_3d_mask_erased)
 
         self._pending_coronal_cut: int = 1  # 1 = LVOT, 2 = aorta top
         self._axial.line_drawn.connect(lambda p1, p2: self._on_line_drawn(0, p1, p2))
@@ -369,6 +370,11 @@ class CctaPage(QWidget):
         for d in (self._axial, self._coronal, self._sagittal):
             if d is not sender_display:
                 d._render()
+
+    def _on_3d_mask_erased(self) -> None:
+        self._mask_dirty = True
+        for d in (self._axial, self._coronal, self._sagittal):
+            d._render()
 
     def _on_mask_alpha_changed(self, alpha: float) -> None:
         for display in (self._axial, self._coronal, self._sagittal):
