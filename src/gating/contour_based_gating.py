@@ -1,3 +1,4 @@
+import logging
 import warnings
 import numpy as np
 import pandas as pd
@@ -13,6 +14,8 @@ from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
 from pages.intravascular.right_half.right_half import toggle_diastolic_frame, toggle_systolic_frame
 from input_output.output.reports import report
+
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
 
 class ContourBasedGating:
@@ -192,24 +195,34 @@ class ContourBasedGating:
         fs = self.main_window.runtime_data.metadata['frame_rate']
         cfg = self.main_window.config.gating
 
-        hi_frac = getattr(cfg, 'bandpass_hi_frac', 2.2)
-        active_bpm = hi_frac * f_heart * 60  # upper bandpass edge as starting marker
+        hr_bpm = f_heart * 60
+        initial_bpm = 2.0 * hr_bpm  # yellow line starts at 2×HR
 
         sweep_fig, ax_sw = plt.subplots(figsize=(13, 5))
         sweep_fig.patch.set_facecolor('#1e1e1e')
         ax_sw.set_facecolor('#1e1e1e')
 
         im = ax_sw.pcolormesh(self.x, bpm_cuts, sweep, cmap='RdBu_r', shading='auto')
+
+        # Active yellow line — starts at 2×HR, moves on click (legend index 0)
         (active_line,) = ax_sw.plot(
             [self.x[0], self.x[-1]],
-            [active_bpm, active_bpm],
+            [initial_bpm, initial_bpm],
             color='yellow',
             lw=2,
-            label=f'LP cutoff: {active_bpm:.0f} BPM',
+            label=f'LP cutoff: {initial_bpm:.0f} BPM',
         )
-        hr_bpm = f_heart * 60
-        ax_sw.axhline(hr_bpm, color='lime', lw=1.2, ls='--', label=f'HR = {hr_bpm:.0f} BPM')
-        ax_sw.axhline(2 * hr_bpm, color='cyan', lw=1.0, ls=':', label=f'2×HR = {2*hr_bpm:.0f} BPM')
+        # 1×HR reference line — moves on click to show implied HR (legend index 1)
+        (hr_line,) = ax_sw.plot(
+            [self.x[0], self.x[-1]],
+            [hr_bpm, hr_bpm],
+            color='lime',
+            lw=1.2,
+            ls='--',
+            label=f'HR = {hr_bpm:.0f} BPM',
+        )
+        # Fixed grey dotted: stays at the initial 2×HR as original reference (legend index 2)
+        ax_sw.axhline(initial_bpm, color='#888888', lw=1.0, ls=':', label=f'Initial 2×HR = {initial_bpm:.0f} BPM')
 
         ax_sw.set_xlabel('Frame', color='white')
         ax_sw.set_ylabel('Low-pass cutoff (BPM)', color='white')
@@ -227,8 +240,11 @@ class ContourBasedGating:
             new_bpm = float(np.clip(ev.ydata, bpm_cuts[0], bpm_cuts[-1]))
             new_hz = new_bpm / 60.0
 
+            implied_hr = new_bpm / 2.0
             active_line.set_ydata([new_bpm, new_bpm])
+            hr_line.set_ydata([implied_hr, implied_hr])
             legend.get_texts()[0].set_text(f'LP cutoff: {new_bpm:.0f} BPM')
+            legend.get_texts()[1].set_text(f'HR = {implied_hr:.0f} BPM')
             sweep_fig.canvas.draw_idle()
 
             new_filt = lowpass_filter(image_raw, new_hz, fs)

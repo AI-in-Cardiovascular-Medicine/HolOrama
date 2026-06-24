@@ -21,8 +21,8 @@ display:
 gating:
   normalize_step: 100
   # Heart rate search range [Hz] — covers rest (~60 BPM) to stress (~210 BPM)
-  f_cardiac_min: 1.0         # lower bound (~60 BPM)
-  f_cardiac_max: 3.5         # upper bound (~210 BPM)
+  f_cardiac_min: 0.75         # lower bound (~45 BPM)
+  f_cardiac_max: 3.3333         # upper bound (~200 BPM)
   # Bandpass filter fractions relative to detected f_heart
   bandpass_lo_frac: 0.7      # lower cut: removes slow pullback trend (sub-cardiac drift)
   bandpass_hi_frac: 2.2      # upper cut: passes 2nd harmonic, removes speckle noise
