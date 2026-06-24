@@ -171,8 +171,13 @@ class LongitudinalView(QGraphicsView):
             self._phase_line_items.append(item)
 
     def update_marker(self, frame):
-        if self._current_marker is not None and self._current_marker.scene() == self.graphics_scene:
-            self.graphics_scene.removeItem(self._current_marker)
+        if self._current_marker is not None:
+            try:
+                if self._current_marker.scene() == self.graphics_scene:
+                    self.graphics_scene.removeItem(self._current_marker)
+            except RuntimeError:
+                pass  # C++ object already deleted by Qt; just drop the reference
+            self._current_marker = None
 
         self._update_phase_lines()
 
