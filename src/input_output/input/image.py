@@ -146,6 +146,16 @@ def read_image(main_window) -> None:
         QApplication.processEvents()
         main_window.display.set_data(main_window.runtime_data.images)
         main_window.image_displayed = True
+
+        if success:
+            # scaling_factor is now set; batch-compute areas for all contoured frames
+            # so the longitudinal view is fully populated without requiring navigation.
+            main_window.display.compute_all_frame_metrics()
+            try:
+                main_window.longitudinal_view.plot_areas()
+            except Exception:
+                pass
+
         main_window.display_slider.setValue(num_frames - 1)
         main_window.right_half.update_for_modality()
         progress.setValue(3)

@@ -26,6 +26,7 @@ class MetricsMixin:
     scaling_factor: float
     contour_configs: Any
     image_size: int
+    n_points_contour: int
     active_contour_type: Any
 
     def _maybe_compute_metrics(
@@ -52,6 +53,8 @@ class MetricsMixin:
         # list(zip(x, y)) converts ( [x1, x2], [y1, y2] ) -> [ (x1, y1), (x2, y2) ]
         poly = Polygon(list(zip(x, y)))
 
+        if not poly.is_valid:
+            poly = poly.buffer(0)  # fix self-intersecting splines without raising
         if not poly.is_valid or poly.area == 0:
             logger.warning("Invalid or zero-area polygon created. Skipping metrics.")
             return
@@ -87,6 +90,47 @@ class MetricsMixin:
             self.build_frame_metrics_text(
                 lumen_area, lumen_circumf, ell, longest_d, shortest_d, eem_area, pct, update_phase=False
             )
+
+    def compute_all_frame_metrics(self):
+        """Batch-compute lumen area for every frame that has a contour.
+
+        Called once after image + contour load so plot_areas() has data
+        for all frames immediately (not just frames the user has navigated to).
+        """
+        from tools.geometry import SplineGeometry  # local import avoids circular at module level
+
+        sf = self.scaling_factor
+        n_pts = self.n_points_contour
+        frame_data_dct = self.main_window.runtime_data.frame_data_dct
+
+        for frame_idx, fd in frame_data_dct.items():
+            if fd is None or fd.lumen is None or not fd.lumen.contours:
+                continue
+            contour = fd.lumen.contours[0]
+            if not contour or not contour[0]:
+                continue
+            x_raw = contour[0]
+            y_raw = contour[1] if len(contour) > 1 else []
+            if len(x_raw) < 3:
+                continue
+            try:
+                geom = SplineGeometry(
+                    [p * sf for p in x_raw],
+                    [p * sf for p in y_raw],
+                    n_pts,
+                    None,
+                    None,
+                )
+                x_full, y_full = geom.to_unscaled(sf)
+                if len(x_full) < 3:
+                    continue
+                poly = Polygon(list(zip(x_full, y_full)))
+                if not poly.is_valid:
+                    poly = poly.buffer(0)
+                if poly.is_valid and poly.area > 0:
+                    compute_polygon_metrics(self.main_window, poly, frame_idx)
+            except Exception as exc:
+                logger.debug(f'Frame {frame_idx}: batch metric computation failed: {exc}')
 
     def update_phase_text(self):
         fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
