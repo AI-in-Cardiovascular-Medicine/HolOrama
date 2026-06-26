@@ -36,7 +36,7 @@ import time
 import numpy as np
 import pandas as pd
 from loguru import logger
-from scipy.signal import find_peaks, butter, filtfilt
+from scipy.signal import butter, filtfilt
 
 
 # ──────────────────────────────────────────────────────────── utilities ────
@@ -245,51 +245,121 @@ def compute_frequency_sweep(
     return bpm_cuts, sweep
 
 
-# ─────────────────────────── extrema / combined signal helpers ────
+# ─────────────────────────── extrema / turning-point detection ────
 
 
-def identify_extrema(main_window, signal: np.ndarray, x_lim_override: int | None = None) -> tuple:
-    """Find maxima and minima via scipy find_peaks.
+def walk_extrema(
+    signal: np.ndarray,
+    swing_fraction: float = 0.15,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Hysteresis-gated turning-point detector.
 
-    x_lim_override: if provided, overrides config extrema_x_lim.  Used when
-    the heart rate is known so the minimum inter-peak distance can be set to
-    roughly half the expected peak-to-peak spacing (= fs / (2 * f_heart) frames).
+    Walks the signal and registers a local maximum only after the value has
+    dropped more than *swing_fraction* × peak-to-peak below the running high
+    since the last confirmed turning point; vice versa for minima.
+
+    Advantages over scipy find_peaks:
+    - No global height threshold: amplitude-agnostic, adapts to signal level.
+    - No minimum-distance parameter: the hysteresis swing alone suppresses
+      micro-wiggles caused by residual noise on the bandpass-filtered signal.
+    - Produces a naturally alternating max / min / max / min sequence that
+      maps directly to cardiac phases without post-hoc alternation heuristics.
+
+    Parameters
+    ----------
+    signal         : 1-D array (bandpass-filtered, normalised).
+    swing_fraction : fraction of peak-to-peak range a reversal must exceed
+                     before a turning point is registered.  0.15 (15%) works
+                     well for IVUS bandpass-filtered signals.
+
+    Returns
+    -------
+    all_extrema_idx : sorted union of maxima and minima indices
+    maxima_idx      : indices of local maxima (high motion / end-phase peaks)
+    minima_idx      : indices of local minima
     """
-    y_lim = main_window.config.gating.extrema_y_lim
-    x_lim = x_lim_override if x_lim_override is not None else main_window.config.gating.extrema_x_lim
+    sig = np.nan_to_num(signal, nan=0.0, posinf=0.0, neginf=0.0)
+    ptp = float(sig.max() - sig.min())
+    empty: np.ndarray = np.array([], dtype=int)
+    if ptp == 0.0:
+        return empty, empty, empty
 
-    signal = np.nan_to_num(signal, nan=0.0, posinf=0.0, neginf=0.0)
-    min_h = np.percentile(signal, y_lim)
+    threshold = swing_fraction * ptp
+    maxima: list[int] = []
+    minima: list[int] = []
 
-    maxima_idx, _ = find_peaks(signal, distance=x_lim, height=min_h)
-    # Symmetric threshold: peaks of -signal ≥ min_h → troughs of signal ≤ -min_h
-    minima_idx, _ = find_peaks(-signal, distance=x_lim, height=min_h)
+    # direction: +1 = currently tracking a rising run (looking for maximum)
+    #            -1 = currently tracking a falling run (looking for minimum)
+    #            None = not yet determined (waiting for first significant swing)
+    direction: int | None = None
+    extreme_val = sig[0]
+    extreme_idx = 0
 
-    extrema_idx = np.sort(np.concatenate((maxima_idx, minima_idx)))
-    return extrema_idx, maxima_idx
+    for i in range(1, len(sig)):
+        v = sig[i]
+        if direction is None:
+            if v - sig[0] >= threshold:
+                direction = 1
+                extreme_val, extreme_idx = v, i
+            elif sig[0] - v >= threshold:
+                direction = -1
+                extreme_val, extreme_idx = v, i
+        elif direction == 1:
+            if v > extreme_val:
+                extreme_val, extreme_idx = v, i
+            elif extreme_val - v >= threshold:
+                maxima.append(extreme_idx)
+                direction = -1
+                extreme_val, extreme_idx = v, i
+        else:  # direction == -1
+            if v < extreme_val:
+                extreme_val, extreme_idx = v, i
+            elif v - extreme_val >= threshold:
+                minima.append(extreme_idx)
+                direction = 1
+                extreme_val, extreme_idx = v, i
+
+    maxima_idx = np.array(maxima, dtype=int)
+    minima_idx = np.array(minima, dtype=int)
+    all_extrema = np.sort(np.concatenate([maxima_idx, minima_idx]))
+    return all_extrema, maxima_idx, minima_idx
 
 
-def combined_signal(main_window, signal_list: list, maxima_only: bool = False) -> np.ndarray:
-    """Inverse-variability weighted combination of signals."""
-    extrema_indices = []
-    for sig in signal_list:
-        all_ext, maxima = identify_extrema(main_window, sig)
-        extrema_indices.append((maxima if maxima_only else all_ext)[::2])
+def filter_by_period(
+    indices: np.ndarray,
+    expected_interval: float,
+    tolerance: float = 0.4,
+) -> np.ndarray:
+    """Drop peaks whose inter-peak gap violates the expected cardiac interval.
 
-    variability = [float(np.std(np.diff(e))) if len(e) > 1 else np.nan for e in extrema_indices]
-    n = len(signal_list)
-    valid = [v for v in variability if not np.isnan(v) and v > 0]
-    if len(valid) < n:
-        weights = [1.0 / n] * n
-    else:
-        inv = [1.0 / v for v in variability]
-        total = sum(inv)
-        weights = [i / total for i in inv]
+    Peaks closer than (1 - tolerance) × expected_interval to the previous
+    kept peak are discarded as noise ripple or walk-algorithm duplicates.
+    Peaks further than (1 + tolerance) × expected_interval are retained but
+    logged as potential missed beats (no automatic gap-filling).
 
-    out = np.zeros(len(signal_list[0]))
-    for w, s in zip(weights, signal_list):
-        out += w * np.nan_to_num(s, nan=0.0)
-    return out
+    Parameters
+    ----------
+    expected_interval : expected frames between consecutive peaks of this type
+                        (e.g. fs / (2 × f_heart) for image-signal maxima).
+    tolerance         : fractional tolerance; 0.4 → ±40 %.
+    """
+    if len(indices) < 2:
+        return indices
+
+    t_min = (1.0 - tolerance) * expected_interval
+    t_max = (1.0 + tolerance) * expected_interval
+    kept = [int(indices[0])]
+    for idx in indices[1:]:
+        gap = int(idx) - kept[-1]
+        if gap < t_min:
+            logger.debug(f"Period filter: dropped peak at {idx} (gap {gap:.1f} < min {t_min:.1f})")
+        else:
+            if gap > t_max:
+                logger.debug(
+                    f"Period filter: large gap {gap:.1f} > {t_max:.1f} before peak at {idx} — possible missed beat"
+                )
+            kept.append(int(idx))
+    return np.array(kept, dtype=int)
 
 
 # ──────────────────────────────────────────────── main entry point ────
