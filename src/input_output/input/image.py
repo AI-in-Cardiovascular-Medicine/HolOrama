@@ -146,6 +146,16 @@ def read_image(main_window) -> None:
         QApplication.processEvents()
         main_window.display.set_data(main_window.runtime_data.images)
         main_window.image_displayed = True
+
+        if success:
+            # scaling_factor is now set; batch-compute areas for all contoured frames
+            # so the longitudinal view is fully populated without requiring navigation.
+            main_window.display.compute_all_frame_metrics()
+            try:
+                main_window.longitudinal_view.plot_areas()
+            except Exception:
+                pass
+
         main_window.display_slider.setValue(num_frames - 1)
         main_window.right_half.update_for_modality()
         progress.setValue(3)
@@ -323,11 +333,18 @@ def _read_nifti(filename: str) -> tuple[np.ndarray, pd.DataFrame]:
     return pixel_array, pd.DataFrame(rows_nft)
 
 
+_DICOM_MODALITY_ALIASES: dict[str, str] = {
+    'US': 'IVUS',  # standard DICOM ultrasound
+    'OPT': 'OCT',  # standard DICOM ophthalmic tomography
+}
+
+
 def _check_integrity(metadata: pd.DataFrame) -> tuple[bool, Optional[str]]:
     is_dicom = not metadata[metadata['Description'] == 'Modality'].empty
     if is_dicom:
         modality = metadata[metadata['Description'] == 'Modality']['Value']
-        if modality.empty or not modality.isin([t.value for t in SupportedType]).any():
+        _accepted = {t.value for t in SupportedType} | set(_DICOM_MODALITY_ALIASES.keys())
+        if modality.empty or not modality.isin(_accepted).any():
             return False, None
         num_frames = metadata[metadata['Description'] == 'Number of Frames']['Value']
         if not num_frames.empty and int(num_frames.iloc[0]) < 1:

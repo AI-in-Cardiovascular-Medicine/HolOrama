@@ -49,8 +49,8 @@ class Slider(QSlider):
             pass
         try:  # gating display
             if reset_highlights:
-                self.main_window.contour_based_gating.reset_highlights()
-            self.main_window.contour_based_gating.set_frame(value)
+                self.main_window.gating_plot.reset_highlights()
+            self.main_window.gating_plot.set_frame(value)
         except AttributeError:
             pass
 

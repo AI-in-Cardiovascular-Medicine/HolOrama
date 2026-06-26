@@ -101,11 +101,7 @@ class Predict:
                 checkpoint_name="checkpoint_final.pth",
             )
             print(f"Shape: {self.images.shape}")
-            # mask = seg_predictor.predict_from_list_of_npy_arrays([img[None, None, ...] for img in self.images],
-            #                                               segs_from_prev_stage_or_list_of_segs_from_prev_stage=None,
-            #                                               properties_or_list_of_properties=[dict(spacing=[1, 1, 1]) for _ in self.images],
-            #                                               truncated_ofname=None,
-            #                                               num_processes=1)
+
             mask = seg_predictor.predict_single_npy_array(
                 self.images[None, ...].astype(np.float32), image_properties=dict(spacing=[1, 1, 1])
             )

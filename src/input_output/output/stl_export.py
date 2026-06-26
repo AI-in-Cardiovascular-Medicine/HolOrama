@@ -1,4 +1,4 @@
-"""Export a combined binary mask as NIfTI or binary STL."""
+"""Export a combined binary mask as NIfTI or STL (ASCII default, binary available)."""
 
 import struct
 import numpy as np
@@ -35,7 +35,28 @@ def export_stl(mask: np.ndarray, voxel_spacing: tuple[float, float, float], outp
         ]
     )
     faces = faces[:, [0, 2, 1]]
-    _write_binary_stl(verts, faces, output_path)
+    _write_ascii_stl(verts, faces, output_path)
+
+
+def _write_ascii_stl(verts: np.ndarray, faces: np.ndarray, path: str) -> None:
+    v0 = verts[faces[:, 0]]
+    v1 = verts[faces[:, 1]]
+    v2 = verts[faces[:, 2]]
+    normals = np.cross(v1 - v0, v2 - v0).astype(np.float32)
+    norms = np.linalg.norm(normals, axis=1, keepdims=True)
+    normals /= np.where(norms > 0, norms, 1.0)
+
+    with open(path, 'w') as f:
+        f.write('solid mesh\n')
+        for n, a, b, c in zip(normals, v0, v1, v2):
+            f.write(f'  facet normal {n[0]:.6e} {n[1]:.6e} {n[2]:.6e}\n')
+            f.write('    outer loop\n')
+            f.write(f'      vertex {a[0]:.6e} {a[1]:.6e} {a[2]:.6e}\n')
+            f.write(f'      vertex {b[0]:.6e} {b[1]:.6e} {b[2]:.6e}\n')
+            f.write(f'      vertex {c[0]:.6e} {c[1]:.6e} {c[2]:.6e}\n')
+            f.write('    endloop\n')
+            f.write('  endfacet\n')
+        f.write('endsolid mesh\n')
 
 
 def _write_binary_stl(verts: np.ndarray, faces: np.ndarray, path: str) -> None:

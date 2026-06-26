@@ -176,7 +176,7 @@ class CctaMetadataWindow(QMainWindow):
         for j, (tag_name, tag_value) in enumerate(extra_rows):
             row = sep + 1 + j
             table.setItem(row, 0, QTableWidgetItem(str(tag_name)))
-            table.setItem(row, 1, QTableWidgetItem(str(tag_value)))
+            table.setItem(row, 1, QTableWidgetItem(_fmt_dicom_value(tag_value)))
 
         h_header = table.horizontalHeader()
         if h_header is not None:
@@ -296,8 +296,13 @@ def _fmt_dicom_time(val: str) -> str:
     return str(val)
 
 
-def _fmt_dicom_value(val: str) -> str:
+def _fmt_dicom_value(val) -> str:
     """Best-effort formatting for raw DICOM values in the extra rows."""
+    if hasattr(val, '__len__') and not isinstance(val, str):
+        items = list(val)
+        truncated = items[:5]
+        suffix = ', ...' if len(items) > 5 else ''
+        return '[' + ', '.join(str(i) for i in truncated) + suffix + ']'
     s = str(val).strip()
     if len(s) == 8 and s.isdigit():
         return _fmt_dicom_date(s)
@@ -315,8 +320,15 @@ def _val(df: pd.DataFrame, description: str):
     return rows.iloc[0] if not rows.empty else None
 
 
+_MODALITY_ALIAS_MAP: dict[str, str] = {
+    'US': 'IVUS',
+    'OPT': 'OCT',
+}
+
+
 def extract_modality(df: pd.DataFrame) -> Optional[str]:
-    return _val(df, 'Modality')
+    val = _val(df, 'Modality')
+    return _MODALITY_ALIAS_MAP.get(val, val) if val is not None else None
 
 
 def extract_patient_info(df: pd.DataFrame) -> tuple[str, str, str]:

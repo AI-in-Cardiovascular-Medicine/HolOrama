@@ -2,7 +2,6 @@ import os
 import math
 import csv
 
-import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from loguru import logger
@@ -108,8 +107,6 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
     centroid_x = [None] * n_frames
     centroid_y = [None] * n_frames
     elliptic_ratio = [None] * n_frames
-    vector_length = [None] * n_frames
-    vector_angle = [None] * n_frames
 
     # Pre-fill from stored per-frame measurements
     for frame in contoured_frames:
@@ -190,13 +187,21 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
 
         # skip frames already computed (defensive check)
         if lumen_area[frame] and elliptic_ratio[frame] is not None and elliptic_ratio[frame] != 0:
-            # compute EEM area if not present
             fd = main_window.runtime_data.frame_data_dct.get(frame)
+            # compute EEM area if not present
             if eem_x and eem_x[frame] is not None and fd and not fd.eem.measurements.area:
                 area = _safe_polygon_area(
                     eem_x[frame], eem_y[frame], frame=frame, contour_name="eem", main_window=main_window
                 )
                 fd.eem.measurements.area = area
+            # compute centroid and vector metrics if not already available
+            # (these are not persisted to disk, so must be re-derived on load)
+            if centroid_x[frame] is None and lumen_x[frame] is not None:
+                try:
+                    polygon = Polygon([(x, y) for x, y in zip(lumen_x[frame], lumen_y[frame])])
+                    _, _, centroid_x[frame], centroid_y[frame] = compute_polygon_metrics(main_window, polygon, frame)
+                except Exception:
+                    pass
             continue
 
         # dmake sure lumen contour exists
@@ -215,10 +220,6 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
         shortest_distance[frame], nearest_x[frame], nearest_y[frame] = closest_points(main_window, polygon, frame)
         if shortest_distance[frame] != 0:
             elliptic_ratio[frame] = longest_distance[frame] / shortest_distance[frame]
-        vector_length[frame], vector_angle[frame] = centroid_center_vector(
-            main_window, centroid_x[frame], centroid_y[frame]
-        )
-
         # Compute EEM area for this frame if EEM contour exists
         if eem_x and eem_x[frame] is not None:
             area = _safe_polygon_area(
@@ -250,8 +251,6 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
     report_data['longest_distance'] = [longest_distance[frame] for frame in contoured_frames]
     report_data['shortest_distance'] = [shortest_distance[frame] for frame in contoured_frames]
     report_data['elliptic_ratio'] = [elliptic_ratio[frame] for frame in contoured_frames]
-    report_data['vector_length'] = [vector_length[frame] for frame in contoured_frames]
-    report_data['vector_angle'] = [vector_angle[frame] for frame in contoured_frames]
     report_data['measurement_1'] = [
         main_window.runtime_data.frame_data_dct[frame].measurement_1.length
         if main_window.runtime_data.frame_data_dct[frame].measurement_1
@@ -391,27 +390,6 @@ def compute_polygon_metrics(main_window, polygon, frame):
         fd.centroid = (centroid_x, centroid_y)
 
     return lumen_area, lumen_circumf, centroid_x, centroid_y
-
-
-def centroid_center_vector(window, centroid_x, centroid_y):
-    """Returns the length and angle of a vector from the center of the image to the centroid"""
-    center_x = window.runtime_data.images.shape[1] / 2
-    center_y = window.runtime_data.images.shape[2] / 2
-
-    unit_vector = np.array([0, 1])
-    vector = np.array([centroid_x - center_x, centroid_y - center_y])
-
-    vector_length = np.linalg.norm(vector) * window.runtime_data.metadata['resolution']
-
-    vector_dot = np.dot(unit_vector, vector)
-    vector_det = np.linalg.det(np.array([unit_vector, vector]))
-    vector_angle = np.arctan2(vector_det, vector_dot)
-    vector_angle = np.degrees(vector_angle)
-
-    if vector_angle < 0:
-        vector_angle += 360
-
-    return vector_length, vector_angle
 
 
 def farthest_points(main_window, exterior_coords, frame):

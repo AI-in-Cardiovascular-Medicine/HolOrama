@@ -103,7 +103,7 @@ class RightHalf:
         else:
             right_button = QPushButton('Extract Diastolic and Systolic Frames')
             right_button.setToolTip('Extract diastolic and systolic images from pullback')
-            right_button.clicked.connect(mw.contour_based_gating)
+            right_button.clicked.connect(mw.gating_plot)
         command_buttons = QHBoxLayout()
         command_buttons.addWidget(segment_button)
         command_buttons.addWidget(right_button)
@@ -239,8 +239,8 @@ def toggle_diastolic_frame(main_window, state_true, drag=False):
             if frame not in main_window.runtime_data.gated_frames_dia:
                 bisect.insort_left(main_window.runtime_data.gated_frames_dia, frame)
                 main_window.runtime_data.frame_data_dct[frame].phase = 'D'
-                main_window.contour_based_gating.update_color(main_window.diastole_color_plt)
-                main_window.contour_based_gating.current_phase = 'D'
+                main_window.gating_plot.update_color(main_window.diastole_color_plt)
+                main_window.gating_plot.current_phase = 'D'
             try:  # frame cannot be diastolic and systolic at the same time
                 main_window.systolic_frame_box.setChecked(False)
             except ValueError:
@@ -248,13 +248,13 @@ def toggle_diastolic_frame(main_window, state_true, drag=False):
         else:
             try:
                 main_window.runtime_data.gated_frames_dia.remove(frame)
-                main_window.contour_based_gating.current_phase = None
+                main_window.gating_plot.current_phase = None
                 if (
                     main_window.runtime_data.frame_data_dct[frame].phase == 'D'
                 ):  # do not reset when function is called from toggle_systolic_frame
                     main_window.runtime_data.frame_data_dct[frame].phase = '-'
                     if not drag:
-                        main_window.contour_based_gating.update_color()
+                        main_window.gating_plot.update_color()
             except ValueError:
                 pass
 
@@ -270,8 +270,8 @@ def toggle_systolic_frame(main_window, state_true, drag=False):
             if frame not in main_window.runtime_data.gated_frames_sys:
                 bisect.insort_left(main_window.runtime_data.gated_frames_sys, frame)
                 main_window.runtime_data.frame_data_dct[frame].phase = 'S'
-                main_window.contour_based_gating.update_color(main_window.systole_color_plt)
-                main_window.contour_based_gating.current_phase = 'S'
+                main_window.gating_plot.update_color(main_window.systole_color_plt)
+                main_window.gating_plot.current_phase = 'S'
             try:  # frame cannot be diastolic and systolic at the same time
                 main_window.diastolic_frame_box.setChecked(False)
             except ValueError:
@@ -279,13 +279,13 @@ def toggle_systolic_frame(main_window, state_true, drag=False):
         else:
             try:
                 main_window.runtime_data.gated_frames_sys.remove(frame)
-                main_window.contour_based_gating.current_phase = None
+                main_window.gating_plot.current_phase = None
                 if (
                     main_window.runtime_data.frame_data_dct[frame].phase == 'S'
                 ):  # do not reset when function is called from toggle_diastolic_frame
                     main_window.runtime_data.frame_data_dct[frame].phase = '-'
                     if not drag:
-                        main_window.contour_based_gating.update_color()
+                        main_window.gating_plot.update_color()
             except ValueError:
                 pass
 
