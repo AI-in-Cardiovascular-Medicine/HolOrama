@@ -8,7 +8,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.widgets import Button
 from PyQt6.QtWidgets import QMainWindow, QVBoxLayout, QWidget
 
-from gating.gating_pipeline import prepare_data, lowpass_filter, normalize_data
+import gating.gating_pipeline as pipeline
 from gating.automatic_gating import AutomaticGating
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
@@ -18,7 +18,7 @@ from input_output.output.reports import report
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
 
-class ContourBasedGating:
+class GatingPlot:
     def __init__(self, main_window):
         self.main_window = main_window
         self.vertical_lines = []
@@ -45,7 +45,7 @@ class ContourBasedGating:
         return toolbar is not None and bool(toolbar.mode)
 
     def __call__(self):
-        self.main_window.status_bar.showMessage('Contour-based gating…')
+        self.main_window.status_bar.showMessage('Gating…')
         dialog_success = self.define_roi()
         if not dialog_success:
             self.main_window.status_bar.showMessage(self.main_window.waiting_status)
@@ -55,7 +55,7 @@ class ContourBasedGating:
             contour_based_gating,
             image_based_gating_filtered,
             contour_based_gating_filtered,
-        ) = prepare_data(
+        ) = pipeline.prepare_data(
             self.main_window,
             self.frames,
             self.report_data,
@@ -86,7 +86,7 @@ class ContourBasedGating:
             if not self.main_window.image_displayed:
                 ErrorMessage(self.main_window, 'Please ensure that an input file was read')
                 return False
-            # No contours at all — proceed with image-only gating
+            # No contours at all - proceed with image-only gating
             self.report_data = pd.DataFrame()
 
         # Warn (don't block) when only a subset of frames has contours
@@ -95,7 +95,7 @@ class ContourBasedGating:
             coverage = len(self.report_data) / n_range if n_range > 0 else 0
             if coverage < 0.5:
                 self.main_window.status_bar.showMessage(
-                    f'Gating: only {coverage:.0%} of frames have contours — image-only mode'
+                    f'Gating: only {coverage:.0%} of frames have contours - image-only mode'
                 )
 
         self.frames = self.main_window.runtime_data.images[lower_limit:upper_limit]
@@ -110,7 +110,7 @@ class ContourBasedGating:
         image_based_gating_filtered,
         contour_based_gating_filtered,
     ):
-        # Shift unfiltered signals below the filtered ones (work on copies — originals
+        # Shift unfiltered signals below the filtered ones (work on copies - originals
         # are still referenced by prepare_data's return values)
         image_based_gating = image_based_gating.copy()
         contour_based_gating = contour_based_gating.copy()
@@ -122,16 +122,16 @@ class ContourBasedGating:
         self.fig.clear()
         self.ax = self.fig.add_subplot()
 
-        # Filtered signals — primary visual focus
+        # Filtered signals - primary visual focus
         (self._img_line,) = self.ax.plot(
             self.x, image_based_gating_filtered, color='green', lw=2, label='Image (filtered)'
         )
         (self._cnt_line,) = self.ax.plot(
             self.x, contour_based_gating_filtered, color='yellow', lw=2, label='Contour (filtered)'
         )
-        # Raw signals — subtle background reference
-        self.ax.plot(self.x, image_based_gating, color='green', ls='dashed', alpha=0.25)
-        self.ax.plot(self.x, contour_based_gating, color='yellow', ls='dashed', alpha=0.25)
+        # Raw signals - subtle background reference
+        self.ax.plot(self.x, image_based_gating, color='green', ls='dashed', alpha=0.30)
+        self.ax.plot(self.x, contour_based_gating, color='yellow', ls='dashed', alpha=0.30)
 
         self.ax.set_xlabel('Frame')
         self.ax.get_yaxis().set_visible(False)
@@ -196,7 +196,7 @@ class ContourBasedGating:
         cfg = self.main_window.config.gating
 
         hr_bpm = f_heart * 60
-        initial_bpm = 2.0 * hr_bpm  # yellow line starts at 2×HR
+        initial_bpm = 2.0 * hr_bpm  # yellow line starts at 2xHR
 
         sweep_fig, ax_sw = plt.subplots(figsize=(13, 5))
         sweep_fig.patch.set_facecolor('#1e1e1e')
@@ -204,7 +204,7 @@ class ContourBasedGating:
 
         im = ax_sw.pcolormesh(self.x, bpm_cuts, sweep, cmap='RdBu_r', shading='auto')
 
-        # Active yellow line — starts at 2×HR, moves on click (legend index 0)
+        # Active yellow line - starts at 2xHR, moves on click (legend index 0)
         (active_line,) = ax_sw.plot(
             [self.x[0], self.x[-1]],
             [initial_bpm, initial_bpm],
@@ -212,7 +212,7 @@ class ContourBasedGating:
             lw=2,
             label=f'LP cutoff: {initial_bpm:.0f} BPM',
         )
-        # 1×HR reference line — moves on click to show implied HR (legend index 1)
+        # 1xHR reference line - moves on click to show implied HR (legend index 1)
         (hr_line,) = ax_sw.plot(
             [self.x[0], self.x[-1]],
             [hr_bpm, hr_bpm],
@@ -221,12 +221,11 @@ class ContourBasedGating:
             ls='--',
             label=f'HR = {hr_bpm:.0f} BPM',
         )
-        # Fixed grey dotted: stays at the initial 2×HR as original reference (legend index 2)
-        ax_sw.axhline(initial_bpm, color='#888888', lw=1.0, ls=':', label=f'Initial 2×HR = {initial_bpm:.0f} BPM')
+        ax_sw.axhline(initial_bpm, color='#888888', lw=1.0, ls=':', label=f'Initial 2xHR = {initial_bpm:.0f} BPM')
 
         ax_sw.set_xlabel('Frame', color='white')
         ax_sw.set_ylabel('Low-pass cutoff (BPM)', color='white')
-        ax_sw.set_title('Frequency sweep — click a row to apply that cutoff', color='white')
+        ax_sw.set_title('Frequency sweep - click a row to apply that cutoff', color='white')
         ax_sw.tick_params(colors='white')
         for sp in ax_sw.spines.values():
             sp.set_edgecolor('#555')
@@ -247,13 +246,10 @@ class ContourBasedGating:
             legend.get_texts()[1].set_text(f'HR = {implied_hr:.0f} BPM')
             sweep_fig.canvas.draw_idle()
 
-            new_filt = lowpass_filter(image_raw, new_hz, fs)
-            new_filt = normalize_data(new_filt, step=cfg.normalize_step)
+            new_filt = pipeline.lowpass_filter(image_raw, new_hz, fs)
+            new_filt = pipeline.normalize_data(new_filt, step=cfg.normalize_step)
             self._img_line.set_ydata(new_filt)
             self.fig.canvas.draw_idle()
-            # Do NOT write back to gs['image_based_gating_filtered']: the sweep is
-            # purely visual.  Writing there would poison the cache so re-opening the
-            # gating dialog returns a low-pass (not bandpass) signal to auto-gating.
 
         canvas = FigureCanvasQTAgg(sweep_fig)
         canvas.mpl_connect('button_press_event', on_sweep_click)

@@ -184,7 +184,7 @@ def init_menu(main_window, ccta_page):
     view_menu.addSeparator()
 
     run_menu = main_window.menu_bar.addMenu('Run')
-    run_menu.addAction('Extract Diastolic and Systolic Frames', main_window.contour_based_gating)
+    run_menu.addAction('Extract Diastolic and Systolic Frames', main_window.gating_plot)
     # run_menu.addAction('Automatic Segmentation', partial(segment, main_window))
 
     metadata_menu = main_window.menu_bar.addMenu('Metadata')
@@ -258,7 +258,7 @@ def _redraw_phase_views(main_window):
     """Refresh display, longitudinal view and gating plot after any phase change."""
     main_window.display.update_display()
     main_window.longitudinal_view.plot_areas()
-    main_window.contour_based_gating.redraw_phase_lines(
+    main_window.gating_plot.redraw_phase_lines(
         main_window.runtime_data.gated_frames_dia,
         main_window.diastole_color_plt,
         main_window.runtime_data.gated_frames_sys,

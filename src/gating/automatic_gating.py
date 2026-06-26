@@ -36,7 +36,7 @@ class AutomaticGating:
         f_heart = gs.get('f_heart')
         fs = float(self.main_window.runtime_data.metadata.get('frame_rate', 30))
 
-        # Expected inter-peak interval for image-signal maxima: 2 peaks per cycle
+        # Expected inter-peak/valley interval for image-signal maxima: 2 peaks per cycle
         T_half = fs / (2.0 * f_heart) if f_heart and f_heart > 0 else None
 
         # ── Walk image signal - track valleys (stable end-phases) ─────────
@@ -52,7 +52,6 @@ class AutomaticGating:
         contour_flat = np.all(np.abs(contour_filtered) < 1e-9)
 
         if not contour_flat:
-            # Walk area signal; one max and one min per full cardiac cycle
             T_full = T_half * 2 if T_half is not None else None
             _, area_maxima, area_minima = walk_extrema(contour_filtered)
             if T_full is not None:
