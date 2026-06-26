@@ -18,14 +18,14 @@ class AutomaticGating:
 
         Combined path (contour available)
         ----------------------------------
-        1. Walk the image signal with hysteresis → image-signal minima (minimum-
+        1. Walk the image signal with hysteresis -> image-signal minima (minimum-
            motion stable frames = end-diastole / end-systole, 2 per cardiac cycle).
-        2. Walk the contour (area) signal independently → area maxima (end-
+        2. Walk the contour (area) signal independently -> area maxima (end-
            diastole, lumen largest) and area minima (end-systole, lumen smallest).
         3. Apply a period-consistency filter to each peak list using f_heart so
            that noise ripples and duplicate detections are removed.
-        4. Classify each image valley by the nearest area extremum: area maximum →
-           diastole, area minimum → systole.
+        4. Classify each image valley by the nearest area extremum: area maximum ->
+           diastole, area minimum -> systole.
 
         Image-only path (no contour)
         ----------------------------
@@ -34,18 +34,18 @@ class AutomaticGating:
         """
         gs = getattr(self.main_window.runtime_data, 'gating_signal', None) or {}
         f_heart = gs.get('f_heart')
-        fs = float(self.main_window.runtime_data.metadata.get('frame_rate', 18))
+        fs = float(self.main_window.runtime_data.metadata.get('frame_rate', 30))
 
         # Expected inter-peak interval for image-signal maxima: 2 peaks per cycle
         T_half = fs / (2.0 * f_heart) if f_heart and f_heart > 0 else None
 
-        # ── Walk image signal — track valleys (stable end-phases) ─────────
+        # ── Walk image signal - track valleys (stable end-phases) ─────────
         _, _, img_minima = walk_extrema(image_filtered)
         if T_half is not None:
             img_minima = filter_by_period(img_minima, T_half)
 
         if len(img_minima) < 2:
-            logger.warning('Auto-gating: too few image signal valleys — check signal quality')
+            logger.warning('Auto-gating: too few image signal valleys - check signal quality')
             return
 
         # ── Classify ───────────────────────────────────────────────────────
@@ -66,14 +66,14 @@ class AutomaticGating:
 
             dia_frames, sys_frames = self._classify_by_area_extrema(img_minima, area_maxima, area_minima)
             if not dia_frames or not sys_frames:
-                logger.warning('Area-extrema classification collapsed — falling back to alternating')
+                logger.warning('Area-extrema classification collapsed - falling back to alternating')
                 dia_frames, sys_frames = self._alternate_by_amplitude(img_minima, image_filtered)
         else:
             logger.info(f'Walk extrema (image-only): {len(img_minima)} image valleys')
             dia_frames, sys_frames = self._alternate_by_amplitude(img_minima, image_filtered)
 
         if not dia_frames and not sys_frames:
-            logger.warning('Auto-gating produced no frames — check signal quality')
+            logger.warning('Auto-gating produced no frames - check signal quality')
             return
 
         self._apply_gating(dia_frames, sys_frames)
@@ -88,8 +88,8 @@ class AutomaticGating:
     ) -> tuple[list, list]:
         """Classify each image-signal peak by the nearest area-signal extremum.
 
-        Nearest area maximum → lumen area near its peak → end-diastole.
-        Nearest area minimum → lumen area near its trough → end-systole.
+        Nearest area maximum -> lumen area near its peak -> end-systole.
+        Nearest area minimum -> lumen area near its valley -> end-diastole.
 
         Uses global nearest-neighbour (no distance cutoff) so the method
         degrades gracefully when only a few area extrema are detected.
@@ -98,11 +98,12 @@ class AutomaticGating:
         if len(all_area) == 0:
             return [], []
 
-        # +1 tag = maximum (diastole), -1 tag = minimum (systole)
+        # Aortic vessel dilates during systole → area maximum = systole (+1)
+        # and contracts during diastole → area minimum = diastole (-1)
         tags = np.concatenate(
             [
-                np.ones(len(area_maxima), dtype=int),
-                -np.ones(len(area_minima), dtype=int),
+                np.ones(len(area_maxima), dtype=int),  # area_maxima → systole
+                -np.ones(len(area_minima), dtype=int),  # area_minima → diastole
             ]
         )
         order = np.argsort(all_area)
@@ -114,7 +115,7 @@ class AutomaticGating:
         for i in img_maxima:
             nearest = int(np.argmin(np.abs(all_area - i)))
             frame_key = self._sig_to_frame_key(i)
-            if tags[nearest] == 1:
+            if tags[nearest] == -1:  # area minimum = diastole
                 dia_frames.append(frame_key)
             else:
                 sys_frames.append(frame_key)
@@ -125,7 +126,7 @@ class AutomaticGating:
     # ── image-only: alternating peaks ─────────────────────────────────────
 
     def _alternate_by_amplitude(self, maxima: np.ndarray, image_filtered: np.ndarray) -> tuple[list, list]:
-        """Alternate image-signal peaks; lower mean amplitude → diastole."""
+        """Alternate image-signal peaks; lower mean amplitude -> sharpest images -> diastole."""
         first_sig = maxima[::2].tolist()
         second_sig = maxima[1::2].tolist()
 
@@ -150,8 +151,6 @@ class AutomaticGating:
     def _mean_amp(self, signal: np.ndarray, frame_keys: list, N: int) -> float:
         idxs = [k - self.lower_limit for k in frame_keys if 0 <= k - self.lower_limit < N]
         return float(np.mean([signal[i] for i in idxs])) if idxs else 0.0
-
-    # ── apply ──────────────────────────────────────────────────────────────
 
     def _apply_gating(self, dia_frames: list, sys_frames: list) -> None:
         for fd in self.main_window.runtime_data.frame_data_dct.values():

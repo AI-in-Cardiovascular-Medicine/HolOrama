@@ -5,7 +5,7 @@ Two-signal hybrid algorithm:
 
 Image signal  (always available)
     s[n] = 1 - NCC(frame_n, frame_{n+1})        (CCB s0, Maso Talou 2015)
-    Bandpass at [0.7, 2.2] × f_heart removes both the slow pullback
+    Bandpass at [0.7, 2.2] x f_heart removes both the slow pullback
     trend (DC) and high-frequency speckle noise.
     Peaks of filtered signal = maximum-motion frames (mid-systole and
     mid-diastole); used as timing landmarks, not stable-phase gating points.
@@ -19,14 +19,14 @@ Contour signal  (when ≥50% of frames have drawn contours)
 
 Heart rate detection
     FFT spectral peak of the correlation signal in the configured range.
-    No grid-search optimisation — the FFT estimate is already correct for
+    No grid-search optimisation - the FFT estimate is already correct for
     both rest (~60-100 BPM) and stress (~100-210 BPM) imaging.
 
 Notes
 -----
 - DT-CWT, blur signal, centroid vector, and weight optimisation removed:
   they add noise for real IVUS data and degrade the clean correlation signal.
-- The 2 × f_heart trick is unnecessary when the lumen area is available:
+- The 2 x f_heart trick is unnecessary when the lumen area is available:
   it already separates sys and dia at a single f_heart.
 - Centroid vector analysis showed SNR = 0.04 (noise-dominated by catheter
   rotation) versus lumen area SNR = 1.54; vector signals not used.
@@ -105,25 +105,25 @@ def detect_heart_rate(
 
     Works reliably because the correlation signal has strong spectral power
     at f_heart (validated: correctly finds 1.55 Hz = 93 BPM on test data).
-    No grid-search is applied — the FFT estimate is sufficiently accurate.
+    No grid-search is applied - the FFT estimate is sufficiently accurate.
     """
     sig = np.nan_to_num(signal - np.nanmean(signal))
     freqs = np.fft.rfftfreq(len(sig), d=1.0 / fs)
     spectrum = np.abs(np.fft.rfft(sig))
     mask = (freqs >= f_min) & (freqs <= f_max)
     if not mask.any():
-        logger.warning(f"No spectral peak in [{f_min}, {f_max}] Hz — using midpoint")
+        logger.warning(f"No spectral peak in [{f_min}, {f_max}] Hz - using midpoint")
         return (f_min + f_max) / 2
     f_heart = float(freqs[mask][np.argmax(spectrum[mask])])
     logger.info(f"Heart rate: {f_heart:.3f} Hz  ({f_heart * 60:.0f} BPM)")
 
-    # The 1-NCC signal has strong power at 2×f_heart (two motion events per cycle).
+    # The 1-NCC signal has strong power at 2xf_heart (two motion events per cycle).
     # If the actual heart rate is below f_min/2, the harmonic rather than the
     # fundamental may be the dominant peak in [f_min, f_max].
     if f_heart > f_max / 2:
         logger.warning(
             f"Detected f_heart={f_heart:.2f} Hz is above half of f_max={f_max} Hz. "
-            "The 2×f_heart harmonic of a slower heart rate may have been picked up. "
+            "The 2xf_heart harmonic of a slower heart rate may have been picked up. "
             "If gating looks wrong, try halving f_cardiac_max in config."
         )
 
@@ -141,9 +141,9 @@ def bandpass_filter(
     hi_frac: float = 2.2,
     order: int = 4,
 ) -> np.ndarray:
-    """Zero-phase Butterworth bandpass at [lo_frac, hi_frac] × f_heart.
+    """Zero-phase Butterworth bandpass at [lo_frac, hi_frac] x f_heart.
 
-    Default passband [0.7, 2.2] × f_heart:
+    Default passband [0.7, 2.2] x f_heart:
     - Lower cut removes slow pullback trend (DC and sub-cardiac drift).
     - Upper cut removes high-frequency speckle noise.
     - Passes up to 2nd harmonic so both sys and dia phases are visible
@@ -153,13 +153,13 @@ def bandpass_filter(
     lo = max(0.01, lo_frac * f_heart / nyq)
     hi = min(0.99, hi_frac * f_heart / nyq)
     if lo >= hi:
-        logger.warning(f"Bandpass bounds invalid ({lo:.3f}, {hi:.3f}) — returning raw signal")
+        logger.warning(f"Bandpass bounds invalid ({lo:.3f}, {hi:.3f}) - returning raw signal")
         return np.array(signal, dtype=float)
     b, a = butter(order, [lo, hi], btype='band')
     try:
         return filtfilt(b, a, np.nan_to_num(signal))
     except Exception as exc:
-        logger.warning(f"Bandpass filter failed: {exc} — returning raw signal")
+        logger.warning(f"Bandpass filter failed: {exc} - returning raw signal")
         return np.array(signal, dtype=float)
 
 
@@ -200,7 +200,7 @@ def compute_lumen_area_signal(
 
     coverage = float(np.sum(~np.isnan(area))) / N
     if coverage < 0.5:
-        logger.info(f"Lumen area coverage {coverage:.0%} < 50% — contour signal omitted")
+        logger.info(f"Lumen area coverage {coverage:.0%} < 50% - contour signal omitted")
         return np.full(N, np.nan)
 
     logger.info(f"Lumen area coverage: {coverage:.0%}")
@@ -224,7 +224,7 @@ def compute_frequency_sweep(
 ) -> tuple:
     """Low-pass filtered signal at n_steps cutoff frequencies (BPM labelled).
 
-    Sweeps from 0.5 × f_heart to 4 × f_heart so the user can see the
+    Sweeps from 0.5 x f_heart to 4 x f_heart so the user can see the
     transition from over-smoothed (single hump/cycle) to noisy signal.
     Returns (bpm_cuts, sweep) where sweep[i] is z-scored signal at bpm_cuts[i].
     """
@@ -255,7 +255,7 @@ def walk_extrema(
     """Hysteresis-gated turning-point detector.
 
     Walks the signal and registers a local maximum only after the value has
-    dropped more than *swing_fraction* × peak-to-peak below the running high
+    dropped more than *swing_fraction* x peak-to-peak below the running high
     since the last confirmed turning point; vice versa for minima.
 
     Advantages over scipy find_peaks:
@@ -332,15 +332,15 @@ def filter_by_period(
 ) -> np.ndarray:
     """Drop peaks whose inter-peak gap violates the expected cardiac interval.
 
-    Peaks closer than (1 - tolerance) × expected_interval to the previous
+    Peaks closer than (1 - tolerance) x expected_interval to the previous
     kept peak are discarded as noise ripple or walk-algorithm duplicates.
-    Peaks further than (1 + tolerance) × expected_interval are retained but
+    Peaks further than (1 + tolerance) x expected_interval are retained but
     logged as potential missed beats (no automatic gap-filling).
 
     Parameters
     ----------
     expected_interval : expected frames between consecutive peaks of this type
-                        (e.g. fs / (2 × f_heart) for image-signal maxima).
+                        (e.g. fs / (2 x f_heart) for image-signal maxima).
     tolerance         : fractional tolerance; 0.4 → ±40 %.
     """
     if len(indices) < 2:
@@ -356,7 +356,7 @@ def filter_by_period(
         else:
             if gap > t_max:
                 logger.debug(
-                    f"Period filter: large gap {gap:.1f} > {t_max:.1f} before peak at {idx} — possible missed beat"
+                    f"Period filter: large gap {gap:.1f} > {t_max:.1f} before peak at {idx} - possible missed beat"
                 )
             kept.append(int(idx))
     return np.array(kept, dtype=int)

@@ -17,6 +17,9 @@ Gating module rewrite with automatic heart-rate detection, 3D crosshair and lass
 
 ### Changed
 - Signal processing rewritten: `prepare_data` now pre-computes the full frame metric array up front; bandpass uses detected `f_heart` rather than a fixed range; frequency sweep stored in `runtime_data.gating_signal` for the interactive window
+- Peak detection replaced: `scipy.find_peaks` (global height threshold + minimum distance) replaced by `walk_extrema` (hysteresis-gated direction-change walker, amplitude-agnostic) and `filter_by_period` (drops peaks whose inter-peak gap violates the expected cardiac period by more than ±40%)
+- Gating frames now selected at image-signal **valleys** (minimum NCC = stable end-phases with best image quality) instead of peaks (maximum motion = mid-cycle transitions); valleys are temporally co-located with area-signal extrema, making classification unambiguous
+- Area-signal classification convention corrected for aortic IVUS: aorta **dilates during systole** (area maximum = systole) and contracts during diastole (area minimum = diastole); tag array and check sign fixed so the mapping is explicit and correct regardless of whether area maxima and minima counts differ
 - STL export defaults to ASCII format; binary write is still available as `_write_binary_stl`
 - 3D viewer click handling moved from VTK observer to Qt `eventFilter` for reliable event delivery in the Qt–VTK integration
 
