@@ -5,33 +5,33 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.8.0] - 2026-06-26
 
-Gating module rewrite with automatic heart-rate detection, 3D crosshair and lasso erase in the CCTA viewer, and longitudinal view phase markers.
+Gating module rewrite, 3D crosshair and lasso erase for the CCTA viewer, and longitudinal view phase markers.
 
 ### Added
-- **Gating - automatic heart-rate detection**: FFT peak of the 1-NCC image signal now identifies `f_heart`; the bandpass filter is centered on this value instead of a fixed BPM range, with harmonic-aliasing guard when `f_heart > f_max / 2`
-- **Gating - frequency sweep window**: heatmap showing the image signal low-pass filtered at a sweep of BPM cutoffs (0.5–4 × f_heart); clicking a row applies that cutoff to the main gating plot interactively
-- **Gating - lumen area signal**: when contours are available, lumen area is incorporated as an additional gating signal; bandpass is applied separately from the image-based signal
-- **CCTA - 3D crosshair**: clicking in the 3D render places a yellow sphere marker and propagates the voxel position to the axial/coronal/sagittal 2D views; moving the 2D slider also moves the marker in 3D
-- **CCTA - lasso erase tool**: "Lasso" toggle next to "Render 3D" lets the user draw a screen-space spline polygon; all mask voxels whose projected screen position falls inside the polygon are zeroed for the chosen label; auto-closes on first-point re-click, skips the label dialog when only one label is visible
-- **Longitudinal view - phase markers**: diastole and systole frames are marked with dotted lines in their respective phase colors; lines are cosmetic-pen scaled to half the dot diameter and update automatically when gating changes
+- Automatic heart-rate detection via FFT peak of the image signal; bandpass filter centered on detected `f_heart`
+- Frequency sweep window: heatmap of the image signal at sweeping BPM cutoffs; click a row to apply that cutoff interactively
+- Lumen area incorporated as a second gating signal when contours are available
+- CCTA 3D crosshair: clicking in the 3D render propagates the voxel position to the 2D views and vice versa
+- CCTA lasso erase tool: draw a screen-space polygon to zero mask voxels inside it for the selected label
+- Longitudinal view phase markers: dotted cosmetic-pen lines at diastolic and systolic frame positions in their respective phase colors
 
 ### Changed
-- Signal processing rewritten: `prepare_data` now pre-computes the full frame metric array up front; bandpass uses detected `f_heart` rather than a fixed range; frequency sweep stored in `runtime_data.gating_signal` for the interactive window
-- Peak detection replaced: `scipy.find_peaks` (global height threshold + minimum distance) replaced by `walk_extrema` (hysteresis-gated direction-change walker, amplitude-agnostic) and `filter_by_period` (drops peaks whose inter-peak gap violates the expected cardiac period by more than ±40%)
-- Gating frames now selected at image-signal **valleys** (minimum NCC = stable end-phases with best image quality) instead of peaks (maximum motion = mid-cycle transitions); valleys are temporally co-located with area-signal extrema, making classification unambiguous
-- Area-signal classification convention corrected for aortic IVUS: aorta **dilates during systole** (area maximum = systole) and contracts during diastole (area minimum = diastole); tag array and check sign fixed so the mapping is explicit and correct regardless of whether area maxima and minima counts differ
-- STL export defaults to ASCII format; binary write is still available as `_write_binary_stl`
-- 3D viewer click handling moved from VTK observer to Qt `eventFilter` for reliable event delivery in the Qt–VTK integration
+- Peak detection replaced: `scipy.find_peaks` replaced by `walk_extrema` (hysteresis direction-change walker) and `filter_by_period` (drops peaks outside the expected cardiac period by more than 40%)
+- Gating frames now selected at image-signal valleys (minimum NCC = stable end-phases) instead of peaks
+- Area-signal classification corrected for aortic IVUS: area maximum = systole, area minimum = diastole
+- Module renamed from `signal_processing` to `gating_pipeline` and from `contour_based_gating` to `gating_plot`; classes and attributes updated accordingly
+- STL export defaults to ASCII format
+- 3D viewer click handling moved from VTK observer to Qt eventFilter
 
 ### Fixed
-- Gating plot freeze on re-run: `fig.clear()` orphans line artists causing `NotImplementedError: cannot remove artist`; wrapped in `try/except` in `remove_lines()`
-- Frequency sweep button opened an Agg (non-interactive) figure; now wraps in `FigureCanvasQTAgg` + `QMainWindow`
-- DICOM modality aliases `US → IVUS` and `OPT → OCT` added so standard ultrasound DICOM files are no longer rejected at load
-- DICOM private tag values in the metadata inspector truncated to 5 items followed by `...` to prevent overflow
-- CCTA 3D viewer: camera position no longer shifts after a lasso erase (camera state saved and restored around actor rebuild)
-- CCTA 3D viewer: hidden labels that were unchanged by a lasso erase are preserved in `_actors` so they can be re-shown without a full re-render
-- CCTA 3D viewer: lasso execute is now a no-op when no mask is loaded (empty-scene guard)
-- Longitudinal view: `RuntimeError` from a Qt-deleted `Marker` C++ object handled with `try/except RuntimeError` when removing the current-frame marker
+- Gating plot freeze on re-run when line artists from a cleared figure could not be removed
+- Frequency sweep opened a non-interactive Agg figure; now wrapped in FigureCanvasQTAgg and QMainWindow
+- DICOM modality aliases US and OPT added so standard IVUS and OCT files are no longer rejected at load
+- DICOM private tag values in the metadata inspector truncated to prevent overflow
+- Camera position no longer shifts after lasso erase in the CCTA 3D viewer
+- Hidden labels preserved in _actors after lasso erase so they can be re-shown without a full re-render
+- Lasso execute is a no-op when no mask is loaded
+- RuntimeError from a Qt-deleted Marker object handled when removing the longitudinal view frame marker
 
 ## [1.7.0] - 2026-06-09
 
