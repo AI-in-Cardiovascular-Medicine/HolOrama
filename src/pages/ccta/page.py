@@ -77,6 +77,7 @@ class CctaPage(QWidget):
         self._mask_tab = MaskPanel()
         self._mask_tab.alpha_changed.connect(self._on_mask_alpha_changed)
         self._mask_tab.label_visibility_changed.connect(self._on_label_visibility_changed)
+        self._mask_tab.label_colors_changed.connect(self._on_label_colors_changed)
 
         self._brush_panel = BrushPanel()
         self._brush_panel.brush_enabled_changed.connect(self._on_brush_enabled_changed)
@@ -384,6 +385,12 @@ class CctaPage(QWidget):
         for display in (self._axial, self._coronal, self._sagittal):
             display.set_label_visible(label, visible)
         self._3d_viewer.set_label_visible(label, visible)
+
+    def _on_label_colors_changed(self, colors: list) -> None:
+        for display in (self._axial, self._coronal, self._sagittal):
+            display.set_label_colors(colors)
+        self._3d_viewer.set_label_colors(colors)
+        self._brush_panel.set_label_colors(colors)
 
     def _on_windowing_changed(self, level: int, width: int) -> None:
         for display in (self._axial, self._coronal, self._sagittal):

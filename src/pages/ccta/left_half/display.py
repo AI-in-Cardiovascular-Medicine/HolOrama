@@ -60,6 +60,7 @@ class CctaDisplay(QGraphicsView):
         self._mask_labels: list[int] = []
         self._hidden_labels: set[int] = set()
         self._mask_alpha: float = DEFAULT_MASK_ALPHA
+        self._custom_colors: list[tuple[int, int, int]] | None = None
 
         self._brush_mode: bool = False
         self._brush_geometry: BrushGeometry | None = None
@@ -97,8 +98,15 @@ class CctaDisplay(QGraphicsView):
         self._mask = mask
         self._mask_labels = labels
         self._hidden_labels = set()
+        self._custom_colors = None
         self._rebuild_lut()
         self._render()
+
+    def set_label_colors(self, colors: list[tuple[int, int, int]]) -> None:
+        self._custom_colors = list(colors)
+        if self._mask is not None:
+            self._rebuild_lut()
+            self._render()
 
     def clear_mask(self) -> None:
         self._mask = None
@@ -200,7 +208,10 @@ class CctaDisplay(QGraphicsView):
         lut = np.zeros((256, 3), dtype=np.uint8)
         for i, label in enumerate(self._mask_labels):
             if 0 < label < 256 and label not in self._hidden_labels:
-                lut[label] = LABEL_COLORS[i % len(LABEL_COLORS)]
+                if self._custom_colors and i < len(self._custom_colors):
+                    lut[label] = self._custom_colors[i]
+                else:
+                    lut[label] = LABEL_COLORS[i % len(LABEL_COLORS)]
         self._mask_lut = lut
 
     def _get_slice(self) -> np.ndarray:

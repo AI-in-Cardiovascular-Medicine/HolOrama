@@ -97,6 +97,7 @@ class CctaViewer3D(QWidget):
         self._voxel_spacing: tuple[float, float, float] | None = None
         self._actors: dict[int, vtkActor] = {}
         self._hidden_labels: set[int] = set()
+        self._custom_colors: list[tuple[int, int, int]] | None = None
         self._crosshair_actor: vtkActor | None = None
         self._press_qt: QPoint = QPoint()
 
@@ -117,7 +118,19 @@ class CctaViewer3D(QWidget):
         self._labels = labels
         self._voxel_spacing = voxel_spacing
         self._hidden_labels = set()
+        self._custom_colors = None
         self.clear_mesh()
+
+    def set_label_colors(self, colors: list[tuple[int, int, int]]) -> None:
+        self._custom_colors = list(colors)
+        changed = False
+        for i, label in enumerate(self._labels):
+            if i < len(colors) and label in self._actors:
+                r, g, b = colors[i]
+                self._actors[label].GetProperty().SetColor(r / 255.0, g / 255.0, b / 255.0)
+                changed = True
+        if changed:
+            self._vtk_widget.GetRenderWindow().Render()
 
     def set_label_visible(self, label: int, visible: bool) -> None:
         if visible:
@@ -609,7 +622,10 @@ class CctaViewer3D(QWidget):
 
         actor = vtkActor()
         actor.SetMapper(mapper)
-        r, g, b = LABEL_COLORS[color_index % len(LABEL_COLORS)]
+        if self._custom_colors and color_index < len(self._custom_colors):
+            r, g, b = self._custom_colors[color_index]
+        else:
+            r, g, b = LABEL_COLORS[color_index % len(LABEL_COLORS)]
         actor.GetProperty().SetColor(r / 255.0, g / 255.0, b / 255.0)
         actor.GetProperty().SetOpacity(1.0)
         actor.GetProperty().SetInterpolationToFlat()

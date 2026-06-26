@@ -32,6 +32,7 @@ class BrushPanel(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._labels: list[int] = []
+        self._custom_colors: list[tuple[int, int, int]] | None = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 4, 8, 8)
@@ -96,6 +97,7 @@ class BrushPanel(QWidget):
     def set_labels(self, labels: list[int]) -> None:
         """Populate the label combo. Call whenever a mask is loaded or created."""
         self._labels = labels
+        self._custom_colors = None
         self._combo.blockSignals(True)
         self._combo.clear()
         for label in labels:
@@ -104,6 +106,12 @@ class BrushPanel(QWidget):
         self._combo.setCurrentIndex(0 if labels else -1)
         self._update_swatch()
         if self._enable_cb.isChecked() and labels:
+            self._emit()
+
+    def set_label_colors(self, colors: list[tuple[int, int, int]]) -> None:
+        self._custom_colors = list(colors)
+        self._update_swatch()
+        if self._enable_cb.isChecked():
             self._emit()
 
     def update_label_name(self, label: int, name: str) -> None:
@@ -122,7 +130,10 @@ class BrushPanel(QWidget):
         if idx < 0 or idx >= len(self._labels):
             return None
         label = self._labels[idx]
-        color = LABEL_COLORS[idx % len(LABEL_COLORS)]
+        if self._custom_colors and idx < len(self._custom_colors):
+            color = self._custom_colors[idx]
+        else:
+            color = LABEL_COLORS[idx % len(LABEL_COLORS)]
         return BrushGeometry(label=label, color=color, radius_px=radius)
 
     def set_enabled(self, enabled: bool) -> None:
@@ -144,7 +155,10 @@ class BrushPanel(QWidget):
     def _update_swatch(self) -> None:
         idx = self._combo.currentIndex()
         if 0 <= idx < len(self._labels):
-            r, g, b = LABEL_COLORS[idx % len(LABEL_COLORS)]
+            if self._custom_colors and idx < len(self._custom_colors):
+                r, g, b = self._custom_colors[idx]
+            else:
+                r, g, b = LABEL_COLORS[idx % len(LABEL_COLORS)]
             self._swatch.setStyleSheet(
                 f'background-color: rgb({r},{g},{b}); border: 1px solid #666; border-radius: 2px;'
             )
