@@ -1,7 +1,7 @@
 """
 IVUS Gating Signal Processing
 ==============================
-Two-signal hybrid algorithm:
+Two-signal hybrid algorithm (improved from AIVUS-CAA publication):
 
 Image signal  (always available)
     s[n] = 1 - NCC(frame_n, frame_{n+1})        (CCB s0, Maso Talou 2015)
@@ -39,9 +39,6 @@ from loguru import logger
 from scipy.signal import butter, filtfilt
 
 
-# ──────────────────────────────────────────────────────────── utilities ────
-
-
 def _timing(func):
     def wrapper(*args, **kwargs):
         t0 = time.time()
@@ -52,7 +49,96 @@ def _timing(func):
     return wrapper
 
 
-# ──────────────────────────────── normalisation ────
+@_timing
+def prepare_data(
+    main_window,
+    frames: np.ndarray,
+    report_data,
+    lower_limit: int = 0,
+    x1: int = 50,
+    x2: int = 450,
+    y1: int = 50,
+    y2: int = 450,
+):
+    """Full gating pipeline.
+
+    Image signal  : 1 - NCC(frame_n, frame_{n+1}), bandpass filtered.
+    Contour signal: lumen_area from report_data, bandpass filtered.
+                    NaN-filled zeros when coverage < 50%.
+
+    Returns (image_raw, contour_raw, image_filtered, contour_filtered).
+    """
+    cfg = main_window.config.gating
+    fs = main_window.runtime_data.metadata['frame_rate']
+    N = len(frames)
+
+    # ── Cache ──────────────────────────────────────────────────────────────
+    try:
+        gs = main_window.runtime_data.gating_signal
+        if gs and gs.get('gating_config') == dict(vars(cfg)) and len(gs.get('image_based_gating', [])) == N:
+            return (
+                np.array(gs['image_based_gating']),
+                np.array(gs['contour_based_gating']),
+                np.array(gs['image_based_gating_filtered']),
+                np.array(gs['contour_based_gating_filtered']),
+            )
+    except Exception:
+        pass
+
+    # ── Pre-process frames: crop → [0,1] ──────────────────────────────────
+    frames_crop = frames[:, x1:x2, y1:y2].astype(np.float32)
+    f_lo = frames_crop.min(axis=(1, 2), keepdims=True)
+    f_hi = frames_crop.max(axis=(1, 2), keepdims=True)
+    f_rng = np.where(f_hi > f_lo, f_hi - f_lo, 1.0)
+    frames_norm = (frames_crop - f_lo) / f_rng
+
+    # ── Image signal: 1 - NCC ─────────────────────────────────────────────
+    logger.info("Computing cross-correlation image signal …")
+    image_raw = compute_correlation_signal(frames_norm)
+    image_raw = normalize_data(image_raw, step=cfg.normalize_step)
+
+    # ── Heart rate detection via FFT ───────────────────────────────────────
+    f_heart_min = getattr(cfg, 'f_cardiac_min', 1.0)
+    f_heart_max = getattr(cfg, 'f_cardiac_max', 3.5)
+    f_heart = detect_heart_rate(image_raw, fs, f_heart_min, f_heart_max)
+
+    # ── Bandpass filter ────────────────────────────────────────────────────
+    lo_frac = getattr(cfg, 'bandpass_lo_frac', 0.7)
+    hi_frac = getattr(cfg, 'bandpass_hi_frac', 2.2)
+
+    image_filtered = bandpass_filter(image_raw, f_heart, fs, lo_frac, hi_frac)
+    image_filtered = normalize_data(image_filtered, step=cfg.normalize_step)
+
+    # ── Contour signal: lumen area ─────────────────────────────────────────
+    contour_raw = np.zeros(N)
+    contour_filtered = np.zeros(N)
+
+    if report_data is not None and len(report_data) > 0:
+        area_signal = compute_lumen_area_signal(report_data, N, lower_limit)
+        has_contour = not np.all(np.isnan(area_signal))
+
+        if has_contour:
+            contour_raw = normalize_data(area_signal, step=cfg.normalize_step)
+            area_filtered = bandpass_filter(area_signal, f_heart, fs, lo_frac, hi_frac)
+            contour_filtered = normalize_data(area_filtered, step=cfg.normalize_step)
+
+    # ── Frequency sweep for interactive visualisation ──────────────────────
+    bpm_cuts, sweep = compute_frequency_sweep(image_raw, fs, f_heart)
+
+    # ── Cache ─────────────────────────────────────────────────────────────
+    main_window.runtime_data.gating_signal = {
+        'image_based_gating': image_raw.tolist(),
+        'contour_based_gating': contour_raw.tolist(),
+        'image_based_gating_filtered': image_filtered.tolist(),
+        'contour_based_gating_filtered': contour_filtered.tolist(),
+        'gating_config': dict(vars(cfg)),
+        'f_heart': f_heart,
+        'f_heart_bpm': f_heart * 60,
+        'freq_sweep_bpm_cuts': bpm_cuts.tolist(),
+        'freq_sweep_signals': sweep.tolist(),
+    }
+
+    return image_raw, contour_raw, image_filtered, contour_filtered
 
 
 def normalize_data(data, step: int) -> np.ndarray:
@@ -101,12 +187,7 @@ def detect_heart_rate(
     f_min: float = 1.0,
     f_max: float = 3.5,
 ) -> float:
-    """Dominant heart rate via FFT spectral peak in physiological range [Hz].
-
-    Works reliably because the correlation signal has strong spectral power
-    at f_heart (validated: correctly finds 1.55 Hz = 93 BPM on test data).
-    No grid-search is applied - the FFT estimate is sufficiently accurate.
-    """
+    """Dominant heart rate via FFT spectral peak in physiological range [Hz]."""
     sig = np.nan_to_num(signal - np.nanmean(signal))
     freqs = np.fft.rfftfreq(len(sig), d=1.0 / fs)
     spectrum = np.abs(np.fft.rfft(sig))
@@ -128,9 +209,6 @@ def detect_heart_rate(
         )
 
     return f_heart
-
-
-# ─────────────────────────────── bandpass filter ────
 
 
 def bandpass_filter(
@@ -360,98 +438,3 @@ def filter_by_period(
                 )
             kept.append(int(idx))
     return np.array(kept, dtype=int)
-
-
-# ──────────────────────────────────────────────── main entry point ────
-
-
-@_timing
-def prepare_data(
-    main_window,
-    frames: np.ndarray,
-    report_data,
-    lower_limit: int = 0,
-    x1: int = 50,
-    x2: int = 450,
-    y1: int = 50,
-    y2: int = 450,
-):
-    """Full gating pipeline.
-
-    Image signal  : 1 - NCC(frame_n, frame_{n+1}), bandpass filtered.
-    Contour signal: lumen_area from report_data, bandpass filtered.
-                    NaN-filled zeros when coverage < 50%.
-
-    Returns (image_raw, contour_raw, image_filtered, contour_filtered).
-    """
-    cfg = main_window.config.gating
-    fs = main_window.runtime_data.metadata['frame_rate']
-    N = len(frames)
-
-    # ── Cache ──────────────────────────────────────────────────────────────
-    try:
-        gs = main_window.runtime_data.gating_signal
-        if gs and gs.get('gating_config') == dict(vars(cfg)) and len(gs.get('image_based_gating', [])) == N:
-            return (
-                np.array(gs['image_based_gating']),
-                np.array(gs['contour_based_gating']),
-                np.array(gs['image_based_gating_filtered']),
-                np.array(gs['contour_based_gating_filtered']),
-            )
-    except Exception:
-        pass
-
-    # ── Pre-process frames: crop → [0,1] ──────────────────────────────────
-    frames_crop = frames[:, x1:x2, y1:y2].astype(np.float32)
-    f_lo = frames_crop.min(axis=(1, 2), keepdims=True)
-    f_hi = frames_crop.max(axis=(1, 2), keepdims=True)
-    f_rng = np.where(f_hi > f_lo, f_hi - f_lo, 1.0)
-    frames_norm = (frames_crop - f_lo) / f_rng
-
-    # ── Image signal: 1 - NCC ─────────────────────────────────────────────
-    logger.info("Computing cross-correlation image signal …")
-    image_raw = compute_correlation_signal(frames_norm)
-    image_raw = normalize_data(image_raw, step=cfg.normalize_step)
-
-    # ── Heart rate detection via FFT ───────────────────────────────────────
-    f_heart_min = getattr(cfg, 'f_cardiac_min', 1.0)
-    f_heart_max = getattr(cfg, 'f_cardiac_max', 3.5)
-    f_heart = detect_heart_rate(image_raw, fs, f_heart_min, f_heart_max)
-
-    # ── Bandpass filter ────────────────────────────────────────────────────
-    lo_frac = getattr(cfg, 'bandpass_lo_frac', 0.7)
-    hi_frac = getattr(cfg, 'bandpass_hi_frac', 2.2)
-
-    image_filtered = bandpass_filter(image_raw, f_heart, fs, lo_frac, hi_frac)
-    image_filtered = normalize_data(image_filtered, step=cfg.normalize_step)
-
-    # ── Contour signal: lumen area ─────────────────────────────────────────
-    contour_raw = np.zeros(N)
-    contour_filtered = np.zeros(N)
-
-    if report_data is not None and len(report_data) > 0:
-        area_signal = compute_lumen_area_signal(report_data, N, lower_limit)
-        has_contour = not np.all(np.isnan(area_signal))
-
-        if has_contour:
-            contour_raw = normalize_data(area_signal, step=cfg.normalize_step)
-            area_filtered = bandpass_filter(area_signal, f_heart, fs, lo_frac, hi_frac)
-            contour_filtered = normalize_data(area_filtered, step=cfg.normalize_step)
-
-    # ── Frequency sweep for interactive visualisation ──────────────────────
-    bpm_cuts, sweep = compute_frequency_sweep(image_raw, fs, f_heart)
-
-    # ── Cache ─────────────────────────────────────────────────────────────
-    main_window.runtime_data.gating_signal = {
-        'image_based_gating': image_raw.tolist(),
-        'contour_based_gating': contour_raw.tolist(),
-        'image_based_gating_filtered': image_filtered.tolist(),
-        'contour_based_gating_filtered': contour_filtered.tolist(),
-        'gating_config': dict(vars(cfg)),
-        'f_heart': f_heart,
-        'f_heart_bpm': f_heart * 60,
-        'freq_sweep_bpm_cuts': bpm_cuts.tolist(),
-        'freq_sweep_signals': sweep.tolist(),
-    }
-
-    return image_raw, contour_raw, image_filtered, contour_filtered

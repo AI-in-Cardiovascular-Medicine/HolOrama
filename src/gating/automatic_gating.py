@@ -1,7 +1,7 @@
 import numpy as np
 from loguru import logger
 
-from gating.signal_processing import walk_extrema, filter_by_period
+from gating.gating_pipeline import walk_extrema, filter_by_period
 
 
 class AutomaticGating:

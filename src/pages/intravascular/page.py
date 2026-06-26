@@ -28,7 +28,7 @@ from pages.intravascular.right_half.gating_display import GatingDisplay
 from pages.intravascular.right_half.longitudinal_view import LongitudinalView
 
 from input_output.output.contours import write_contours
-from gating.contour_based_gating import ContourBasedGating
+from gating.gating_plot import ContourBasedGating
 from segmentation.predict import Predict
 from domain.runtime_types import RuntimeData
 from domain.all_types import OCT_QUALITY_LABELS

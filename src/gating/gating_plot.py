@@ -8,7 +8,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.widgets import Button
 from PyQt6.QtWidgets import QMainWindow, QVBoxLayout, QWidget
 
-from gating.signal_processing import prepare_data, lowpass_filter, normalize_data
+from gating.gating_pipeline import prepare_data, lowpass_filter, normalize_data
 from gating.automatic_gating import AutomaticGating
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
