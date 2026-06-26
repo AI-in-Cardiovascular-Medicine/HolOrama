@@ -3,6 +3,33 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.0] - 2026-06-26
+
+Gating module rewrite with automatic heart-rate detection, 3D crosshair and lasso erase in the CCTA viewer, and longitudinal view phase markers.
+
+### Added
+- **Gating - automatic heart-rate detection**: FFT peak of the 1-NCC image signal now identifies `f_heart`; the bandpass filter is centered on this value instead of a fixed BPM range, with harmonic-aliasing guard when `f_heart > f_max / 2`
+- **Gating - frequency sweep window**: heatmap showing the image signal low-pass filtered at a sweep of BPM cutoffs (0.5–4 × f_heart); clicking a row applies that cutoff to the main gating plot interactively
+- **Gating - lumen area signal**: when contours are available, lumen area is incorporated as an additional gating signal; bandpass is applied separately from the image-based signal
+- **CCTA - 3D crosshair**: clicking in the 3D render places a yellow sphere marker and propagates the voxel position to the axial/coronal/sagittal 2D views; moving the 2D slider also moves the marker in 3D
+- **CCTA - lasso erase tool**: "Lasso" toggle next to "Render 3D" lets the user draw a screen-space spline polygon; all mask voxels whose projected screen position falls inside the polygon are zeroed for the chosen label; auto-closes on first-point re-click, skips the label dialog when only one label is visible
+- **Longitudinal view - phase markers**: diastole and systole frames are marked with dotted lines in their respective phase colors; lines are cosmetic-pen scaled to half the dot diameter and update automatically when gating changes
+
+### Changed
+- Signal processing rewritten: `prepare_data` now pre-computes the full frame metric array up front; bandpass uses detected `f_heart` rather than a fixed range; frequency sweep stored in `runtime_data.gating_signal` for the interactive window
+- STL export defaults to ASCII format; binary write is still available as `_write_binary_stl`
+- 3D viewer click handling moved from VTK observer to Qt `eventFilter` for reliable event delivery in the Qt–VTK integration
+
+### Fixed
+- Gating plot freeze on re-run: `fig.clear()` orphans line artists causing `NotImplementedError: cannot remove artist`; wrapped in `try/except` in `remove_lines()`
+- Frequency sweep button opened an Agg (non-interactive) figure; now wraps in `FigureCanvasQTAgg` + `QMainWindow`
+- DICOM modality aliases `US → IVUS` and `OPT → OCT` added so standard ultrasound DICOM files are no longer rejected at load
+- DICOM private tag values in the metadata inspector truncated to 5 items followed by `...` to prevent overflow
+- CCTA 3D viewer: camera position no longer shifts after a lasso erase (camera state saved and restored around actor rebuild)
+- CCTA 3D viewer: hidden labels that were unchanged by a lasso erase are preserved in `_actors` so they can be re-shown without a full re-render
+- CCTA 3D viewer: lasso execute is now a no-op when no mask is loaded (empty-scene guard)
+- Longitudinal view: `RuntimeError` from a Qt-deleted `Marker` C++ object handled with `try/except RuntimeError` when removing the current-frame marker
+
 ## [1.7.0] - 2026-06-09
 
 Aortic root STL extraction with cut-plane workflow and QoL improvements for the CCTA module.
@@ -203,7 +230,7 @@ Now runs on PyQt6
 
 ### Changed
 - Completely refactored the Display module for maintainability and correctness: enforces type safety, proper error handling, and single-responsibility design throughout.
-- Separated spline object logic into two distinct classes — one for geometric calculations and one for the PyQt representation.
+- Separated spline object logic into two distinct classes - one for geometric calculations and one for the PyQt representation.
 
 ## [1.1.1] - 2025-10-19
 ### Changed
