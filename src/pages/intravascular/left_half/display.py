@@ -1761,10 +1761,62 @@ class Display(QGraphicsView, MetricsMixin):
         super().mouseReleaseEvent(event)
 
     def wheelEvent(self, event):
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self._scale_active_contour(event.angleDelta().y())
+            event.accept()
+            return
         if event.angleDelta().y() > 0:
             self.main_window.display_slider.next_frame()
         else:
             self.main_window.display_slider.last_frame()
+
+    def _scale_active_contour(self, delta: int) -> None:
+        """Move all knot points of the active contour toward (delta<0) or away (delta>0) from their centroid."""
+        key = self.contour_key(self.active_contour_type)
+        fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
+        if fd is None:
+            return
+        contour_obj = getattr(fd, key, None)
+        ci = self.active_contour_index
+        if (
+            contour_obj is None
+            or not hasattr(contour_obj, 'contours')
+            or not contour_obj.contours
+            or len(contour_obj.contours) <= ci
+        ):
+            return
+        contour = contour_obj.contours[ci]
+        if not contour or not contour[0] or len(contour[0]) < 2:
+            return
+
+        xs = list(contour[0])
+        ys = list(contour[1]) if len(contour) > 1 else [0.0] * len(xs)
+        if len(xs) != len(ys) or len(xs) < 2:
+            return
+
+        cx = sum(xs) / len(xs)
+        cy = sum(ys) / len(ys)
+
+        step = 1.0 if delta > 0 else -1.0
+
+        new_xs, new_ys = [], []
+        for x, y in zip(xs, ys):
+            dx, dy = x - cx, y - cy
+            dist = math.hypot(dx, dy)
+            if dist < 1e-6:
+                new_xs.append(x)
+                new_ys.append(y)
+                continue
+            scale = max(0.0, (dist + step) / dist)
+            new_xs.append(cx + dx * scale)
+            new_ys.append(cy + dy * scale)
+
+        contour_obj.contours[ci] = [new_xs, new_ys]
+        self.display_image(update_contours=True)
+        try:
+            self.main_window.longitudinal_view.plot_areas()
+        except Exception as e:
+            logger.debug(f"Could not update longitudinal view after contour scale: {e}")
 
     def keyPressEvent(self, event):
         # The global Esc shortcut in shortcuts.py normally handles this first.
