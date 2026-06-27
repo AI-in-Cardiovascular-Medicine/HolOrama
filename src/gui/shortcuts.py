@@ -121,6 +121,8 @@ def init_menu(main_window, ccta_page):
         'Manual EEM Contour', partial(_new_contour_synced, main_window, ContourType.EEM)
     )
     manual_eem_contour.setShortcut('Q')
+    spawn_eem_action = edit_menu.addAction('Spawn EEM from Lumen', partial(spawn_eem_from_lumen, main_window))
+    spawn_eem_action.setShortcut('Ctrl+E')
     manual_calc_contour = edit_menu.addAction(
         'Manual Calcium Contour', partial(_new_contour_synced, main_window, ContourType.CALCIUM)
     )
@@ -198,6 +200,49 @@ def init_menu(main_window, ccta_page):
     help_menu.addAction('Request a Feature', partial(open_url, main_window, description='feature'))
     help_menu.addSeparator()
     help_menu.addAction('About', partial(open_url, main_window))
+
+
+def spawn_eem_from_lumen(main_window):
+    """Ctrl+E: create an EEM contour by expanding the lumen knot points 20% radially from their centroid."""
+    if not main_window.image_displayed:
+        return
+    frame = main_window.display.frame
+    fd = main_window.runtime_data.frame_data_dct.get(frame)
+    if fd is None:
+        return
+
+    eem_obj = getattr(fd, ContourType.EEM.value, None)
+    if eem_obj is None:
+        return
+    if eem_obj.contours and eem_obj.contours[0] and eem_obj.contours[0][0]:
+        return  # EEM already exists on this frame
+
+    lumen_obj = getattr(fd, ContourType.LUMEN.value, None)
+    if lumen_obj is None or not lumen_obj.contours or not lumen_obj.contours[0] or not lumen_obj.contours[0][0]:
+        return
+
+    xs = list(lumen_obj.contours[0][0])
+    ys = list(lumen_obj.contours[0][1]) if len(lumen_obj.contours[0]) > 1 else []
+    if len(xs) < 2 or len(xs) != len(ys):
+        return
+
+    cx = sum(xs) / len(xs)
+    cy = sum(ys) / len(ys)
+    scale = 1.1
+
+    eem_obj.contours = [[[cx + (x - cx) * scale for x in xs], [cy + (y - cy) * scale for y in ys]]]
+    eem_obj.closed = [True]
+    eem_obj.start_coords = [[]]
+    eem_obj.end_coords = [[]]
+
+    main_window.display.active_contour_type = ContourType.EEM
+    main_window.display.active_contour_index = 0
+    _sync_contour_combo(main_window, ContourType.EEM)
+    main_window.display.update_display()
+    try:
+        main_window.longitudinal_view.plot_areas()
+    except Exception as e:
+        logger.debug(f"Could not update longitudinal view after EEM spawn: {e}")
 
 
 def remove_contours(main_window):

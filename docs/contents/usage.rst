@@ -60,3 +60,5 @@ Additional shortcuts available from version 1.1.0:
 - :kbd:`Ctrl+9` — Add an additional ``lipid`` contour
 - :kbd:`0` — Draw a ``macrophage`` contour (open spline only)
 - :kbd:`Ctrl+0` — Add an additional ``macrophage`` contour
+- :kbd:`Ctrl+MW` — Shrink or expand the currently active contour; each scroll tick moves all knot points 1 pixel toward or away from their centroid
+- :kbd:`Ctrl+E` — Spawn an ``EEM`` contour from the existing ``lumen`` contour on the current frame (expands all knot points 20 % radially from the lumen centroid); does nothing if an EEM already exists on that frame
