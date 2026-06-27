@@ -240,10 +240,14 @@ Additionally:
 - Scroll <kbd>MW</kbd> to scroll through frames (forward/backward)
 - Drag <kbd>LMB</kbd> up/down for zooming (can be reset by pressing <kbd>F</kbd>)
 - Drag <kbd>Ctrl</kbd> + <kbd>LMB</kbd> to move the image inside it's widget
-- Press <kbd>Ctrl</kbd> + <kbd>MW</kbd> to shrink or expand the currently selected contour.
+- Press <kbd>Ctrl</kbd> + <kbd>MW</kbd> to shrink or expand the currently selected contour (moves all knot points toward/away from their centroid)
 - Press <kbd>Q</kbd> to manually draw an ``external elastic membrane`` (EEM) contour
-- Press <kbd>Ctrl</kbd> + <kbd>8</kbd> to spawn an ``EEM`` contour from an existing ``lumen`` contour with a scaling factor of 1.1
-- Press <kbd>7</kbd> to manually draw a ``calcification `` contour
+- Press <kbd>Shift</kbd> + <kbd>Q</kbd> to spawn an ``EEM`` contour from an existing ``lumen`` contour (20 % radial expansion from lumen centroid); does nothing if EEM already exists on that frame
+- Press <kbd>Shift</kbd> + <kbd>A</kbd> to copy the active contour from the previous frame to the current frame
+- Press <kbd>Shift</kbd> + <kbd>D</kbd> to copy the active contour from the next frame to the current frame
+- Press <kbd>Shift</kbd> + <kbd>W</kbd> to copy the active contour from the next gated/tagged frame (only works when the current frame is itself gated/tagged)
+- Press <kbd>Shift</kbd> + <kbd>S</kbd> to copy the active contour from the previous gated/tagged frame (only works when the current frame is itself gated/tagged)
+- Press <kbd>7</kbd> to manually draw a ``calcification`` contour
 - Press <kbd>Ctrl</kbd> + <kbd>7</kbd> to draw an additional ``calcification`` contour in the current active spline tool (open or closed)
 - Press <kbd>8</kbd> to manually draw a ``side branch`` contour
 - Press <kbd>Ctrl</kbd> + <kbd>8</kbd> to draw an additional ``side branch`` contour in the current active spline tool (open or closed)

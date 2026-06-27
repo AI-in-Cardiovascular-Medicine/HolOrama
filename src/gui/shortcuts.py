@@ -63,6 +63,10 @@ def init_shortcuts(main_window):
     QShortcut(QKeySequence('Escape'), main_window, partial(stop_all, main_window))
     QShortcut(QKeySequence('Delete'), main_window, partial(delete_contour, main_window))
     QShortcut(QKeySequence('Ctrl+Z'), main_window, partial(undo_delete, main_window))
+    QShortcut(QKeySequence('Shift+A'), main_window, partial(copy_contour_from_left, main_window))
+    QShortcut(QKeySequence('Shift+D'), main_window, partial(copy_contour_from_right, main_window))
+    QShortcut(QKeySequence('Shift+W'), main_window, partial(copy_contour_from_next_gated, main_window))
+    QShortcut(QKeySequence('Shift+S'), main_window, partial(copy_contour_from_prev_gated, main_window))
     # Gating
     QShortcut(QKeySequence('Alt+P'), main_window, partial(plot_results, main_window))
     QShortcut(QKeySequence('Alt+Delete'), main_window, partial(reset_phases, main_window))
@@ -122,7 +126,7 @@ def init_menu(main_window, ccta_page):
     )
     manual_eem_contour.setShortcut('Q')
     spawn_eem_action = edit_menu.addAction('Spawn EEM from Lumen', partial(spawn_eem_from_lumen, main_window))
-    spawn_eem_action.setShortcut('Ctrl+E')
+    spawn_eem_action.setShortcut('Shift+Q')
     manual_calc_contour = edit_menu.addAction(
         'Manual Calcium Contour', partial(_new_contour_synced, main_window, ContourType.CALCIUM)
     )
@@ -200,6 +204,99 @@ def init_menu(main_window, ccta_page):
     help_menu.addAction('Request a Feature', partial(open_url, main_window, description='feature'))
     help_menu.addSeparator()
     help_menu.addAction('About', partial(open_url, main_window))
+
+
+def _copy_contour_from_frame(main_window, source_frame: int) -> None:
+    """Replace the active contour on the current frame with a copy from source_frame."""
+    display = main_window.display
+    current_frame = display.frame
+    key = display.contour_key()
+    ci = display.active_contour_index
+
+    fd_src = main_window.runtime_data.frame_data_dct.get(source_frame)
+    fd_dst = main_window.runtime_data.frame_data_dct.get(current_frame)
+    if fd_src is None or fd_dst is None:
+        return
+
+    src_obj = getattr(fd_src, key, None)
+    dst_obj = getattr(fd_dst, key, None)
+    if src_obj is None or dst_obj is None:
+        return
+    if not hasattr(src_obj, 'contours') or not src_obj.contours or ci >= len(src_obj.contours):
+        return
+
+    src_contour = src_obj.contours[ci]
+    xs = list(src_contour[0]) if src_contour else []
+    ys = list(src_contour[1]) if len(src_contour) > 1 else []
+    src_start = list(src_obj.start_coords[ci]) if ci < len(src_obj.start_coords) else []
+    src_end = list(src_obj.end_coords[ci]) if ci < len(src_obj.end_coords) else []
+    src_closed = src_obj.closed[ci] if ci < len(src_obj.closed) else True
+
+    while len(dst_obj.contours) <= ci:
+        dst_obj.contours.append([[], []])
+    while len(dst_obj.start_coords) <= ci:
+        dst_obj.start_coords.append([])
+    while len(dst_obj.end_coords) <= ci:
+        dst_obj.end_coords.append([])
+    while len(dst_obj.closed) <= ci:
+        dst_obj.closed.append(True)
+
+    dst_obj.contours[ci] = [xs, ys]
+    dst_obj.start_coords[ci] = src_start
+    dst_obj.end_coords[ci] = src_end
+    dst_obj.closed[ci] = src_closed
+
+    display.update_display()
+    try:
+        main_window.longitudinal_view.plot_areas()
+    except Exception as e:
+        logger.debug(f"Could not update longitudinal view after contour copy: {e}")
+
+
+def copy_contour_from_left(main_window):
+    if not main_window.image_displayed:
+        return
+    frame = main_window.display.frame
+    if frame <= 0:
+        return
+    _copy_contour_from_frame(main_window, frame - 1)
+
+
+def copy_contour_from_right(main_window):
+    if not main_window.image_displayed:
+        return
+    display = main_window.display
+    frame = display.frame
+    n_frames = display.images.shape[0] if display.images is not None else 0
+    if frame >= n_frames - 1:
+        return
+    _copy_contour_from_frame(main_window, frame + 1)
+
+
+def copy_contour_from_next_gated(main_window):
+    if not main_window.image_displayed:
+        return
+    frame = main_window.display.frame
+    gated = sorted(main_window.runtime_data.gated_frames)
+    if frame not in gated:
+        return
+    later = [f for f in gated if f > frame]
+    if not later:
+        return
+    _copy_contour_from_frame(main_window, later[0])
+
+
+def copy_contour_from_prev_gated(main_window):
+    if not main_window.image_displayed:
+        return
+    frame = main_window.display.frame
+    gated = sorted(main_window.runtime_data.gated_frames)
+    if frame not in gated:
+        return
+    earlier = [f for f in gated if f < frame]
+    if not earlier:
+        return
+    _copy_contour_from_frame(main_window, earlier[-1])
 
 
 def spawn_eem_from_lumen(main_window):
