@@ -256,6 +256,9 @@ class LeftHalf:
                         set_tool(self.main_window, tool)
                     break
 
+        if self.main_window.image_displayed:
+            self.main_window.display.set_active_contour_type(contour_type)
+
     def _on_new_contour(self):
         _, contour_type, _, _ = _CONTOUR_TYPE_ITEMS[self.contour_type_combo.currentIndex()]
         new_contour(self.main_window, contour_type)

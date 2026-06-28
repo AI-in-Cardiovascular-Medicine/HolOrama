@@ -455,6 +455,10 @@ class Display(QGraphicsView, MetricsMixin):
         self.active_point = None
         self.active_point_index = None
 
+        lh = getattr(self.main_window, 'left_half', None)
+        if lh is not None:
+            lh.set_active_contour_type_ui(contour_type)
+
         self.display_image(update_contours=True, update_image=False, update_phase=False)
 
     # image data handling methods
@@ -1494,6 +1498,9 @@ class Display(QGraphicsView, MetricsMixin):
                 self.points_to_draw = []
                 self.active_point = None
                 self.active_point_index = None
+                lh = getattr(self.main_window, 'left_half', None)
+                if lh is not None:
+                    lh.set_active_contour_type_ui(nearest_ct)
                 self.display_image(update_contours=True)
                 return True
         return False
