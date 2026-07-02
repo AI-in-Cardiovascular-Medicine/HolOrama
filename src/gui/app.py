@@ -61,7 +61,7 @@ class Master(QMainWindow):
 
             setattr(self, metadata_name, data_type)
 
-        self.setWindowTitle('holOrama Software')
+        self.setWindowTitle('HolOrama Software')
         icon_path = os.path.join(os.path.dirname(__file__), '..', '..', 'media', 'desktop_img.ico')
         self.setWindowIcon(QIcon(icon_path))
 

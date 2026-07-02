@@ -1,7 +1,7 @@
 <p align="center">
   <a href="https://github.com/AI-in-Cardiovascular-Medicine/HolOrama.jpg">
     <img
-      src="https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/logo_oct_inclusive.png"
+      src="https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/logo_holOrama.jpg"
       alt="HolOrama logo"
     >
   </a>
