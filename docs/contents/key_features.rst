@@ -3,7 +3,7 @@
 Key Features
 ============
 
-AIVUS-OCT is designed for IVUS and OCT images in DICOM or NIfTI format and offers the following functionalities:
+HolOrama is designed for IVUS and OCT images in DICOM or NIfTI format and offers the following functionalities:
 
 - **IVUS/OCT Image Inspection:** Frame-by-frame visualization of DICOM or NIfTI images, with display of associated DICOM metadata.
 - **Manual Contouring:** Draw one or several contours (lumen, EEM, calcium, side branch, macrophage, lipid) with automatic calculation of several measurements.

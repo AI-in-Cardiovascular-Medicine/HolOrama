@@ -480,7 +480,7 @@ def show_metadata(main_window):
 
 def open_url(main_window, description=None):
     if description == 'github':
-        url = 'https://github.com/yungselm/AIVUS-OCT'
+        url = 'https://github.com/AI-in-Cardiovascular-Medicine/HolOrama'
     elif description == 'docs':
         url = 'https://aivus-caa.readthedocs.io/en/latest'
     elif description == 'keyboard_shortcuts':

@@ -16,7 +16,7 @@ Keyboard Shortcuts
 
 .. figure:: ../media/keyboard.png
    :name: fig-keyboard
-   :alt: Keybindings for AIVUS
+   :alt: Keybindings for holOrama
    :align: center
    :width: 900px
 

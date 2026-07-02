@@ -1,21 +1,22 @@
 <p align="center">
-  <a href="https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA.jpg">
+  <a href="https://github.com/AI-in-Cardiovascular-Medicine/HolOrama.jpg">
     <img
-      src="https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/main/media/logo_oct_inclusive.png"
-      alt="aivus-caa logo"
+      src="https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/logo_oct_inclusive.png"
+      alt="HolOrama logo"
     >
   </a>
 </p>
 
 
 
-# AIVUS (Automated IntraVascular UltraSound Image Processing) <!-- omit in toc -->
-- AIVUS-CAA (Quantification of Coronary Artery Anomalies)
-- AIVUS-OCT (Quantification of Optical Coherence Tomography)
+# HolOrama (Automated IntraVascular UltraSound Image Processing) <!-- omit in toc -->
+- Quantification of Coronary Artery Anomalies
+- Quantification of Optical Coherence Tomography
+- Quantification of Coronary Computed Tomography Angiography
 
-[![version](https://img.shields.io/github/v/tag/AI-in-Cardiovascular-Medicine/AIVUS-CAA?label=version&color=yellow)](https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/tags)
+[![version](https://img.shields.io/github/v/tag/AI-in-Cardiovascular-Medicine/HolOrama?label=version&color=yellow)](https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/tags)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Docs](https://img.shields.io/readthedocs/aivus-caa)](https://aivus-caa.readthedocs.io)
+[![Docs](https://img.shields.io/readthedocs/HolOrama)](https://HolOrama.readthedocs.io)
 [![DOI](https://img.shields.io/badge/DOI-10.1016%2Fj.cmpb.2025.109065-blue)](https://doi.org/10.1016/j.cmpb.2025.109065)
 
 ## Table of contents <!-- omit in toc -->
@@ -310,7 +311,7 @@ Please kindly cite the following paper if you use this repository.
 
 ```
 @article{stark2025automated,
-  title={Automated intravascular ultrasound image processing and quantification of coronary artery anomalies: the AIVUS-CAA software},
+  title={Automated intravascular ultrasound image processing and quantification of coronary artery anomalies: the HolOrama software},
   author={Stark, Anselm W and Kazaj, Pooya Mohammadi and Balzer, Sebastian and Ilic, Marc and Bergamin, Manuel and Kakizaki, Ryota and Giannopoulos, Andreas and Haeberlin, Andreas and R{\"a}ber, Lorenz and Shiri, Isaac and others},
   journal={Computer Methods and Programs in Biomedicine},
   pages={109065},
@@ -321,6 +322,6 @@ Please kindly cite the following paper if you use this repository.
 }
 ```
 ```
-Stark, A. W., Kazaj, P. M., Balzer, S., Ilic, M., Bergamin, M., Kakizaki, R., Giannopoulos A., Haeberlin A., Räber L., Gräni, C. (2025). Automated intravascular ultrasound image processing and quantification of coronary artery anomalies: the AIVUS-CAA software. Computer Methods and Programs in Biomedicine, 109065.
+Stark, A. W., Kazaj, P. M., Balzer, S., Ilic, M., Bergamin, M., Kakizaki, R., Giannopoulos A., Haeberlin A., Räber L., Gräni, C. (2025). Automated intravascular ultrasound image processing and quantification of coronary artery anomalies: the HolOrama software. Computer Methods and Programs in Biomedicine, 109065.
 ```
 

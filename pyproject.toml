@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "aivus"
+name = "holOrama"
 dynamic = ["version"]
-description = "AIVUS: AIVUS-CAA (coronary artery anomalies) AIVUS-OCT (optical coherence tomography)"
+description = "holOrama: A PyQt6-based application for 3D visualization and analysis of cardiac images (IVUS, OCT and CT)."
 authors = [
     { name = "yungselm" },
     { name = "cardionaut" },
