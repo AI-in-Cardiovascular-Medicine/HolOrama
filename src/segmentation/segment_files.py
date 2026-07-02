@@ -11,7 +11,7 @@ from dataclasses import asdict
 from loguru import logger
 from tqdm import tqdm
 
-from version import version_file_str
+from version import CONTOURS_VERSION_TAG
 from segmentation.predict import Predict
 from segmentation.segment import mask_to_contours
 
@@ -59,7 +59,7 @@ def segment_files() -> None:
             continue
 
         serializable = {str(i): asdict(fd) for i, fd in frame_data.items()}
-        with open(os.path.join(input_dir, f'{file}_contours_{version_file_str}.json'), 'w') as out_file:
+        with open(os.path.join(input_dir, f'{file}_contours_{CONTOURS_VERSION_TAG}.json'), 'w') as out_file:
             json.dump(serializable, out_file)
 
 

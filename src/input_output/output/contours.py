@@ -9,7 +9,7 @@ import numpy as np
 from loguru import logger
 from dataclasses import asdict
 
-from version import version_file_str
+from version import CONTOURS_VERSION_TAG
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
 
@@ -26,7 +26,7 @@ def write_contours(main_window, force: bool = True) -> None:
         return
 
     base = os.path.splitext(main_window.file_name)[0]
-    out_path = f'{base}_contours_{version_file_str}.json'
+    out_path = f'{base}_contours_{CONTOURS_VERSION_TAG}.json'
 
     try:
         serializable = {str(i): asdict(frame) for i, frame in main_window.runtime_data.frame_data_dct.items()}

@@ -1415,6 +1415,8 @@ class Display(QGraphicsView, MetricsMixin):
     # Mouse click events #
     ######################
     def mousePressEvent(self, event):
+        if not self.main_window.image_displayed:
+            return
         pos = self.mapToScene(event.position().toPoint())
 
         if event.button() == Qt.MouseButton.LeftButton:
