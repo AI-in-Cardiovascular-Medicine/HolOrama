@@ -9,7 +9,8 @@
 
 
 
-# HolOrama (Automated IntraVascular UltraSound Image Processing) <!-- omit in toc -->
+# HolOrama: A unified platform for cardiac image analysis <!-- omit in toc -->
+Currently spans:
 - Quantification of Coronary Artery Anomalies
 - Quantification of Optical Coherence Tomography
 - Quantification of Coronary Computed Tomography Angiography
@@ -18,6 +19,22 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Docs](https://img.shields.io/readthedocs/HolOrama)](https://HolOrama.readthedocs.io)
 [![DOI](https://img.shields.io/badge/DOI-10.1016%2Fj.cmpb.2025.109065-blue)](https://doi.org/10.1016/j.cmpb.2025.109065)
+
+# Demo
+<p align="left">
+  Segment, modify and analyze IVUS images, inclusive with gating functionalities:<br>
+  <img src="media/IVUS_demo.gif" alt="IVUS Demo" width="700">
+</p>
+
+<p align="left">
+  Also spans to OCT images, address uncertainty systematically:<br>
+  <img src="media/OCT_demo.gif" alt="OCT Demo" width="700">
+</p>
+
+<p align="left">
+  Segment and visualize CCTA data in 3D, remove outliers with intuitiv tools:<br>
+  <img src="media/CCTA_demo.gif" alt="CCTA Demo" width="700">
+</p>
 
 ## Table of contents <!-- omit in toc -->
 
@@ -156,16 +173,11 @@ uv pip install --reinstall "torch==2.4.0+cu118" "torchvision==0.19.0+cu118" \
 
 After installing the CUDA build, re-run the `libomp140.x86_64.dll` script from step 3.
 
-### Precompiled version
-Find a precompiled version pinned to release (compiled with `nuitka`).
-If you want to compile the project on your own, use the following command:
-```bash
-python -m nuitka --standalone --plugin-enable=pyqt6 --include-package=pydicom --include-package=scipy --include-package=numpy --follow-imports --show-progress main.py
-```
-
 ## Functionalities
 
-This application is designed for IVUS and OCT images in DICOM or NIfTi format and offers the following functionalities:
+This application is designed for IVUS, OCT and CCTA images in DICOM or NIfTi format and offers the following functionalities:
+
+### IVUS / OCT
 
 - Inspect IVUS/OCT images frame-by-frame and display DICOM metadata
 - Manually **draw one or several contours** (lumen, eem, calcium, side branch, macrophage, lipid) with automatic calculation of several measurements
@@ -176,30 +188,63 @@ This application is designed for IVUS and OCT images in DICOM or NIfTi format an
 - Ability to measure up to two distances per frame which will be stored in the report
 - Indicate the wire shadow using an angle
 - Create automatic masks from contour with predefined rulesets
+- Copy/paste contours from neighbouring, gated or tagged frames
 - **Auto-save** of contours and tags enabled by default with user-definable interval
 - Generation of report file containing detailed metrics for each frame
 - Save coordinate data as csv files
 - Ability to save images and segmentations as **NIfTi files**, e.g. to train a machine learning model
 
+### CCTA
+
+- Read CT volumes from a **DICOM folder** or a **NIfTi file** and view them as synchronized axial, coronal and sagittal slices
+- Load an existing segmentation mask (NIfTi) or start from a blank, multi-label mask
+- **Brush tool** to manually add or erase mask labels on any of the 2D views, with adjustable radius and per-label color
+- **3D volume rendering** of all visible mask labels (surface extraction via VTK)
+- **Lasso tool** in the 3D render to draw a closed region and delete the voxels of a chosen label that fall inside it
+- Toggle label visibility/color and rename labels, synced across the 2D views, brush tool and 3D render
+- Draw cut lines on the axial/coronal views to define the LVOT and aortic root, then extract the coronaries/aorta/LV as a combined **NIfTi mask** or **STL mesh**
+- **Auto-save** of the mask enabled by default with user-definable interval, with versioned mask files and auto-reload of the latest mask on reopening a volume
+
 ## Configuration
 
-Make sure to quickly check the **config.yaml** file and configure everything to your needs.
+Make sure to quickly check the **src/config.yaml** file and configure everything to your needs.
 
 **Display**:
-- image_size: In Pixel creates quadratic box displaying the IVUS images. Default 800x800 px.
+- image_size: In pixels, creates the quadratic box displaying the IVUS/OCT images. Default 800x800 px.
 - gating_display_stretch: input parameter for .setStretchFactor in class RightHalf
 - lview_display_stretch: input parameter for .setStretchFactor in class RightHalf
-- windowing_sensitivity: Defines how much windowing changes with <kbd>RMB<kbd> draging
-- n_interactive_points: The dragable points on the contour, default 10 equally spaced points, however new one can also be added interactively by clicking on the contour
-- alpha_contour: Used as input parameter for .setAlpha in class Display. Default 128 for 50% transparency, higher values more opaque.
+- windowing_sensitivity: How much windowing (level/width) changes per pixel dragged with <kbd>RMB</kbd>. 1 is default, below 1 slower, above 1 faster.
+- zoom_sensitivity: Fraction of zoom applied per pixel dragged. Below 0.005 for slower, above for faster.
+- n_interactive_points: The draggable points on the contour (lumen); calcium, lipid, macrophage and branch contours default to half of this. New points can also be added interactively by clicking on the contour.
+- n_points_contour: Number of points used to represent the interpolated contour outline. Ideally a multiple of 100 (used when calculating closest points).
+- contour_thickness / point_thickness / point_radius: Line and knot-point drawing sizes for contours.
+- color_contour / color_eem / color_calcium / color_branch / color_start_point / color_end_point / color_angle: Colors used for each contour/marker type. Accepts any of the 20 predefined PyQt colors or a hex code (see [Qt colors](https://doc.qt.io/qt-6/qcolor.html)).
+- alpha_contour: Contour fill transparency, 0-255 (higher is more opaque).
 
 **Gating**:
-- normalize_step: If step=0 compute one global z-score over the entire data. If step > 0 split data into non-overlapping windows of length normalize_step and apply z-score to each window seperately.
-- lowcut: lower frequency for Butterworth filter. Default 1.33Hz which is ~80bpm (since detecting systole and diastole this is equivalent to 40bpm).
-- highcut: higher frequency for Butterworth filter. Default is 6.0Hz which is 360bpm (since detecting systole and diastole this is equivalent to 180bpm).
-- order: Order for the Butterworth filter. Default 6 based on experiments with our data.
-- extrema_y_lim: Setting for finding local extrema, next extrema most be >50th percentile of previous as default
-- extrema_x_lim: Distance in frames for next local extrema. Default set to 6 frames.
+- normalize_step: If step=0, compute one global z-score over the entire data. If step > 0, split data into non-overlapping windows of length normalize_step and apply z-score to each window separately.
+- f_cardiac_min / f_cardiac_max: Heart-rate search range in Hz for the cardiac frequency detection, covering rest (~45 BPM) to stress (~200 BPM).
+- bandpass_lo_frac: Lower bandpass cutoff as a fraction of the detected cardiac frequency; removes slow pullback trend (sub-cardiac drift).
+- bandpass_hi_frac: Upper bandpass cutoff as a fraction of the detected cardiac frequency; passes the 2nd harmonic while removing speckle noise.
+
+**Report**:
+- plot: Whether to display a plot of the gated-frame results after report generation.
+- save_as_csv: Whether to additionally save contour coordinate data as csv files.
+
+**Save**:
+- autosave_interval: Auto-save interval in ms for contours/tags (IVUS/OCT) and the mask (CCTA).
+- nifti_dir: Default output directory for images/segmentations exported from `segment_files.py`.
+- save_niftis: Which frames to save as NIfTi when exporting — `'contoured'`, `'all'` or `'none'`.
+- save_2d: Whether to additionally save each frame's image/mask as an individual NIfTi file.
+- save_3d: Whether to save the full stack of frames as a single 3D NIfTi volume.
+
+**Segmentation**:
+- model_file: Path to the (nnU-Net) automatic IVUS lumen segmentation model.
+- model_fold: Model fold to use for inference.
+- normalize: Set to True when using a TensorFlow model that expects normalized input.
+- input_dir: Input directory used only by `segment_files.py` for batch segmentation.
+- batch_size: Batch size used during inference.
+- conserve_memory: Set to True on devices with less than 32 GB RAM; increases inference time but lowers memory use.
 
 ## Usage
 
@@ -212,10 +257,13 @@ python3 src/main.py
 This will open a graphical user interface (GUI) in which you have access to the above-mentioned functionalities.
 
 ## Keyboard shortcuts
-
 For ease-of-use, this application contains several keyboard shortcuts.\
-In the current state, these cannot be changed by the user (at least not without changing the source code).
-### v1.0.0 (Base module and state of publication)
+In the current state, these cannot be changed by the user (at least not without changing the source code):
+
+<p align="left">
+  <img src="docs/media/keyboard.png" alt="Keyboard" width="700"><br>
+</p>
+
 - Press <kbd>Ctrl</kbd> + <kbd>O</kbd> to open a DICOM/NIfTi file
 - Use the <kbd>A</kbd> and <kbd>D</kbd> keys to move through the IVUS images frame-by-frame
 - If gated (diastolic/systolic) frames are available, you can move through those using <kbd>S</kbd> and <kbd>W</kbd>\
@@ -233,9 +281,6 @@ In the current state, these cannot be changed by the user (at least not without 
 - Press <kbd>Alt</kbd> + <kbd>P</kbd> to plot the results for gated frames (difference area systole and diastole, by distance)
 - Press <kbd>Alt</kbd> + <kbd>Delete</kbd> to define a range of frames to remove gating
 - Press <kbd>Alt</kbd> + <kbd>S</kbd> to define a range of frames to switch systole and diastole in gated frames
-
-### v1.1.0 and higher
-Additionally:
 - Press <kbd>Esc</kbd> to exit drawing mode and return to a neutral state
 - Press <kbd>RMB</kbd> on an existing knot point to remove it
 - Scroll <kbd>MW</kbd> to scroll through frames (forward/backward)
@@ -256,55 +301,6 @@ Additionally:
 - Press <kbd>Ctrl</kbd> + <kbd>9</kbd> to draw an additional ``lipid`` contour
 - Press <kbd>0</kbd> to manually draw a ``macrophage`` contour (only open spline)
 - Press <kbd>Ctrl</kbd> + <kbd>0</kbd> to draw an additional ``macrophage`` contour
-
-## Tutorial (v1.0.0 - Base module)
-An example case is provided under "/test_cases/patient_example", allowing to follow along.
-
-### Window manipulation:
-![Demo](media/explanation_software_part1.gif)
-### Contour manipulation:
-![Demo](media/explanation_software_part2.gif)
-### Gating module:
-
-This module implements gating by analyzing both image-derived metrics (e.g., pixel-wise correlation and blurriness) and vector-based contour measurements (e.g., distance and direction from the image center to each contour centroid). Changes in these metrics are displayed over the sequence of frames during a pullback.
-
-The resting phases of the cardiac cycle—diastole and systole—are characterized by minimal vessel motion for several consecutive frames. We visualize these phases using two curves: the image-based curve (green) represents metrics such as correlation peaks and minimal blurriness, while the contour-based curve (yellow) reflects extrema in the vector measurements (i.e., alternating peaks and valleys corresponding to systolic and diastolic positions).
-
-- **Image-Based Metrics**: Select local maxima corresponding to frames with the highest pixel correlation and lowest blurriness.
-
-- **Contour-Based Metrics**: Select extrema in the distance vector, capturing the transition between diastole and systole.
-
-Movement patterns may vary between datasets; consequently, the final frame selection is left to the user.
-
-**Peak Assignment**: Detected peaks in each curve are matched by intersecting their frame indices. We apply a Butterworth filter (passband: 45–180 bpm) to smooth each curve; the unfiltered signal is displayed as a dotted line beneath the filtered curve.
-
-**Interactive Gating Interface**:
-- Range Selection: Specify the frame interval for gating.
-- Zoom & Pan: Zoom into the plot and drag lines to adjust gating thresholds or remove unwanted markers by dragging them downward.
-- Compare Frames: Click "Compare Frames" to open the nearest proximal frame for the selected phase (systole or diastole).
-
-![Demo](media/explanation_software_part3.gif)
-
-## Tutorial (v1.1.x - Full segmentation)
-Version 1.1.0 and higher offer the additional possibility to segment the EEM, calcification and side branches. This works in the same style as for the base contours. Clicking on any contour in the image automatically sets it as the active contour.
-
-> [!NOTE]
-> The segmentation models are currently only trained for lumen contours. In the future, we will implement additional models for all contour types.
-
-Since version 1.2.0 additionally it is possible to read in OCT images and performe additional contouring functionalities.
-
-### Example v1.2.0 with OCT
-Here first adding a catheter angle from the tools above, then adding a lumen contour (closed spline) and lastly adding a EEM contour (closed spline) but then setting an uncertain region between start point (yellow) and end point (red) by double clicking. Since this version also zoom in can be performed by mouse scroll on the current mouse position. Measurements are currently hidden, see Checkbox bottom.
-
-![Demo](media/explanation_software_part4.gif)
-
-Here in a next step an open spline is created for calcium (if the spline is open it automatically calculates two an angle from the lumen center to start and end point of the open spline). Points are then removed using <kbd>RMB</kbd> and using <kbd>Ctrl</kbd> + <kbd>7</kbd> and choosing closed spline a second calcium contour is drawn. In a last step a side branch contour is drawn.
-
-![Demo](media/explanation_software_part5.gif)
-
-The display can change between mask mode (with pre-applied logic of contour layering). Additionally can the contours also be hidden.
-
-![Demo](media/explanation_software_part6.gif)
 
 # Citation
 Please kindly cite the following paper if you use this repository.
