@@ -10,6 +10,13 @@
 
 
 # HolOrama: A unified platform for cardiac image analysis <!-- omit in toc -->
+
+<figure class="epigraph" style="text-align: center; font-style: italic;">
+  <blockquote>
+    "A mixture from greek 'Holo' meaning full and 'Orama' meaning vision. Together building the promise of this GUI application to visualize the whole heart from different modalities."
+  </blockquote>
+</figure>
+
 Currently spans:
 - Quantification of Coronary Artery Anomalies
 - Quantification of Optical Coherence Tomography
