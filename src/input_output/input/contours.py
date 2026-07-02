@@ -25,8 +25,8 @@ def _contour_file_sort_key(path: str) -> Tuple[bool, Tuple[int, int, int]]:
     if not match:
         return (False, (0, 0, 0))
     is_holorama = match.group(1) is not None
-    version = tuple(int(g) for g in match.groups()[1:])
-    return (is_holorama, version)
+    major, minor, patch = match.groups()[1:]
+    return (is_holorama, (int(major), int(minor), int(patch)))
 
 
 def read_contours(main_window, file_name=None) -> bool:
@@ -65,9 +65,7 @@ def _normalize_coord_entry(item) -> List[Tuple[float, float]]:
     if not item:
         return []
     return [
-        (float(pt[0]), float(pt[1]))
-        for pt in item
-        if pt is not None and isinstance(pt, (list, tuple)) and len(pt) >= 2
+        (float(pt[0]), float(pt[1])) for pt in item if pt is not None and isinstance(pt, (list, tuple)) and len(pt) >= 2
     ]
 
 
