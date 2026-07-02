@@ -1,6 +1,6 @@
 #  Contributing to the project
 
-First off, thank you for considering contributing to AIVUS-CAA software!
+First off, thank you for considering contributing to HolOrama software!
 Whether you’re filing a bug, proposing a new feature, improving documentation, or refactoring code, your help makes this project better for you and the whole community.
 
 ## Code of Conduct
@@ -22,8 +22,8 @@ By participating, you agree to respect everyone in this community.
 ## Getting started
 1. Fork the repo and clone your fork
 ```bash
-git clone https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA.git
-cd aivus-caa
+git clone https://github.com/AI-in-Cardiovascular-Medicine/HolOrama.git
+cd HolOrama
 ```
 2. Create a new branch
 ```bash
@@ -37,28 +37,28 @@ pytest
 ## I have a Question 
 Before opening an issue:
 - Read the [Documentation](https://aivus-caa.readthedocs.io/en/latest/index.html)
-- Search existing [Issues](https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/issues?q=is%3Aissue) 
+- Search existing [Issues](https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/issues?q=is%3Aissue) 
 
 If you still need help:
-- Open a new issue: [Click here](https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/issues/new/choose)
+- Open a new issue: [Click here](https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/issues/new/choose)
 - Provide:
     - A clear, descriptive title
     - Context: what you're trying to do, expected vs. actual behaviour
     - Project verion, OS/platform, Python version, and any relevant logs
 
 ## Reporting Bugs
-If you find a bug, please help us fix it by opening a [a new issue](https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/issues/new/choose) and providing:
+If you find a bug, please help us fix it by opening a [a new issue](https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/issues/new/choose) and providing:
 - **Title**: A short descriptive title
 - **Steps to reproduce**: Minimal code snippet or sequence to trigger the bug
 - **Expected behaviour** vs **Actual behaviour**
 - **Environment**:
-    - `AIVUS-CAA` version
+    - `HolOrama` version
     - Python version
     - OS and architecture
 
 ## Suggesting Enhancements
 
-Open a [feature request issue](https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/issues/new/choose) and describe:
+Open a [feature request issue](https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/issues/new/choose) and describe:
 - The problem you are trying to solve
 - Your proposed solution and why it would be useful
 - Any alternatives you considered
@@ -91,5 +91,5 @@ Documentation lives in `docs/` and is built with Sphinx.
 
 ## Where to Get Help
 
-- Open a [GitHub Discussion](https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/discussions) for general questions
-- File an [issue](https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/issues/new/choose) for bugs or feature requests
+- Open a [GitHub Discussion](https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/discussions) for general questions
+- File an [issue](https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/issues/new/choose) for bugs or feature requests

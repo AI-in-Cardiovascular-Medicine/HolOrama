@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.0] - 2026-07-02
+
+Project renamed from AIVUS-CAA to HolOrama; version numbering restarted.
+
+### Changed
+- Project renamed from AIVUS-CAA to HolOrama; `__version__` reset to 0.1.0. Entries below this point are pre-rename history under the AIVUS-CAA name
+- Contour JSON files now tagged with an `ho_` marker (e.g. `_contours_ho_0_1_0.json`) so a freshly-saved HolOrama file is always loaded in preference to a pre-rename AIVUS-CAA file, regardless of the (now lower) numeric version
+- Removed legacy flat tuple-of-lists contour JSON format support (`_is_legacy`, `_build_contour_legacy`, `_build_frame_data_legacy`); only the current nested-dict format (produced by `asdict`) is read
+
+### Fixed
+- Clicking the intravascular display canvas before an image was loaded raised `AttributeError` on `frame_data_dct.get(...)`; `mousePressEvent` now guards on `main_window.image_displayed` like every other interaction handler
+
+---
+*Versions below are pre-rename history under the AIVUS-CAA name.*
+
 ## [1.8.0] - 2026-06-26
 
 Gating module rewrite, 3D crosshair and lasso erase for the CCTA viewer, and longitudinal view phase markers.
@@ -256,14 +271,4 @@ Now runs on PyQt6
 - Declared first stable release (after paper publication).
 - Updated citation from medRxiv to *Computer Methods and Programs in Biomedicine*.
 
-[1.8.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.7.0...v1.8.0
-[1.7.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.6.3...v1.7.0
-[1.6.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.5.0...v1.6.0
-[1.5.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.4.0...v1.5.0
-[1.3.1]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.3.0...v1.3.1
-[1.3.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.2.1...v1.3.0
-[1.2.1]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.2.0...v1.2.1
-[1.2.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.1.1...v1.2.0
-[1.1.1]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.1.0...v1.1.1
-[1.1.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/releases/tag/v1.0.0
+[//]: # (Version-compare links to the AIVUS-CAA repo removed: the tags they pointed to were deleted when the project was renamed to HolOrama.)
