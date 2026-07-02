@@ -33,6 +33,13 @@ if ($LASTEXITCODE -ne 0) { throw "uv sync failed with exit code $LASTEXITCODE" }
 
 $python = '.\.venv\Scripts\python.exe'
 
+# -- 2b. Install pre-commit git hooks (only available when -Dev was passed) ---
+if ($Dev) {
+    Write-Host "Installing pre-commit git hooks..."
+    & $python -m pre_commit install
+    if ($LASTEXITCODE -ne 0) { throw "pre-commit install failed" }
+}
+
 # -- 3. Optional: nnUZoo ------------------------------------------------------
 if ($NnUZoo) {
     Write-Host "Installing nnUZoo..."
@@ -85,6 +92,11 @@ uv pip install --python $python "numpy==1.26.4"
 if ($LASTEXITCODE -ne 0) { throw "numpy re-pin failed" }
 
 Write-Host ""
+if ($Dev) {
+    Write-Host "Pre-commit git hooks installed (black / ruff / mypy will run on 'git commit')."
+} else {
+    Write-Host "Pre-commit git hooks NOT installed (re-run with -Dev to enable)."
+}
 Write-Host "Done. Activate the environment with:"
 Write-Host "  .\.venv\Scripts\Activate.ps1"
 Write-Host "Then run the app with:"

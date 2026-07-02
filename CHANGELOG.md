@@ -271,4 +271,14 @@ Now runs on PyQt6
 - Declared first stable release (after paper publication).
 - Updated citation from medRxiv to *Computer Methods and Programs in Biomedicine*.
 
-[//]: # (Version-compare links to the AIVUS-CAA repo removed: the tags they pointed to were deleted when the project was renamed to HolOrama.)
+[1.8.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.7.0...v1.8.0
+[1.7.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.6.3...v1.7.0
+[1.6.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.5.0...v1.6.0
+[1.5.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.4.0...v1.5.0
+[1.3.1]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.3.0...v1.3.1
+[1.3.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.2.1...v1.3.0
+[1.2.1]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.2.0...v1.2.1
+[1.2.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.1.1...v1.2.0
+[1.1.1]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.1.0...v1.1.1
+[1.1.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/releases/tag/v1.0.0
