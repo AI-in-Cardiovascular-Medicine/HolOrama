@@ -336,10 +336,6 @@ def spawn_eem_from_lumen(main_window):
     main_window.display.active_contour_index = 0
     _sync_contour_combo(main_window, ContourType.EEM)
     main_window.display.update_display()
-    try:
-        main_window.longitudinal_view.plot_areas()
-    except Exception as e:
-        logger.debug(f"Could not update longitudinal view after EEM spawn: {e}")
 
 
 def remove_contours(main_window):
@@ -622,7 +618,8 @@ def toggle_color(main_window):
 
 def plot_results(main_window):
     if main_window.image_displayed:
-        report_data = report(main_window, suppress_messages=True)
+        # write_files=False: this only needs the in-memory DataFrame for the plot, not a report/CSV export.
+        report_data = report(main_window, suppress_messages=True, write_files=False)
         if report_data is None:
             logger.error('No report data available to plot')
             return

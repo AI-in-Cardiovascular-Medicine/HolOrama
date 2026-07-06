@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-07-06
+
+Automatic breathing-motion correction for the longitudinal view.
+
+### Added
+- The app now detects breathing motion from the lumen area signal, with peaks/valleys you can review and correct by hand
+- "Breathing artefact" checkbox to tell the app there's nothing to correct for when a pullback has no visible breathing motion
+- New "Filtered" view next to "Raw": shows the gated diastole and systole frames reordered to correct for breathing, side by side with thumbnails, and lets you manually fix individual frames that ended up in the wrong spot
+- Closing the Filtered view now also saves a second report with just the gated frames (diastole then systole) in the corrected order
+- Added tests for the new breathing sort
+
+### Changed
+- Split the breathing code out of the gating code into its own module, for clarity
+- Opening the gating window or plotting results no longer writes report files to disk every time - only when a report is actually needed
+- Removed a leftover screen redraw that had no effect
+
 ## [0.1.0] - 2026-07-02
 
 Project renamed from AIVUS-CAA to HolOrama; version numbering restarted.

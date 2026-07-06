@@ -3,8 +3,8 @@ IVUS Gating Signal Processing
 ==============================
 Two-signal hybrid algorithm (improved from AIVUS-CAA publication):
 
-Image signal  (always available)
-    s[n] = 1 - NCC(frame_n, frame_{n+1})        (CCB s0, Maso Talou 2015)
+Image signal (always available, normal cross-correlation (NCC) of consecutive frames)
+    s[n] = 1 - NCC(frame_n, frame_{n+1})  (CCB s0, Talou et al. 2015; abb.: combined correlation and blurring (CCB))
     Bandpass at [0.7, 2.2] x f_heart removes both the slow pullback
     trend (DC) and high-frequency speckle noise.
     Peaks of filtered signal = maximum-motion frames (mid-systole and
@@ -15,17 +15,17 @@ Contour signal  (when ≥50% of frames have drawn contours)
     Same bandpass filter.
     Peaks of filtered signal = diastole (large, relaxed lumen).
     Troughs = systole (small, compressed lumen).
-    Classifier SNR vs labelled frames: 1.54 (vs 0.04 for centroid vector).
 
 Heart rate detection
     FFT spectral peak of the correlation signal in the configured range.
-    No grid-search optimisation - the FFT estimate is already correct for
+    No grid-search optimization -> the FFT estimate is already correct for
     both rest (~60-100 BPM) and stress (~100-210 BPM) imaging.
 
-Notes
------
-- DT-CWT, blur signal, centroid vector, and weight optimisation removed:
+Notes on Reasoning
+------------------
+- blur signal, centroid vector, and weight optimization removed:
   they add noise for real IVUS data and degrade the clean correlation signal.
+- DT-CWT (Torbati et al. 2019) tested, resulted in more noise than the simple bandpass filter. 
 - The 2 x f_heart trick is unnecessary when the lumen area is available:
   it already separates sys and dia at a single f_heart.
 - Centroid vector analysis showed SNR = 0.04 (noise-dominated by catheter
@@ -59,14 +59,48 @@ def prepare_data(
     x2: int = 450,
     y1: int = 50,
     y2: int = 450,
-):
-    """Full gating pipeline.
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Prepare gating signals from IVUS frames and report data.
+    If gating data already calculated and config didn't change,
+    return cached signals from runtime_data.gating_signal.
 
     Image signal  : 1 - NCC(frame_n, frame_{n+1}), bandpass filtered.
     Contour signal: lumen_area from report_data, bandpass filtered.
                     NaN-filled zeros when coverage < 50%.
 
-    Returns (image_raw, contour_raw, image_filtered, contour_filtered).
+    Algorithm walkthrough:
+        0. Crop images to remove frame number and focus on central region.
+        1. Normalise frames to [0,1] in the cropped region.
+        2. Compute image signal: 1 - NCC between consecutive frames.
+        3. Detect heart rate via FFT spectral peak in the configured range.
+        4. Bandpass filter both signals at [0.7, 2.2] x f_heart.
+
+    Parameters
+    ----------
+    main_window : MainWindow
+        Used to cache the gating signal in runtime_data.gating_signal.
+    frames : (N, H, W) array
+        IVUS pullback frames (uint8 or float32).
+    report_data : pd.DataFrame
+        Report data with columns ['frame', 'lumen_area'].
+    lower_limit : int
+        Frame number offset for gating signal (0-based).
+    x1, x2, y1, y2 : int
+        Crop coordinates for the image signal (default: 50:450, 400x400).
+        *Reasoning:* to remove embedded frame number, and more signal in center,
+        of the image.
+
+    Returns
+    -------
+    image_raw : (N,) array
+        Raw image signal (1 - NCC).
+    contour_raw : (N,) array
+        Raw contour signal (lumen area).
+    image_filtered : (N,) array
+        Bandpass-filtered image signal.
+    contour_filtered : (N,) array
+        Bandpass-filtered contour signal.
     """
     cfg = main_window.config.gating
     fs = main_window.runtime_data.metadata['frame_rate']
@@ -76,8 +110,16 @@ def prepare_data(
     try:
         gs = main_window.runtime_data.gating_signal
         if gs and gs.get('gating_config') == dict(vars(cfg)) and len(gs.get('image_based_gating', [])) == N:
+            # Frequency sweep is recomputed even on cache hit: its BPM range
+            # is fixed by compute_frequency_sweep(), not by gating_config, so
+            # a project file saved under an older sweep range (e.g. before
+            # the fixed 40-400 BPM window) would otherwise stay stale forever.
+            image_raw_cached = np.array(gs['image_based_gating'])
+            bpm_cuts, sweep = compute_frequency_sweep(image_raw_cached, fs)
+            gs['freq_sweep_bpm_cuts'] = bpm_cuts.tolist()
+            gs['freq_sweep_signals'] = sweep.tolist()
             return (
-                np.array(gs['image_based_gating']),
+                image_raw_cached,
                 np.array(gs['contour_based_gating']),
                 np.array(gs['image_based_gating_filtered']),
                 np.array(gs['contour_based_gating_filtered']),
@@ -85,7 +127,7 @@ def prepare_data(
     except Exception:
         pass
 
-    # ── Pre-process frames: crop → [0,1] ──────────────────────────────────
+    # ── Pre-process frames: crop -> [0,1] ──────────────────────────────────
     frames_crop = frames[:, x1:x2, y1:y2].astype(np.float32)
     f_lo = frames_crop.min(axis=(1, 2), keepdims=True)
     f_hi = frames_crop.max(axis=(1, 2), keepdims=True)
@@ -114,29 +156,38 @@ def prepare_data(
     contour_filtered = np.zeros(N)
 
     if report_data is not None and len(report_data) > 0:
-        area_signal = compute_lumen_area_signal(report_data, N, lower_limit)
-        has_contour = not np.all(np.isnan(area_signal))
+        area_signal = compute_lumen_signal(report_data, N, lower_limit, key='lumen_area')
+        minor_axis_signal = compute_lumen_signal(report_data, N, lower_limit, key='shortest_distance')
+        has_contour = not np.all(np.isnan(area_signal)) and not np.all(np.isnan(minor_axis_signal))
 
         if has_contour:
-            contour_raw = normalize_data(area_signal, step=cfg.normalize_step)
+            contour_raw = adjust_for_elliptic_deformation(area_signal, minor_axis_signal, step=cfg.normalize_step)
             area_filtered = bandpass_filter(area_signal, f_heart, fs, lo_frac, hi_frac)
             contour_filtered = normalize_data(area_filtered, step=cfg.normalize_step)
 
     # ── Frequency sweep for interactive visualisation ──────────────────────
-    bpm_cuts, sweep = compute_frequency_sweep(image_raw, fs, f_heart)
+    bpm_cuts, sweep = compute_frequency_sweep(image_raw, fs)
 
     # ── Cache ─────────────────────────────────────────────────────────────
-    main_window.runtime_data.gating_signal = {
-        'image_based_gating': image_raw.tolist(),
-        'contour_based_gating': contour_raw.tolist(),
-        'image_based_gating_filtered': image_filtered.tolist(),
-        'contour_based_gating_filtered': contour_filtered.tolist(),
-        'gating_config': dict(vars(cfg)),
-        'f_heart': f_heart,
-        'f_heart_bpm': f_heart * 60,
-        'freq_sweep_bpm_cuts': bpm_cuts.tolist(),
-        'freq_sweep_signals': sweep.tolist(),
-    }
+    # Update in place (not reassign) so breathing_*/sort_* keys written by the
+    # longitudinal view / breathing sort viewer survive this refresh.
+    gs = main_window.runtime_data.gating_signal
+    if gs is None:
+        gs = {}
+        main_window.runtime_data.gating_signal = gs
+    gs.update(
+        {
+            'image_based_gating': image_raw.tolist(),
+            'contour_based_gating': contour_raw.tolist(),
+            'image_based_gating_filtered': image_filtered.tolist(),
+            'contour_based_gating_filtered': contour_filtered.tolist(),
+            'gating_config': dict(vars(cfg)),
+            'f_heart': f_heart,
+            'f_heart_bpm': f_heart * 60,
+            'freq_sweep_bpm_cuts': bpm_cuts.tolist(),
+            'freq_sweep_signals': sweep.tolist(),
+        }
+    )
 
     return image_raw, contour_raw, image_filtered, contour_filtered
 
@@ -156,11 +207,21 @@ def normalize_data(data, step: int) -> np.ndarray:
     return out
 
 
+def adjust_for_elliptic_deformation(area: np.ndarray, minor_axis: np.ndarray, step: int) -> np.ndarray:
+    """Scale area by a normalised minor-axis (shortest diameter) factor, so a
+    vessel that deforms from round to elliptic without losing lumen area still
+    shows up as displacement in the signal. Both are z-scored first so they're
+    on comparable scales before multiplying. Used for both the cardiac contour
+    signal (gating_pipeline) and the breathing signal (breathing_pipeline).
+    """
+    return normalize_data(area, step=step) * normalize_data(minor_axis, step=step)
+
+
 # ─────────────────────────────── image signal ────
 
 
 def compute_correlation_signal(frames: np.ndarray) -> np.ndarray:
-    """1 - normalised cross-correlation between consecutive frames (CCB s0).
+    """1 - normalised cross-correlation between consecutive frames (CCB s0 in Talou et al. 2015).
 
     High when frames differ (motion); low at stable end-systole/end-diastole.
     Frames should be [0,1]-normalised beforehand.
@@ -178,7 +239,26 @@ def compute_correlation_signal(frames: np.ndarray) -> np.ndarray:
     return s
 
 
-# ─────────────────────────────── heart rate detection ────
+def fft_peak_freq(
+    signal: np.ndarray,
+    fs: float,
+    f_min: float,
+    f_max: float,
+    label: str = "spectral",
+) -> float:
+    """Dominant FFT spectral peak frequency within [f_min, f_max] Hz.
+
+    Falls back to the band midpoint (with a warning) if the band contains no
+    frequency bin, e.g. a signal too short for the given fs.
+    """
+    sig = np.nan_to_num(signal - np.nanmean(signal))
+    freqs = np.fft.rfftfreq(len(sig), d=1.0 / fs)
+    spectrum = np.abs(np.fft.rfft(sig))
+    mask = (freqs >= f_min) & (freqs <= f_max)
+    if not mask.any():
+        logger.warning(f"No {label} spectral peak in [{f_min}, {f_max}] Hz -> using midpoint")
+        return (f_min + f_max) / 2
+    return float(freqs[mask][np.argmax(spectrum[mask])])
 
 
 def detect_heart_rate(
@@ -188,14 +268,7 @@ def detect_heart_rate(
     f_max: float = 3.5,
 ) -> float:
     """Dominant heart rate via FFT spectral peak in physiological range [Hz]."""
-    sig = np.nan_to_num(signal - np.nanmean(signal))
-    freqs = np.fft.rfftfreq(len(sig), d=1.0 / fs)
-    spectrum = np.abs(np.fft.rfft(sig))
-    mask = (freqs >= f_min) & (freqs <= f_max)
-    if not mask.any():
-        logger.warning(f"No spectral peak in [{f_min}, {f_max}] Hz - using midpoint")
-        return (f_min + f_max) / 2
-    f_heart = float(freqs[mask][np.argmax(spectrum[mask])])
+    f_heart = fft_peak_freq(signal, fs, f_min, f_max, label="heart rate")
     logger.info(f"Heart rate: {f_heart:.3f} Hz  ({f_heart * 60:.0f} BPM)")
 
     # The 1-NCC signal has strong power at 2xf_heart (two motion events per cycle).
@@ -231,14 +304,57 @@ def bandpass_filter(
     lo = max(0.01, lo_frac * f_heart / nyq)
     hi = min(0.99, hi_frac * f_heart / nyq)
     if lo >= hi:
-        logger.warning(f"Bandpass bounds invalid ({lo:.3f}, {hi:.3f}) - returning raw signal")
+        logger.warning(f"Bandpass bounds invalid ({lo:.3f}, {hi:.3f}) -> returning raw signal")
         return np.array(signal, dtype=float)
     b, a = butter(order, [lo, hi], btype='band')
     try:
         return filtfilt(b, a, np.nan_to_num(signal))
     except Exception as exc:
-        logger.warning(f"Bandpass filter failed: {exc} - returning raw signal")
+        logger.warning(f"Bandpass filter failed: {exc} -> returning raw signal")
         return np.array(signal, dtype=float)
+
+
+# ────────────────────────── contour: lumen area signal ────
+
+
+def compute_lumen_signal(
+    report_data,
+    N: int,
+    lower_limit: int,
+    key: str = 'lumen_area',
+) -> np.ndarray:
+    """Extract e.g., lumen_area [mm²] from report_data into a length-N array.
+
+    Frames without contours -> NaN; gaps are linearly interpolated so the
+    bandpass filter operates on a complete signal.
+
+    Returns NaN-filled array (all NaN) when coverage < 50%.
+    """
+    meas = np.full(N, np.nan)
+
+    for _, row in report_data.iterrows():
+        idx = int(row['frame']) - 1 - lower_limit
+        if 0 <= idx < N:
+            v = row.get(key, np.nan)
+            if not pd.isna(v):
+                meas[idx] = float(v)
+
+    coverage = float(np.sum(~np.isnan(meas))) / N
+    if coverage < 0.5:
+        logger.info(f"{key.replace('_', ' ')} coverage {coverage:.0%} < 50% - contour signal omitted")
+        return np.full(N, np.nan)
+
+    logger.info(f"{key.replace('_', ' ')} coverage: {coverage:.0%}")
+
+    # Linear interpolation over NaN gaps
+    valid = np.where(~np.isnan(meas))[0]
+    if len(valid) < 2:
+        return np.full(N, np.nan)
+    meas = np.interp(np.arange(N), valid, meas[valid])
+    return meas
+
+
+# ─────────────────────── frequency sweep for visualisation ────
 
 
 def lowpass_filter(signal: np.ndarray, f_cutoff: float, fs: float, order: int = 4) -> np.ndarray:
@@ -250,157 +366,6 @@ def lowpass_filter(signal: np.ndarray, f_cutoff: float, fs: float, order: int = 
         return filtfilt(b, a, np.nan_to_num(signal))
     except Exception:
         return np.array(signal, dtype=float)
-
-
-# ────────────────────────── contour: lumen area signal ────
-
-
-def compute_lumen_area_signal(
-    report_data,
-    N: int,
-    lower_limit: int,
-) -> np.ndarray:
-    """Extract lumen_area [mm²] from report_data into a length-N array.
-
-    Frames without contours → NaN; gaps are linearly interpolated so the
-    bandpass filter operates on a complete signal.
-
-    Returns NaN-filled array (all NaN) when coverage < 50%.
-    """
-    area = np.full(N, np.nan)
-
-    for _, row in report_data.iterrows():
-        idx = int(row['frame']) - 1 - lower_limit
-        if 0 <= idx < N:
-            v = row.get('lumen_area', np.nan)
-            if not pd.isna(v):
-                area[idx] = float(v)
-
-    coverage = float(np.sum(~np.isnan(area))) / N
-    if coverage < 0.5:
-        logger.info(f"Lumen area coverage {coverage:.0%} < 50% - contour signal omitted")
-        return np.full(N, np.nan)
-
-    logger.info(f"Lumen area coverage: {coverage:.0%}")
-
-    # Linear interpolation over NaN gaps
-    valid = np.where(~np.isnan(area))[0]
-    if len(valid) < 2:
-        return np.full(N, np.nan)
-    area = np.interp(np.arange(N), valid, area[valid])
-    return area
-
-
-# ─────────────────────── frequency sweep for visualisation ────
-
-
-def compute_frequency_sweep(
-    signal: np.ndarray,
-    fs: float,
-    f_heart: float,
-    n_steps: int = 30,
-) -> tuple:
-    """Low-pass filtered signal at n_steps cutoff frequencies (BPM labelled).
-
-    Sweeps from 0.5 x f_heart to 4 x f_heart so the user can see the
-    transition from over-smoothed (single hump/cycle) to noisy signal.
-    Returns (bpm_cuts, sweep) where sweep[i] is z-scored signal at bpm_cuts[i].
-    """
-    f_lo = 0.5 * f_heart
-    f_hi = min(fs / 2 * 0.9, 4.0 * f_heart)
-    f_cuts = np.linspace(f_lo, f_hi, n_steps)  # Hz
-    bpm_cuts = f_cuts * 60  # BPM for display
-
-    N = len(signal)
-    sweep = np.zeros((n_steps, N))
-    for i, f_c in enumerate(f_cuts):
-        try:
-            filt = lowpass_filter(signal, f_c, fs)
-            std = filt.std()
-            sweep[i] = (filt - filt.mean()) / std if std > 0 else filt
-        except Exception:
-            sweep[i] = 0.0
-    return bpm_cuts, sweep
-
-
-# ─────────────────────────── extrema / turning-point detection ────
-
-
-def walk_extrema(
-    signal: np.ndarray,
-    swing_fraction: float = 0.15,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Hysteresis-gated turning-point detector.
-
-    Walks the signal and registers a local maximum only after the value has
-    dropped more than *swing_fraction* x peak-to-peak below the running high
-    since the last confirmed turning point; vice versa for minima.
-
-    Advantages over scipy find_peaks:
-    - No global height threshold: amplitude-agnostic, adapts to signal level.
-    - No minimum-distance parameter: the hysteresis swing alone suppresses
-      micro-wiggles caused by residual noise on the bandpass-filtered signal.
-    - Produces a naturally alternating max / min / max / min sequence that
-      maps directly to cardiac phases without post-hoc alternation heuristics.
-
-    Parameters
-    ----------
-    signal         : 1-D array (bandpass-filtered, normalised).
-    swing_fraction : fraction of peak-to-peak range a reversal must exceed
-                     before a turning point is registered.  0.15 (15%) works
-                     well for IVUS bandpass-filtered signals.
-
-    Returns
-    -------
-    all_extrema_idx : sorted union of maxima and minima indices
-    maxima_idx      : indices of local maxima (high motion / end-phase peaks)
-    minima_idx      : indices of local minima
-    """
-    sig = np.nan_to_num(signal, nan=0.0, posinf=0.0, neginf=0.0)
-    ptp = float(sig.max() - sig.min())
-    empty: np.ndarray = np.array([], dtype=int)
-    if ptp == 0.0:
-        return empty, empty, empty
-
-    threshold = swing_fraction * ptp
-    maxima: list[int] = []
-    minima: list[int] = []
-
-    # direction: +1 = currently tracking a rising run (looking for maximum)
-    #            -1 = currently tracking a falling run (looking for minimum)
-    #            None = not yet determined (waiting for first significant swing)
-    direction: int | None = None
-    extreme_val = sig[0]
-    extreme_idx = 0
-
-    for i in range(1, len(sig)):
-        v = sig[i]
-        if direction is None:
-            if v - sig[0] >= threshold:
-                direction = 1
-                extreme_val, extreme_idx = v, i
-            elif sig[0] - v >= threshold:
-                direction = -1
-                extreme_val, extreme_idx = v, i
-        elif direction == 1:
-            if v > extreme_val:
-                extreme_val, extreme_idx = v, i
-            elif extreme_val - v >= threshold:
-                maxima.append(extreme_idx)
-                direction = -1
-                extreme_val, extreme_idx = v, i
-        else:  # direction == -1
-            if v < extreme_val:
-                extreme_val, extreme_idx = v, i
-            elif v - extreme_val >= threshold:
-                minima.append(extreme_idx)
-                direction = 1
-                extreme_val, extreme_idx = v, i
-
-    maxima_idx = np.array(maxima, dtype=int)
-    minima_idx = np.array(minima, dtype=int)
-    all_extrema = np.sort(np.concatenate([maxima_idx, minima_idx]))
-    return all_extrema, maxima_idx, minima_idx
 
 
 def filter_by_period(
@@ -419,7 +384,7 @@ def filter_by_period(
     ----------
     expected_interval : expected frames between consecutive peaks of this type
                         (e.g. fs / (2 x f_heart) for image-signal maxima).
-    tolerance         : fractional tolerance; 0.4 → ±40 %.
+    tolerance         : fractional tolerance; 0.4 -> ±40 %.
     """
     if len(indices) < 2:
         return indices
@@ -438,3 +403,37 @@ def filter_by_period(
                 )
             kept.append(int(idx))
     return np.array(kept, dtype=int)
+
+
+def compute_frequency_sweep(
+    signal: np.ndarray,
+    fs: float,
+    n_steps: int = 30,
+    bpm_lo: float = 40.0,
+    bpm_hi: float = 400.0,
+) -> tuple:
+    """Low-pass filtered signal at n_steps cutoff frequencies (BPM labelled).
+
+    Sweeps the fixed range (bpm_lo to bpm_hi) so the user can see the
+    transition from over-smoothed (single hump/cycle) to noisy signal,
+    regardless of the current heart/breathing rate estimate. Used both for
+    the cardiac sweep (default 40-400 BPM; upper bound is 2 x the maximum
+    physiological heart rate since the image signal has two peaks per
+    cardiac cycle) and the breathing sweep (bpm_lo=10, bpm_hi=60 BrPM).
+    Returns (bpm_cuts, sweep) where sweep[i] is z-scored signal at bpm_cuts[i].
+    """
+    f_lo = bpm_lo / 60.0
+    f_hi = min(fs / 2 * 0.9, bpm_hi / 60.0)
+    f_cuts = np.linspace(f_lo, f_hi, n_steps)
+    bpm_cuts = f_cuts * 60  # BPM for display
+
+    N = len(signal)
+    sweep = np.zeros((n_steps, N))
+    for i, f_c in enumerate(f_cuts):
+        try:
+            filt = lowpass_filter(signal, f_c, fs)
+            std = filt.std()
+            sweep[i] = (filt - filt.mean()) / std if std > 0 else filt
+        except Exception:
+            sweep[i] = 0.0
+    return bpm_cuts, sweep
