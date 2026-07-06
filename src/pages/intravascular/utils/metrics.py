@@ -92,10 +92,12 @@ class MetricsMixin:
             )
 
     def compute_all_frame_metrics(self):
-        """Batch-compute lumen area for every frame that has a contour.
+        """Batch-compute lumen area and minor axis for every frame that has a contour.
 
         Called once after image + contour load so plot_areas() has data
         for all frames immediately (not just frames the user has navigated to).
+        Minor axis is needed alongside area for the breathing signal's
+        elliptic-deformation adjustment (see breathing_pipeline.adjust_for_elliptic_deformation).
         """
         from tools.geometry import SplineGeometry  # local import avoids circular at module level
 
@@ -129,6 +131,7 @@ class MetricsMixin:
                     poly = poly.buffer(0)
                 if poly.is_valid and poly.area > 0:
                     compute_polygon_metrics(self.main_window, poly, frame_idx)
+                    closest_points(self.main_window, poly, frame_idx)
             except Exception as exc:
                 logger.debug(f'Frame {frame_idx}: batch metric computation failed: {exc}')
 

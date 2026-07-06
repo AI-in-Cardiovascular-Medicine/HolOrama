@@ -1,7 +1,28 @@
 import numpy as np
 from loguru import logger
 from gating.automatic_gating import walk_extrema
-from gating.gating_pipeline import lowpass_filter, fft_peak_freq
+from gating.gating_pipeline import lowpass_filter, fft_peak_freq, adjust_for_elliptic_deformation
+
+
+def adjusted_areas_by_frame(
+    area_of: dict[int, float],
+    minor_axis_of: dict[int, float],
+) -> dict[int, float]:
+    """Frame-dict wrapper around gating_pipeline.adjust_for_elliptic_deformation
+    for the breathing sort's sparse (gated-frames-only) data.
+
+    No-op (returns ``area_of`` unchanged) unless every frame has a minor-axis
+    measurement too, so partial coverage can't leave some frames adjusted and
+    others not (which would mix incompatible scales in the same signal).
+    """
+    frames = sorted(area_of.keys())
+    if not frames or any(f not in minor_axis_of for f in frames):
+        return dict(area_of)
+
+    area = np.array([area_of[f] for f in frames])
+    minor_axis = np.array([minor_axis_of[f] for f in frames])
+    adjusted = adjust_for_elliptic_deformation(area, minor_axis, step=0)
+    return dict(zip(frames, adjusted))
 
 
 def compute_breathing_signal(

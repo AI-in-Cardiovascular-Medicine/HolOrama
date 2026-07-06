@@ -19,9 +19,6 @@ Automatic breathing-motion correction for the longitudinal view.
 - Opening the gating window or plotting results no longer writes report files to disk every time - only when a report is actually needed
 - Removed a leftover screen redraw that had no effect
 
-### Fixed
-- Scrolling with the mouse wheel in the breathing viewer no longer skips frames
-
 ## [0.1.0] - 2026-07-02
 
 Project renamed from AIVUS-CAA to HolOrama; version numbering restarted.

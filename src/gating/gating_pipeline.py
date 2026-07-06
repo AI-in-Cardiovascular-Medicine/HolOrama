@@ -161,9 +161,7 @@ def prepare_data(
         has_contour = not np.all(np.isnan(area_signal)) and not np.all(np.isnan(minor_axis_signal))
 
         if has_contour:
-            contour_raw = normalize_data(area_signal, step=cfg.normalize_step)
-            contour_adjuster = normalize_data(minor_axis_signal, step=cfg.normalize_step)
-            contour_raw = contour_raw * contour_adjuster  # adjust for only elliptic deformation, with same lumen area
+            contour_raw = adjust_for_elliptic_deformation(area_signal, minor_axis_signal, step=cfg.normalize_step)
             area_filtered = bandpass_filter(area_signal, f_heart, fs, lo_frac, hi_frac)
             contour_filtered = normalize_data(area_filtered, step=cfg.normalize_step)
 
@@ -207,6 +205,16 @@ def normalize_data(data, step: int) -> np.ndarray:
         if std != 0:
             out[i : i + step] = (seg - np.nanmean(seg)) / std
     return out
+
+
+def adjust_for_elliptic_deformation(area: np.ndarray, minor_axis: np.ndarray, step: int) -> np.ndarray:
+    """Scale area by a normalised minor-axis (shortest diameter) factor, so a
+    vessel that deforms from round to elliptic without losing lumen area still
+    shows up as displacement in the signal. Both are z-scored first so they're
+    on comparable scales before multiplying. Used for both the cardiac contour
+    signal (gating_pipeline) and the breathing signal (breathing_pipeline).
+    """
+    return normalize_data(area, step=step) * normalize_data(minor_axis, step=step)
 
 
 # ─────────────────────────────── image signal ────

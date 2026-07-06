@@ -41,6 +41,7 @@ from gating.breathing_pipeline import (
     assign_breathing_bins,
     compute_breathing_signal,
     compute_breathing_phases,
+    adjusted_areas_by_frame,
 )
 from input_output.output.reports import report
 from tools.geometry import SplineGeometry
@@ -117,12 +118,17 @@ class BreathingSortViewer(QMainWindow):
     # Sort
     # ------------------------------------------------------------------
     def _areas(self):
-        out = {}
+        """Lumen area per frame, adjusted for elliptic deformation (an anomaly can
+        flatten the vessel from round to elliptic without changing its area, which
+        area alone would miss - see adjusted_areas_by_frame)."""
+        area_of, minor_axis_of = {}, {}
         for frame, fd in self.main_window.runtime_data.frame_data_dct.items():
-            a = fd.lumen.measurements.area
-            if a is not None and a > 0:
-                out[frame] = float(a)
-        return out
+            m = fd.lumen.measurements
+            if m.area is not None and m.area > 0:
+                area_of[frame] = float(m.area)
+            if m.minor_axis is not None and m.minor_axis > 0:
+                minor_axis_of[frame] = float(m.minor_axis)
+        return adjusted_areas_by_frame(area_of, minor_axis_of)
 
     def _breathing_anchors(self, area_of):
         rt = self.main_window.runtime_data
