@@ -618,7 +618,8 @@ def toggle_color(main_window):
 
 def plot_results(main_window):
     if main_window.image_displayed:
-        report_data = report(main_window, suppress_messages=True)
+        # write_files=False: this only needs the in-memory DataFrame for the plot, not a report/CSV export.
+        report_data = report(main_window, suppress_messages=True, write_files=False)
         if report_data is None:
             logger.error('No report data available to plot')
             return

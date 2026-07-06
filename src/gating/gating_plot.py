@@ -77,8 +77,9 @@ class GatingPlot:
         lower_limit, upper_limit = dialog.getInputs()
         self.lower_limit = lower_limit
 
-        # Try to get report data; gating does NOT require all frames to have contours
-        self.report_data = report(self.main_window, lower_limit, upper_limit, suppress_messages=True)
+        # Try to get report data; gating does NOT require all frames to have contours.
+        # write_files=False: this only needs the in-memory DataFrame, not a report/CSV export.
+        self.report_data = report(self.main_window, lower_limit, upper_limit, suppress_messages=True, write_files=False)
 
         if self.report_data is None:
             # report() returns None either when no images are loaded or when the

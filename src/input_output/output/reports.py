@@ -13,8 +13,8 @@ from itertools import combinations
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 
 
-def report(main_window, lower_limit=None, upper_limit=None, suppress_messages=False):
-    """Writes a report file containing lumen area, etc."""
+def report(main_window, lower_limit=None, upper_limit=None, suppress_messages=False, write_files=True):
+    """Computes the report DataFrame; writes it (plus CSVs/plots per config) to disk unless write_files=False."""
 
     if not main_window.image_displayed:
         if not suppress_messages:
@@ -40,8 +40,8 @@ def report(main_window, lower_limit=None, upper_limit=None, suppress_messages=Fa
         main_window,
         contoured_frames,
         suppress_messages,
-        plot=main_window.config.report.plot,
-        save_as_csv=main_window.config.report.save_as_csv,
+        plot=main_window.config.report.plot if write_files else False,
+        save_as_csv=main_window.config.report.save_as_csv if write_files else False,
     )
     if report_data is not None:  # else user cancelled progress bar
         # Add metadata information as columns to the first row
@@ -49,13 +49,14 @@ def report(main_window, lower_limit=None, upper_limit=None, suppress_messages=Fa
         report_data.loc[0, 'pullback_start_frame'] = main_window.runtime_data.metadata['pullback_start_frame']
         report_data.loc[0, 'frame_rate'] = main_window.runtime_data.metadata['frame_rate']
 
-        report_data.to_csv(
-            os.path.splitext(main_window.file_name)[0] + '_report.txt',
-            sep='\t',
-            float_format='%.2f',
-            index=False,
-            header=True,
-        )
+        if write_files:
+            report_data.to_csv(
+                os.path.splitext(main_window.file_name)[0] + '_report.txt',
+                sep='\t',
+                float_format='%.2f',
+                index=False,
+                header=True,
+            )
 
         if not suppress_messages:
             SuccessMessage(main_window, 'Write report')

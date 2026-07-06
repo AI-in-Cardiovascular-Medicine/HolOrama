@@ -12,7 +12,10 @@ Only gated frames are shown; gaps (positions with no frame) are ignored.
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
+import pandas as pd
 from PyQt6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -39,6 +42,7 @@ from gating.breathing_pipeline import (
     compute_breathing_signal,
     compute_breathing_phases,
 )
+from input_output.output.reports import report
 from tools.geometry import SplineGeometry
 
 N_STRIP = 5  # thumbnails per filmstrip (odd → current one centred)
@@ -556,3 +560,37 @@ class BreathingSortViewer(QMainWindow):
         if sp is not None:
             txt += f'   sys pos ≈ {sp:.0f}'
         self.info_label.setText(txt)
+
+    # ------------------------------------------------------------------
+    # Report export
+    # ------------------------------------------------------------------
+    def closeEvent(self, event):
+        self._write_combined_report()
+        super().closeEvent(event)
+
+    def _write_combined_report(self):
+        """Alongside the normal report, write a second file with only the gated
+        frames, ordered diastole-then-systole by the breathing-corrected (and
+        possibly hand-adjusted) order from this viewer. The frame/measurement
+        columns follow that new order, but 'position' is decoupled from the
+        frame identity - within each phase block it's just the block's own
+        positions sorted ascending, so it reflects rank along the pullback
+        rather than each frame's original position."""
+        if not self.dia_sorted:
+            return
+
+        report_data = report(self.main_window, suppress_messages=True)
+        if report_data is None or report_data.empty:
+            return
+
+        by_frame = report_data.set_index('frame')
+
+        def _rows(order):
+            idx = [f + 1 for f in order if (f + 1) in by_frame.index]
+            rows = by_frame.loc[idx].reset_index()
+            rows['position'] = sorted(rows['position'])
+            return rows
+
+        combined = pd.concat([_rows(self.dia_sorted), _rows(self.sys_sorted)], ignore_index=True)
+        out_path = os.path.splitext(self.main_window.file_name)[0] + '_combined_sorted_manual.csv'
+        combined.to_csv(out_path, index=False)
