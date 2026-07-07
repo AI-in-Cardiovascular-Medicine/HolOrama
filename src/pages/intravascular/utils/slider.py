@@ -54,6 +54,14 @@ class Slider(QSlider):
         except AttributeError:
             pass
 
+    def wheelEvent(self, event):
+        """Route wheel-over-slider through set_value (single-step, same as scrolling over the image)."""
+        if event.angleDelta().y() > 0:
+            self.next_frame()
+        else:
+            self.last_frame()
+        event.accept()
+
     def next_frame(self):
         try:
             self.set_value(self.value() + 1)

@@ -531,11 +531,13 @@ class BreathingSortViewer(QMainWindow):
         """Move the frame at index A to position B; the rest keep their order."""
         phase = self.phase_combo.currentText()
         seq = self.dia_sorted if phase == 'Diastole' else self.sys_sorted
+        pos_map = self.dia_pos if phase == 'Diastole' else self.sys_pos
         a, b = self.swap_a.value(), self.swap_b.value()
         if a == b or not (0 <= a < len(seq)) or not (0 <= b < len(seq)):
             return
         frame = seq.pop(a)
         seq.insert(b, frame)
+        self._reposition(seq, b, pos_map)  # keep pos_map consistent with the new slot
         self._store_sort()  # persist the manual reordering
         self._update_anchor()  # ostium offset may have shifted after reordering
         # follow the moved frame if we're viewing that phase
@@ -544,6 +546,23 @@ class BreathingSortViewer(QMainWindow):
         else:
             self.sys_idx = b
         self._refresh()
+
+    @staticmethod
+    def _reposition(seq: list[int], idx: int, pos_map: dict[int, float]) -> None:
+        """Assign `seq[idx]` a corrected position between its new neighbours.
+
+        Dia/sys pairing (_nearest_sys) and the ostium anchor offset are driven by
+        `pos_map` values, not list order, so a manual move must update the moved
+        frame's position too — otherwise it keeps being paired/reported by its
+        stale, pre-move breathing-corrected position and the move has no visible
+        effect on the paired preview.
+        """
+        frame = seq[idx]
+        lo = pos_map[seq[idx - 1]] if idx > 0 else pos_map[frame] - 1.0
+        hi = pos_map[seq[idx + 1]] if idx + 1 < len(seq) else pos_map[frame] + 1.0
+        if lo > hi:
+            lo, hi = hi, lo
+        pos_map[frame] = (lo + hi) / 2.0
 
     def _refresh(self):
         if not self.dia_sorted:
