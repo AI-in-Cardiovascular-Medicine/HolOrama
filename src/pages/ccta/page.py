@@ -113,8 +113,10 @@ class CctaPage(QWidget):
             display.cursor_moved.connect(self._on_cursor_moved)
             display.windowing_changed.connect(self._on_windowing_changed)
             display.mask_painted.connect(self._on_mask_painted)
+            display.mask_about_to_change.connect(self._on_mask_about_to_change)
         self._3d_viewer.cursor_moved.connect(self._on_cursor_moved)
         self._3d_viewer.mask_erased.connect(self._on_3d_mask_erased)
+        self._3d_viewer.mask_about_to_change.connect(self._on_mask_about_to_change)
 
         self._pending_coronal_cut: int = 1  # 1 = LVOT, 2 = aorta top
         self._axial.line_drawn.connect(lambda p1, p2: self._on_line_drawn(0, p1, p2))
@@ -253,12 +255,14 @@ class CctaPage(QWidget):
             mask, _ = read_mask_volume(mask_path)
         except ValueError:
             return False
-        self._apply_mask(mask)
+        self._apply_mask(mask, clear_undo=True)
         self.status_bar.showMessage(f'Mask auto-loaded: {os.path.basename(mask_path)}')
         return True
 
-    def _apply_mask(self, mask: np.ndarray) -> None:
+    def _apply_mask(self, mask: np.ndarray, clear_undo: bool = False) -> None:
         """Apply a loaded mask array to all displays and panels."""
+        if clear_undo:
+            self.data.mask_undo.clear()
         self.data.mask = mask
         self.data.labels = sorted(int(v) for v in np.unique(mask) if v != 0)
         for display in (self._axial, self._coronal, self._sagittal):
@@ -290,7 +294,7 @@ class CctaPage(QWidget):
             ErrorMessage(self, str(e))
             return
 
-        self._apply_mask(mask)
+        self._apply_mask(mask, clear_undo=True)
         self.status_bar.showMessage(f'Mask loaded: {len(self.data.labels)} label(s) — {self.data.labels}')
 
     def save_mask(self) -> None:
@@ -347,6 +351,7 @@ class CctaPage(QWidget):
         assert self.data.volume is not None
         Z, Y, X = self.data.volume.shape
         mask = np.zeros((Z, Y, X), dtype=np.uint8)
+        self.data.mask_undo.clear()
         self.data.mask = mask
         self.data.labels = list(range(1, n_labels + 1))
         for display in (self._axial, self._coronal, self._sagittal):
@@ -376,6 +381,19 @@ class CctaPage(QWidget):
         self._mask_dirty = True
         for d in (self._axial, self._coronal, self._sagittal):
             d._render()
+
+    def _on_mask_about_to_change(self) -> None:
+        """Record the mask right before a brush stroke or 3-D erase mutates it, for Ctrl+Z."""
+        if self.data.mask is not None:
+            self.data.mask_undo.push(self.data.mask.copy())
+
+    def undo_last_mask_edit(self) -> None:
+        snapshot = self.data.mask_undo.pop()
+        if snapshot is None:
+            return
+        self._apply_mask(snapshot)
+        self._mask_dirty = True
+        self.status_bar.showMessage('Mask edit undone')
 
     def _on_mask_alpha_changed(self, alpha: float) -> None:
         for display in (self._axial, self._coronal, self._sagittal):

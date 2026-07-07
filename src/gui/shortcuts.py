@@ -23,6 +23,7 @@ from input_output.output.reports import report
 
 from pages.intravascular.popup_windows.results_plot import ResultsPlot
 from domain.all_types import ContourType, SegmentationTool
+from domain.undo import push_contour_snapshot
 
 
 def _sync_contour_combo(main_window, contour_type):
@@ -45,6 +46,7 @@ def init_ccta_shortcuts(ccta_page):
     _widget_children_shortcut('R', ccta_page, ccta_page.reset_windowing)
     _widget_children_shortcut('F', ccta_page, ccta_page.reset_zoom)
     _widget_children_shortcut('Escape', ccta_page, ccta_page.reset_to_neutral)
+    _widget_children_shortcut('Ctrl+Z', ccta_page, ccta_page.undo_last_mask_edit)
 
 
 def _widget_children_shortcut(key, parent, slot):
@@ -62,7 +64,7 @@ def init_shortcuts(main_window):
     QShortcut(QKeySequence('J'), main_window, partial(jiggle_frame, main_window))
     QShortcut(QKeySequence('Escape'), main_window, partial(stop_all, main_window))
     QShortcut(QKeySequence('Delete'), main_window, partial(delete_contour, main_window))
-    QShortcut(QKeySequence('Ctrl+Z'), main_window, partial(undo_delete, main_window))
+    QShortcut(QKeySequence('Ctrl+Z'), main_window, partial(undo_last_contour_edit, main_window))
     QShortcut(QKeySequence('Shift+A'), main_window, partial(copy_contour_from_left, main_window))
     QShortcut(QKeySequence('Shift+D'), main_window, partial(copy_contour_from_right, main_window))
     QShortcut(QKeySequence('Shift+W'), main_window, partial(copy_contour_from_next_gated, main_window))
@@ -224,6 +226,8 @@ def _copy_contour_from_frame(main_window, source_frame: int) -> None:
         return
     if not hasattr(src_obj, 'contours') or not src_obj.contours or ci >= len(src_obj.contours):
         return
+
+    push_contour_snapshot(main_window.runtime_data, current_frame, key, ci)
 
     src_contour = src_obj.contours[ci]
     xs = list(src_contour[0]) if src_contour else []
@@ -533,26 +537,13 @@ def delete_contour(main_window):
     if main_window.image_displayed:
         key = main_window.display.contour_key()
         c_idx = main_window.display.active_contour_index
-
-        if not hasattr(main_window, 'tmp_contours'):
-            main_window.runtime_data.tmp_contours = {}
-
         frame = main_window.display.frame
+
+        push_contour_snapshot(main_window.runtime_data, frame, key, c_idx)
+
         fd = main_window.runtime_data.frame_data_dct.get(frame)
         if fd:
             contour_obj = getattr(fd, key, None)
-            if contour_obj and contour_obj.contours and c_idx < len(contour_obj.contours):
-                c = contour_obj.contours[c_idx]
-                xlist = list(c[0]) if c and c[0] else []
-                ylist = list(c[1]) if c and len(c) > 1 else []
-                start = contour_obj.start_coords[c_idx] if len(contour_obj.start_coords) > c_idx else []
-                end = contour_obj.end_coords[c_idx] if len(contour_obj.end_coords) > c_idx else []
-                closed = contour_obj.closed[c_idx] if len(contour_obj.closed) > c_idx else True
-            else:
-                xlist, ylist, start, end, closed = [], [], [], [], True
-
-            main_window.runtime_data.tmp_contours[key] = (c_idx, xlist, ylist, start, end, closed)
-
             if contour_obj and c_idx < len(contour_obj.contours):
                 del contour_obj.contours[c_idx]
                 if c_idx < len(contour_obj.start_coords):
@@ -577,25 +568,32 @@ def delete_contour(main_window):
         main_window.display.display_image(update_contours=True)
 
 
-# TODO: Not working as intended
-def undo_delete(main_window):
-    if main_window.image_displayed:
-        key = main_window.display.contour_key()
-        if hasattr(main_window, 'tmp_contours') and key in main_window.runtime_data.tmp_contours:
-            saved = main_window.runtime_data.tmp_contours.pop(key)
-            ci, xlist, ylist, start, end, closed = saved
-            frame = main_window.display.frame
-            fd = main_window.runtime_data.frame_data_dct.get(frame)
-            if fd:
-                contour_obj = getattr(fd, key, None)
-                if contour_obj is not None:
-                    contour_obj.contours.insert(ci, [xlist, ylist])
-                    contour_obj.start_coords.insert(ci, start)
-                    contour_obj.end_coords.insert(ci, end)
-                    contour_obj.closed.insert(ci, closed)
-                    main_window.display.active_contour_index = ci
+def undo_last_contour_edit(main_window):
+    """Pop the most recent contour-edit snapshot (any type/frame) and restore it."""
+    if not main_window.image_displayed:
+        return
 
-            main_window.display.update_display()
+    snap = main_window.runtime_data.contour_undo.pop()
+    if snap is None:
+        return
+
+    fd = main_window.runtime_data.frame_data_dct.get(snap.frame)
+    if fd is None:
+        return
+
+    setattr(fd, snap.key, snap.contour)
+
+    display = main_window.display
+    if display.frame != snap.frame:
+        main_window.display_slider.set_value(snap.frame)
+    if display.contour_key() == snap.key:
+        display.active_contour_index = snap.active_index
+        display.working_spline = None
+    display.update_display()
+    try:
+        main_window.longitudinal_view.plot_areas()
+    except Exception as e:
+        logger.debug(f"Could not update longitudinal view after undo: {e}")
 
 
 def reset_zoom(main_window):

@@ -35,6 +35,7 @@ class CctaDisplay(QGraphicsView):
     cursor_moved = pyqtSignal(int, int, int)  # z, y, x
     windowing_changed = pyqtSignal(int, int)  # level, width
     mask_painted = pyqtSignal()  # emitted after any brush stroke modifies the mask
+    mask_about_to_change = pyqtSignal()  # emitted once, before a brush stroke starts painting
     line_drawn = pyqtSignal(object, object)  # (p1_zyx, p2_zyx) voxel tuples
 
     def __init__(self, orientation: str, parent=None) -> None:
@@ -415,6 +416,7 @@ class CctaDisplay(QGraphicsView):
     def mousePressEvent(self, event) -> None:
         self.setFocus()
         if self._brush_mode and event.button() == Qt.MouseButton.LeftButton:
+            self.mask_about_to_change.emit()
             self._brush_painting = True
             pos = self.mapToScene(event.position().toPoint())
             sr = self._scene.sceneRect()

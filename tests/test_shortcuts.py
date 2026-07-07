@@ -32,7 +32,6 @@ class TestShortcuts:
         mock_win.colormap_enabled = False
         mock_win.longitudinal_view = MagicMock()
         mock_win.small_display = MagicMock()
-        mock_win.tmp_contours = {}
 
         return mock_win
 

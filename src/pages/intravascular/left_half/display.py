@@ -23,6 +23,7 @@ from tools.geometry import Marker
 from segmentation.segment import downsample
 from input_output.output.imgs_masks import contours_to_mask
 from domain.io_types import Measure
+from domain.undo import push_contour_snapshot
 
 
 SENSITIVITY = 10  # pixels for closure detection
@@ -799,6 +800,7 @@ class Display(QGraphicsView, MetricsMixin):
             return
 
         contour_obj = getattr(fd, key)
+        push_contour_snapshot(self.main_window.runtime_data, frame, key, self.active_contour_index)
         contour_obj.contours = [[list(x_sparse), list(y_sparse)]]
         contour_obj.closed = [True]
         contour_obj.start_coords = [[]]
@@ -870,7 +872,7 @@ class Display(QGraphicsView, MetricsMixin):
         Start drawing a new contour of the specified type and with the specified tool.
 
         Sets the active contour type, clears previous data for this frame,
-        and switches to contour drawing mode (leaves temporary data in main_window.runtime_data.tmp_contours).
+        and switches to contour drawing mode (pushes a pre-edit snapshot for Ctrl+Z).
         If append=True, existing contours are preserved and the new one will be appended.
         """
         if contour_type is not None:
@@ -882,17 +884,8 @@ class Display(QGraphicsView, MetricsMixin):
         if not append:
             self.active_contour_index = 0
 
-        # save the current state of the contour to the tmp storage
         key = self.contour_key(contour_type)
-        if not hasattr(self.main_window, 'tmp_contours'):
-            self.main_window.runtime_data.tmp_contours = {}
-        fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
-        if fd:
-            contour_obj = getattr(fd, key, None)
-            if contour_obj and contour_obj.contours and contour_obj.contours[0]:
-                xlist = list(contour_obj.contours[0][0]) if contour_obj.contours[0][0] else []
-                ylist = list(contour_obj.contours[0][1]) if len(contour_obj.contours[0]) > 1 else []
-                self.main_window.runtime_data.tmp_contours[key] = (xlist, ylist)
+        push_contour_snapshot(self.main_window.runtime_data, self.frame, key, self.active_contour_index)
 
         self.active_segmentation_tool = segmentation_tool if segmentation_tool else self.active_segmentation_tool
 
@@ -1745,6 +1738,7 @@ class Display(QGraphicsView, MetricsMixin):
                 y_list = [p / self.scaling_factor for p in geom.knot_points_y]
                 contour_obj = getattr(self.main_window.runtime_data.frame_data_dct[self.frame], key)
                 ci = self.active_contour_index
+                push_contour_snapshot(self.main_window.runtime_data, self.frame, key, ci)
                 if ci < len(contour_obj.contours):
                     contour_obj.contours[ci] = [x_list, y_list]
 
@@ -1802,6 +1796,8 @@ class Display(QGraphicsView, MetricsMixin):
         ys = list(contour[1]) if len(contour) > 1 else [0.0] * len(xs)
         if len(xs) != len(ys) or len(xs) < 2:
             return
+
+        push_contour_snapshot(self.main_window.runtime_data, self.frame, key, ci)
 
         cx = sum(xs) / len(xs)
         cy = sum(ys) / len(ys)

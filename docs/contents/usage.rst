@@ -28,7 +28,7 @@ v1.0.0 (Base module)
 - :kbd:`A` / :kbd:`D` — Move through frames (previous/next)
 - :kbd:`W` / :kbd:`S` — Move through gated (diastolic/systolic) frames (select phase via the corresponding button: blue = diastolic, red = systolic)
 - :kbd:`E` — Draw a new lumen contour
-- :kbd:`Ctrl+Z` — Undo (e.g. restore an accidentally deleted contour)
+- :kbd:`Ctrl+Z` — Undo the last contour edit (draw, delete, drag, brush, scale, copy from another frame); keeps the last 5 edits
 - :kbd:`1` / :kbd:`2` — Draw measurement 1 and 2, respectively
 - :kbd:`RMB` (hold) — Windowing; :kbd:`R` to reset
 - :kbd:`C` — Toggle color mode

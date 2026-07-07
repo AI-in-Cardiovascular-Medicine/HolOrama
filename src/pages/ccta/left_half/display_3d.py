@@ -47,6 +47,7 @@ except ImportError:
 class CctaViewer3D(QWidget):
     cursor_moved = pyqtSignal(int, int, int)  # z, y, x voxel coords
     mask_erased = pyqtSignal()  # 3-D lasso erase modified the mask
+    mask_about_to_change = pyqtSignal()  # emitted before a lasso erase mutates the mask
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -397,6 +398,9 @@ class CctaViewer3D(QWidget):
 
         screen = self._project_world_batch(wx, wy, wz)
         inside = MplPath(polygon).contains_points(screen)
+        if not inside.any():
+            return
+        self.mask_about_to_change.emit()
         self._mask[z_idx[inside], y_idx[inside], x_idx[inside]] = 0
         self.mask_erased.emit()
         self._rerender_after_erase()

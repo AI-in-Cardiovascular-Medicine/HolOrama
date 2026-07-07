@@ -8,19 +8,6 @@ def new_contour(main_window, contour_type: ContourType):
         return
 
     main_window.display.set_active_contour_type(contour_type)
-    key = contour_type.value
-
-    fd = main_window.runtime_data.frame_data_dct.get(main_window.display.frame)
-    if fd:
-        contour_obj = getattr(fd, key, None)
-        if contour_obj and contour_obj.contours and contour_obj.contours[0]:
-            xlist = list(contour_obj.contours[0][0]) if contour_obj.contours[0][0] else []
-            ylist = list(contour_obj.contours[0][1]) if len(contour_obj.contours[0]) > 1 else []
-        else:
-            xlist, ylist = [], []
-    else:
-        xlist, ylist = [], []
-    main_window.runtime_data.tmp_contours[key] = (xlist, ylist)
 
     main_window.display.start_contour(contour_type=contour_type)
     main_window.hide_contours_box.setChecked(False)

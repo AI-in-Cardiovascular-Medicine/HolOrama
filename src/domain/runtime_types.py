@@ -4,6 +4,7 @@ from typing import Any, TypedDict
 import numpy as np
 
 from domain.io_types import FrameData
+from domain.undo import UndoStack
 
 
 class CctaRuntimeData:
@@ -13,6 +14,7 @@ class CctaRuntimeData:
         self.voxel_spacing: tuple[float, float, float] | None = None  # (dz, dy, dx) mm
         self.mask: np.ndarray | None = None  # (Z, Y, X) uint8 label values
         self.labels: list[int] = []  # non-background labels present in mask
+        self.mask_undo: UndoStack = UndoStack()  # last 5 full-mask snapshots, for Ctrl+Z
 
 
 class GatingSignal(TypedDict, total=False):
@@ -61,5 +63,5 @@ class RuntimeData:
         self.gated_frames_dia: list[int] = []
         self.gated_frames_sys: list[int] = []
         self.tagged_frames: list[int] = []
-        self.tmp_contours: dict[str, tuple[list[float], list[float]]] = {}
+        self.contour_undo: UndoStack = UndoStack()  # last 5 contour-edit snapshots, for Ctrl+Z
         self.gating_signal: GatingSignal = {}
