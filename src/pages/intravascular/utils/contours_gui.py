@@ -1,5 +1,5 @@
-from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from domain.all_types import ContourType, SegmentationTool
+from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
 
 def new_contour(main_window, contour_type: ContourType):

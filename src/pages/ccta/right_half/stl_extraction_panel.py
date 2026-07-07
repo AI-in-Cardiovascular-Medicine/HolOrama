@@ -1,16 +1,16 @@
 # This combines aortic root, coronaries and allows to cut-off LVOT into one new combined mask, which can be exported as a STL for fluid dynamics
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QButtonGroup,
+    QComboBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
-    QComboBox,
     QPushButton,
-    QFrame,
-    QButtonGroup,
     QRadioButton,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import pyqtSignal
 
 
 def _separator() -> QFrame:

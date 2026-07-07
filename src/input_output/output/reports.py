@@ -1,14 +1,14 @@
-import os
-import math
 import csv
-
-import pandas as pd
-import matplotlib.pyplot as plt
-from loguru import logger
-from PyQt6.QtWidgets import QProgressDialog, QApplication
-from shapely.geometry import Polygon
-from shapely.errors import TopologicalError
+import math
+import os
 from itertools import combinations
+
+import matplotlib.pyplot as plt
+import pandas as pd
+from loguru import logger
+from PyQt6.QtWidgets import QApplication, QProgressDialog
+from shapely.errors import TopologicalError
+from shapely.geometry import Polygon
 
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 
@@ -253,15 +253,19 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
     report_data['shortest_distance'] = [shortest_distance[frame] for frame in contoured_frames]
     report_data['elliptic_ratio'] = [elliptic_ratio[frame] for frame in contoured_frames]
     report_data['measurement_1'] = [
-        main_window.runtime_data.frame_data_dct[frame].measurement_1.length
-        if main_window.runtime_data.frame_data_dct[frame].measurement_1
-        else None
+        (
+            main_window.runtime_data.frame_data_dct[frame].measurement_1.length
+            if main_window.runtime_data.frame_data_dct[frame].measurement_1
+            else None
+        )
         for frame in contoured_frames
     ]
     report_data['measurement_2'] = [
-        main_window.runtime_data.frame_data_dct[frame].measurement_2.length
-        if main_window.runtime_data.frame_data_dct[frame].measurement_2
-        else None
+        (
+            main_window.runtime_data.frame_data_dct[frame].measurement_2.length
+            if main_window.runtime_data.frame_data_dct[frame].measurement_2
+            else None
+        )
         for frame in contoured_frames
     ]
 

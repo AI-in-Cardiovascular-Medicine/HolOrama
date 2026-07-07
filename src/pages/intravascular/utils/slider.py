@@ -1,9 +1,9 @@
 import numpy as np
+from PyQt6.QtCore import QObject, QSize, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QSlider,
     QSizePolicy,
+    QSlider,
 )
-from PyQt6.QtCore import QObject, Qt, pyqtSignal, QSize
 
 
 class Communicate(QObject):

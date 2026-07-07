@@ -1,9 +1,9 @@
 from input_output.input.contours import (
-    _normalize_coord_entry,
     _build_contour,
-    _build_measure,
     _build_frame_data,
+    _build_measure,
     _contour_file_sort_key,
+    _normalize_coord_entry,
 )
 
 

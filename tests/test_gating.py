@@ -1,19 +1,22 @@
+from unittest.mock import Mock
+
 import numpy as np
 import pandas as pd
 import pytest
-from unittest.mock import Mock
 
-from gating.gating_pipeline import (
-    normalize_data,
-    compute_correlation_signal,
-    detect_heart_rate,
-    bandpass_filter,
-    lowpass_filter,
-    compute_lumen_signal as compute_lumen_area_signal,
-    compute_frequency_sweep,
-    filter_by_period,
-)
 from gating.automatic_gating import AutomaticGating, walk_extrema
+from gating.gating_pipeline import (
+    bandpass_filter,
+    compute_correlation_signal,
+    compute_frequency_sweep,
+)
+from gating.gating_pipeline import compute_lumen_signal as compute_lumen_area_signal
+from gating.gating_pipeline import (
+    detect_heart_rate,
+    filter_by_period,
+    lowpass_filter,
+    normalize_data,
+)
 
 
 def _ag(lower_limit=0):

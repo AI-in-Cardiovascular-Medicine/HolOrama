@@ -1,10 +1,10 @@
 import os
-
 from pathlib import Path
-from PyQt6.QtWidgets import QMainWindow
-from PyQt6.QtMultimediaWidgets import QVideoWidget
-from PyQt6.QtMultimedia import QMediaPlayer
+
 from PyQt6.QtCore import QUrl
+from PyQt6.QtMultimedia import QMediaPlayer
+from PyQt6.QtMultimediaWidgets import QVideoWidget
+from PyQt6.QtWidgets import QMainWindow
 
 
 class VideoPlayer(QMainWindow):

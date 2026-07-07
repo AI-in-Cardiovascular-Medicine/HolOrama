@@ -3,36 +3,40 @@ import os
 import shutil
 import tempfile
 import threading
-from typing import TYPE_CHECKING, cast
 from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import SimpleITK as sitk
 from loguru import logger
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QLabel,
+    QApplication,
     QFileDialog,
+    QGridLayout,
+    QLabel,
     QMessageBox,
     QProgressDialog,
-    QApplication,
-    QGridLayout,
     QSplitter,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import Qt, QTimer
 
+from domain.runtime_types import CctaRuntimeData
+from gui.active_page import ActivePage
+from input_output.input.ccta_io import (
+    read_ct_volume,
+    read_mask_volume,
+    read_nifti_volume,
+)
+from input_output.output.stl_export import export_nifti, export_stl
 from pages.ccta.left_half.display import CctaDisplay
 from pages.ccta.left_half.display_3d import CctaViewer3D
-from pages.ccta.right_half.mask_panel import MaskPanel
 from pages.ccta.right_half.brush_panel import BrushPanel
+from pages.ccta.right_half.mask_panel import MaskPanel
 from pages.ccta.right_half.stl_extraction_panel import StlExtractionPanel
-from input_output.input.ccta_io import read_ct_volume, read_nifti_volume, read_mask_volume
-from input_output.output.stl_export import export_nifti, export_stl
-from version import version_file_str
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
-from gui.active_page import ActivePage
-from domain.runtime_types import CctaRuntimeData
+from version import version_file_str
 
 if TYPE_CHECKING:
     from gui.app import Master

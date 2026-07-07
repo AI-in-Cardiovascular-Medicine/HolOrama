@@ -1,7 +1,12 @@
 import numpy as np
 from loguru import logger
+
 from gating.automatic_gating import walk_extrema
-from gating.gating_pipeline import lowpass_filter, fft_peak_freq, adjust_for_elliptic_deformation
+from gating.gating_pipeline import (
+    adjust_for_elliptic_deformation,
+    fft_peak_freq,
+    lowpass_filter,
+)
 
 
 def adjusted_areas_by_frame(
@@ -173,7 +178,7 @@ def _fit_weighted_trend(
     the trend is anchored by reliable points and not dragged by ostial noise.
     """
     n_samples = len(frames_arr)
-    weights = np.ones(n_samples)
+    weights: np.ndarray = np.ones(n_samples)
     if gated_frames:
         weights = np.where(np.isin(frames_arr.astype(int), list(gated_frames)), gated_weight, 1.0)
 

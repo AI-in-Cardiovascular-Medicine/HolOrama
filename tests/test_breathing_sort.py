@@ -4,12 +4,13 @@ The breathing-sort/en-bloc reordering was removed; these cover what remains and
 feeds the (future) sorting: the detrend + respiratory extraction and the
 peak/valley phase computation with manual hard-anchor override.
 """
+
 import numpy as np
 
 from gating.breathing_pipeline import (
-    compute_breathing_signal,
-    compute_breathing_phases,
     assign_breathing_bins,
+    compute_breathing_phases,
+    compute_breathing_signal,
     register_phase,
 )
 

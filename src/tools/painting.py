@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 import numpy as np
-from PyQt6.QtGui import QCursor, QPixmap, QPainter, QPen, QColor, QBrush
+from PyQt6.QtGui import QBrush, QColor, QCursor, QPainter, QPen, QPixmap
 
 
 @dataclass

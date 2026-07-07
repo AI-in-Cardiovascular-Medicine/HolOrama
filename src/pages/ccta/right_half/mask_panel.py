@@ -1,21 +1,21 @@
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QCheckBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
-    QSlider,
-    QCheckBox,
     QLineEdit,
-    QFrame,
     QPushButton,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
 
 from domain.ccta_display_types import (
+    DEFAULT_MASK_ALPHA,
     LABEL_COLORS,
     LABEL_COLORS_ANATOMIC,
     LABEL_NAMES_ANATOMIC,
-    DEFAULT_MASK_ALPHA,
 )
 
 

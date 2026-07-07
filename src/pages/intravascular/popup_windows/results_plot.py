@@ -1,7 +1,7 @@
-from PyQt6.QtWidgets import QMainWindow, QGraphicsView, QGraphicsScene
-from PyQt6.QtGui import QPixmap, QImage
 import matplotlib.pyplot as plt
 import pandas as pd
+from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtWidgets import QGraphicsScene, QGraphicsView, QMainWindow
 from scipy.ndimage import gaussian_filter1d
 
 pd.options.mode.chained_assignment = None  # default='warn'

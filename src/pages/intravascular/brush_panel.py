@@ -1,14 +1,14 @@
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
+    QButtonGroup,
     QFrame,
-    QVBoxLayout,
     QHBoxLayout,
     QLabel,
-    QSlider,
-    QRadioButton,
-    QButtonGroup,
     QPushButton,
+    QRadioButton,
+    QSlider,
+    QVBoxLayout,
 )
-from PyQt6.QtCore import Qt, QTimer
 
 
 class HoverButton(QPushButton):

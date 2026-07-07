@@ -1,16 +1,16 @@
-import os
+import hashlib
 import json
+import os
 import shutil
 import tempfile
 import threading
-import hashlib
+from dataclasses import asdict
 
 import numpy as np
 from loguru import logger
-from dataclasses import asdict
 
-from version import CONTOURS_VERSION_TAG
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
+from version import CONTOURS_VERSION_TAG
 
 
 def write_contours(main_window, force: bool = True) -> None:

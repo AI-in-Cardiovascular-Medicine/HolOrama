@@ -1,18 +1,18 @@
-from PyQt6.QtWidgets import (
-    QMainWindow,
-    QGraphicsView,
-    QGraphicsScene,
-    QGraphicsPixmapItem,
-    QGraphicsLineItem,
-    QGraphicsTextItem,
-)
+import numpy as np
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap, QImage, QPen
+from PyQt6.QtGui import QImage, QPen, QPixmap
+from PyQt6.QtWidgets import (
+    QGraphicsLineItem,
+    QGraphicsPixmapItem,
+    QGraphicsScene,
+    QGraphicsTextItem,
+    QGraphicsView,
+    QMainWindow,
+)
 from shapely.geometry import Polygon
 
-from tools.geometry import SplineGeometry, Spline, Point
-from input_output.output.reports import farthest_points, closest_points
-import numpy as np
+from input_output.output.reports import closest_points, farthest_points
+from tools.geometry import Point, Spline, SplineGeometry
 
 
 class SmallDisplay(QMainWindow):

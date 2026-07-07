@@ -1,32 +1,32 @@
 import time
-
 from functools import partial
-from PyQt6.QtWidgets import (
-    QPushButton,
-    QButtonGroup,
-    QComboBox,
-    QStyle,
-    QApplication,
-    QLabel,
-    QVBoxLayout,
-    QHBoxLayout,
-    QGridLayout,
-    QLayout,
-)
+
 from PyQt6 import sip
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QApplication,
+    QButtonGroup,
+    QComboBox,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLayout,
+    QPushButton,
+    QStyle,
+    QVBoxLayout,
+)
 
 from domain.all_types import ALLOWED_TOOLS, ContourType, SegmentationTool
+from pages.intravascular.brush_panel import HoverButton
 from pages.intravascular.utils.contours_gui import (
+    new_angle,
     new_contour,
     new_contour_append,
     new_measure,
     new_reference,
-    new_angle,
     set_tool,
 )
 from pages.intravascular.utils.helpers import SplitterPane
-from pages.intravascular.brush_panel import HoverButton
 
 # (label, ContourType, new-shortcut, append-shortcut or None)
 _CONTOUR_TYPE_ITEMS = [

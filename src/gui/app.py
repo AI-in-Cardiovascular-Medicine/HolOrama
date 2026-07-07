@@ -1,28 +1,27 @@
 import os
-
 from types import SimpleNamespace
 
-from PyQt6.QtWidgets import (
-    QMainWindow,
-    QMenuBar,
-    QStatusBar,
-    QStackedWidget,
-    QWidget,
-    QHBoxLayout,
-    QVBoxLayout,
-    QPushButton,
-    QStylePainter,
-    QStyleOptionButton,
-    QStyle,
-)
 from PyQt6.QtCore import QSize
 from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import (
+    QHBoxLayout,
+    QMainWindow,
+    QMenuBar,
+    QPushButton,
+    QStackedWidget,
+    QStatusBar,
+    QStyle,
+    QStyleOptionButton,
+    QStylePainter,
+    QVBoxLayout,
+    QWidget,
+)
 
-from pages.intravascular.page import IntravascularPage
-from pages.ccta.page import CctaPage
-from gui.shortcuts import init_shortcuts, init_ccta_shortcuts, init_menu
-from gui.active_page import ActivePage
 from domain.io_types import MetaDataCCTA, MetaDataIntravascular
+from gui.active_page import ActivePage
+from gui.shortcuts import init_ccta_shortcuts, init_menu, init_shortcuts
+from pages.ccta.page import CctaPage
+from pages.intravascular.page import IntravascularPage
 
 
 class _NavButton(QPushButton):

@@ -1,13 +1,13 @@
 import bisect
+from dataclasses import dataclass, field
+from typing import Any, List, Optional, Tuple
 
 import numpy as np
 from loguru import logger
-from scipy.interpolate import splprep, splev
-from PyQt6.QtWidgets import QGraphicsEllipseItem, QGraphicsPathItem, QGraphicsLineItem
-from PyQt6.QtCore import Qt, QPointF
-from PyQt6.QtGui import QPen, QPainterPath, QColor, QBrush
-from dataclasses import dataclass, field
-from typing import Tuple, List, Optional, Any
+from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtGui import QBrush, QColor, QPainterPath, QPen
+from PyQt6.QtWidgets import QGraphicsEllipseItem, QGraphicsLineItem, QGraphicsPathItem
+from scipy.interpolate import splev, splprep
 
 
 @dataclass

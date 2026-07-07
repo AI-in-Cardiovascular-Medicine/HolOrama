@@ -1,16 +1,16 @@
 import bisect
-
 from functools import partial
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QHBoxLayout,
-    QVBoxLayout,
-    QSplitter,
-    QPushButton,
     QButtonGroup,
-    QWidget,
     QFrame,
+    QHBoxLayout,
     QLayout,
+    QPushButton,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
 )
 
 from domain.all_types import OCT_QUALITY_LABELS
@@ -282,7 +282,9 @@ def set_longitudinal_mode(main_window, mode):
     if not main_window.image_displayed:
         return
     if mode == 'filtered':
-        from pages.intravascular.popup_windows.breathing_sort_viewer import BreathingSortViewer
+        from pages.intravascular.popup_windows.breathing_sort_viewer import (
+            BreathingSortViewer,
+        )
 
         main_window.breathing_sort_viewer = BreathingSortViewer(main_window)
         main_window.breathing_sort_viewer.show()

@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QMainWindow, QTableWidget, QTableWidgetItem, QWidget
+
 from domain.io_types import MetaDataCCTA, MetaDataIntravascular
 
 # callable(title, message, default) → float — injected so callers stay testable

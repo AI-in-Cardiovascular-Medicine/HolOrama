@@ -1,7 +1,18 @@
 import numpy as np
 import vtkmodules.vtkInteractionStyle  # noqa: F401
 import vtkmodules.vtkRenderingOpenGL2  # noqa: F401
+from matplotlib.path import Path as MplPath
+from PyQt6.QtCore import QEvent, QPoint, Qt, pyqtSignal
+from PyQt6.QtWidgets import (
+    QApplication,
+    QHBoxLayout,
+    QInputDialog,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
+from vtkmodules.util import numpy_support
 from vtkmodules.vtkCommonCore import vtkPoints
 from vtkmodules.vtkCommonDataModel import vtkCellArray, vtkImageData, vtkPolyData
 from vtkmodules.vtkFiltersSources import vtkSphereSource
@@ -15,10 +26,6 @@ from vtkmodules.vtkRenderingCore import (
     vtkPolyDataMapper2D,
     vtkRenderer,
 )
-from vtkmodules.util import numpy_support
-from matplotlib.path import Path as MplPath
-from PyQt6.QtCore import pyqtSignal, QEvent, QPoint, Qt
-from PyQt6.QtWidgets import QInputDialog, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QApplication
 
 from domain.ccta_display_types import LABEL_COLORS
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
@@ -35,7 +42,9 @@ try:
     _ALGO = 'surface_nets'
 except ImportError:
     try:
-        from vtkmodules.vtkFiltersCore import vtkDiscreteFlyingEdges3D as _DiscreteFE  # type: ignore[attr-defined]  # VTK ≥ 8.1
+        from vtkmodules.vtkFiltersCore import (  # type: ignore[attr-defined]  # VTK ≥ 8.1
+            vtkDiscreteFlyingEdges3D as _DiscreteFE,
+        )
 
         _ALGO = 'flying_edges'
     except ImportError:

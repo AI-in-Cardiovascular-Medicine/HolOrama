@@ -1,8 +1,9 @@
 import logging
 import warnings
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from matplotlib.backend_bases import MouseButton
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.widgets import Button
@@ -10,10 +11,13 @@ from PyQt6.QtWidgets import QMainWindow, QVBoxLayout, QWidget
 
 import gating.gating_pipeline as pipeline
 from gating.automatic_gating import AutomaticGating
-from pages.intravascular.popup_windows.message_boxes import ErrorMessage
-from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
-from pages.intravascular.right_half.right_half import toggle_diastolic_frame, toggle_systolic_frame
 from input_output.output.reports import report
+from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
+from pages.intravascular.popup_windows.message_boxes import ErrorMessage
+from pages.intravascular.right_half.right_half import (
+    toggle_diastolic_frame,
+    toggle_systolic_frame,
+)
 
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 

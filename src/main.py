@@ -1,21 +1,20 @@
+import atexit
+import logging
 import os
 import sys
-import atexit
-import yaml
-import logging
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
+
+import yaml
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 import qdarktheme
-
+from PyQt6.QtCore import QtMsgType, qInstallMessageHandler
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import qInstallMessageHandler, QtMsgType
 
-from version import __version__
 from gui.app import Master
-
+from version import __version__
 
 LOG_DIR = Path("logs")
 LOG_DIR.mkdir(exist_ok=True)

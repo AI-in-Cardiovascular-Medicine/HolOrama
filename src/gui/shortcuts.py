@@ -1,29 +1,33 @@
 import os
 import time
+from functools import partial
+
 import cv2
 import numpy as np
-
 from loguru import logger
-from functools import partial
-from PyQt6.QtGui import QKeySequence, QDesktopServices, QShortcut
-from PyQt6.QtWidgets import QApplication, QProgressDialog
 from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtGui import QDesktopServices, QKeySequence, QShortcut
+from PyQt6.QtWidgets import QApplication, QProgressDialog
 
-from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
-from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
-from pages.intravascular.popup_windows.video_player import VideoPlayer
-from pages.intravascular.utils.contours_gui import new_contour, new_contour_append, new_measure, new_angle, set_tool
-from input_output.input.metadata import CctaMetadataWindow, MetadataWindow
-from input_output.input.image import read_image, read_nifti_mask
-from input_output.output.contours import write_contours
-from input_output.output.other_fmt import save_gated_images
-from input_output.output.imgs_masks import save_as_nifti
-from input_output.output.reports import report
-
-
-from pages.intravascular.popup_windows.results_plot import ResultsPlot
 from domain.all_types import ContourType, SegmentationTool
 from domain.undo import push_contour_snapshot
+from input_output.input.image import read_image, read_nifti_mask
+from input_output.input.metadata import CctaMetadataWindow, MetadataWindow
+from input_output.output.contours import write_contours
+from input_output.output.imgs_masks import save_as_nifti
+from input_output.output.other_fmt import save_gated_images
+from input_output.output.reports import report
+from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
+from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
+from pages.intravascular.popup_windows.results_plot import ResultsPlot
+from pages.intravascular.popup_windows.video_player import VideoPlayer
+from pages.intravascular.utils.contours_gui import (
+    new_angle,
+    new_contour,
+    new_contour_append,
+    new_measure,
+    set_tool,
+)
 
 
 def _sync_contour_combo(main_window, contour_type):

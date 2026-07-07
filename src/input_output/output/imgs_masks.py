@@ -1,9 +1,9 @@
 import os
 
 import numpy as np
-from scipy.interpolate import splprep, splev
 import SimpleITK as sitk
-from PyQt6.QtWidgets import QProgressDialog, QApplication
+from PyQt6.QtWidgets import QApplication, QProgressDialog
+from scipy.interpolate import splev, splprep
 from skimage.draw import polygon2mask
 
 from domain.all_types import ContourType
