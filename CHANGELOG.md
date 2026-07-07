@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-07-07
+
+Undo support for contour and mask edits, plus breathing-sort fixes.
+
+### Added
+- Ctrl+Z undo (last 5 edits) for intravascular contour edits - draw, delete, drag, brush, scale, and copy-from-frame - and for CCTA mask edits - brush strokes and 3D lasso erase
+
+### Fixed
+- Scrolling the mouse wheel directly over the frame slider stepped by more than one frame and skipped the per-frame cleanup that scrolling over the image performs; now routes through the same single-step logic
+- Breathing-sort viewer: manually moving a frame to a new slot ("Apply move") didn't update its stored breathing-corrected position, so the diastole-driven systole pairing kept re-selecting the frame at its old slot instead of the new one
+- Breathing-sort viewer: the combined sorted-order report was saved next to the contours JSON instead of in the `_csv_files` folder alongside the other exported CSVs
+
 ## [0.2.0] - 2026-07-06
 
 Automatic breathing-motion correction for the longitudinal view.
@@ -287,6 +299,7 @@ Now runs on PyQt6
 - Declared first stable release (after paper publication).
 - Updated citation from medRxiv to *Computer Methods and Programs in Biomedicine*.
 
+[0.3.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.1.0...v0.2.0
 [1.8.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.6.3...v1.7.0

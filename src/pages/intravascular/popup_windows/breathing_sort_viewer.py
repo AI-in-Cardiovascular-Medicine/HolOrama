@@ -617,5 +617,7 @@ class BreathingSortViewer(QMainWindow):
             return rows
 
         combined = pd.concat([_rows(self.dia_sorted), _rows(self.sys_sorted)], ignore_index=True)
-        out_path = os.path.splitext(self.main_window.file_name)[0] + '_combined_sorted_manual.csv'
+        csv_out_dir = self.main_window.file_name + '_csv_files'
+        os.makedirs(csv_out_dir, exist_ok=True)
+        out_path = os.path.join(csv_out_dir, 'combined_sorted_manual.csv')
         combined.to_csv(out_path, index=False)
