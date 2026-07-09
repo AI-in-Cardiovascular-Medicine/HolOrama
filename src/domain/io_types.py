@@ -83,3 +83,12 @@ class MetaDataCCTA:
     model: str = 'Unknown'
     raw_tags: dict = field(default_factory=dict)  # all remaining DICOM / NIfTI tags
     ...
+
+
+@dataclass
+class MetaDataFusion:
+    modality: str = 'Fusion'
+    patient_name: str = 'Unknown'
+    birthdate: str = 'Unknown'
+    sex: str = 'Unknown'
+    ...
