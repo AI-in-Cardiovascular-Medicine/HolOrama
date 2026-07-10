@@ -160,3 +160,8 @@ class Master(QMainWindow):
         for page, btn in self._nav_btns.items():
             btn.setChecked(page == active)
         self.active_page = active
+
+    def closeEvent(self, event) -> None:
+        self.ccta_page.shutdown()
+        self.fusion_page.shutdown()
+        super().closeEvent(event)
