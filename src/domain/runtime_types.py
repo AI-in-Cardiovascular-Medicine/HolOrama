@@ -37,6 +37,7 @@ class FusionRuntimeData:
         self.centerline_lca: Any | None = None
         self.results: dict | None = None  # multimodars "results" dict (mesh, *_points, ...)
         self.vessel_tree: Any | None = None  # PyDiscretizedVesselTree
+        self.selected_rca_reference_index: int = 0  # index into vessel_tree.rca_references
 
         # -- Column 2: intravascular alignment -------------------------------------------
         self.iv_geometry_pair: Any | None = None  # PyGeometryPair from from_file_singlepair

@@ -67,6 +67,9 @@ class FusionPage(QWidget):
         gc.run_prepare_centerlines_requested.connect(self._on_run_prepare_centerlines)
         gc.run_discretize_tree_requested.connect(self._on_run_discretize_tree)
 
+        self.left_half.tree_toolbar.reference_selected.connect(self._select_rca_reference)
+        self.left_half.viewer.point_picked.connect(self._on_point_picked)
+
         ic = self.right_half.intravascular_column
         ic.run_load_requested.connect(self._on_run_load_pullback)
         ic.run_align_requested.connect(self._on_run_align)
@@ -172,18 +175,43 @@ class FusionPage(QWidget):
             return
         self.data.vessel_tree = tree
 
-        try:
-            ref_points = tree.rca_references[0]
-            self.right_half.intravascular_column.set_reference_points(ref_points[0], ref_points[1], ref_points[2])
-        except (IndexError, AttributeError):
-            logger.warning('Vessel tree has no rca_references — cannot populate alignment reference points.')
-
-        branch_labels = ['RCA main'] + [f'RCA branch {i + 1}' for i in range(len(tree.rca_branches))]
-        branch_labels += ['LCA main'] + [f'LCA branch {i + 1}' for i in range(len(tree.lca_branches))]
-        self.left_half.tree_toolbar.set_branches(branch_labels)
+        reference_labels = ['RCA ostium'] + [f'RCA branch {i}' for i in range(1, len(tree.rca_references))]
+        self.left_half.tree_toolbar.set_references(reference_labels)
 
         self._refresh_tree_scene()
+        self._select_rca_reference(0)
         self.left_half.show_scene(FusionScene.VESSEL_TREE)
+
+    def _select_rca_reference(self, index: int) -> None:
+        """Apply reference triplet `index` (chosen via the dropdown or a scene click) as
+        the alignment reference points, and highlight it in the viewer."""
+        tree = self.data.vessel_tree
+        if tree is None:
+            return
+        try:
+            triplet = tree.rca_references[index]
+        except IndexError:
+            logger.warning(f'Vessel tree has no rca_references[{index}].')
+            return
+        self.data.selected_rca_reference_index = index
+        self.right_half.intravascular_column.set_reference_points(triplet[0], triplet[1], triplet[2])
+        self.left_half.tree_toolbar.set_selected_index(index)
+        self.left_half.viewer.add_points(
+            FusionScene.VESSEL_TREE, 'selected_reference', np.array(triplet), color=(255, 255, 255), size=14.0
+        )
+
+    def _on_point_picked(self, x: float, y: float, z: float, scene_value: str) -> None:
+        if scene_value != FusionScene.VESSEL_TREE.value or self.data.vessel_tree is None:
+            return
+        picked = np.array([x, y, z])
+        best_index, best_dist = 0, float('inf')
+        for i, triplet in enumerate(self.data.vessel_tree.rca_references):
+            for pt in triplet:
+                dist = float(np.linalg.norm(np.array(pt) - picked))
+                if dist < best_dist:
+                    best_dist = dist
+                    best_index = i
+        self._select_rca_reference(best_index)
 
     def _refresh_geometry_scene(self) -> None:
         """Recreate multimodars' plot_results_key (its label_geometry/label_anomalous_region
@@ -260,8 +288,6 @@ class FusionPage(QWidget):
                     size=10.0,
                 )
 
-        self.left_half.refresh_toolbar(FusionScene.VESSEL_TREE)
-
     # ------------------------------------------------------------------
     # Column 2: intravascular alignment
     # ------------------------------------------------------------------
@@ -296,7 +322,7 @@ class FusionPage(QWidget):
         assert vessel_tree is not None and centerline_rca is not None and results is not None
 
         try:
-            ref_points = vessel_tree.rca_references[0]
+            ref_points = vessel_tree.rca_references[self.data.selected_rca_reference_index]
             rca_cl_main = centerline_rca.get_branch(ic.branch_index())
         except (IndexError, AttributeError) as e:
             ErrorMessage(self, f'Could not resolve reference points / branch: {e}')

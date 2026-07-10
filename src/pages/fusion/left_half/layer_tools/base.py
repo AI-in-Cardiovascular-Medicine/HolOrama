@@ -1,9 +1,11 @@
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QSlider,
     QVBoxLayout,
     QWidget,
@@ -11,13 +13,20 @@ from PyQt6.QtWidgets import (
 
 from domain.fusion_types import FusionScene
 
+# Caps the toolbar's height regardless of how many layer rows it holds, so a scene
+# with many layers (CCTA_GEOMETRY can have a dozen) never pushes the 3-D viewer down —
+# the layer list scrolls internally within this budget instead.
+_LAYERS_MAX_HEIGHT = 90
+_TOOLBAR_MAX_HEIGHT = 110
+
 
 class SceneToolbar(QWidget):
     """Toolbar shown above the 3-D viewer for one FusionScene tab.
 
-    Provides the controls every scene needs (per-layer visibility + opacity,
-    point picking, reset camera). Subclasses add scene-specific extras by
-    passing extra_rows — see geometry_tools.py / alignment_tools.py / tree_tools.py.
+    Provides the controls every scene needs (point picking, reset camera) and,
+    when show_layers=True, a per-layer visibility/opacity list capped to a fixed,
+    internally-scrolling height. Subclasses add scene-specific extras by passing
+    extra_rows — see geometry_tools.py / alignment_tools.py / tree_tools.py.
     """
 
     layer_visibility_changed = pyqtSignal(str, bool)  # layer key, visible
@@ -25,18 +34,35 @@ class SceneToolbar(QWidget):
     pick_mode_toggled = pyqtSignal(bool)
     reset_camera_requested = pyqtSignal()
 
-    def __init__(self, scene: FusionScene, extra_rows: list[QWidget] | None = None, parent=None) -> None:
+    def __init__(
+        self,
+        scene: FusionScene,
+        extra_rows: list[QWidget] | None = None,
+        show_layers: bool = True,
+        parent=None,
+    ) -> None:
         super().__init__(parent)
         self.scene = scene
+        self._show_layers = show_layers
+        self.setMaximumHeight(_TOOLBAR_MAX_HEIGHT)
 
         root = QHBoxLayout(self)
         root.setContentsMargins(6, 4, 6, 4)
         root.setSpacing(8)
 
-        self._layers_box = QVBoxLayout()
         self._layer_rows: dict[str, tuple[QCheckBox, QSlider]] = {}
-        root.addLayout(self._layers_box)
-        root.addStretch(1)
+        if show_layers:
+            self._layers_box = QVBoxLayout()
+            layers_widget = QWidget()
+            layers_widget.setLayout(self._layers_box)
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+            scroll.setMaximumHeight(_LAYERS_MAX_HEIGHT)
+            scroll.setWidget(layers_widget)
+            root.addWidget(scroll, 1)
+        else:
+            root.addStretch(1)
 
         for row in extra_rows or []:
             root.addWidget(row)
@@ -52,7 +78,10 @@ class SceneToolbar(QWidget):
         root.addWidget(reset_btn)
 
     def refresh(self, layer_keys: list[str]) -> None:
-        """Rebuild the layer visibility/opacity rows for the current set of layers."""
+        """Rebuild the layer visibility/opacity rows for the current set of layers.
+        No-op when this toolbar was built with show_layers=False."""
+        if not self._show_layers:
+            return
         _clear_layout(self._layers_box)
         self._layer_rows.clear()
 

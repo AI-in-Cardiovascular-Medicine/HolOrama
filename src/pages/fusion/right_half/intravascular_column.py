@@ -100,8 +100,10 @@ class IntravascularColumn(QWidget):
         layout.addLayout(_row('Angle range (deg):', self._angle_range))
 
         self._write = QCheckBox('Write intermediate files')
+        self._write.setChecked(True)
         self._watertight = QCheckBox('Watertight')
         self._align_wall_anomalous = QCheckBox('Align anomalous wall')
+        self._align_wall_anomalous.setChecked(True)
         layout.addWidget(self._write)
         layout.addWidget(self._watertight)
         layout.addWidget(self._align_wall_anomalous)

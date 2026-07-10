@@ -81,7 +81,7 @@ class GeometryColumn(QWidget):
 
         self._n_points_intramural = QSpinBox()
         self._n_points_intramural.setRange(1, 1000)
-        self._n_points_intramural.setValue(120)
+        self._n_points_intramural.setValue(100)
         layout.addLayout(_row('Intramural points:', self._n_points_intramural))
 
         self._bounding_sphere_radius = QDoubleSpinBox()
@@ -121,6 +121,7 @@ class GeometryColumn(QWidget):
         layout.addLayout(_row('Points per contour:', self._n_points_tree))
 
         self._b_spline = QCheckBox('B-spline smoothing')
+        self._b_spline.setChecked(True)
         layout.addWidget(self._b_spline)
 
         self._bspline_smoothing = QDoubleSpinBox()

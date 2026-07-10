@@ -98,6 +98,11 @@ class FusionColumn(QWidget):
 
         self._prox_start_mode = QComboBox()
         self._prox_start_mode.addItems(['nearest_iv', 'highest_z'])
+        # 'highest_z' is the documented default for anomalous-RCA cases (the intramural
+        # segment removal leaves the proximal IV ring needing to seat against the
+        # highest point of the aortic cut, not the nearest one — 'nearest_iv' silently
+        # reverses the proximal stitch order for these cases).
+        self._prox_start_mode.setCurrentText('highest_z')
         layout.addLayout(_row('Proximal start mode:', self._prox_start_mode))
 
         self._dist_start_mode = QComboBox()
@@ -131,6 +136,7 @@ class FusionColumn(QWidget):
         layout.addLayout(_row('Iterations:', self._remesh_iterations))
 
         self._remesh_verbose = QCheckBox('Verbose')
+        self._remesh_verbose.setChecked(True)
         layout.addWidget(self._remesh_verbose)
 
         remesh_btn = QPushButton('Fix && Remesh')
