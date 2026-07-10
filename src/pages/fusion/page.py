@@ -4,7 +4,6 @@ import numpy as np
 from loguru import logger
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QApplication,
     QFileDialog,
     QHBoxLayout,
     QProgressDialog,
@@ -18,6 +17,7 @@ from domain.fusion_types import FusionScene
 from domain.runtime_types import FusionRuntimeData
 from pages.fusion import colors, pipeline
 from pages.fusion.left_half.left_half import LeftHalf
+from pages.fusion.progress_worker import StdoutCapturingWorker
 from pages.fusion.right_half.right_half import RightHalf
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
@@ -28,6 +28,7 @@ class FusionPage(QWidget):
         self.config: SimpleNamespace = config
         self.status_bar = status_bar
         self.data = FusionRuntimeData()
+        self._remesh_worker: StdoutCapturingWorker | None = None
 
         self.left_half = LeftHalf(self)
         self.right_half = RightHalf(self)
@@ -47,6 +48,8 @@ class FusionPage(QWidget):
         self._connect_signals()
 
     def shutdown(self) -> None:
+        if self._remesh_worker is not None:
+            self._remesh_worker.wait()
         self.left_half.viewer.shutdown()
 
     # ------------------------------------------------------------------
@@ -110,23 +113,6 @@ class FusionPage(QWidget):
             return None
         self.status_bar.showMessage(done_message)
         return result
-
-    def _run_with_progress(self, title: str, busy_message: str, done_message: str, fn, *args, **kwargs):
-        """Like _run(), plus an indeterminate busy dialog — for the one pipeline step
-        (fix_and_remesh_stitched_mesh) that isn't Rust-backed and can take several
-        seconds with no intermediate progress to report, unlike everything else here."""
-        progress = QProgressDialog(busy_message, '', 0, 0, self)
-        progress.setWindowTitle(title)
-        progress.setCancelButton(None)
-        progress.setMinimumDuration(0)
-        progress.setModal(True)
-        progress.show()
-        QApplication.processEvents()
-        QApplication.processEvents()  # second flush processes the paint event queued by show
-        try:
-            return self._run(busy_message, done_message, fn, *args, **kwargs)
-        finally:
-            progress.close()
 
     # ------------------------------------------------------------------
     # Column 1: CCTA geometry + centerlines
@@ -583,21 +569,40 @@ class FusionPage(QWidget):
         fc = self.right_half.fusion_column
         if not self._require(self.data.stitched is not None, 'Stitch the geometry first.'):
             return
+        if self._remesh_worker is not None and self._remesh_worker.isRunning():
+            return
         stitched = self.data.stitched
         assert stitched is not None
-        mesh = self._run_with_progress(
-            'Fix & Remesh',
-            'Fixing & remeshing… (pure-Python step, can take a few seconds)',
-            'Remeshed.',
-            pipeline.run_remesh,
-            stitched['mesh'],
-            **fc.remesh_kwargs(),
-        )
-        if mesh is None:
-            return
+
+        progress = QProgressDialog('Fixing & remeshing…', '', 0, 0, self)
+        progress.setWindowTitle('Fix & Remesh')
+        progress.setCancelButton(None)
+        progress.setMinimumDuration(0)
+        progress.setModal(True)
+        progress.show()
+        self.status_bar.showMessage('Fixing & remeshing…')
+
+        worker = StdoutCapturingWorker(pipeline.run_remesh, (stitched['mesh'],), fc.remesh_kwargs(), parent=self)
+        worker.line_printed.connect(progress.setLabelText)
+        worker.finished_ok.connect(lambda mesh: self._on_remesh_done(progress, mesh))
+        worker.failed.connect(lambda message: self._on_remesh_failed(progress, message))
+        self._remesh_worker = worker
+        worker.start()
+
+    def _on_remesh_done(self, progress: QProgressDialog, mesh) -> None:
+        progress.close()
+        self._remesh_worker = None
         self.data.final_mesh = mesh
         self.left_half.viewer.add_mesh(FusionScene.CCTA_GEOMETRY, 'final_mesh', mesh, color=(230, 230, 230))
         self.left_half.refresh_toolbar(FusionScene.CCTA_GEOMETRY)
+        self.status_bar.showMessage('Remeshed.')
+
+    def _on_remesh_failed(self, progress: QProgressDialog, message: str) -> None:
+        progress.close()
+        self._remesh_worker = None
+        logger.error(f'Fix & Remesh failed: {message}')
+        ErrorMessage(self, message)
+        self.status_bar.showMessage('Failed — see log')
 
     def _on_run_smooth(self) -> None:
         fc = self.right_half.fusion_column
