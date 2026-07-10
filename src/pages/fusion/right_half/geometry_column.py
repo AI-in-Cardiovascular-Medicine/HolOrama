@@ -81,7 +81,7 @@ class GeometryColumn(QWidget):
 
         self._n_points_intramural = QSpinBox()
         self._n_points_intramural.setRange(1, 1000)
-        self._n_points_intramural.setValue(100)
+        self._n_points_intramural.setValue(120)
         layout.addLayout(_row('Intramural points:', self._n_points_intramural))
 
         self._bounding_sphere_radius = QDoubleSpinBox()
