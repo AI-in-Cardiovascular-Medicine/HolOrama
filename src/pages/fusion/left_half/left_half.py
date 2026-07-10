@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import QTabWidget, QVBoxLayout
 
 from domain.fusion_types import FusionScene
 from pages.fusion.left_half.display_results import FusionViewer3D
-from pages.fusion.left_half.layer_tools.alignment_tools import AlignmentToolbar
+from pages.fusion.left_half.layer_tools.alignment_tools import AlignmentToolbar, IntravascularLoadedToolbar
 from pages.fusion.left_half.layer_tools.geometry_tools import GeometryToolbar
 from pages.fusion.left_half.layer_tools.tree_tools import TreeToolbar
 from pages.intravascular.utils.helpers import SplitterPane
@@ -22,12 +22,19 @@ class LeftHalf:
         self.viewer = FusionViewer3D()
 
         self.geometry_toolbar = GeometryToolbar()
+        self.intravascular_loaded_toolbar = IntravascularLoadedToolbar()
         self.alignment_toolbar = AlignmentToolbar()
         self.tree_toolbar = TreeToolbar()
 
-        self._scene_order = [FusionScene.CCTA_GEOMETRY, FusionScene.INTRAVASCULAR_ALIGNED, FusionScene.VESSEL_TREE]
+        self._scene_order = [
+            FusionScene.CCTA_GEOMETRY,
+            FusionScene.INTRAVASCULAR_LOADED,
+            FusionScene.INTRAVASCULAR_ALIGNED,
+            FusionScene.VESSEL_TREE,
+        ]
         self._toolbars = {
             FusionScene.CCTA_GEOMETRY: self.geometry_toolbar,
+            FusionScene.INTRAVASCULAR_LOADED: self.intravascular_loaded_toolbar,
             FusionScene.INTRAVASCULAR_ALIGNED: self.alignment_toolbar,
             FusionScene.VESSEL_TREE: self.tree_toolbar,
         }

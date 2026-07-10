@@ -311,6 +311,36 @@ class FusionPage(QWidget):
         self.data.iv_geometry_pair = geometry_pair
         self.data.iv_align_logs = align_logs
 
+        # Shown before centerline alignment so a bad final result can be traced back to
+        # whether it was already wrong here (dia/sys self-alignment) or introduced later.
+        self._add_geometry_pair_meshes(FusionScene.INTRAVASCULAR_LOADED, geometry_pair, 'raw_geom')
+        self.left_half.show_scene(FusionScene.INTRAVASCULAR_LOADED)
+
+    def _add_geometry_pair_meshes(self, scene: FusionScene, geometry_pair, key_prefix: str) -> None:
+        """Loft lumen + wall meshes for both cardiac phases of a PyGeometryPair into `scene`.
+        Used for both the pre-centerline-alignment (raw) and post-alignment scenes."""
+        viewer = self.left_half.viewer
+        for phase_key, geom, color in (
+            ('a', getattr(geometry_pair, 'geom_a', None), colors.DIASTOLE_COLOR),
+            ('b', getattr(geometry_pair, 'geom_b', None), colors.SYSTOLE_COLOR),
+        ):
+            if geom is None:
+                continue
+            key = f'{key_prefix}_{phase_key}'
+            try:
+                lumen_mesh = pipeline.frames_to_mesh(geom)
+            except Exception as e:
+                logger.warning(f'Could not loft a lumen mesh for {key}: {e}')
+            else:
+                viewer.add_mesh(scene, key, lumen_mesh, color=color, opacity=0.6)
+            try:
+                wall_mesh = pipeline.frames_to_mesh(geom, contour_type='Wall')
+            except Exception as e:
+                logger.warning(f'Could not loft a wall mesh for {key}: {e}')
+            else:
+                viewer.add_mesh(scene, f'{key}_wall', wall_mesh, color=(220, 220, 220), opacity=0.25)
+        self.left_half.refresh_toolbar(scene)
+
     def _on_run_align(self) -> None:
         ic = self.right_half.intravascular_column
         if not self._require(self.data.iv_geometry_pair is not None, 'Load a pullback first.'):
@@ -352,8 +382,7 @@ class FusionPage(QWidget):
             return
         self.data.aligned, self.data.resampled_centerline = result
 
-        viewer = self.left_half.viewer
-        viewer.add_points(
+        self.left_half.viewer.add_points(
             FusionScene.INTRAVASCULAR_ALIGNED,
             'resampled_centerline',
             np.array(self.data.resampled_centerline.points_as_tuples()),
@@ -363,20 +392,26 @@ class FusionPage(QWidget):
         # geom_a/geom_b are the two cardiac phases from from_file_singlepair's `labels`
         # kwarg (default aligned_dia/aligned_sys — see IntravascularColumn.load_kwargs) —
         # assumed diastole/systole in that order to match the app's existing color convention.
-        for key, geom, color in (
-            ('aligned_geom_a', getattr(self.data.aligned, 'geom_a', None), colors.DIASTOLE_COLOR),
-            ('aligned_geom_b', getattr(self.data.aligned, 'geom_b', None), colors.SYSTOLE_COLOR),
-        ):
-            if geom is None:
-                continue
-            try:
-                mesh = pipeline.frames_to_mesh(geom)
-            except Exception as e:
-                logger.warning(f'Could not loft a mesh for {key}: {e}')
-                continue
-            viewer.add_mesh(FusionScene.INTRAVASCULAR_ALIGNED, key, mesh, color=color, opacity=0.6)
-        self.left_half.refresh_toolbar(FusionScene.INTRAVASCULAR_ALIGNED)
+        self._add_geometry_pair_meshes(FusionScene.INTRAVASCULAR_ALIGNED, self.data.aligned, 'aligned_geom')
+        self._refresh_aligned_ccta_mesh()
         self.left_half.show_scene(FusionScene.INTRAVASCULAR_ALIGNED)
+
+    def _refresh_aligned_ccta_mesh(self) -> None:
+        """Overlay the unlabeled CCTA mesh (no region colors) in the Intravascular Aligned
+        scene, so the aligned IV geometry can be checked against it in place. Call again
+        whenever results['mesh'] changes (scaling, point removal) to keep it in sync —
+        only meaningful once alignment has happened, since that's what makes the two
+        geometries share a coordinate frame in the first place."""
+        if self.data.aligned is None or self.data.results is None or 'mesh' not in self.data.results:
+            return
+        self.left_half.viewer.add_mesh(
+            FusionScene.INTRAVASCULAR_ALIGNED,
+            'ccta_mesh',
+            self.data.results['mesh'],
+            color=(160, 160, 160),
+            opacity=0.35,
+        )
+        self.left_half.refresh_toolbar(FusionScene.INTRAVASCULAR_ALIGNED)
 
     # ------------------------------------------------------------------
     # Column 3: fusion
@@ -473,6 +508,7 @@ class FusionPage(QWidget):
             return
         self.data.results = results_out
         self._refresh_geometry_scene()
+        self._refresh_aligned_ccta_mesh()
 
     def _on_run_remove_points(self) -> None:
         fc = self.right_half.fusion_column
@@ -488,6 +524,7 @@ class FusionPage(QWidget):
         if results is not None:
             self.data.results = results
             self._refresh_geometry_scene()
+            self._refresh_aligned_ccta_mesh()
 
     def _on_run_stitch(self) -> None:
         fc = self.right_half.fusion_column
