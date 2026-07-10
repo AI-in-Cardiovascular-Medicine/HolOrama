@@ -172,6 +172,13 @@ class FusionViewer3D(QWidget):
         actor.GetProperty().SetPointSize(size)
 
     def _add_actor(self, scene, key, mapper, color, opacity, visible) -> vtkActor:
+        # Empty *before* this add → this is the scene's first-ever layer, so the camera
+        # is still wherever it was left (possibly not even pointed at the origin) and
+        # nothing would be visible until a manual Reset View. Auto-fit just this once;
+        # later re-adds/updates to an already-populated scene must NOT re-fit, or every
+        # button click while the user has zoomed in would yank the camera back out.
+        is_first_layer_in_scene = not self._scenes[scene].layers
+
         self.remove_layer(scene, key)
         actor = vtkActor()
         actor.SetMapper(mapper)
@@ -181,6 +188,8 @@ class FusionViewer3D(QWidget):
         actor.SetVisibility(int(visible and scene == self._current_scene))
         self._ren.AddActor(actor)
         self._scenes[scene].layers[key] = _Layer(actor=actor, visible=visible, opacity=opacity, color=color)
+        if is_first_layer_in_scene and scene == self._current_scene:
+            self._ren.ResetCamera()
         self._vtk_widget.GetRenderWindow().Render()
         return actor
 
@@ -212,8 +221,10 @@ class FusionViewer3D(QWidget):
         if scene == self._current_scene:
             self._vtk_widget.GetRenderWindow().Render()
 
-    def layer_keys(self, scene: FusionScene) -> list[str]:
-        return list(self._scenes[scene].layers)
+    def layer_states(self, scene: FusionScene) -> dict[str, tuple[bool, float]]:
+        """(visible, opacity) per layer key — lets a toolbar initialize its checkboxes/
+        sliders to what's actually on screen instead of always assuming visible/100%."""
+        return {key: (layer.visible, layer.opacity) for key, layer in self._scenes[scene].layers.items()}
 
     # ------------------------------------------------------------------
     # Scene switching

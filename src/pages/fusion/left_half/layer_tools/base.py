@@ -77,23 +77,25 @@ class SceneToolbar(QWidget):
         reset_btn.clicked.connect(self.reset_camera_requested.emit)
         root.addWidget(reset_btn)
 
-    def refresh(self, layer_keys: list[str]) -> None:
-        """Rebuild the layer visibility/opacity rows for the current set of layers.
-        No-op when this toolbar was built with show_layers=False."""
+    def refresh(self, layer_states: dict[str, tuple[bool, float]]) -> None:
+        """Rebuild the layer visibility/opacity rows for the current set of layers,
+        initializing each checkbox/slider to that layer's actual (visible, opacity) —
+        not a fixed assumed default, since layers can be added at less than 100% opacity
+        (e.g. a translucent base mesh). No-op when built with show_layers=False."""
         if not self._show_layers:
             return
         _clear_layout(self._layers_box)
         self._layer_rows.clear()
 
-        for key in layer_keys:
+        for key, (visible, opacity) in layer_states.items():
             row = QHBoxLayout()
             box = QCheckBox(key.replace('_', ' ').title())
-            box.setChecked(True)
+            box.setChecked(visible)
             box.toggled.connect(lambda checked, k=key: self.layer_visibility_changed.emit(k, checked))
 
             slider = QSlider(Qt.Orientation.Horizontal)
             slider.setRange(0, 100)
-            slider.setValue(100)
+            slider.setValue(round(opacity * 100))
             slider.setFixedWidth(80)
             slider.valueChanged.connect(lambda value, k=key: self.layer_opacity_changed.emit(k, value / 100.0))
 

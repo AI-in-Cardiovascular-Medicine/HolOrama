@@ -68,7 +68,7 @@ class LeftHalf:
 
     def refresh_toolbar(self, scene: FusionScene) -> None:
         """Call after adding/removing layers in a scene so its checkbox list stays in sync."""
-        self._toolbars[scene].refresh(self.viewer.layer_keys(scene))
+        self._toolbars[scene].refresh(self.viewer.layer_states(scene))
 
     def show_scene(self, scene: FusionScene) -> None:
         self.tabs.setCurrentIndex(self._scene_order.index(scene))
