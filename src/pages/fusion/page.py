@@ -547,10 +547,11 @@ class FusionPage(QWidget):
         if stitched is None:
             return
         self.data.stitched = stitched
-        self.left_half.viewer.add_mesh(
-            FusionScene.CCTA_GEOMETRY, 'stitched_mesh', stitched['mesh'], color=(230, 180, 60)
-        )
+        viewer = self.left_half.viewer
+        viewer.add_mesh(FusionScene.CCTA_GEOMETRY, 'stitched_mesh', stitched['mesh'], color=(230, 180, 60))
+        viewer.isolate_layer(FusionScene.CCTA_GEOMETRY, 'stitched_mesh')
         self.left_half.refresh_toolbar(FusionScene.CCTA_GEOMETRY)
+        self.left_half.show_scene(FusionScene.CCTA_GEOMETRY)
 
     def _on_run_remesh(self) -> None:
         fc = self.right_half.fusion_column

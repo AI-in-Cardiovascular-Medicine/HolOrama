@@ -212,6 +212,17 @@ class FusionViewer3D(QWidget):
             layer.actor.SetVisibility(int(visible))
             self._vtk_widget.GetRenderWindow().Render()
 
+    def isolate_layer(self, scene: FusionScene, key: str) -> None:
+        """Hide every layer in `scene` except `key`. Updates each layer's stored .visible
+        flag (not just actor visibility), so a subsequent toolbar refresh shows the right
+        layer checked and everything else unchecked."""
+        for k, layer in self._scenes[scene].layers.items():
+            layer.visible = k == key
+            if scene == self._current_scene:
+                layer.actor.SetVisibility(int(layer.visible))
+        if scene == self._current_scene:
+            self._vtk_widget.GetRenderWindow().Render()
+
     def set_layer_opacity(self, scene: FusionScene, key: str, opacity: float) -> None:
         layer = self._scenes[scene].layers.get(key)
         if layer is None:

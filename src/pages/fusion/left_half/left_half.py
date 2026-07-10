@@ -28,9 +28,9 @@ class LeftHalf:
 
         self._scene_order = [
             FusionScene.CCTA_GEOMETRY,
+            FusionScene.VESSEL_TREE,
             FusionScene.INTRAVASCULAR_LOADED,
             FusionScene.INTRAVASCULAR_ALIGNED,
-            FusionScene.VESSEL_TREE,
         ]
         self._toolbars = {
             FusionScene.CCTA_GEOMETRY: self.geometry_toolbar,
