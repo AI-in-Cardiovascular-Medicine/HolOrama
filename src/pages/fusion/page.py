@@ -3,7 +3,16 @@ from types import SimpleNamespace
 import numpy as np
 from loguru import logger
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QFileDialog, QHBoxLayout, QPushButton, QSplitter, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QHBoxLayout,
+    QProgressDialog,
+    QPushButton,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
+)
 
 from domain.fusion_types import FusionScene
 from domain.runtime_types import FusionRuntimeData
@@ -101,6 +110,23 @@ class FusionPage(QWidget):
             return None
         self.status_bar.showMessage(done_message)
         return result
+
+    def _run_with_progress(self, title: str, busy_message: str, done_message: str, fn, *args, **kwargs):
+        """Like _run(), plus an indeterminate busy dialog — for the one pipeline step
+        (fix_and_remesh_stitched_mesh) that isn't Rust-backed and can take several
+        seconds with no intermediate progress to report, unlike everything else here."""
+        progress = QProgressDialog(busy_message, '', 0, 0, self)
+        progress.setWindowTitle(title)
+        progress.setCancelButton(None)
+        progress.setMinimumDuration(0)
+        progress.setModal(True)
+        progress.show()
+        QApplication.processEvents()
+        QApplication.processEvents()  # second flush processes the paint event queued by show
+        try:
+            return self._run(busy_message, done_message, fn, *args, **kwargs)
+        finally:
+            progress.close()
 
     # ------------------------------------------------------------------
     # Column 1: CCTA geometry + centerlines
@@ -559,8 +585,13 @@ class FusionPage(QWidget):
             return
         stitched = self.data.stitched
         assert stitched is not None
-        mesh = self._run(
-            'Fixing && remeshing…', 'Remeshed.', pipeline.run_remesh, stitched['mesh'], **fc.remesh_kwargs()
+        mesh = self._run_with_progress(
+            'Fix & Remesh',
+            'Fixing & remeshing… (pure-Python step, can take a few seconds)',
+            'Remeshed.',
+            pipeline.run_remesh,
+            stitched['mesh'],
+            **fc.remesh_kwargs(),
         )
         if mesh is None:
             return
