@@ -441,21 +441,18 @@ class FusionPage(QWidget):
         ):
             return
 
+        # Read live from the spinboxes, not self.data.*_scaling — the user may have
+        # edited them by hand after Compute Scaling Factors filled in the defaults.
+        scaling = self.right_half.fusion_column.scaling_values()
+
         def _run():
             results = self.data.results
             centerline_rca = self.data.centerline_rca
             centerline_aorta = self.data.centerline_aorta
-            distal_scaling = self.data.distal_scaling
-            aortic_scaling = self.data.aortic_scaling
-            prox_scaling = self.data.prox_scaling
-            assert (
-                results is not None
-                and centerline_rca is not None
-                and centerline_aorta is not None
-                and distal_scaling is not None
-                and aortic_scaling is not None
-                and prox_scaling is not None
-            )
+            assert results is not None and centerline_rca is not None and centerline_aorta is not None
+            distal_scaling = scaling['distal_scaling']
+            aortic_scaling = scaling['aortic_scaling']
+            prox_scaling = scaling['proximal_scaling']
             mesh = results['mesh']
 
             scaled = pipeline.run_scale_region(mesh, results['distal_points'], centerline_rca, distal_scaling)

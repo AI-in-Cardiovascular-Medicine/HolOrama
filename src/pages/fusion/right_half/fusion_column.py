@@ -59,16 +59,24 @@ class FusionColumn(QWidget):
     def _build_scaling_group(self) -> QGroupBox:
         box = QGroupBox('Scaling Factors')
         layout = QVBoxLayout(box)
-        self._scaling_labels = {
-            'proximal_scaling': QLabel('Proximal: —'),
-            'distal_scaling': QLabel('Distal: —'),
-            'aortic_scaling': QLabel('Aortic: —'),
-            'aortic_wall_scaling': QLabel('Aortic wall: —'),
-        }
-        for lbl in self._scaling_labels.values():
-            layout.addWidget(lbl)
+
+        self._scaling_spinboxes: dict[str, QDoubleSpinBox] = {}
+        for key, text in [
+            ('proximal_scaling', 'Proximal (mm):'),
+            ('distal_scaling', 'Distal (mm):'),
+            ('aortic_scaling', 'Aortic (mm):'),
+            ('aortic_wall_scaling', 'Aortic wall (mm):'),
+        ]:
+            spin = QDoubleSpinBox()
+            spin.setRange(-20.0, 20.0)
+            spin.setDecimals(3)
+            spin.setSingleStep(0.05)
+            spin.setToolTip('Auto-filled by "Compute Scaling Factors" — adjust freely before applying.')
+            self._scaling_spinboxes[key] = spin
+            layout.addLayout(_row(text, spin))
 
         compute_btn = QPushButton('Compute Scaling Factors')
+        compute_btn.setToolTip('Fills in the fields above; you can still edit them by hand afterward.')
         compute_btn.clicked.connect(self.run_compute_scaling_requested.emit)
         layout.addWidget(compute_btn)
 
@@ -173,14 +181,19 @@ class FusionColumn(QWidget):
         self.export_requested.emit(path)
 
     def set_scaling_results(self, results: dict[str, float]) -> None:
-        for key, label in self._scaling_labels.items():
+        """Fill in the computed values — the user can still edit them afterward."""
+        for key, spin in self._scaling_spinboxes.items():
             value = results.get(key)
-            prefix = label.text().split(':', 1)[0]
-            label.setText(f'{prefix}: {value:.3f} mm' if value is not None else f'{prefix}: —')
+            if value is not None:
+                spin.setValue(value)
 
     # ------------------------------------------------------------------
     # Param getters
     # ------------------------------------------------------------------
+
+    def scaling_values(self) -> dict[str, float]:
+        """Current scaling values — reflects manual edits, not just the last computed result."""
+        return {key: spin.value() for key, spin in self._scaling_spinboxes.items()}
 
     def remove_point_keys(self) -> list[str]:
         keys = []
