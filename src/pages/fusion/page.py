@@ -232,8 +232,15 @@ class FusionPage(QWidget):
             ('centerline_lca', self.data.centerline_lca),
         ):
             if cl is not None:
-                viewer.add_polyline(
-                    FusionScene.CCTA_GEOMETRY, key, np.array(cl.points_as_tuples()), color=colors.CENTERLINE_COLORS[key]
+                # Points, not a polyline: points_as_tuples() concatenates every branch back
+                # to back, so connecting them sequentially draws spurious lines jumping
+                # between branches. Loose points also make it easy to eyeball point spacing.
+                viewer.add_points(
+                    FusionScene.CCTA_GEOMETRY,
+                    key,
+                    np.array(cl.points_as_tuples()),
+                    color=colors.CENTERLINE_COLORS[key],
+                    size=4.0,
                 )
         self.left_half.refresh_toolbar(FusionScene.CCTA_GEOMETRY)
 
@@ -345,11 +352,12 @@ class FusionPage(QWidget):
         self.data.aligned, self.data.resampled_centerline = result
 
         viewer = self.left_half.viewer
-        viewer.add_polyline(
+        viewer.add_points(
             FusionScene.INTRAVASCULAR_ALIGNED,
             'resampled_centerline',
             np.array(self.data.resampled_centerline.points_as_tuples()),
             color=(0, 200, 0),
+            size=4.0,
         )
         # geom_a/geom_b are the two cardiac phases from from_file_singlepair's `labels`
         # kwarg (default aligned_dia/aligned_sys — see IntravascularColumn.load_kwargs) —
