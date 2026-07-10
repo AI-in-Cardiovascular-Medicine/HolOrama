@@ -177,6 +177,11 @@ class GeometryColumn(QWidget):
             'bspline_smoothing': self._bspline_smoothing.value(),
         }
 
+    def is_anomalous(self) -> bool:
+        """Whether either coronary was marked anomalous — drives align_wall_anomalous
+        in column 2 automatically instead of a separate manual toggle there."""
+        return self._anomalous_rca.isChecked() or self._anomalous_lca.isChecked()
+
 
 def _row(label: str, widget: QWidget) -> QHBoxLayout:
     layout = QHBoxLayout()

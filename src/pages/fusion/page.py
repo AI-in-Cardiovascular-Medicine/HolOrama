@@ -345,6 +345,7 @@ class FusionPage(QWidget):
             ref_points[1],
             ref_points[2],
             results.get('rca_points', []),
+            align_wall_anomalous=self.right_half.geometry_column.is_anomalous(),
             **ic.align_kwargs(),
         )
         if result is None:

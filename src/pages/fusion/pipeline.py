@@ -101,14 +101,21 @@ def run_from_file_singlepair(
     input_path: str,
     labels: list[str],
     *,
+    step_rotation_deg: float = 0.5,
+    sample_size: int = 500,
+    n_points: int = 20,
     output_path: str = 'output/singlepair',
     watertight: bool = True,
     write_obj: bool = True,
     smooth: bool = True,
 ) -> tuple[Any, tuple[Any, Any]]:
+    # image_center isn't exposed in the UI — always the library default (4.5, 4.5) mm.
     return mm.from_file_singlepair(
         input_path=input_path,
         labels=labels,
+        step_rotation_deg=step_rotation_deg,
+        sample_size=sample_size,
+        n_points=n_points,
         output_path=output_path,
         watertight=watertight,
         write_obj=write_obj,

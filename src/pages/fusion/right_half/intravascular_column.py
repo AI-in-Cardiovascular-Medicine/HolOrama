@@ -69,6 +69,27 @@ class IntravascularColumn(QWidget):
         out_row.addWidget(self._output_path_edit, 1)
         layout.addLayout(out_row)
 
+        self._step_rotation = QDoubleSpinBox()
+        self._step_rotation.setRange(0.01, 45.0)
+        self._step_rotation.setSingleStep(0.1)
+        self._step_rotation.setValue(0.5)
+        self._step_rotation.setToolTip(
+            'Rotation step (deg) for the coarse alignment search. Finer = more precise but slower.'
+        )
+        layout.addLayout(_row('Step rotation (deg):', self._step_rotation))
+
+        self._sample_size = QSpinBox()
+        self._sample_size.setRange(1, 100000)
+        self._sample_size.setValue(500)
+        self._sample_size.setToolTip('Number of points each frame is downsampled to before alignment.')
+        layout.addLayout(_row('Sample size:', self._sample_size))
+
+        self._n_points = QSpinBox()
+        self._n_points.setRange(3, 1000)
+        self._n_points.setValue(20)
+        self._n_points.setToolTip('Number of points on the synthetic catheter contour (not the lumen contour).')
+        layout.addLayout(_row('Catheter points:', self._n_points))
+
         load_btn = QPushButton('Load Pullback')
         load_btn.clicked.connect(self.run_load_requested.emit)
         layout.addWidget(load_btn)
@@ -99,14 +120,11 @@ class IntravascularColumn(QWidget):
         self._angle_range.setValue(30.0)
         layout.addLayout(_row('Angle range (deg):', self._angle_range))
 
-        self._write = QCheckBox('Write intermediate files')
-        self._write.setChecked(True)
+        # No "write intermediate files" toggle — align never writes them in this app.
+        # No "align anomalous wall" toggle either — it's driven automatically by
+        # whether Anomalous RCA/LCA is checked in column 1 (see FusionPage._on_run_align).
         self._watertight = QCheckBox('Watertight')
-        self._align_wall_anomalous = QCheckBox('Align anomalous wall')
-        self._align_wall_anomalous.setChecked(True)
-        layout.addWidget(self._write)
         layout.addWidget(self._watertight)
-        layout.addWidget(self._align_wall_anomalous)
 
         out_row = QHBoxLayout()
         self._align_output_dir = QLineEdit('output/aligned')
@@ -143,6 +161,9 @@ class IntravascularColumn(QWidget):
             'input_path': self._input_path_edit.text(),
             'labels': [self._label_dia_edit.text(), self._label_sys_edit.text()],
             'output_path': self._output_path_edit.text(),
+            'step_rotation_deg': self._step_rotation.value(),
+            'sample_size': self._sample_size.value(),
+            'n_points': self._n_points.value(),
         }
 
     def branch_index(self) -> int:
@@ -151,10 +172,8 @@ class IntravascularColumn(QWidget):
     def align_kwargs(self) -> dict:
         return {
             'angle_range_deg': self._angle_range.value(),
-            'write': self._write.isChecked(),
             'watertight': self._watertight.isChecked(),
             'output_dir': self._align_output_dir.text(),
-            'align_wall_anomalous': self._align_wall_anomalous.isChecked(),
         }
 
 
