@@ -35,7 +35,7 @@ dependencies = [
     "torchvision==0.19.0+cu118",
     "vtk",
     "nibabel",
-    "multimodars[meshlab]",
+    "multimodars[meshlab]>=0.5.2"
 ]
 
 [dependency-groups]
