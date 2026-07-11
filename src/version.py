@@ -1,4 +1,4 @@
-__version__ = '0.3.0'
+__version__ = '0.4.0'
 version_file_str = '_'.join(__version__.split('.'))  # version format suitable to be used in filenames
 
 # HolOrama restarted version numbering at 0.1.0 after being renamed from AIVUS-CAA (last AIVUS-CAA

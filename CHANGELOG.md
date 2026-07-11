@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-07-11
+
+New Fusion page: aligns an intravascular pullback onto a labelled CCTA vessel tree and stitches them into one combined mesh.
+
+### Added
+- Fusion page with its own 3D viewer, tabbed by scene (CCTA Geometry, Vessel Tree, Intravascular Loaded, Intravascular Aligned), each with per-layer visibility/opacity controls
+- Pipeline runs through label_geometry, vessel tree discretization, intravascular alignment, scaling, stitching, and remeshing, using the `multimodars` package
+- Alignment reference point can be picked either from a dropdown or by clicking it directly in the 3D scene
+- Scaling factors are computed automatically but stay editable before applying
+- Live progress dialog for the remesh step (the one part of the pipeline slow enough to need one)
+
 ## [0.3.0] - 2026-07-07
 
 Undo support for contour and mask edits, plus breathing-sort fixes.
@@ -299,6 +310,7 @@ Now runs on PyQt6
 - Declared first stable release (after paper publication).
 - Updated citation from medRxiv to *Computer Methods and Programs in Biomedicine*.
 
+[0.4.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.1.0...v0.2.0
 [1.8.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.7.0...v1.8.0
