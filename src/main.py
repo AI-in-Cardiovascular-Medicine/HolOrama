@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import yaml
+from loguru import logger as loguru_logger
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 import qdarktheme
@@ -29,6 +30,7 @@ logging.basicConfig(
     ],
 )
 log = logging.getLogger(__name__)
+loguru_logger.add(LOG_FILE, level="DEBUG", format="{time:YYYY-MM-DD HH:mm:ss} [{level}] {name}: {message}")
 
 
 def _cleanup_empty_log():
