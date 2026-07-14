@@ -395,9 +395,19 @@ class CctaPage(QWidget):
         snapshot = self.data.mask_undo.pop()
         if snapshot is None:
             return
-        self._apply_mask(snapshot)
+        self._apply_mask_edit(snapshot)
         self._mask_dirty = True
         self.status_bar.showMessage('Mask edit undone')
+
+    def _apply_mask_edit(self, mask: np.ndarray) -> None:
+        """Swap in mask voxel data for an undo, same as a brush stroke or lasso erase
+        would: update the shared array without touching label visibility, custom colors,
+        or names (unlike _apply_mask, which is for loading a genuinely new mask)."""
+        self.data.mask = mask
+        for display in (self._axial, self._coronal, self._sagittal):
+            display.update_mask_data(mask)
+        if self.data.voxel_spacing is not None:
+            self._3d_viewer.update_mask_data(mask, self.data.voxel_spacing)
 
     def _on_mask_alpha_changed(self, alpha: float) -> None:
         for display in (self._axial, self._coronal, self._sagittal):

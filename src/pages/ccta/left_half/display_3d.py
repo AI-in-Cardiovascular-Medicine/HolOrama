@@ -131,6 +131,15 @@ class CctaViewer3D(QWidget):
         self._custom_colors = None
         self.clear_mesh()
 
+    def update_mask_data(self, mask: np.ndarray, voxel_spacing: tuple[float, float, float] | None = None) -> None:
+        """Swap in new voxel data for the same label set (undo/redo of a brush or lasso
+        edit) without resetting per-label visibility or custom colors. Regenerates the
+        mesh in place, preserving the camera, if one was already rendered."""
+        self._mask = mask
+        if voxel_spacing is not None:
+            self._voxel_spacing = voxel_spacing
+        self._rebuild_active_actors()
+
     def set_label_colors(self, colors: list[tuple[int, int, int]]) -> None:
         self._custom_colors = list(colors)
         changed = False
@@ -412,7 +421,7 @@ class CctaViewer3D(QWidget):
         self.mask_about_to_change.emit()
         self._mask[z_idx[inside], y_idx[inside], x_idx[inside]] = 0
         self.mask_erased.emit()
-        self._rerender_after_erase()
+        self._rebuild_active_actors()
 
     def _project_world_batch(self, wx: np.ndarray, wy: np.ndarray, wz: np.ndarray) -> np.ndarray:
         """Vectorised world → VTK display-pixel projection. Returns (N, 2) float array."""
@@ -480,7 +489,10 @@ class CctaViewer3D(QWidget):
         actor.GetProperty().SetLineWidth(2)
         return actor
 
-    def _rerender_after_erase(self) -> None:
+    def _rebuild_active_actors(self) -> None:
+        """Regenerate the mesh for every currently-visible label from the current
+        `self._mask`, preserving the camera. No-op if nothing has been rendered yet
+        (the 3-D mesh is opt-in via the Render button)."""
         if not self._actors:
             return
         camera = self._ren.GetActiveCamera()

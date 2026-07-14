@@ -108,6 +108,13 @@ class CctaDisplay(QGraphicsView):
         self._rebuild_lut()
         self._render()
 
+    def update_mask_data(self, mask: np.ndarray) -> None:
+        """Swap in new voxel data for the same label set (undo/redo of a brush or lasso
+        edit) without resetting per-label visibility or custom colors."""
+        self._mask = mask
+        self._rebuild_lut()
+        self._render()
+
     def set_label_colors(self, colors: list[tuple[int, int, int]]) -> None:
         self._custom_colors = list(colors)
         if self._mask is not None:
