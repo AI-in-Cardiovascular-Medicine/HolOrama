@@ -70,6 +70,7 @@ class _StepSlider(QSlider):
 class BreathingSortViewer(QMainWindow):
     def __init__(self, main_window):
         super().__init__(main_window)
+        self.setWindowFlags(Qt.WindowType.Window)
         self.main_window = main_window
         cfg = main_window.config.display
         self.image_size = cfg.image_size

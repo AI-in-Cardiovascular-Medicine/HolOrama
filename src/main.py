@@ -49,7 +49,7 @@ class _InterceptHandler(logging.Handler):
 logging.basicConfig(handlers=[_InterceptHandler()], level=logging.WARNING)
 
 logger.remove()  # drop loguru's default stderr sink so console output is controlled below
-logger.add(LOG_FILE, level="DEBUG", format="{time:YYYY-MM-DD HH:mm:ss} [{level}] {name}: {message}")
+logger.add(LOG_FILE, level="ERROR", format="{time:YYYY-MM-DD HH:mm:ss} [{level}] {name}: {message}")
 logger.add(sys.stdout, level="WARNING", format="{time:YYYY-MM-DD HH:mm:ss} [{level}] {name}: {message}")
 
 
