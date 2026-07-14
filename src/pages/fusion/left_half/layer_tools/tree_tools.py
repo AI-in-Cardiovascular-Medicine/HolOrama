@@ -6,7 +6,7 @@ from pages.fusion.left_half.layer_tools.base import SceneToolbar, labeled
 
 
 class TreeToolbar(SceneToolbar):
-    """Toolbar for the Vessel Tree scene. There's nothing to show/hide here — the only
+    """Toolbar for the Vessel Tree scene. There's nothing to show/hide here, the only
     interaction is choosing which RCA reference-point triplet to align on, either from
     this dropdown or by clicking a reference marker in the scene (see
     FusionPage._on_point_picked), so show_layers is off."""
@@ -19,6 +19,7 @@ class TreeToolbar(SceneToolbar):
             FusionScene.VESSEL_TREE,
             extra_rows=[labeled('RCA reference:', self.reference_combo)],
             show_layers=False,
+            show_pick=True,
             parent=parent,
         )
         self.reference_combo.currentIndexChanged.connect(self._on_index_changed)

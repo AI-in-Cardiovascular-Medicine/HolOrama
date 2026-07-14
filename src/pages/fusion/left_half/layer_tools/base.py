@@ -14,8 +14,8 @@ from PyQt6.QtWidgets import (
 from domain.fusion_types import FusionScene
 
 # Caps the toolbar's height regardless of how many layer rows it holds, so a scene
-# with many layers (CCTA_GEOMETRY can have a dozen) never pushes the 3-D viewer down —
-# the layer list scrolls internally within this budget instead.
+# with many layers (CCTA_GEOMETRY can have a dozen) never pushes the 3-D viewer down.
+# The layer list scrolls internally within this budget instead.
 _LAYERS_MAX_HEIGHT = 90
 _TOOLBAR_MAX_HEIGHT = 110
 
@@ -23,10 +23,12 @@ _TOOLBAR_MAX_HEIGHT = 110
 class SceneToolbar(QWidget):
     """Toolbar shown above the 3-D viewer for one FusionScene tab.
 
-    Provides the controls every scene needs (point picking, reset camera) and,
-    when show_layers=True, a per-layer visibility/opacity list capped to a fixed,
-    internally-scrolling height. Subclasses add scene-specific extras by passing
-    extra_rows — see geometry_tools.py / alignment_tools.py / tree_tools.py.
+    Provides the controls every scene needs (reset camera) and, when show_layers=True,
+    a per-layer visibility/opacity list capped to a fixed, internally-scrolling height.
+    Point picking (show_pick=True) is only wired up end-to-end for the Vessel Tree scene
+    (see FusionPage._on_point_picked), so other scenes leave it off. Subclasses add
+    scene-specific extras by passing extra_rows — see geometry_tools.py /
+    alignment_tools.py / tree_tools.py.
     """
 
     layer_visibility_changed = pyqtSignal(str, bool)  # layer key, visible
@@ -39,6 +41,7 @@ class SceneToolbar(QWidget):
         scene: FusionScene,
         extra_rows: list[QWidget] | None = None,
         show_layers: bool = True,
+        show_pick: bool = False,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -67,11 +70,12 @@ class SceneToolbar(QWidget):
         for row in extra_rows or []:
             root.addWidget(row)
 
-        self.pick_btn = QPushButton('Pick Point')
-        self.pick_btn.setCheckable(True)
-        self.pick_btn.setToolTip('Click a point in the 3-D scene')
-        self.pick_btn.toggled.connect(self.pick_mode_toggled.emit)
-        root.addWidget(self.pick_btn)
+        if show_pick:
+            self.pick_btn = QPushButton('Pick Point')
+            self.pick_btn.setCheckable(True)
+            self.pick_btn.setToolTip('Click a point in the 3-D scene')
+            self.pick_btn.toggled.connect(self.pick_mode_toggled.emit)
+            root.addWidget(self.pick_btn)
 
         reset_btn = QPushButton('Reset View')
         reset_btn.clicked.connect(self.reset_camera_requested.emit)
