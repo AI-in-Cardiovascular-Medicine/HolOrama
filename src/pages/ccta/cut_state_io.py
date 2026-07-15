@@ -1,8 +1,11 @@
 """Persist the CCTA cut-geometry inputs (LVOT/aorta-top cut lines, the label
 choices they were cut with, and the RCA/LCA outlet points) as a JSON sidecar next
 to the case's other files — mirrors input_output/{input,output}/contours.py's
-versioned-sidecar convention (`{base}_..._{version}.json`, atomic write via a temp
-file + move, newest-by-mtime on load).
+versioned-sidecar convention: `{base}_..._{version}.json`, atomic write via a temp
+file + move, and picking the newest file by *parsing the version out of the
+filename* (input/contours.py's `_contour_file_sort_key`) rather than by mtime,
+which isn't preserved across a git checkout, backup restore, or plain file copy
+and could silently pick a stale sidecar.
 
 This only stores the *inputs* (lines/labels/points) — the cut mesh itself is cheap
 to rebuild from them (that's exactly what Build Cut Geometry already does), so
@@ -13,6 +16,7 @@ automatically rebuild the cut geometry right after a case's mask loads.
 import glob
 import json
 import os
+import re
 import shutil
 import tempfile
 
@@ -21,6 +25,19 @@ from loguru import logger
 from version import version_file_str
 
 _CutLine = tuple[tuple[int, int, int], tuple[int, int, int]]
+
+_CUTSTATE_FILENAME_RE = re.compile(r'_cutstate_(\d+)_(\d+)_(\d+)\.json$')
+
+
+def _cut_state_sort_key(path: str) -> tuple[int, int, int]:
+    """Sort key for candidate cut-state files: the (major, minor, patch) version
+    parsed from the filename, so e.g. 0_10_0 correctly sorts after 0_9_0 (a plain
+    string/mtime comparison would not)."""
+    match = _CUTSTATE_FILENAME_RE.search(os.path.basename(path))
+    if not match:
+        return (0, 0, 0)
+    major, minor, patch = match.groups()
+    return (int(major), int(minor), int(patch))
 
 
 def save_cut_state(
@@ -71,7 +88,7 @@ def load_cut_state(source_path: str) -> dict | None:
     if not matches:
         return None
 
-    newest = max(matches, key=os.path.getmtime)
+    newest = max(matches, key=_cut_state_sort_key)
     try:
         with open(newest) as f:
             state = json.load(f)

@@ -6,6 +6,8 @@ raw segmentation labels — it has its own render window, its own mask (the comb
 cut mask), and its own picking logic that only ever targets that mask.
 """
 
+from typing import cast
+
 import numpy as np
 import trimesh
 import vtkmodules.vtkInteractionStyle  # noqa: F401
@@ -25,7 +27,6 @@ from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from vtkmodules.util import numpy_support
 from vtkmodules.vtkCommonCore import vtkPoints
 from vtkmodules.vtkCommonDataModel import vtkCellArray, vtkPolyData
-from vtkmodules.vtkFiltersCore import vtkTriangleFilter
 from vtkmodules.vtkFiltersSources import vtkSphereSource
 from vtkmodules.vtkIOXML import vtkXMLPolyDataReader
 from vtkmodules.vtkInteractionStyle import vtkInteractorStyleTrackballCamera
@@ -41,28 +42,7 @@ from domain.ccta_display_types import (
     OUTLET_COLOR,
     RCA_POINT_COLOR,
 )
-
-
-def _mesh_to_polydata(mesh: trimesh.Trimesh) -> vtkPolyData:
-    """trimesh.Trimesh -> vtkPolyData (points + triangle cells). Duplicated from
-    pages/fusion/left_half/display_results.py rather than imported, per CCTA-only scope."""
-    pts = vtkPoints()
-    pts.SetData(numpy_support.numpy_to_vtk(np.ascontiguousarray(mesh.vertices, dtype=np.float64)))
-
-    faces = np.asarray(mesh.faces, dtype=np.int64)
-    cells = np.hstack([np.full((len(faces), 1), 3, dtype=np.int64), faces]).ravel()
-    id_array = numpy_support.numpy_to_vtkIdTypeArray(cells, deep=True)
-    cell_array = vtkCellArray()
-    cell_array.SetCells(len(faces), id_array)
-
-    poly = vtkPolyData()
-    poly.SetPoints(pts)
-    poly.SetPolys(cell_array)
-
-    tri = vtkTriangleFilter()
-    tri.SetInputData(poly)
-    tri.Update()
-    return tri.GetOutput()
+from pages.ccta.cut_geometry import mesh_to_vtk_polydata
 
 
 def _points_to_polydata(points: np.ndarray) -> vtkPolyData:
@@ -165,12 +145,12 @@ class CutGeometryViewer3D(QWidget):
         self._centerline_actors: dict[str, vtkActor] = {}  # 'ao'/'rca'/'lca' -> actor
         self._press_qt: QPoint = QPoint()
 
-        # Outlet point picking (Add RCA/LCA Outlet)
+        # Outlet point picking (Add RCA/LCA Outlet). Keyed by category ('rca'/'lca')
+        # instead of a pair of parallel attributes, so every method below is a plain
+        # dict lookup instead of an if/else repeated in five places.
         self._point_mode: str | None = None  # 'rca' | 'lca' | None
-        self._rca_points: list[tuple[int, int, int]] = []  # voxel (z, y, x)
-        self._lca_points: list[tuple[int, int, int]] = []
-        self._rca_points_actor: vtkActor | None = None
-        self._lca_points_actor: vtkActor | None = None
+        self._points: dict[str, list[tuple[int, int, int]]] = {'rca': [], 'lca': []}  # voxel (z, y, x)
+        self._points_actors: dict[str, vtkActor | None] = {'rca': None, 'lca': None}
 
         self._vtk_widget.installEventFilter(self)
 
@@ -213,10 +193,15 @@ class CutGeometryViewer3D(QWidget):
         self._vtk_widget.GetRenderWindow().Render()
 
     def _set_cut_mesh_actor(self, mesh: trimesh.Trimesh) -> None:
+        # Re-point the existing actor's mapper at the new geometry instead of building
+        # a fresh vtkActor/vtkPolyDataMapper — Smooth/Reduce Mesh call this on every
+        # click, and there's no need to churn VTK objects just to swap the polydata.
         if self._cut_mesh_actor is not None:
-            self._ren.RemoveActor(self._cut_mesh_actor)
+            cast(vtkPolyDataMapper, self._cut_mesh_actor.GetMapper()).SetInputData(mesh_to_vtk_polydata(mesh))
+            return
+
         mapper = vtkPolyDataMapper()
-        mapper.SetInputData(_mesh_to_polydata(mesh))
+        mapper.SetInputData(mesh_to_vtk_polydata(mesh))
         actor = vtkActor()
         actor.SetMapper(mapper)
         r, g, b = CUT_MESH_COLOR
@@ -370,43 +355,40 @@ class CutGeometryViewer3D(QWidget):
         """
         self._point_mode = category or None
 
+    _POINT_COLORS = {'rca': RCA_POINT_COLOR, 'lca': LCA_POINT_COLOR}
+
     def clear_points(self, category: str) -> None:
-        points = self._rca_points if category == 'rca' else self._lca_points
-        points.clear()
+        self._points[category].clear()
         self._rebuild_points_actor(category)
         self.outlet_points_changed.emit(category, 0)
 
     def set_points(self, category: str, voxel_points: list[tuple[int, int, int]]) -> None:
         """Replace all points for a category (used to restore persisted outlet points
         on load) and re-render + notify the panel of the new count."""
-        points = voxel_points[:]
-        if category == 'rca':
-            self._rca_points = points
-        else:
-            self._lca_points = points
+        self._points[category] = voxel_points[:]
         self._rebuild_points_actor(category)
-        self.outlet_points_changed.emit(category, len(points))
+        self.outlet_points_changed.emit(category, len(voxel_points))
 
     def rca_points_voxel(self) -> list[tuple[int, int, int]]:
-        return list(self._rca_points)
+        return list(self._points['rca'])
 
     def lca_points_voxel(self) -> list[tuple[int, int, int]]:
-        return list(self._lca_points)
+        return list(self._points['lca'])
 
     def rca_points_world(self) -> list[np.ndarray]:
-        return [np.array(self.voxel_to_world(*p)) for p in self._rca_points]
+        return [np.array(self.voxel_to_world(*p)) for p in self._points['rca']]
 
     def lca_points_world(self) -> list[np.ndarray]:
-        return [np.array(self.voxel_to_world(*p)) for p in self._lca_points]
+        return [np.array(self.voxel_to_world(*p)) for p in self._points['lca']]
 
     def _add_point(self, category: str, voxel: tuple[int, int, int]) -> None:
-        points = self._rca_points if category == 'rca' else self._lca_points
+        points = self._points[category]
         points.append(voxel)
         self._rebuild_points_actor(category)
         self.outlet_points_changed.emit(category, len(points))
 
     def _remove_nearest_point(self, category: str, sx: int, sy: int) -> None:
-        points = self._rca_points if category == 'rca' else self._lca_points
+        points = self._points[category]
         if not points:
             return
         world = np.array([self.voxel_to_world(*p) for p in points])
@@ -419,9 +401,8 @@ class CutGeometryViewer3D(QWidget):
             self.outlet_points_changed.emit(category, len(points))
 
     def _rebuild_points_actor(self, category: str) -> None:
-        is_rca = category == 'rca'
-        points = self._rca_points if is_rca else self._lca_points
-        actor = self._rca_points_actor if is_rca else self._lca_points_actor
+        points = self._points[category]
+        actor = self._points_actors[category]
         if actor is not None:
             self._ren.RemoveActor(actor)
             actor = None
@@ -432,16 +413,13 @@ class CutGeometryViewer3D(QWidget):
             mapper.SetInputData(_points_to_polydata(world))
             actor = vtkActor()
             actor.SetMapper(mapper)
-            r, g, b = RCA_POINT_COLOR if is_rca else LCA_POINT_COLOR
+            r, g, b = self._POINT_COLORS[category]
             actor.GetProperty().SetColor(r / 255.0, g / 255.0, b / 255.0)
             actor.GetProperty().SetPointSize(12)
             actor.GetProperty().SetRenderPointsAsSpheres(True)
             self._ren.AddActor(actor)
 
-        if is_rca:
-            self._rca_points_actor = actor
-        else:
-            self._lca_points_actor = actor
+        self._points_actors[category] = actor
         self._vtk_widget.GetRenderWindow().Render()
 
     # ── mouse handling: point-mode add/remove, else plain camera passthrough ─

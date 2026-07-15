@@ -4,11 +4,14 @@ import shutil
 import sys
 import tempfile
 import threading
+from collections.abc import Callable
+from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import SimpleITK as sitk
+import trimesh
 from loguru import logger
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
@@ -46,6 +49,28 @@ from version import version_file_str
 if TYPE_CHECKING:
     from gui.app import Master
 
+# (lvot_anchor, lvot_normal, aorta_anchor, aorta_normal), all in voxel-index (z, y, x)
+# space — the plane geometry _compute_cut_planes derives from the drawn cut lines.
+_CutPlanes = tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+
+
+@dataclass
+class _CenterlinePrereqs:
+    """Everything _start_centerline_worker needs, gathered and validated up front by
+    _validate_centerline_prereqs so the two concerns — can we run this? and actually
+    running it — don't have to be read together as one function."""
+
+    cut_mesh: trimesh.Trimesh
+    cut_mesh_inlet: np.ndarray
+    cut_mesh_outlet: np.ndarray
+    rca_points: list[np.ndarray]
+    lca_points: list[np.ndarray]
+    venv_path: str
+    build_path: str
+    distro: str
+    out_dir: str
+    stem: str
+
 
 class CctaPage(QWidget):
     def __init__(self, config: SimpleNamespace, status_bar) -> None:
@@ -70,7 +95,6 @@ class CctaPage(QWidget):
         for lbl in (self._axial_label, self._coronal_label, self._sagittal_label):
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # 4-view grid
         views = QWidget()
         grid = QGridLayout(views)
         grid.setContentsMargins(0, 0, 0, 0)
@@ -164,6 +188,18 @@ class CctaPage(QWidget):
         master = cast('Master', self.window())
         master._switch_page(ActivePage.CCTA.value)
 
+        source = self._choose_data_source()
+        if source is None:
+            return
+
+        # Path confirmed — reinstantiate for a guaranteed clean state.
+        # `self` must not be used after this point.
+        master.reload_ccta()
+        master.ccta_page._load_case(*source)
+
+    def _choose_data_source(self) -> tuple[str, str] | None:
+        """Ask DICOM-folder vs NIfTI-file, then prompt for the matching path.
+        Returns (path, mode), or None if the user cancels at either step."""
         msg = QMessageBox(self)
         msg.setWindowTitle('Open CT Data')
         msg.setText('Select data format:')
@@ -180,10 +216,8 @@ class CctaPage(QWidget):
                 '',
                 options=QFileDialog.Option.DontUseNativeDialog,
             )
-            if not path:
-                return
-            mode = 'dicom'
-        elif clicked == nifti_btn:
+            return (path, 'dicom') if path else None
+        if clicked == nifti_btn:
             path, _ = QFileDialog.getOpenFileName(
                 self,
                 'Open NIfTI File',
@@ -191,18 +225,23 @@ class CctaPage(QWidget):
                 'NIfTI files (*.nii *.nii.gz);;All Files (*)',
                 options=QFileDialog.Option.DontUseNativeDialog,
             )
-            if not path:
-                return
-            mode = 'nifti'
-        else:
+            return (path, 'nifti') if path else None
+        return None
+
+    def _load_case(self, path: str, mode: str) -> None:
+        """Read the volume chosen by _choose_data_source and populate this (freshly
+        reinstantiated, per open_folder) page with it."""
+        result = self._read_volume_with_progress(path, mode)
+        if result is None:
             return
+        volume, metadata = result
+        self._apply_loaded_volume(volume, metadata, mode)
+        self._finish_loading_for_mode(path, mode)
 
-        # Path confirmed — reinstantiate for a guaranteed clean state.
-        # `self` must not be used after this point.
-        master.reload_ccta()
-        page = master.ccta_page
-
-        progress = QProgressDialog('', '', 0, 0, page)
+    def _read_volume_with_progress(self, path: str, mode: str) -> tuple[np.ndarray, dict] | None:
+        """Read the CT volume from disk behind a modal progress dialog. Shows an
+        ErrorMessage and returns None if reading fails."""
+        progress = QProgressDialog('', '', 0, 0, self)
         progress.setWindowTitle('Loading CCTA')
         progress.setMinimumDuration(0)
         progress.setCancelButton(None)
@@ -221,58 +260,64 @@ class CctaPage(QWidget):
                     progress.setLabelText(f'Reading slice {current} / {total}...')
                     QApplication.processEvents()
 
-                volume, metadata = read_ct_volume(path, progress_cb=_cb)
-            else:
-                progress.setLabelText('Reading NIfTI...')
-                QApplication.processEvents()
-                volume, metadata = read_nifti_volume(path)
+                return read_ct_volume(path, progress_cb=_cb)
+            progress.setLabelText('Reading NIfTI...')
+            QApplication.processEvents()
+            return read_nifti_volume(path)
         except ValueError as e:
-            progress.close()
-            ErrorMessage(page, str(e))
-            page.status_bar.showMessage('Ready')
-            return
+            ErrorMessage(self, str(e))
+            self.status_bar.showMessage('Ready')
+            return None
         finally:
             progress.close()
 
+    def _apply_loaded_volume(self, volume: np.ndarray, metadata: dict, mode: str) -> None:
+        """Push a freshly-read volume into this page's displays/data and report it on
+        the status bar. Source-path/mask bookkeeping is mode-specific — handled by
+        _finish_loading_for_mode instead."""
+        master = cast('Master', self.window())
         dz = metadata['slice_thickness']
         dy, dx = metadata['pixel_spacing']
-        page.data.volume = volume
-        page.data.voxel_spacing = (dz, dy, dx)
+        self.data.volume = volume
+        self.data.voxel_spacing = (dz, dy, dx)
 
         ccta_meta = metadata.get('ccta_metadata')
         if ccta_meta is not None:
             master.ccta_metadata = ccta_meta
 
-        for display in (page._axial, page._coronal, page._sagittal):
-            display.set_volume(volume, page.data.voxel_spacing)
+        for display in (self._axial, self._coronal, self._sagittal):
+            display.set_volume(volume, self.data.voxel_spacing)
 
         Z, Y, X = volume.shape
-        page._update_labels(Z // 2, Y // 2, X // 2, Z, Y, X)
-        page._initialize_empty_mask()
+        self._update_labels(Z // 2, Y // 2, X // 2, Z, Y, X)
+        self._initialize_empty_mask()
         fmt = 'NIfTI' if mode == 'nifti' else 'CCTA'
-        page.status_bar.showMessage(f'{fmt}: {Z} slices  |  pixel spacing {dy:.3f} mm  |  slice thickness {dz:.3f} mm')
+        self.status_bar.showMessage(f'{fmt}: {Z} slices  |  pixel spacing {dy:.3f} mm  |  slice thickness {dz:.3f} mm')
 
+    def _finish_loading_for_mode(self, path: str, mode: str) -> None:
+        """Mode-specific source-path bookkeeping plus mask auto-load/prompt, run
+        after the volume itself is already applied."""
         if mode == 'nifti':
-            page._last_image_dir = os.path.dirname(os.path.abspath(path))
+            self._last_image_dir = os.path.dirname(os.path.abspath(path))
             nifti_base = path
             for ext in ('.nii.gz', '.nii'):
                 if nifti_base.endswith(ext):
                     nifti_base = nifti_base[: -len(ext)]
                     break
-            page._source_path = nifti_base
-            if not page._try_auto_load_mask():
+            self._source_path = nifti_base
+            if not self._try_auto_load_mask():
                 reply = QMessageBox.question(
-                    page,
+                    self,
                     'Load Mask?',
                     'Would you like to load a segmentation mask for this volume?',
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     QMessageBox.StandardButton.No,
                 )
                 if reply == QMessageBox.StandardButton.Yes:
-                    page.open_mask()
+                    self.open_mask()
         else:
-            page._source_path = os.path.join(path, os.path.basename(path))
-            page._try_auto_load_mask()
+            self._source_path = os.path.join(path, os.path.basename(path))
+            self._try_auto_load_mask()
 
     def _try_auto_load_mask(self) -> bool:
         """Load the most recent versioned mask for the current source path, if one exists."""
@@ -302,6 +347,25 @@ class CctaPage(QWidget):
         if state is None:
             return
 
+        labels = self._restore_cut_state_onto_ui(state)
+        if labels is None:
+            return
+        cor, aorta, lv = labels
+        self._stl_panel.set_selected_labels(cor, aorta, lv)
+        # switch_tab=False: this runs on passive file-open, not an explicit "Build Cut
+        # Geometry" click, so it shouldn't yank the user into the Cut Geometry tab.
+        self._on_build_cut_geometry(cor, aorta, lv, switch_tab=False)
+        if state['rca_points']:
+            self._cut_viewer.set_points('rca', state['rca_points'])
+        if state['lca_points']:
+            self._cut_viewer.set_points('lca', state['lca_points'])
+        self.status_bar.showMessage('Restored cut geometry from previous session.')
+
+    def _restore_cut_state_onto_ui(self, state: dict) -> tuple[int, int, int] | None:
+        """Write a loaded cut-state dict's label names and cut lines onto the mask
+        panel / STL panel / overlays. Returns the (cor, aorta, lv) labels if they're
+        all still present in the current mask and the cut lines are complete enough
+        to rebuild the cut geometry from, else None."""
         if state['label_names']:
             self._mask_tab.set_label_names(state['label_names'])
 
@@ -316,14 +380,9 @@ class CctaPage(QWidget):
         cor, aorta, lv = state['cor_label'], state['aorta_label'], state['lv_label']
         labels_present = cor is not None and aorta is not None and lv is not None
         labels_valid = labels_present and all(lbl in self.data.labels for lbl in (cor, aorta, lv))
-        if labels_valid and self._cut_lines_ready():
-            self._stl_panel.set_selected_labels(cor, aorta, lv)
-            self._on_build_cut_geometry(cor, aorta, lv)
-            if state['rca_points']:
-                self._cut_viewer.set_points('rca', state['rca_points'])
-            if state['lca_points']:
-                self._cut_viewer.set_points('lca', state['lca_points'])
-            self.status_bar.showMessage('Restored cut geometry from previous session.')
+        if not (labels_valid and self._cut_lines_ready()):
+            return None
+        return cor, aorta, lv
 
     def _apply_mask(self, mask: np.ndarray, clear_undo: bool = False) -> None:
         """Apply a loaded mask array to all displays and panels."""
@@ -558,7 +617,7 @@ class CctaPage(QWidget):
     def _cut_lines_ready(self) -> bool:
         return self._cut_line_0 is not None and self._cut_line_1 is not None and self._aorta_cut_line is not None
 
-    def _compute_cut_planes(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
+    def _compute_cut_planes(self) -> _CutPlanes | None:
         """Returns (lvot_anchor, lvot_normal, aorta_anchor, aorta_normal), all in voxel-
         index (z, y, x) space, or None (with an ErrorMessage already shown) if the cut
         lines aren't ready or don't define a valid plane. Independent of any label
@@ -595,11 +654,15 @@ class CctaPage(QWidget):
 
         return lvot_anchor, lvot_normal, aorta_anchor, aorta_normal
 
-    def _compute_combined_mask(self, cor_label: int, aorta_label: int, lv_label: int) -> np.ndarray | None:
+    def _compute_combined_mask(
+        self, cor_label: int, aorta_label: int, lv_label: int
+    ) -> tuple[np.ndarray, _CutPlanes] | None:
         """Build the combined coronaries|aorta|LVOT mask from the two LVOT cut lines
-        and the aorta-top cut line (all three required). Shows an ErrorMessage and
-        returns None on any failure — shared by Extract && Export and Build Cut
-        Geometry so both always cut identically."""
+        and the aorta-top cut line (all three required), plus the plane geometry used
+        to cut it (callers that need both — Build Cut Geometry — would otherwise have
+        to call _compute_cut_planes() a second time to get what this already computed
+        internally). Shows an ErrorMessage and returns None on any failure — shared by
+        Extract && Export and Build Cut Geometry so both always cut identically."""
         if self.data.mask is None or self.data.voxel_spacing is None:
             ErrorMessage(self, 'No mask or volume loaded.')
             return None
@@ -622,17 +685,17 @@ class CctaPage(QWidget):
         Z, Y, X = mask.shape
         iz, iy, ix = np.mgrid[0:Z, 0:Y, 0:X]
         coords = np.stack([iz, iy, ix], axis=-1).astype(float)
-        lvot_dist = ((coords - lvot_anchor) * lvot_normal).sum(axis=-1)
+        lvot_dist = cut_geometry.signed_distance_to_plane(coords, lvot_anchor, lvot_normal)
         aorta_side = np.dot(lvot_normal, aorta_centroid - lvot_anchor)
         lvot = lv & ((lvot_dist > 0) == (aorta_side > 0))
 
         coronaries_voxels = np.argwhere(coronaries)
         ref_centroid = coronaries_voxels.mean(axis=0) if len(coronaries_voxels) > 0 else aorta_centroid
         ref_side = np.dot(aorta_normal, ref_centroid - aorta_anchor)
-        aorta_dist = ((coords - aorta_anchor) * aorta_normal).sum(axis=-1)
+        aorta_dist = cut_geometry.signed_distance_to_plane(coords, aorta_anchor, aorta_normal)
         aorta = aorta & ((aorta_dist > 0) == (ref_side > 0))
 
-        return (coronaries | aorta | lvot).astype(np.uint8)
+        return (coronaries | aorta | lvot).astype(np.uint8), planes
 
     def _on_extract_requested(self, cor_label: int, aorta_label: int, lv_label: int, fmt: str) -> None:
         if self.data.mask is None or self.data.voxel_spacing is None:
@@ -685,10 +748,11 @@ class CctaPage(QWidget):
             QApplication.processEvents()
             self.data.cut_mesh.export(path)
         else:
-            combined = self._compute_combined_mask(cor_label, aorta_label, lv_label)
-            if combined is None:
+            result = self._compute_combined_mask(cor_label, aorta_label, lv_label)
+            if result is None:
                 progress.close()
                 return
+            combined, _planes = result
 
             progress.setLabelText(f'Writing {label}…')
             QApplication.processEvents()
@@ -701,14 +765,12 @@ class CctaPage(QWidget):
         progress.close()
         self.status_bar.showMessage(f'Exported: {os.path.basename(path)}')
 
-    def _on_build_cut_geometry(self, cor_label: int, aorta_label: int, lv_label: int) -> None:
-        combined = self._compute_combined_mask(cor_label, aorta_label, lv_label)
-        if combined is None:
+    def _on_build_cut_geometry(self, cor_label: int, aorta_label: int, lv_label: int, switch_tab: bool = True) -> None:
+        result = self._compute_combined_mask(cor_label, aorta_label, lv_label)
+        if result is None:
             return
+        combined, (lvot_anchor, lvot_normal, aorta_anchor, aorta_normal) = result
         assert self.data.voxel_spacing is not None  # _compute_combined_mask already required this
-        planes = self._compute_cut_planes()  # already validated by _compute_combined_mask above
-        assert planes is not None
-        lvot_anchor, lvot_normal, aorta_anchor, aorta_normal = planes
 
         self._stl_panel.set_building(True)
         QApplication.processEvents()
@@ -730,7 +792,8 @@ class CctaPage(QWidget):
         self._cut_labels = (cor_label, aorta_label, lv_label)
         self._cut_state_dirty = True
         self._cut_viewer.set_cut_mesh(mesh, inlet, outlet, combined, self.data.voxel_spacing)
-        self._tabs.setCurrentWidget(self._cut_viewer)  # jump straight to the result
+        if switch_tab:
+            self._tabs.setCurrentWidget(self._cut_viewer)  # jump straight to the result
         self.status_bar.showMessage('Cut geometry built.')
 
     def _on_outlet_points_changed(self, _category: str, _count: int) -> None:
@@ -746,7 +809,17 @@ class CctaPage(QWidget):
             return
         self._cut_viewer.set_point_mode(category)
 
-    def _on_smooth_requested(self, lamb: float) -> None:
+    def _apply_mesh_op(
+        self,
+        op: Callable[[trimesh.Trimesh], trimesh.Trimesh],
+        op_name: str,
+        status_message: Callable[[trimesh.Trimesh], str],
+    ) -> None:
+        """Shared skeleton for Smooth/Reduce Mesh: both replace self.data.cut_mesh
+        with the result of a single trimesh -> trimesh operation, relocate the
+        inlet/outlet centroids on the result, and push it to the viewer. `op_name`
+        labels the error if `op` raises; `status_message` receives the *new* mesh so
+        callers can report on it (e.g. its new face count)."""
         if self.data.cut_mesh is None:
             ErrorMessage(self, 'Build the cut geometry first.')
             return
@@ -757,7 +830,7 @@ class CctaPage(QWidget):
         lvot_anchor, lvot_normal, aorta_anchor, aorta_normal = planes
 
         try:
-            mesh = cut_geometry.smooth_mesh(self.data.cut_mesh, lamb=lamb)
+            mesh = op(self.data.cut_mesh)
             inlet, outlet = cut_geometry.find_inlet_outlet_centroids(
                 mesh,
                 self.data.voxel_spacing,
@@ -768,98 +841,96 @@ class CctaPage(QWidget):
                 aorta_normal,
             )
         except Exception as e:
-            logger.exception('Smoothing failed')
-            ErrorMessage(self, f'Smoothing failed: {e}')
+            logger.exception(f'{op_name} failed')
+            ErrorMessage(self, f'{op_name} failed: {e}')
             return
 
         self.data.cut_mesh = mesh
         self.data.cut_mesh_inlet = inlet
         self.data.cut_mesh_outlet = outlet
         self._cut_viewer.update_cut_mesh(mesh, inlet, outlet)
-        self.status_bar.showMessage('Cut geometry smoothed.')
+        self.status_bar.showMessage(status_message(mesh))
+
+    def _on_smooth_requested(self, lamb: float) -> None:
+        self._apply_mesh_op(
+            lambda mesh: cut_geometry.smooth_mesh(mesh, lamb=lamb),
+            'Smoothing',
+            lambda _mesh: 'Cut geometry smoothed.',
+        )
 
     def _on_reduce_mesh_requested(self, target_reduction: float) -> None:
         if self.data.cut_mesh is None:
             ErrorMessage(self, 'Build the cut geometry first.')
             return
-        assert self.data.mask is not None and self.data.voxel_spacing is not None  # implied by cut_mesh existing
-        planes = self._compute_cut_planes()
-        if planes is None:
-            return
-        lvot_anchor, lvot_normal, aorta_anchor, aorta_normal = planes
-
         before = len(self.data.cut_mesh.faces)
-        try:
-            mesh = cut_geometry.reduce_mesh(self.data.cut_mesh, target_reduction)
-            inlet, outlet = cut_geometry.find_inlet_outlet_centroids(
-                mesh,
-                self.data.voxel_spacing,
-                self.data.mask.shape,
-                lvot_anchor,
-                lvot_normal,
-                aorta_anchor,
-                aorta_normal,
-            )
-        except Exception as e:
-            logger.exception('Mesh reduction failed')
-            ErrorMessage(self, f'Mesh reduction failed: {e}')
-            return
-
-        self.data.cut_mesh = mesh
-        self.data.cut_mesh_inlet = inlet
-        self.data.cut_mesh_outlet = outlet
-        self._cut_viewer.update_cut_mesh(mesh, inlet, outlet)
-        self.status_bar.showMessage(f'Mesh reduced: {before} -> {len(mesh.faces)} faces.')
+        self._apply_mesh_op(
+            lambda mesh: cut_geometry.reduce_mesh(mesh, target_reduction),
+            'Mesh reduction',
+            lambda mesh: f'Mesh reduced: {before} -> {len(mesh.faces)} faces.',
+        )
 
     def _on_calculate_centerlines(self) -> None:
         if self._centerlines_worker is not None and self._centerlines_worker.isRunning():
             return
+        prereqs = self._validate_centerline_prereqs()
+        if prereqs is not None:
+            self._start_centerline_worker(prereqs)
+
+    def _validate_centerline_prereqs(self) -> _CenterlinePrereqs | None:
+        """Every guard Calculate Centerlines needs before it can run: a built cut
+        mesh, a case file to derive output paths from, at least one RCA and one LCA
+        outlet point, and a working vmtk install. Shows the relevant ErrorMessage and
+        returns None on the first one that fails."""
         if self.data.cut_mesh is None:
             ErrorMessage(self, 'Build the cut geometry first.')
-            return
+            return None
         assert self.data.cut_mesh_inlet is not None and self.data.cut_mesh_outlet is not None
-        # Bound to locals (not re-read via self.data.* inside _do_work below) so the
-        # None-narrowing above actually holds inside that closure — mypy re-widens
-        # Optional attribute accesses on every fresh `self.data.x` read, even if the
-        # exact same closure captured it after an assert just above.
-        cut_mesh = self.data.cut_mesh
-        cut_mesh_inlet = self.data.cut_mesh_inlet
-        cut_mesh_outlet = self.data.cut_mesh_outlet
         if self._source_path is None:
             ErrorMessage(self, 'No case file loaded — cannot determine where to write centerlines.')
-            return
+            return None
 
         rca_points = self._cut_viewer.rca_points_world()
         lca_points = self._cut_viewer.lca_points_world()
         if not rca_points:
             ErrorMessage(self, 'Add at least one RCA outlet point first.')
-            return
+            return None
         if not lca_points:
             ErrorMessage(self, 'Add at least one LCA outlet point first.')
-            return
+            return None
 
-        vmtk_cfg = getattr(self.config, 'vmtk', None)
-        venv_path = getattr(vmtk_cfg, 'venv_path', '')
-        build_path = getattr(vmtk_cfg, 'build_path', '')
-        distro = getattr(vmtk_cfg, 'wsl_distro', '')
+        venv_path = self.config.vmtk.venv_path
+        build_path = self.config.vmtk.build_path
+        distro = self.config.vmtk.wsl_distro
         ok, reason = vmtk_runner.check_vmtk_available(venv_path, build_path, distro)
         if not ok:
             ErrorMessage(self, f'vmtk not found. {reason}')
-            return
+            return None
 
-        out_dir = os.path.dirname(self._source_path)
-        stem = os.path.basename(self._source_path)
-        stl_path = os.path.join(out_dir, f'{stem}_root_smooth.stl')
-        ao_csv = os.path.join(out_dir, 'ao.csv')
-        rca_csv = os.path.join(out_dir, 'rca.csv')
-        lca_csv = os.path.join(out_dir, 'lca.csv')
+        return _CenterlinePrereqs(
+            cut_mesh=self.data.cut_mesh,
+            cut_mesh_inlet=self.data.cut_mesh_inlet,
+            cut_mesh_outlet=self.data.cut_mesh_outlet,
+            rca_points=rca_points,
+            lca_points=lca_points,
+            venv_path=venv_path,
+            build_path=build_path,
+            distro=distro,
+            out_dir=os.path.dirname(self._source_path),
+            stem=os.path.basename(self._source_path),
+        )
 
-        # This can run for a long time (vmtkcenterlines' Voronoi-diagram step is
-        # slow and often silent) — running it on the main thread would freeze the
-        # whole app with no way to tell "slow" from "stuck". StdoutCapturingWorker
-        # runs it in a background QThread and forwards every print() line (vmtk_runner
-        # streams vmtk's own output plus its own start/finish/heartbeat markers) live
-        # to both the console and this progress dialog.
+    def _start_centerline_worker(self, prereqs: _CenterlinePrereqs) -> None:
+        """Runs vmtk in a background QThread. This can take minutes — vmtkcenterlines'
+        Voronoi-diagram step is slow and often silent — so running it on the main
+        thread would freeze the whole app with no way to tell "slow" from "stuck".
+        StdoutCapturingWorker forwards every print() line (vmtk_runner streams vmtk's
+        own output plus its own start/finish/heartbeat markers) live to both the
+        console and the progress dialog."""
+        stl_path = os.path.join(prereqs.out_dir, f'{prereqs.stem}_root_smooth.stl')
+        ao_csv = os.path.join(prereqs.out_dir, 'ao.csv')
+        rca_csv = os.path.join(prereqs.out_dir, 'rca.csv')
+        lca_csv = os.path.join(prereqs.out_dir, 'lca.csv')
+
         progress = QProgressDialog('Computing centerlines…', None, 0, 0, self)
         progress.setWindowTitle('Calculate Centerlines')
         progress.setMinimumDuration(0)
@@ -867,24 +938,24 @@ class CctaPage(QWidget):
         progress.show()
 
         def _do_work() -> tuple[str, dict[str, str]]:
-            cut_mesh.export(stl_path)
-            vmtk_runner.write_point_csv(ao_csv, [cut_mesh_inlet, cut_mesh_outlet])
-            vmtk_runner.write_point_csv(rca_csv, rca_points)
-            vmtk_runner.write_point_csv(lca_csv, lca_points)
+            prereqs.cut_mesh.export(stl_path)
+            vmtk_runner.write_point_csv(ao_csv, [prereqs.cut_mesh_inlet, prereqs.cut_mesh_outlet])
+            vmtk_runner.write_point_csv(rca_csv, prereqs.rca_points)
+            vmtk_runner.write_point_csv(lca_csv, prereqs.lca_points)
 
             paths = vmtk_runner.run_centerlines(
                 stl_path,
-                out_dir,
-                ao_source=cut_mesh_inlet,
-                ao_target=cut_mesh_outlet,
-                rca_targets=rca_points,
-                lca_targets=lca_points,
-                venv_path=venv_path,
-                build_path=build_path,
-                distro=distro,
+                prereqs.out_dir,
+                ao_source=prereqs.cut_mesh_inlet,
+                ao_target=prereqs.cut_mesh_outlet,
+                rca_targets=prereqs.rca_points,
+                lca_targets=prereqs.lca_points,
+                venv_path=prereqs.venv_path,
+                build_path=prereqs.build_path,
+                distro=prereqs.distro,
                 log_cb=print,
             )
-            return out_dir, paths
+            return prereqs.out_dir, paths
 
         # Capture the real stdout *before* the worker starts and redirects it —
         # StdoutCapturingWorker swaps sys.stdout for its own capture object for the

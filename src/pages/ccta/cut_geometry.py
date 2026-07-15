@@ -49,6 +49,17 @@ def build_cut_mesh(mask: np.ndarray, voxel_spacing: tuple[float, float, float]) 
     return trimesh.Trimesh(vertices=verts, faces=faces, process=False)
 
 
+def signed_distance_to_plane(points: np.ndarray, anchor: np.ndarray, normal: np.ndarray) -> np.ndarray:
+    """Signed distance from each point to the plane through `anchor` with the given
+    `normal`, in whatever units `points`/`anchor` are in. `normal` need not be unit
+    length — divide the result by `np.linalg.norm(normal)` for true distance; the
+    raw dot product is enough to test which side of the plane a point falls on.
+    Broadcasts over any leading shape: `points` can be a flat (N, 3) vertex list or
+    a full (Z, Y, X, 3) voxel-index grid. Shared by page.py's mask-cutting (needs
+    only the side/sign) and find_inlet_outlet_centroids below (needs true distance)."""
+    return ((points - anchor) * normal).sum(axis=-1)
+
+
 def smooth_mesh(mesh: trimesh.Trimesh, lamb: float = 0.6) -> trimesh.Trimesh:
     """Mutates and returns ``mesh`` (trimesh.smoothing operates in place)."""
     trimesh.smoothing.filter_taubin(mesh, lamb=lamb)
@@ -67,17 +78,26 @@ def reduce_mesh(mesh: trimesh.Trimesh, target_reduction: float) -> trimesh.Trime
     Voronoi-diagram step scales with surface complexity), so this exists to trade
     surface detail for centerline-computation speed on large cut geometries.
     """
-    poly = _to_vtk_polydata(mesh)
+    # triangulate=False: vtkQuadricDecimation accepts general polygons directly, and
+    # vtk_polydata_to_mesh triangulates the *output* anyway (decimation can itself
+    # leave non-triangular faces), so a pre-pass here would be wasted work.
+    poly = mesh_to_vtk_polydata(mesh, triangulate=False)
 
     decimate = vtkQuadricDecimation()
     decimate.SetInputData(poly)
     decimate.SetTargetReduction(max(0.0, min(0.99, target_reduction)))
     decimate.Update()
 
-    return _from_vtk_polydata(decimate.GetOutput())
+    return vtk_polydata_to_mesh(decimate.GetOutput())
 
 
-def _to_vtk_polydata(mesh: trimesh.Trimesh) -> vtkPolyData:
+def mesh_to_vtk_polydata(mesh: trimesh.Trimesh, triangulate: bool = True) -> vtkPolyData:
+    """trimesh.Trimesh -> vtkPolyData (points + polygon cells). Shared by this module
+    (mesh reduction) and left_half/cut_geometry_viewer.py (rendering) so the
+    conversion only exists in one place. Set triangulate=False to skip the
+    vtkTriangleFilter pass when the caller doesn't need strictly-triangular output
+    (e.g. decimation input, which accepts general polygons and re-triangulates the
+    result on the way back out via vtk_polydata_to_mesh anyway)."""
     pts = vtkPoints()
     pts.SetData(numpy_support.numpy_to_vtk(np.ascontiguousarray(mesh.vertices, dtype=np.float64)))
 
@@ -90,10 +110,18 @@ def _to_vtk_polydata(mesh: trimesh.Trimesh) -> vtkPolyData:
     poly = vtkPolyData()
     poly.SetPoints(pts)
     poly.SetPolys(cell_array)
-    return poly
+
+    if not triangulate:
+        return poly
+    tri = vtkTriangleFilter()
+    tri.SetInputData(poly)
+    tri.Update()
+    return tri.GetOutput()
 
 
-def _from_vtk_polydata(poly: vtkPolyData) -> trimesh.Trimesh:
+def vtk_polydata_to_mesh(poly: vtkPolyData) -> trimesh.Trimesh:
+    """vtkPolyData -> trimesh.Trimesh. Always triangulates first since sources like
+    vtkQuadricDecimation can produce non-triangular polygons."""
     tri = vtkTriangleFilter()
     tri.SetInputData(poly)
     tri.Update()
@@ -140,7 +168,7 @@ def find_inlet_outlet_centroids(
     coords = np.stack([vz, vy, vx], axis=-1)  # (N, 3) in (z, y, x) voxel-index units
 
     def _plane_centroid(anchor: np.ndarray, normal: np.ndarray, name: str) -> np.ndarray:
-        dist = ((coords - anchor) * normal).sum(axis=-1) / np.linalg.norm(normal)
+        dist = signed_distance_to_plane(coords, anchor, normal) / np.linalg.norm(normal)
         near = np.abs(dist) < tol_voxels
         if not near.any():
             raise ValueError(f'No mesh vertices found near the {name} cut plane. Check the cut lines.')
