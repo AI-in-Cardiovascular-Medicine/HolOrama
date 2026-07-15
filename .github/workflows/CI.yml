@@ -70,3 +70,21 @@ jobs:
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
         run: pytest
+
+  uv-resolve:
+    name: uv sync (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, windows-11-arm, ubuntu-latest, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+
+      - name: Resolve & install (mirrors install.ps1 / uv sync)
+        run: uv sync --dev
