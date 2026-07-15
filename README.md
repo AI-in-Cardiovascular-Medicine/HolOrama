@@ -315,7 +315,7 @@ In the current state, these cannot be changed by the user (at least not without 
 - Press <kbd>Ctrl</kbd> + <kbd>0</kbd> to draw an additional ``macrophage`` contour
 
 # Citation
-Please kindly cite the following paper if you use this repository.
+Please kindly cite the following papers if you use this repository.
 
 ```
 @article{stark2025automated,
@@ -328,8 +328,23 @@ Please kindly cite the following paper if you use this repository.
   doi={10.1016/j.cmpb.2025.109065},
   url={https://doi.org/10.1016/j.cmpb.2025.109065}
 }
+
+@article{kazaj2026unified,
+  title  = {A Unified Framework for Comprehensive Cardiac CT Segmentation and Phenotyping:
+Human-in-the-Loop Data Annotation, Vision Foundation Model Development, Multicenter Evaluation and Clinical Validation},
+  author = {Mohammadi Kazaj, Pooya and Weber, Leo Fridolin and Xie, Wen and Safavi-Naini, Seyed Amir Ahmad and Stark,
+Anselm and Baj, Giovanni and Mokhtari, Ali and Yoshida, Toshiya and Ryffel, Christoph and Okuno, Taishi and Akashi,
+Yoshihiro and Buechel, Ronny R. and Pilgrim, Thomas and Valenzuela, Waldo and Siontis, George C. M. and Xu, Xiaowei
+and Hundertmark, Moritz and Windecker, Stephan and Grani, Christoph and Shiri, Isaac},
+  journal = {arXiv preprint arXiv:2607.11287},
+  year   = {2026},
+  doi    = {10.48550/arXiv.2607.11287},
+  url    = {https://arxiv.org/abs/2607.11287}
+}
 ```
 ```
 Stark, A. W., Kazaj, P. M., Balzer, S., Ilic, M., Bergamin, M., Kakizaki, R., Giannopoulos A., Haeberlin A., Räber L., Gräni, C. (2025). Automated intravascular ultrasound image processing and quantification of coronary artery anomalies: the HolOrama software. Computer Methods and Programs in Biomedicine, 109065.
+
+Mohammadi Kazaj, P., Weber, L. F., Xie, W., Safavi-Naini, S. A. A., Stark, A., Baj, G., Mokhtari, A., Yoshida, T., Ryffel, C., Okuno, T., Akashi, Y., Buechel, R. R., Pilgrim, T., Valenzuela, W., Siontis, G. C. M., Xu, X., Hundertmark, M., Windecker, S., Grani, C., Shiri, I. (2026). A unified framework for comprehensive cardiac CT segmentation and phenotyping: human-in-the-loop data annotation, vision foundation model development, multicenter evaluation and clinical validation. arXiv preprint arXiv:2607.11287.
 ```
 
