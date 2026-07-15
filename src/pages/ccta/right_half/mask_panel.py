@@ -169,6 +169,16 @@ class MaskPanel(QWidget):
         """Return the current user-defined name for every label."""
         return {label: row.name for label, row in self._rows.items()}
 
+    def set_label_names(self, names: dict[int, str]) -> None:
+        """Restore previously-saved custom names (used when auto-loading a saved
+        cut state). No-op per label if it's not present anymore. Goes through
+        _LabelRow.set_label_name, which re-emits name_changed same as if the user
+        had typed it — so brush_panel/stl_panel stay in sync automatically."""
+        for label, name in names.items():
+            row = self._rows.get(label)
+            if row is not None:
+                row.set_label_name(name)
+
     def set_brush_panel(self, panel: 'QWidget') -> None:
         """Attach a widget below the label scroll area (called once at setup)."""
         sep = QFrame()

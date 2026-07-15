@@ -17,6 +17,11 @@ class CctaRuntimeData:
         self.labels: list[int] = []  # non-background labels present in mask
         self.mask_undo: UndoStack = UndoStack()  # last 5 full-mask snapshots, for Ctrl+Z
 
+        # -- Post-cut geometry (Build Cut Geometry / Smooth / Calculate Centerlines) ----
+        self.cut_mesh: Any | None = None  # trimesh.Trimesh built from the LVOT/aorta-top cut
+        self.cut_mesh_inlet: np.ndarray | None = None  # world (x, y, z) mm — lower-Z cut plane centroid
+        self.cut_mesh_outlet: np.ndarray | None = None  # world (x, y, z) mm — higher-Z cut plane centroid
+
 
 class FusionRuntimeData:
     """Holds the multimodars objects produced while working through the fusion pipeline.

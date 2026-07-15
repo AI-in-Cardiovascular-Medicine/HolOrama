@@ -21,10 +21,15 @@ def _separator() -> QFrame:
 
 
 class StlExtractionPanel(QWidget):
-    """Panel for extracting and exporting the aortic root with coronaries and LVOT."""
+    """Panel for extracting and exporting the aortic root with coronaries and LVOT,
+    building the same cut geometry as an in-memory 3-D layer, and marking RCA/LCA
+    outlet points on it for centerline computation."""
 
-    line_draw_requested = pyqtSignal(int)  # 0 = coronal line, 1 = sagittal line
+    line_draw_requested = pyqtSignal(int)  # 0 = axial LVOT, 1 = coronal LVOT, 2 = coronal aorta-top
     extract_requested = pyqtSignal(int, int, int, str)  # coronaries_label, aorta_label, lv_label, format
+    build_cut_geometry_requested = pyqtSignal(int, int, int)  # coronaries_label, aorta_label, lv_label
+    outlet_point_mode_requested = pyqtSignal(str)  # 'rca', 'lca', or '' to cancel
+    clear_outlet_points_requested = pyqtSignal(str)  # 'rca' or 'lca'
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -58,12 +63,14 @@ class StlExtractionPanel(QWidget):
 
         root.addWidget(_separator())
 
-        # LVOT cut-line buttons (required — gates the Extract button)
-        root.addWidget(QLabel('LVOT cut plane:'))
+        # Cut planes: LVOT (2 lines) + aorta top. All three required — the aorta-top
+        # plane is where the outlet centroid is measured, so without it there's no
+        # outlet for the cut-geometry layer or the ao centerline target.
+        root.addWidget(QLabel('Cut planes:'))
         self._line_status: list[QLabel] = []
-        for i, view in enumerate(['axial', 'coronal']):
+        for i, text in enumerate(['LVOT cut line (axial)', 'LVOT cut line (coronal)', 'Aorta top cut (coronal)']):
             row = QHBoxLayout()
-            btn = QPushButton(f'Draw cut line ({view})')
+            btn = QPushButton(text)
             btn.clicked.connect(lambda _, idx=i: self.line_draw_requested.emit(idx))
             status = QLabel('○')
             status.setFixedWidth(18)
@@ -73,23 +80,23 @@ class StlExtractionPanel(QWidget):
             root.addLayout(row)
             self._line_status.append(status)
 
-        root.addWidget(_separator())
-
-        # Aorta top cut (optional — applied if drawn, skipped otherwise)
-        root.addWidget(QLabel('Aorta top cut (optional):'))
-        aorta_row = QHBoxLayout()
-        self._aorta_cut_btn = QPushButton('Draw cut line (coronal)')
-        self._aorta_cut_btn.clicked.connect(lambda: self.line_draw_requested.emit(2))
-        self._aorta_cut_status = QLabel('○')
-        self._aorta_cut_status.setFixedWidth(18)
-        self._aorta_cut_status.setStyleSheet('color: #888; font-size: 14px;')
-        aorta_row.addWidget(self._aorta_cut_btn, 1)
-        aorta_row.addWidget(self._aorta_cut_status)
-        root.addLayout(aorta_row)
+        self._build_geometry_btn = QPushButton('Build Cut Geometry')
+        self._build_geometry_btn.setEnabled(False)
+        self._build_geometry_btn.setToolTip('Build the cut surface as a 3-D layer with inlet/outlet markers')
+        self._build_geometry_btn.clicked.connect(self._on_build_cut_geometry)
+        root.addWidget(self._build_geometry_btn)
 
         root.addWidget(_separator())
 
-        # Export format
+        # Outlet points (RCA / LCA), placed on the cut geometry in the 3-D view —
+        # used as centerline targets by Calculate Centerlines.
+        root.addWidget(QLabel('Outlet points:'))
+        self._rca_btn, self._rca_count_lbl = self._outlet_row(root, 'Add RCA Outlet', 'rca')
+        self._lca_btn, self._lca_count_lbl = self._outlet_row(root, 'Add LCA Outlet', 'lca')
+
+        root.addWidget(_separator())
+
+        # Export format + Extract && Export — kept at the very bottom of the panel.
         fmt_row = QHBoxLayout()
         fmt_row.addWidget(QLabel('Export as:'))
         self._fmt_group = QButtonGroup(self)
@@ -104,10 +111,58 @@ class StlExtractionPanel(QWidget):
 
         self._extract_btn = QPushButton('Extract && Export')
         self._extract_btn.setEnabled(False)
+        self._extract_btn.setToolTip('Exports the smoothed cut geometry if Build Cut Geometry + Smooth were used (STL)')
         self._extract_btn.clicked.connect(self._on_extract)
         root.addWidget(self._extract_btn)
 
-        self._lines_drawn = [False, False]
+        self._lines_drawn = [False, False, False]
+
+    def _outlet_row(self, root: QVBoxLayout, text: str, category: str) -> tuple[QPushButton, QLabel]:
+        row = QHBoxLayout()
+        btn = QPushButton(text)
+        btn.setCheckable(True)
+        btn.toggled.connect(lambda checked, cat=category: self._on_outlet_mode_toggled(cat, checked))
+        count_lbl = QLabel('0 pts')
+        count_lbl.setFixedWidth(46)
+        count_lbl.setStyleSheet('color: #888;')
+        clear_btn = QPushButton('Clear')
+        clear_btn.setFixedWidth(50)
+        clear_btn.clicked.connect(lambda: self.clear_outlet_points_requested.emit(category))
+        row.addWidget(btn, 1)
+        row.addWidget(count_lbl)
+        row.addWidget(clear_btn)
+        root.addLayout(row)
+        return btn, count_lbl
+
+    def _on_outlet_mode_toggled(self, category: str, checked: bool) -> None:
+        # Mutually exclusive: turning one on turns the other off.
+        other_btn = self._lca_btn if category == 'rca' else self._rca_btn
+        if checked and other_btn.isChecked():
+            other_btn.blockSignals(True)
+            other_btn.setChecked(False)
+            other_btn.blockSignals(False)
+        self.outlet_point_mode_requested.emit(category if checked else '')
+
+    def set_outlet_point_count(self, category: str, count: int) -> None:
+        lbl = self._rca_count_lbl if category == 'rca' else self._lca_count_lbl
+        lbl.setText(f'{count} pts')
+
+    def reset_outlet_mode(self) -> None:
+        """Uncheck both outlet-point toggle buttons without re-emitting their signals.
+        Called by page.py when a mode request is rejected (e.g. cut geometry not
+        built yet), so the buttons don't stay checked while picking is actually off."""
+        for btn in (self._rca_btn, self._lca_btn):
+            btn.blockSignals(True)
+            btn.setChecked(False)
+            btn.blockSignals(False)
+
+    def set_building(self, building: bool) -> None:
+        """Toggle the Build Cut Geometry button's busy state while a build is running."""
+        self._build_geometry_btn.setText('Building…' if building else 'Build Cut Geometry')
+        if building:
+            self._build_geometry_btn.setEnabled(False)
+        else:
+            self._update_extract_btn()  # restore normal label/line-count gating
 
     def set_labels(self, labels: list[int], names: dict[int, str]) -> None:
         """Populate the mask-selector dropdowns."""
@@ -119,6 +174,18 @@ class StlExtractionPanel(QWidget):
             combo.blockSignals(False)
         self._update_extract_btn()
 
+    def set_selected_labels(self, cor: int, aorta: int, lv: int) -> None:
+        """Restore previously chosen mask selections (used when auto-loading a saved
+        cut state). No-op per combo if that label isn't present anymore."""
+        for combo, label in (
+            (self._coronaries_combo, cor),
+            (self._aorta_combo, aorta),
+            (self._lv_combo, lv),
+        ):
+            idx = combo.findData(label)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+
     def update_label_name(self, label: int, name: str) -> None:
         """Sync a renamed label across all dropdowns."""
         for combo in (self._coronaries_combo, self._aorta_combo, self._lv_combo):
@@ -129,26 +196,32 @@ class StlExtractionPanel(QWidget):
 
     def set_line_drawn(self, index: int) -> None:
         """Mark a cut line as complete (called by page.py after line_drawn signal)."""
-        if index < 2:
-            self._lines_drawn[index] = True
-            self._line_status[index].setText('●')
-            self._line_status[index].setStyleSheet('color: #44cc44; font-size: 14px;')
-            self._update_extract_btn()
-        else:
-            # index 2 = optional aorta top cut
-            self._aorta_cut_status.setText('●')
-            self._aorta_cut_status.setStyleSheet('color: #44cc44; font-size: 14px;')
+        self._lines_drawn[index] = True
+        self._line_status[index].setText('●')
+        self._line_status[index].setStyleSheet('color: #44cc44; font-size: 14px;')
+        self._update_extract_btn()
 
     def _update_extract_btn(self) -> None:
         labels_ok = all(c.count() > 0 for c in (self._coronaries_combo, self._aorta_combo, self._lv_combo))
-        self._extract_btn.setEnabled(labels_ok and all(self._lines_drawn))
+        ready = labels_ok and all(self._lines_drawn)
+        self._extract_btn.setEnabled(ready)
+        self._build_geometry_btn.setEnabled(ready)
 
     def _on_extract(self) -> None:
-        cor = self._coronaries_combo.currentData()
-        aorta = self._aorta_combo.currentData()
-        lv = self._lv_combo.currentData()
+        cor, aorta, lv = self._selected_labels()
         fmt = next(
             (btn.property('fmt') for btn in self._fmt_group.buttons() if btn.isChecked()),
             'nifti',
         )
         self.extract_requested.emit(cor, aorta, lv, fmt)
+
+    def _on_build_cut_geometry(self) -> None:
+        cor, aorta, lv = self._selected_labels()
+        self.build_cut_geometry_requested.emit(cor, aorta, lv)
+
+    def _selected_labels(self) -> tuple[int, int, int]:
+        return (
+            self._coronaries_combo.currentData(),
+            self._aorta_combo.currentData(),
+            self._lv_combo.currentData(),
+        )

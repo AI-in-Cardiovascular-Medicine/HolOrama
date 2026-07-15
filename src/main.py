@@ -55,6 +55,8 @@ logger.add(sys.stdout, level="WARNING", format="{time:YYYY-MM-DD HH:mm:ss} [{lev
 
 def _cleanup_empty_log():
     logging.shutdown()
+    logger.remove()  # close loguru's own file sink — otherwise it still holds LOG_FILE
+    # open on Windows and unlink() below fails with PermissionError (WinError 32).
     if LOG_FILE.exists() and LOG_FILE.stat().st_size == 0:
         LOG_FILE.unlink()
 
