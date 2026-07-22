@@ -19,9 +19,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install pre-commit and tools
-        # mypy hook uses language:system so mypy must be present in the venv
-        run: pip install pre-commit mypy
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install pre-commit
+        run: pip install pre-commit
 
       - name: Run pre-commit hooks (same checks as local)
         run: pre-commit run --all-files
