@@ -20,6 +20,7 @@ from domain.io_types import FrameData
 from domain.mask_types import MASK_SPECS
 from domain.oct_display_types import OCT_LUT
 from input_output.input.contours import read_contours
+from input_output.output.contours import write_contours
 from input_output.input.metadata import (
     MetaDataIntravascular,
     PromptFn,
@@ -259,6 +260,7 @@ def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) 
 
     main_window.segmentation = True
     main_window.display.set_frame(main_window.display.frame)
+    write_contours(main_window, force=True)
 
 
 def _make_prompt(main_window) -> PromptFn:
