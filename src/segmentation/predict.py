@@ -1,7 +1,8 @@
+import gc
+
 import numpy as np
 from loguru import logger
-from PyQt6.QtWidgets import QProgressDialog, QApplication
-import gc
+from PyQt6.QtWidgets import QApplication, QProgressDialog
 
 
 class Predict:
@@ -80,8 +81,8 @@ class Predict:
                 )
                 mask[self.lower_limit : self.upper_limit, :, :] = np.array(prediction)[0, :, :, :, 0]
         else:
-            from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
             import torch
+            from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
 
             device = "cuda" if torch.cuda.is_available() else "cpu"
             seg_predictor = nnUNetPredictor(

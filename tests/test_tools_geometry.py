@@ -1,7 +1,7 @@
-import pytest
 import numpy as np
+import pytest
 
-from tools.geometry import SplineGeometry, OpenSplineGeometry
+from tools.geometry import OpenSplineGeometry, SplineGeometry
 
 # 4-point diamond; enough unique points for cubic closed spline (k=3 needs n>3)
 _DX = [0.0, 1.0, 0.0, -1.0]

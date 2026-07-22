@@ -39,6 +39,17 @@ save:
   save_2d: False
   save_3d: True
 
+vmtk:
+  # vmtk here is a WSL-native Linux build (not runnable directly from Windows) — both
+  # are activated via `source` inside WSL before every vmtk call, same as the original
+  # bash pipeline did. Required for Calculate Centerlines.
+  venv_path: 'D:\00_coding\vmtk-env'  # the plain Python venv (bin/activate)
+  build_path: 'D:\00_coding\vmtk\vmtk-build\Install'  # the vmtk build itself (vmtk_env.sh, bin/vmtkcenterlines etc.)
+  # Which WSL distro actually has vmtk's runtime deps (this machine has several
+  # side by side; the default one — Ubuntu-22.04 — is missing GLIBCXX_3.4.32, but
+  # the plain "Ubuntu" (24.04) distro has it). Empty = whatever `wsl.exe` defaults to.
+  wsl_distro: 'Ubuntu'
+
 segmentation:
   # model_file: './models/old/u2net_2d_MINMAX_512_best.h5'
   model_file: './models/nnUNetTrainerU2NetP__nnUNetResEncUNetLPlans__2d'

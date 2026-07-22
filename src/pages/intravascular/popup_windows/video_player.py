@@ -1,15 +1,16 @@
 import os
-
 from pathlib import Path
-from PyQt6.QtWidgets import QMainWindow
-from PyQt6.QtMultimediaWidgets import QVideoWidget
+
+from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer
-from PyQt6.QtCore import QUrl
+from PyQt6.QtMultimediaWidgets import QVideoWidget
+from PyQt6.QtWidgets import QMainWindow
 
 
 class VideoPlayer(QMainWindow):
     def __init__(self, main_window):
         super().__init__(main_window)
+        self.setWindowFlags(Qt.WindowType.Window)
         self.setWindowTitle('Video Player')
         self.resize(600, 400)
         self.video_widget = QVideoWidget()

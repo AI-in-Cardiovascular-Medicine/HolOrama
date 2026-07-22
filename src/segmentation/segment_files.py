@@ -1,19 +1,19 @@
-import os
 import glob
 import json
-import yaml
+import os
+from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 
 import pydicom as dcm
 import SimpleITK as sitk
-from dataclasses import asdict
+import yaml
 from loguru import logger
 from tqdm import tqdm
 
-from version import CONTOURS_VERSION_TAG
 from segmentation.predict import Predict
 from segmentation.segment import mask_to_contours
+from version import CONTOURS_VERSION_TAG
 
 
 def _load_config(path: Path) -> SimpleNamespace:

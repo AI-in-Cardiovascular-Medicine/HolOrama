@@ -1,7 +1,8 @@
-from PyQt6.QtWidgets import QMainWindow, QGraphicsView, QGraphicsScene
-from PyQt6.QtGui import QPixmap, QImage
 import matplotlib.pyplot as plt
 import pandas as pd
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtWidgets import QGraphicsScene, QGraphicsView, QMainWindow
 from scipy.ndimage import gaussian_filter1d
 
 pd.options.mode.chained_assignment = None  # default='warn'
@@ -10,6 +11,7 @@ pd.options.mode.chained_assignment = None  # default='warn'
 class ResultsPlot(QMainWindow):
     def __init__(self, main_window, report_data):
         super().__init__(main_window)
+        self.setWindowFlags(Qt.WindowType.Window)
         self.main_window = main_window
         self.report_data = report_data
         self.pullback_speed = main_window.runtime_data.metadata.get('pullback_speed', 1)

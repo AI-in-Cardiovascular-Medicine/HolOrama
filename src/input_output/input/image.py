@@ -2,27 +2,33 @@ import os
 import traceback
 from typing import Optional
 
+import nibabel as nib
 import numpy as np
 import pandas as pd
-import nibabel as nib
 import pydicom as dcm
-from skimage import measure as sk_measure
-from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMessageBox, QProgressDialog, QApplication
-
-from pages.intravascular.popup_windows.message_boxes import ErrorMessage, WarningMessage
-from domain.oct_display_types import OCT_LUT
-from input_output.input.metadata import (
-    MetaDataIntravascular,
-    PromptFn,
-    parse_metadata_dcm,
-    parse_metadata_nifti,
-    populate_metadata_table,
-    extract_modality,
+from PyQt6.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QInputDialog,
+    QMessageBox,
+    QProgressDialog,
 )
-from input_output.input.contours import read_contours
+from skimage import measure as sk_measure
+
 from domain.all_types import ContourType, SupportedType
 from domain.io_types import FrameData
 from domain.mask_types import MASK_SPECS
+from domain.oct_display_types import OCT_LUT
+from input_output.input.contours import read_contours
+from input_output.input.metadata import (
+    MetaDataIntravascular,
+    PromptFn,
+    extract_modality,
+    parse_metadata_dcm,
+    parse_metadata_nifti,
+    populate_metadata_table,
+)
+from pages.intravascular.popup_windows.message_boxes import ErrorMessage, WarningMessage
 from segmentation.segment import downsample
 from tools.geometry import SplineGeometry
 

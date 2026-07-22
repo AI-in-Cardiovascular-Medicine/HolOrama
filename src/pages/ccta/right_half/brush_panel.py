@@ -1,15 +1,15 @@
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QButtonGroup,
+    QCheckBox,
+    QComboBox,
     QHBoxLayout,
     QLabel,
-    QSlider,
-    QComboBox,
-    QCheckBox,
     QRadioButton,
-    QButtonGroup,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
 
 from domain.ccta_display_types import LABEL_COLORS
 from tools.painting import BrushGeometry

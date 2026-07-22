@@ -1,6 +1,7 @@
 """Export a combined binary mask as NIfTI or STL (ASCII default, binary available)."""
 
 import struct
+
 import numpy as np
 import SimpleITK as sitk
 from skimage.measure import marching_cubes

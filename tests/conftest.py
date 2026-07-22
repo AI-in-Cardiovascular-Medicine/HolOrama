@@ -1,8 +1,9 @@
-import pytest
-import sys
 import os
+import sys
 from types import SimpleNamespace
 from unittest.mock import Mock
+
+import pytest
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SRC = os.path.join(ROOT, "src")

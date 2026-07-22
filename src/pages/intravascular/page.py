@@ -1,37 +1,35 @@
 from functools import partial
-
 from types import SimpleNamespace
 
+from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtWidgets import (
-    QSplitter,
-    QTableWidget,
+    QButtonGroup,
     QCheckBox,
     QPushButton,
-    QButtonGroup,
+    QSplitter,
+    QTableWidget,
 )
-from PyQt6.QtCore import QTimer, Qt, QSize
 
-from pages.intravascular.left_half.left_half import LeftHalf
+from domain.all_types import OCT_QUALITY_LABELS
+from domain.runtime_types import RuntimeData
+from gating.gating_plot import GatingPlot
+from input_output.output.contours import write_contours
 from pages.intravascular.brush_panel import BrushSettingsPopup
 from pages.intravascular.left_half.display import Display
-from pages.intravascular.utils.slider import Slider, Communicate
+from pages.intravascular.left_half.left_half import LeftHalf
+from pages.intravascular.right_half.gating_display import GatingDisplay
+from pages.intravascular.right_half.longitudinal_view import LongitudinalView
 from pages.intravascular.right_half.right_half import (
     RightHalf,
+    set_oct_quality,
     toggle_diastolic_frame,
     toggle_systolic_frame,
     toggle_tagged_frame,
     use_diastolic,
     use_tagged,
-    set_oct_quality,
 )
-from pages.intravascular.right_half.gating_display import GatingDisplay
-from pages.intravascular.right_half.longitudinal_view import LongitudinalView
-
-from input_output.output.contours import write_contours
-from gating.gating_plot import GatingPlot
+from pages.intravascular.utils.slider import Communicate, Slider
 from segmentation.predict import Predict
-from domain.runtime_types import RuntimeData
-from domain.all_types import OCT_QUALITY_LABELS
 
 
 class IntravascularPage(QSplitter):

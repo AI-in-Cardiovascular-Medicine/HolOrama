@@ -1,28 +1,28 @@
 import os
-
 from types import SimpleNamespace
 
-from PyQt6.QtWidgets import (
-    QMainWindow,
-    QMenuBar,
-    QStatusBar,
-    QStackedWidget,
-    QWidget,
-    QHBoxLayout,
-    QVBoxLayout,
-    QPushButton,
-    QStylePainter,
-    QStyleOptionButton,
-    QStyle,
-)
 from PyQt6.QtCore import QSize
 from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import (
+    QHBoxLayout,
+    QMainWindow,
+    QMenuBar,
+    QPushButton,
+    QStackedWidget,
+    QStatusBar,
+    QStyle,
+    QStyleOptionButton,
+    QStylePainter,
+    QVBoxLayout,
+    QWidget,
+)
 
-from pages.intravascular.page import IntravascularPage
-from pages.ccta.page import CctaPage
-from gui.shortcuts import init_shortcuts, init_ccta_shortcuts, init_menu
+from domain.io_types import MetaDataCCTA, MetaDataIntravascular, MetaDataFusion
 from gui.active_page import ActivePage
-from domain.io_types import MetaDataCCTA, MetaDataIntravascular
+from gui.shortcuts import init_ccta_shortcuts, init_menu, init_shortcuts
+from pages.ccta.page import CctaPage
+from pages.intravascular.page import IntravascularPage
+from pages.fusion.page import FusionPage
 
 
 class _NavButton(QPushButton):
@@ -49,6 +49,7 @@ class _NavButton(QPushButton):
 class Master(QMainWindow):
     intravascular_metadata: MetaDataIntravascular
     ccta_metadata: MetaDataCCTA
+    fusion_metadata: MetaDataFusion
 
     def __init__(self, config: SimpleNamespace) -> None:
         super().__init__()
@@ -73,11 +74,12 @@ class Master(QMainWindow):
 
         self.active_page = ActivePage.INTRAVASCULAR
         self.stack = QStackedWidget()
-        self.ccta_page = CctaPage(config, self.status_bar)
         self.intravascular_page = IntravascularPage(config, self.menu_bar, self.status_bar)
+        self.ccta_page = CctaPage(config, self.status_bar)
+        self.fusion_page = FusionPage(config, self.status_bar)
         self.stack.addWidget(self.intravascular_page)
         self.stack.addWidget(self.ccta_page)
-
+        self.stack.addWidget(self.fusion_page)
         init_shortcuts(self.intravascular_page)
         init_ccta_shortcuts(self.ccta_page)
         init_menu(self.intravascular_page, self.ccta_page)
@@ -106,13 +108,18 @@ class Master(QMainWindow):
         ccta_btn = _NavButton(ActivePage.value_to_string(ActivePage.CCTA.value))
         ccta_btn.setCheckable(True)
 
-        btns = {ActivePage.INTRAVASCULAR: ivus_btn, ActivePage.CCTA: ccta_btn}
+        fusion_btn = _NavButton(ActivePage.value_to_string(ActivePage.FUSION.value))
+        fusion_btn.setCheckable(True)
+
+        btns = {ActivePage.INTRAVASCULAR: ivus_btn, ActivePage.CCTA: ccta_btn, ActivePage.FUSION: fusion_btn}
 
         ivus_btn.clicked.connect(lambda: self._switch_page(ActivePage.INTRAVASCULAR.value))
         ccta_btn.clicked.connect(lambda: self._switch_page(ActivePage.CCTA.value))
+        fusion_btn.clicked.connect(lambda: self._switch_page(ActivePage.FUSION.value))
 
         layout.addWidget(ivus_btn)
         layout.addWidget(ccta_btn)
+        layout.addWidget(fusion_btn)
         layout.addStretch()
         return bar, btns
 
@@ -153,3 +160,8 @@ class Master(QMainWindow):
         for page, btn in self._nav_btns.items():
             btn.setChecked(page == active)
         self.active_page = active
+
+    def closeEvent(self, event) -> None:
+        self.ccta_page.shutdown()
+        self.fusion_page.shutdown()
+        super().closeEvent(event)

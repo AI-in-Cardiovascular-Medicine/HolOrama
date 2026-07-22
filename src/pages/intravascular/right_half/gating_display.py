@@ -1,6 +1,6 @@
 import logging
-import matplotlib
 
+import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 

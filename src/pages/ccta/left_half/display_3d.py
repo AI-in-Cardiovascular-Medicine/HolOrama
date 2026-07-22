@@ -1,7 +1,18 @@
 import numpy as np
 import vtkmodules.vtkInteractionStyle  # noqa: F401
 import vtkmodules.vtkRenderingOpenGL2  # noqa: F401
+from matplotlib.path import Path as MplPath
+from PyQt6.QtCore import QEvent, QPoint, Qt, pyqtSignal
+from PyQt6.QtWidgets import (
+    QApplication,
+    QHBoxLayout,
+    QInputDialog,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
+from vtkmodules.util import numpy_support
 from vtkmodules.vtkCommonCore import vtkPoints
 from vtkmodules.vtkCommonDataModel import vtkCellArray, vtkImageData, vtkPolyData
 from vtkmodules.vtkFiltersSources import vtkSphereSource
@@ -15,10 +26,6 @@ from vtkmodules.vtkRenderingCore import (
     vtkPolyDataMapper2D,
     vtkRenderer,
 )
-from vtkmodules.util import numpy_support
-from matplotlib.path import Path as MplPath
-from PyQt6.QtCore import pyqtSignal, QEvent, QPoint, Qt
-from PyQt6.QtWidgets import QInputDialog, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QApplication
 
 from domain.ccta_display_types import LABEL_COLORS
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
@@ -35,7 +42,9 @@ try:
     _ALGO = 'surface_nets'
 except ImportError:
     try:
-        from vtkmodules.vtkFiltersCore import vtkDiscreteFlyingEdges3D as _DiscreteFE  # type: ignore[attr-defined]  # VTK ≥ 8.1
+        from vtkmodules.vtkFiltersCore import (  # type: ignore[attr-defined]  # VTK ≥ 8.1
+            vtkDiscreteFlyingEdges3D as _DiscreteFE,
+        )
 
         _ALGO = 'flying_edges'
     except ImportError:
@@ -121,6 +130,15 @@ class CctaViewer3D(QWidget):
         self._hidden_labels = set()
         self._custom_colors = None
         self.clear_mesh()
+
+    def update_mask_data(self, mask: np.ndarray, voxel_spacing: tuple[float, float, float] | None = None) -> None:
+        """Swap in new voxel data for the same label set (undo/redo of a brush or lasso
+        edit) without resetting per-label visibility or custom colors. Regenerates the
+        mesh in place, preserving the camera, if one was already rendered."""
+        self._mask = mask
+        if voxel_spacing is not None:
+            self._voxel_spacing = voxel_spacing
+        self._rebuild_active_actors()
 
     def set_label_colors(self, colors: list[tuple[int, int, int]]) -> None:
         self._custom_colors = list(colors)
@@ -403,7 +421,7 @@ class CctaViewer3D(QWidget):
         self.mask_about_to_change.emit()
         self._mask[z_idx[inside], y_idx[inside], x_idx[inside]] = 0
         self.mask_erased.emit()
-        self._rerender_after_erase()
+        self._rebuild_active_actors()
 
     def _project_world_batch(self, wx: np.ndarray, wy: np.ndarray, wz: np.ndarray) -> np.ndarray:
         """Vectorised world → VTK display-pixel projection. Returns (N, 2) float array."""
@@ -471,7 +489,10 @@ class CctaViewer3D(QWidget):
         actor.GetProperty().SetLineWidth(2)
         return actor
 
-    def _rerender_after_erase(self) -> None:
+    def _rebuild_active_actors(self) -> None:
+        """Regenerate the mesh for every currently-visible label from the current
+        `self._mask`, preserving the camera. No-op if nothing has been rendered yet
+        (the 3-D mesh is opt-in via the Render button)."""
         if not self._actors:
             return
         camera = self._ren.GetActiveCamera()

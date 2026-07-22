@@ -1,19 +1,18 @@
 import cv2
-
 import numpy as np
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QBrush, QColor, QImage, QPainterPath, QPen, QPixmap
 from PyQt6.QtWidgets import (
-    QGraphicsView,
-    QGraphicsScene,
-    QGraphicsPixmapItem,
+    QCheckBox,
     QGraphicsEllipseItem,
     QGraphicsLineItem,
     QGraphicsPathItem,
+    QGraphicsPixmapItem,
+    QGraphicsScene,
+    QGraphicsView,
     QPushButton,
-    QCheckBox,
     QSizePolicy,
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap, QImage, QColor, QPen, QBrush, QPainterPath
 
 from tools.geometry import Marker
 
@@ -251,7 +250,10 @@ class LongitudinalView(QGraphicsView):
         frames_arr = np.array(sorted(areas.keys()), dtype=float)
         areas_arr = np.array([areas[int(f)] for f in frames_arr])
 
-        from gating.breathing_pipeline import compute_breathing_signal, compute_breathing_phases
+        from gating.breathing_pipeline import (
+            compute_breathing_phases,
+            compute_breathing_signal,
+        )
 
         rt = self.main_window.runtime_data
         gated_set = set(getattr(rt, 'gated_frames_dia', [])) | set(getattr(rt, 'gated_frames_sys', []))

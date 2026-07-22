@@ -1,21 +1,21 @@
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QCheckBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
-    QSlider,
-    QCheckBox,
     QLineEdit,
-    QFrame,
     QPushButton,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
 
 from domain.ccta_display_types import (
+    DEFAULT_MASK_ALPHA,
     LABEL_COLORS,
     LABEL_COLORS_ANATOMIC,
     LABEL_NAMES_ANATOMIC,
-    DEFAULT_MASK_ALPHA,
 )
 
 
@@ -168,6 +168,16 @@ class MaskPanel(QWidget):
     def label_names(self) -> dict[int, str]:
         """Return the current user-defined name for every label."""
         return {label: row.name for label, row in self._rows.items()}
+
+    def set_label_names(self, names: dict[int, str]) -> None:
+        """Restore previously-saved custom names (used when auto-loading a saved
+        cut state). No-op per label if it's not present anymore. Goes through
+        _LabelRow.set_label_name, which re-emits name_changed same as if the user
+        had typed it — so brush_panel/stl_panel stay in sync automatically."""
+        for label, name in names.items():
+            row = self._rows.get(label)
+            if row is not None:
+                row.set_label_name(name)
 
     def set_brush_panel(self, panel: 'QWidget') -> None:
         """Attach a widget below the label scroll area (called once at setup)."""

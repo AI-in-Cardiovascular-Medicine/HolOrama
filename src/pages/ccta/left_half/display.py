@@ -1,11 +1,16 @@
 import cv2
 import numpy as np
-from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene
-from PyQt6.QtCore import Qt, QPointF, pyqtSignal
-from PyQt6.QtGui import QImage, QPixmap, QPen, QColor
+from PyQt6.QtCore import QPointF, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QImage, QPen, QPixmap
+from PyQt6.QtWidgets import QGraphicsScene, QGraphicsView
 
-from domain.ccta_display_types import LABEL_COLORS, DEFAULT_MASK_ALPHA, DEFAULT_CT_LEVEL, DEFAULT_CT_WIDTH
-from tools.painting import BrushGeometry, BrushCursor
+from domain.ccta_display_types import (
+    DEFAULT_CT_LEVEL,
+    DEFAULT_CT_WIDTH,
+    DEFAULT_MASK_ALPHA,
+    LABEL_COLORS,
+)
+from tools.painting import BrushCursor, BrushGeometry
 
 _CROSSHAIR_COLOR = QColor(255, 255, 0)
 _CUT_LINE_COLOR = QColor(180, 180, 180)
@@ -100,6 +105,13 @@ class CctaDisplay(QGraphicsView):
         self._mask_labels = labels
         self._hidden_labels = set()
         self._custom_colors = None
+        self._rebuild_lut()
+        self._render()
+
+    def update_mask_data(self, mask: np.ndarray) -> None:
+        """Swap in new voxel data for the same label set (undo/redo of a brush or lasso
+        edit) without resetting per-label visibility or custom colors."""
+        self._mask = mask
         self._rebuild_lut()
         self._render()
 

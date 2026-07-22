@@ -1,17 +1,16 @@
+import glob
+import json
+import math
 import os
 import re
-import json
-import glob
-import math
+from typing import Dict, List, Optional, Tuple
 
 from loguru import logger
-from typing import List, Tuple, Optional, Dict
 
-from version import version_file_str
-from domain.io_types import Measure, Measurements, Contour, FrameData
 from domain.all_types import OCT_QUALITY_LABELS
+from domain.io_types import Contour, FrameData, Measure, Measurements
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
-
+from version import version_file_str
 
 _CONTOUR_FILENAME_RE = re.compile(r'_contours_(ho_)?(\d+)_(\d+)_(\d+)\.json$')
 

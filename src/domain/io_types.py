@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-import numpy as np
 from dataclasses import dataclass, field
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
+
+import numpy as np
+
 from domain.all_types import OCT_QUALITY_LABELS
 
 
@@ -80,4 +82,13 @@ class MetaDataCCTA:
     manufacturer: str = 'Unknown'
     model: str = 'Unknown'
     raw_tags: dict = field(default_factory=dict)  # all remaining DICOM / NIfTI tags
+    ...
+
+
+@dataclass
+class MetaDataFusion:
+    modality: str = 'Fusion'
+    patient_name: str = 'Unknown'
+    birthdate: str = 'Unknown'
+    sex: str = 'Unknown'
     ...

@@ -1,13 +1,13 @@
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import matplotlib.path as mplPath
+import numpy as np
 from loguru import logger
 from skimage import measure
 
-from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
+from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 
 
 def segment(main_window):

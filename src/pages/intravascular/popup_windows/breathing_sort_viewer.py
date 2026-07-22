@@ -10,38 +10,39 @@ neighbours (index on top) that updates with the slider.  A swap tool
 
 Only gated frames are shown; gaps (positions with no frame) are ignored.
 """
+
 from __future__ import annotations
 
 import os
 
 import numpy as np
 import pandas as pd
+from loguru import logger
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QImage, QPainterPath, QPen, QPixmap
 from PyQt6.QtWidgets import (
-    QMainWindow,
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QGridLayout,
-    QLabel,
-    QGraphicsView,
-    QGraphicsScene,
-    QGraphicsPixmapItem,
-    QGraphicsPathItem,
-    QSpinBox,
     QComboBox,
+    QGraphicsPathItem,
+    QGraphicsPixmapItem,
+    QGraphicsScene,
+    QGraphicsView,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
     QPushButton,
     QSlider,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap, QImage, QPen, QColor, QPainterPath
-from loguru import logger
 
 from gating.breathing_pipeline import (
-    register_phase,
-    assign_breathing_bins,
-    compute_breathing_signal,
-    compute_breathing_phases,
     adjusted_areas_by_frame,
+    assign_breathing_bins,
+    compute_breathing_phases,
+    compute_breathing_signal,
+    register_phase,
 )
 from input_output.output.reports import report
 from tools.geometry import SplineGeometry
@@ -69,6 +70,7 @@ class _StepSlider(QSlider):
 class BreathingSortViewer(QMainWindow):
     def __init__(self, main_window):
         super().__init__(main_window)
+        self.setWindowFlags(Qt.WindowType.Window)
         self.main_window = main_window
         cfg = main_window.config.display
         self.image_size = cfg.image_size

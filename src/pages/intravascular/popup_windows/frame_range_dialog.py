@@ -1,11 +1,11 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialog,
-    QLineEdit,
     QDialogButtonBox,
     QFormLayout,
-    QRadioButton,
     QHBoxLayout,
+    QLineEdit,
+    QRadioButton,
     QWidget,
 )
 

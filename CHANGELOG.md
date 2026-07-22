@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-07-11
+
+New Fusion page: aligns an intravascular pullback onto a labelled CCTA vessel tree and stitches them into one combined mesh. CCTA gained the post-cut geometry and centerline tools needed to prepare that vessel-tree data for Fusion.
+
+### Added
+- Fusion page with its own 3D viewer, tabbed by scene (CCTA Geometry, Vessel Tree, Intravascular Loaded, Intravascular Aligned), each with per-layer visibility/opacity controls
+- Pipeline runs through label_geometry, vessel tree discretization, intravascular alignment, scaling, stitching, and remeshing, using the `multimodars` package
+- Alignment reference point can be picked either from a dropdown or by clicking it directly in the 3D scene
+- Scaling factors are computed automatically but stay editable before applying
+- Live progress dialog for the remesh step (the one part of the pipeline slow enough to need one)
+- CCTA: "Build Cut Geometry" turns the LVOT + aorta-top cut into an inspectable mesh in its own 3D tab, with Taubin smoothing, mesh reduction, and inlet/outlet/RCA/LCA point picking
+- CCTA: "Calculate Centerlines" computes aortic-root/RCA/LCA centerlines via vmtk (over WSL) and displays them once done; cut lines, labels, and outlet points are saved per case and restored automatically
+
+### Fixed
+- Ctrl+Z on a CCTA mask edit was resetting per-label visibility/colors/3D mesh instead of only undoing the voxel change
+- Fusion: removed the dead "Pick Point" button from toolbars where it was never wired to anything
+- Logging no longer duplicates through two competing handlers, leaks third-party DEBUG noise, or fails to clean up its own empty log file on exit
+
 ## [0.3.0] - 2026-07-07
 
 Undo support for contour and mask edits, plus breathing-sort fixes.
@@ -299,6 +317,7 @@ Now runs on PyQt6
 - Declared first stable release (after paper publication).
 - Updated citation from medRxiv to *Computer Methods and Programs in Biomedicine*.
 
+[0.4.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.1.0...v0.2.0
 [1.8.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.7.0...v1.8.0

@@ -21,7 +21,7 @@ dependencies = [
     "scikit-image",
     "seaborn",
     "pylint",
-    "numpy==1.26.4",
+    "numpy>=2.0.0",
     "pydicom==2.4.4",
     "pylibjpeg",
     "pylibjpeg-libjpeg",
@@ -35,7 +35,7 @@ dependencies = [
     "torchvision==0.19.0+cu118",
     "vtk",
     "nibabel",
-    "dtcwt>=0.14.0",
+    "multimodars[meshlab]>=0.5.2"
 ]
 
 [dependency-groups]
@@ -56,6 +56,10 @@ path = "src/version.py"
 
 [tool.uv]
 package = false
+environments = [
+    "sys_platform == 'win32'",
+    "sys_platform == 'linux'",
+]
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu118" }]

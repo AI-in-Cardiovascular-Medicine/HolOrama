@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from typing import Any, TypedDict
 
 import numpy as np
@@ -15,6 +16,47 @@ class CctaRuntimeData:
         self.mask: np.ndarray | None = None  # (Z, Y, X) uint8 label values
         self.labels: list[int] = []  # non-background labels present in mask
         self.mask_undo: UndoStack = UndoStack()  # last 5 full-mask snapshots, for Ctrl+Z
+
+        # -- Post-cut geometry (Build Cut Geometry / Smooth / Calculate Centerlines) ----
+        self.cut_mesh: Any | None = None  # trimesh.Trimesh built from the LVOT/aorta-top cut
+        self.cut_mesh_inlet: np.ndarray | None = None  # world (x, y, z) mm — lower-Z cut plane centroid
+        self.cut_mesh_outlet: np.ndarray | None = None  # world (x, y, z) mm — higher-Z cut plane centroid
+
+
+class FusionRuntimeData:
+    """Holds the multimodars objects produced while working through the fusion pipeline.
+
+    Fields are grouped by the right-half column that produces them: geometry/centerline
+    labeling (column 1), intravascular alignment (column 2), fusion/scaling/stitching
+    (column 3). Nothing here is serialized as-is -> each stage writes its own output file
+    (STL, VTP, JSON) via pipeline.py, and this container just keeps the in-memory objects
+    needed to feed the next stage and to redraw the 3-D viewer.
+    """
+
+    def __init__(self):
+        self.case_dir: str | None = None  # last directory used for file/save dialogs
+
+        # -- Column 1: CCTA geometry + centerlines --------------------------------------
+        self.centerline_aorta: Any | None = None  # PyCenterline
+        self.centerline_rca: Any | None = None
+        self.centerline_lca: Any | None = None
+        self.results: dict | None = None  # multimodars "results" dict (mesh, *_points, ...)
+        self.vessel_tree: Any | None = None  # PyDiscretizedVesselTree
+        self.selected_rca_reference_index: int = 0  # index into vessel_tree.rca_references
+
+        # -- Column 2: intravascular alignment -------------------------------------------
+        self.iv_geometry_pair: Any | None = None  # PyGeometryPair from from_file_singlepair
+        self.iv_align_logs: tuple | None = None
+        self.aligned: Any | None = None  # PyGeometryPair | PyGeometry from align_combined
+        self.resampled_centerline: Any | None = None
+
+        # -- Column 3: fusion / scaling / stitching --------------------------------------
+        self.prox_scaling: float | None = None
+        self.distal_scaling: float | None = None
+        self.aortic_scaling: float | None = None
+        self.aortic_wall_scaling: float | None = None
+        self.stitched: dict | None = None  # result of stitch_ccta_to_intravascular
+        self.final_mesh: Any | None = None  # trimesh.Trimesh after remesh/smoothing
 
 
 class GatingSignal(TypedDict, total=False):

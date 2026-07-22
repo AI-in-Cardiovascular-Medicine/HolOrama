@@ -43,6 +43,11 @@ Currently spans:
   <img src="media/CCTA_demo.gif" alt="CCTA Demo" width="700">
 </p>
 
+<p align="left">
+  Fuse CCTA and intravascular data into one single geometry:<br>
+  <img src="media/Fusion_demo.gif" alt="Fusion Demo" width="700">
+</p>
+
 ## Table of contents <!-- omit in toc -->
 
 - [Installation](#installation)

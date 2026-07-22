@@ -1,11 +1,12 @@
 from enum import Enum
 
-from domain.io_types import MetaDataIntravascular, MetaDataCCTA
+from domain.io_types import MetaDataCCTA, MetaDataIntravascular, MetaDataFusion
 
 
 class ActivePage(Enum):
     INTRAVASCULAR = 0
     CCTA = 1
+    FUSION = 2
 
     @classmethod
     def from_index(cls, index: int) -> 'ActivePage':
@@ -26,6 +27,7 @@ class ActivePage(Enum):
         mapping = {
             0: 'Intravascular',
             1: 'CCTA',
+            2: 'Fusion',
         }
         return mapping.get(value, 'Unknown')
 
@@ -34,5 +36,6 @@ class ActivePage(Enum):
         mapping = {
             cls.INTRAVASCULAR: MetaDataIntravascular(),
             cls.CCTA: MetaDataCCTA(),
+            cls.FUSION: MetaDataFusion(),
         }
         return mapping.get(page, 'unknown_metadata')

@@ -1,7 +1,6 @@
-from enum import Enum
 from dataclasses import dataclass
-from typing import Tuple, Union, Any
-
+from enum import Enum
+from typing import Any, Tuple, Union
 
 OCT_QUALITY_LABELS = ['Very Bad', 'Bad', 'Ok', 'Good', 'Very Good']  # best needs to be on the right
 

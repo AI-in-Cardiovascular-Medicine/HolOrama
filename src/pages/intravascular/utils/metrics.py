@@ -2,14 +2,19 @@ from typing import Any, Tuple
 
 import numpy as np
 from loguru import logger
-from shapely.geometry import Polygon
-from PyQt6.QtWidgets import QGraphicsTextItem
+from PyQt6.QtCore import QLineF, Qt
 from PyQt6.QtGui import QColor, QFont
-from PyQt6.QtCore import Qt, QLineF
+from PyQt6.QtWidgets import QGraphicsTextItem
+from shapely.geometry import Polygon
+
+from input_output.output.reports import (
+    closest_points,
+    compute_polygon_metrics,
+    farthest_points,
+)
 
 # Internal imports based on your file structure
 from tools.geometry import get_qt_pen
-from input_output.output.reports import compute_polygon_metrics, farthest_points, closest_points
 
 
 class MetricsMixin:
@@ -99,7 +104,9 @@ class MetricsMixin:
         Minor axis is needed alongside area for the breathing signal's
         elliptic-deformation adjustment (see breathing_pipeline.adjust_for_elliptic_deformation).
         """
-        from tools.geometry import SplineGeometry  # local import avoids circular at module level
+        from tools.geometry import (
+            SplineGeometry,  # local import avoids circular at module level
+        )
 
         sf = self.scaling_factor
         n_pts = self.n_points_contour
@@ -256,22 +263,32 @@ class MetricsMixin:
             pass
 
         lines = [
-            f"Lumen area:\t\t{round(lumen_area, 2)} (mm\N{SUPERSCRIPT TWO})"
-            if lumen_area is not None
-            else "Lumen area:\t\tn/a",
+            (
+                f"Lumen area:\t\t{round(lumen_area, 2)} (mm\N{SUPERSCRIPT TWO})"
+                if lumen_area is not None
+                else "Lumen area:\t\tn/a"
+            ),
             f"Lumen circ:\t\t{round(lumen_circumf, 2)} (mm)" if lumen_circumf is not None else "Lumen circ:\t\tn/a",
-            f"Elliptic ratio:\t\t{round(elliptic_ratio, 2)}"
-            if elliptic_ratio is not None
-            else "Elliptic ratio:\t\tn/a",
-            f"Longest distance:\t{round(longest_distance, 2)} (mm)"
-            if longest_distance is not None
-            else "Longest distance:\t\tn/a",
-            f"Shortest distance:\t{round(shortest_distance, 2)} (mm)"
-            if shortest_distance is not None
-            else "Shortest distance:\t\tn/a",
-            f"EEM area:\t\t{round(eem_area, 2)} (mm\N{SUPERSCRIPT TWO})"
-            if eem_area is not None
-            else "EEM area:\t\tn/a",
+            (
+                f"Elliptic ratio:\t\t{round(elliptic_ratio, 2)}"
+                if elliptic_ratio is not None
+                else "Elliptic ratio:\t\tn/a"
+            ),
+            (
+                f"Longest distance:\t{round(longest_distance, 2)} (mm)"
+                if longest_distance is not None
+                else "Longest distance:\t\tn/a"
+            ),
+            (
+                f"Shortest distance:\t{round(shortest_distance, 2)} (mm)"
+                if shortest_distance is not None
+                else "Shortest distance:\t\tn/a"
+            ),
+            (
+                f"EEM area:\t\t{round(eem_area, 2)} (mm\N{SUPERSCRIPT TWO})"
+                if eem_area is not None
+                else "EEM area:\t\tn/a"
+            ),
             f"Plaque burden:\t\t{percent_stenosis_text}",
         ]
 

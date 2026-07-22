@@ -25,7 +25,7 @@ Notes on Reasoning
 ------------------
 - blur signal, centroid vector, and weight optimization removed:
   they add noise for real IVUS data and degrade the clean correlation signal.
-- DT-CWT (Torbati et al. 2019) tested, resulted in more noise than the simple bandpass filter. 
+- DT-CWT (Torbati et al. 2019) tested, resulted in more noise than the simple bandpass filter.
 - The 2 x f_heart trick is unnecessary when the lumen area is available:
   it already separates sys and dia at a single f_heart.
 - Centroid vector analysis showed SNR = 0.04 (noise-dominated by catheter
@@ -33,6 +33,7 @@ Notes on Reasoning
 """
 
 import time
+
 import numpy as np
 import pandas as pd
 from loguru import logger

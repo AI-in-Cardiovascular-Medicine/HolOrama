@@ -1,39 +1,62 @@
+import atexit
+import logging
 import os
 import sys
-import atexit
-import yaml
-import logging
-from pathlib import Path
 from datetime import datetime
-from types import SimpleNamespace
+from pathlib import Path
+from types import FrameType, SimpleNamespace
+
+import yaml
+from loguru import logger
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 import qdarktheme
-
+from PyQt6.QtCore import QtMsgType, qInstallMessageHandler
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import qInstallMessageHandler, QtMsgType
 
-from version import __version__
 from gui.app import Master
-
+from version import __version__
 
 LOG_DIR = Path("logs")
 LOG_DIR.mkdir(exist_ok=True)
 LOG_FILE = LOG_DIR / f"app_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_FILE, encoding="utf-8"),
-        logging.StreamHandler(sys.stdout),
-    ],
-)
-log = logging.getLogger(__name__)
+
+class _InterceptHandler(logging.Handler):
+    """Forwards stdlib `logging` records (h5py, matplotlib, Qt, ...) into loguru's
+    sinks so everything ends up in one file with one format instead of two competing
+    logging configs writing to the same path."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        level: str | int
+        try:
+            level = logger.level(record.levelname).name
+        except ValueError:
+            level = record.levelno
+
+        # Walk past the stdlib logging frames so loguru attributes {name} to the
+        # original caller (e.g. "h5py._conv") instead of this handler.
+        frame: FrameType | None = logging.currentframe()
+        depth = 2
+        while frame and frame.f_code.co_filename == logging.__file__:
+            frame = frame.f_back
+            depth += 1
+        logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
+
+
+# WARNING here (not DEBUG) so third-party libraries' routine DEBUG/INFO chatter
+# (e.g. h5py._conv "Creating converter from X to Y") never reaches loguru at all.
+logging.basicConfig(handlers=[_InterceptHandler()], level=logging.WARNING)
+
+logger.remove()  # drop loguru's default stderr sink so console output is controlled below
+logger.add(LOG_FILE, level="WARNING", format="{time:YYYY-MM-DD HH:mm:ss} [{level}] {name}: {message}")
+logger.add(sys.stdout, level="INFO", format="{time:YYYY-MM-DD HH:mm:ss} [{level}] {name}: {message}")
 
 
 def _cleanup_empty_log():
     logging.shutdown()
+    logger.remove()  # close loguru's own file sink — otherwise it still holds LOG_FILE
+    # open on Windows and unlink() below fails with PermissionError (WinError 32).
     if LOG_FILE.exists() and LOG_FILE.stat().st_size == 0:
         LOG_FILE.unlink()
 
@@ -46,7 +69,7 @@ def handle_exception(exc_type, exc_value, exc_tb):
     if issubclass(exc_type, KeyboardInterrupt):
         sys.__excepthook__(exc_type, exc_value, exc_tb)
         return
-    log.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_tb))
+    logger.opt(exception=(exc_type, exc_value, exc_tb)).critical("Uncaught exception")
 
 
 sys.excepthook = handle_exception
@@ -54,13 +77,13 @@ sys.excepthook = handle_exception
 
 def qt_message_handler(mode, _context, message):
     if mode == QtMsgType.QtDebugMsg:
-        log.debug(f"Qt: {message}")
+        logger.debug(f"Qt: {message}")
     elif mode == QtMsgType.QtInfoMsg:
-        log.info(f"Qt: {message}")
+        logger.info(f"Qt: {message}")
     elif mode == QtMsgType.QtWarningMsg:
-        log.warning(f"Qt: {message}")
+        logger.warning(f"Qt: {message}")
     elif mode in (QtMsgType.QtCriticalMsg, QtMsgType.QtFatalMsg):
-        log.critical(f"Qt: {message}")
+        logger.critical(f"Qt: {message}")
 
 
 qInstallMessageHandler(qt_message_handler)
