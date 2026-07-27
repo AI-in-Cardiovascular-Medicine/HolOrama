@@ -116,8 +116,8 @@ def test_assign_breathing_bins_ranges():
 
 
 def test_register_phase_recovers_order():
-    dia, area, peaks, valleys, true_pos, N = _synthetic_gated_phase()
-    R = register_phase(dia, area, peaks, valleys, n_bins=4, n_total=N)
+    dia, area, peaks, valleys, true_pos, _ = _synthetic_gated_phase()
+    R = register_phase(dia, area, peaks, valleys, n_bins=4)
     # per-bin shifts are monotonic and increase away from rest
     assert R['shifts'][0] == 0
     assert np.all(np.diff(np.abs(R['shifts'])) >= -1e-9)

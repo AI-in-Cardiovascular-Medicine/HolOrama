@@ -425,46 +425,122 @@ def assign_breathing_bins(
     return bins
 
 
+def _fit_line(frames: np.ndarray, values: np.ndarray) -> tuple[float, float]:
+    slope, intercept = np.polyfit(frames, values, 1)
+    return float(slope), float(intercept)
+
+
 def register_phase(
     frames: np.ndarray,
     areas: np.ndarray,
     peaks: list[int],
     valleys: list[int],
-    n_bins: int = 4,
-    gt_deg: int = 3,
-    max_shift: float | None = None,
-    n_total: int | None = None,
-    enforce_monotonic: bool = True,
+    n_bins: int = 5,
 ) -> dict:
-    """Breathing-corrected positions for one gated phase via bin registration.
+    """Breathing-corrected positions via valley-anchored per-bin line-fit registration.
 
-    See the module comment above.  Returns a dict with ``bins`` (per-frame bin),
-    ``shifts`` (per-bin displacement in frames), ``corrected`` (per-frame
-    corrected position) and ``order`` (frame indices sorted by corrected pos).
+    See the module comment above.  For every bin, fits ``area = slope*frame +
+    intercept`` through that bin's own points, then solves directly for the
+    horizontal shift ``s`` on the bin-0 (valley/rest) line that makes it agree
+    with the bin's own line at the bin's mean frame::
+
+        valley_line(f_mid + s) == bin_line(f_mid)
+        s = (bin_line(f_mid) - valley_line(f_mid)) / valley_slope
+
+    Same method for every bin (including the peak bin), then the existing
+    monotonic-magnitude enforcement gives the valley (fixed at 0) and peak
+    (typically largest, so left untouched) bins priority while smoothing
+    noisier in-between estimates.
+
+    (This replaced an earlier grid-search MSE shift estimate against a fitted
+    ground-truth curve, which was noisy for thin bins.)
+
+    Returns a dict with ``bins`` (per-frame bin), ``shifts`` (per-bin
+    displacement in frames), ``corrected`` (per-frame corrected position),
+    ``order`` (frame indices sorted by corrected position), plus
+    ``valley_span``/``peak_shift``/``true_length``: the corrected-position span
+    of one full valley->peak half-cycle, since raw frame number stops being a
+    meaningful position once each bin has been shifted independently.
     """
     frames = np.asarray(frames, dtype=float)
     areas = np.asarray(areas, dtype=float)
-    n_samples = len(frames)
-    if n_samples < gt_deg + 2:
-        return _passthrough_registration(frames, np.zeros(n_samples, int), max(n_bins, 1))
-
     bins = assign_breathing_bins(frames, peaks, valleys, n_bins)
-    if max_shift is None:
-        span = (n_total if n_total else int(frames.max())) or 1
-        max_shift = span / 4.0
 
-    ground_truth = _fit_ground_truth_curve(frames, areas, bins, gt_deg)
-    if ground_truth is None:  # too few rest frames -> no reliable reference
+    valley_mask = bins == 0
+    if valley_mask.sum() < 2:
         return _passthrough_registration(frames, bins, n_bins)
-    ground_truth_area = ground_truth
+    m_v, b_v = _fit_line(frames[valley_mask], areas[valley_mask])
+    if m_v == 0:
+        return _passthrough_registration(frames, bins, n_bins)
 
-    shifts = _estimate_bin_shifts(frames, areas, bins, n_bins, max_shift, ground_truth_area)
-    if enforce_monotonic:
-        shifts = _enforce_monotonic_shifts(shifts)
+    valley_span = float(frames[valley_mask].max() - frames[valley_mask].min())
 
+    shifts = np.zeros(n_bins)
+    for b in range(1, n_bins):
+        in_bin = bins == b
+        if in_bin.sum() < 2:
+            shifts[b] = shifts[b - 1]
+            continue
+        m_b, b_b = _fit_line(frames[in_bin], areas[in_bin])
+        f_mid = frames[in_bin].mean()
+        valley_at_mid = m_v * f_mid + b_v
+        bin_at_mid = m_b * f_mid + b_b
+        # s such that valley_line(f_mid + s) == bin_line(f_mid): the corrected
+        # position sits on the ground-truth (valley) axis, not the bin's own.
+        shifts[b] = (bin_at_mid - valley_at_mid) / m_v
+
+    shifts = _enforce_monotonic_shifts(shifts)
     corrected = _apply_bin_shifts(frames, bins, shifts, n_bins)
+    corrected = _extrapolate_out_of_range(frames, bins, corrected, peaks, valleys, shifts, n_bins)
     order = np.argsort(corrected, kind='stable')
-    return {'bins': bins, 'shifts': shifts, 'corrected': corrected, 'order': order}
+
+    return {
+        'bins': bins,
+        'shifts': shifts,
+        'corrected': corrected,
+        'order': order,
+        'valley_span': valley_span,
+        'peak_shift': float(shifts[-1]),
+        'true_length': valley_span + abs(float(shifts[-1])),
+    }
+
+
+def _extrapolate_out_of_range(
+    frames: np.ndarray,
+    bins: np.ndarray,
+    corrected: np.ndarray,
+    peaks: list[int],
+    valleys: list[int],
+    shifts: np.ndarray,
+    n_bins: int,
+) -> np.ndarray:
+    """Correct frames before the first / after the last labelled anchor.
+
+    ``assign_breathing_bins`` gives these ``bin == -1`` (they're outside any
+    labelled half-cycle), and ``_apply_bin_shifts`` leaves them untouched at
+    their raw frame value — which can misorder them relative to their now
+    breathing-corrected neighbours. There's no labelled data to estimate their
+    own displacement, so instead they inherit the shift in force at the
+    boundary anchor they sit past (valley anchor -> bin 0 / no shift, peak
+    anchor -> the peak bin's shift), which is a better estimate than none.
+    """
+    out_of_range = bins == -1
+    if not np.any(out_of_range):
+        return corrected
+    anchors = sorted([(int(v), 'v') for v in valleys] + [(int(p), 'p') for p in peaks])
+    if len(anchors) < 2:
+        return corrected
+
+    first_frame, first_kind = anchors[0]
+    last_frame, last_kind = anchors[-1]
+    first_bin = n_bins - 1 if first_kind == 'p' else 0
+    last_bin = n_bins - 1 if last_kind == 'p' else 0
+
+    before = out_of_range & (frames < first_frame)
+    after = out_of_range & (frames > last_frame)
+    corrected[before] = frames[before] + shifts[first_bin]
+    corrected[after] = frames[after] + shifts[last_bin]
+    return corrected
 
 
 def _passthrough_registration(frames: np.ndarray, bins: np.ndarray, n_shift_bins: int) -> dict:
@@ -475,49 +551,6 @@ def _passthrough_registration(frames: np.ndarray, bins: np.ndarray, n_shift_bins
         'corrected': frames.copy(),
         'order': np.argsort(frames, kind='stable'),
     }
-
-
-def _fit_ground_truth_curve(frames: np.ndarray, areas: np.ndarray, bins: np.ndarray, gt_deg: int):
-    """Fit the rest-frame (bin 0) area-vs-frame curve that every other bin is matched against.
-
-    Widens to bin<=0 if bin 0 alone has too few points for the fit.  Returns
-    a callable ``area(frame)`` (clipped to the fitted frame range), or None
-    if there still aren't enough rest frames for a reliable fit.
-    """
-    is_rest = bins == 0
-    if is_rest.sum() < gt_deg + 1:
-        is_rest = bins <= 0
-    if is_rest.sum() < gt_deg + 1:
-        return None
-    coeffs = np.polyfit(frames[is_rest], areas[is_rest], gt_deg)
-    lo, hi = frames[is_rest].min(), frames[is_rest].max()
-
-    def ground_truth_area(x):
-        return np.polyval(coeffs, np.clip(x, lo, hi))
-
-    return ground_truth_area
-
-
-def _estimate_bin_shifts(
-    frames: np.ndarray,
-    areas: np.ndarray,
-    bins: np.ndarray,
-    n_bins: int,
-    max_shift: float,
-    ground_truth_area,
-) -> np.ndarray:
-    """Per-bin displacement that best aligns each bin's area profile with the rest-frame ground truth."""
-    shift_grid = np.arange(-max_shift, max_shift + 1.0, 2.0)
-    shifts = np.zeros(n_bins)
-    for bin_idx in range(1, n_bins):
-        in_bin = bins == bin_idx
-        if in_bin.sum() < 3:
-            shifts[bin_idx] = shifts[bin_idx - 1]  # too few frames -> reuse previous bin's shift
-            continue
-        bin_frames, bin_areas = frames[in_bin], areas[in_bin]
-        errors = [np.mean((bin_areas - ground_truth_area(bin_frames + s)) ** 2) for s in shift_grid]
-        shifts[bin_idx] = float(shift_grid[int(np.argmin(errors))])
-    return shifts
 
 
 def _enforce_monotonic_shifts(shifts: np.ndarray) -> np.ndarray:

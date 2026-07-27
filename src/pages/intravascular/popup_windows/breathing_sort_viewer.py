@@ -5,8 +5,9 @@ Opened from the "Filtered" button.  Runs the breathing-bin registration sort
 systolic frames, then lets the user scroll through the breathing-corrected
 order with a central slider.  Diastole and systole are shown side by side with
 their lumen contours, each flanked by a 5-image filmstrip of its sorted-order
-neighbours (index on top) that updates with the slider.  A swap tool
-("switch index A with index B" + Apply) lets the user reorder outliers by hand.
+neighbours (index and distance from ostium on top) that updates with the
+slider.  A swap tool ("switch index A with index B" + Apply) lets the user
+reorder outliers by hand.
 
 Only gated frames are shown; gaps (positions with no frame) are ignored.
 """
@@ -98,6 +99,10 @@ class BreathingSortViewer(QMainWindow):
         # index offset aligning the two phases at the ostium (most-proximal
         # reference point); None → fall back to nearest-corrected-position pairing
         self._anchor_offset = None
+        # the reference (ostium) frame per phase, used to turn breathing-corrected
+        # position into a distance-from-ostium (frame number is meaningless post-sort)
+        self.dia_ostium_frame: int | None = None
+        self.sys_ostium_frame: int | None = None
 
         self._compute_sort()
         self._build_ui()
@@ -175,7 +180,6 @@ class BreathingSortViewer(QMainWindow):
         self.n_bins = int(getattr(self.main_window.config.gating, 'breathing_bins', 4))
         self.peaks, self.valleys = self._breathing_anchors(area_of)
         self.has_artefact = bool(gs.get('has_breathing_artefact', True))
-        n_total = int(rt.metadata.get('num_frames', 0)) or (len(rt.images) if rt.images is not None else 0)
 
         dia = [f for f in sorted(rt.gated_frames_dia) if f in area_of]
         sys = [f for f in sorted(rt.gated_frames_sys) if f in area_of]
@@ -203,7 +207,7 @@ class BreathingSortViewer(QMainWindow):
             self._acquisition_order(dia, sys)
         else:
             logger.info('Breathing sort: recomputing (anchors changed / no cache)')
-            self._recompute(dia, sys, area_of, n_total)
+            self._recompute(dia, sys, area_of)
 
         if self.dia_sorted:
             self._store_sort()
@@ -228,26 +232,61 @@ class BreathingSortViewer(QMainWindow):
         back to nearest-corrected-position pairing.
         """
         self._anchor_offset = None
+        self.dia_ostium_frame = None
+        self.sys_ostium_frame = None
         if not self.dia_sorted or not self.sys_sorted:
             return
         fdd = self.main_window.runtime_data.frame_data_dct or {}
         dia_refs = [f for f in self.dia_sorted if fdd.get(f) is not None and fdd[f].reference is not None]
         sys_refs = [f for f in self.sys_sorted if fdd.get(f) is not None and fdd[f].reference is not None]
-        if not dia_refs or not sys_refs:
+        # highest frame index = most proximal = ostium; kept per-phase even if only
+        # one phase has a reference point, so that phase alone can still report a
+        # distance-from-ostium (the dia/sys anchor *offset* below still needs both).
+        dia_ostium = max(dia_refs) if dia_refs else None
+        sys_ostium = max(sys_refs) if sys_refs else None
+        self.dia_ostium_frame = dia_ostium
+        self.sys_ostium_frame = sys_ostium
+        if dia_ostium is None or sys_ostium is None:
             return
-        dia_ostium = max(dia_refs)  # highest frame index = most proximal = ostium
-        sys_ostium = max(sys_refs)
         self._anchor_offset = self.sys_sorted.index(sys_ostium) - self.dia_sorted.index(dia_ostium)
         logger.info(f'Breathing sort: ostium anchor offset dia→sys = {self._anchor_offset}')
 
-    def _recompute(self, dia, sys, area_of, n_total):
+    def _position_mm(self, corrected_pos: float) -> float | None:
+        """Map a (possibly fractional) breathing-corrected position onto physical
+        pullback distance (mm) by interpolating metadata.pullback_length, which is
+        indexed by raw acquisition frame and (near-linear in it, since it's derived
+        from pullback_speed * time) — so evaluating it at the corrected position
+        gives the mm distance of the breathing-registered location, not the raw,
+        breathing-polluted one."""
+        pullback_length = self.main_window.runtime_data.metadata.get('pullback_length')
+        if pullback_length is None:
+            return None
+        pullback_length = np.asarray(pullback_length, dtype=float)
+        if len(pullback_length) == 0:
+            return None
+        x = float(np.clip(corrected_pos, 0, len(pullback_length) - 1))
+        return float(np.interp(x, np.arange(len(pullback_length)), pullback_length))
+
+    def _distance_from_ostium(
+        self, pos_map: dict[int, float], ostium_frame: int | None, frame: int | None
+    ) -> float | None:
+        """mm distance of `frame` from its phase's ostium reference frame, in the
+        breathing-corrected coordinate system (positive = distal to the ostium)."""
+        if frame is None or ostium_frame is None or frame not in pos_map or ostium_frame not in pos_map:
+            return None
+        ostium_mm = self._position_mm(pos_map[ostium_frame])
+        frame_mm = self._position_mm(pos_map[frame])
+        if ostium_mm is None or frame_mm is None:
+            return None
+        return ostium_mm - frame_mm
+
+    def _recompute(self, dia, sys, area_of):
         Rd = register_phase(
             np.array(dia, float),
             np.array([area_of[f] for f in dia], float),
             self.peaks,
             self.valleys,
             n_bins=self.n_bins,
-            n_total=n_total,
         )
         self.dia_sorted = [dia[i] for i in Rd['order']]
         self.dia_pos = {dia[i]: float(Rd['corrected'][i]) for i in range(len(dia))}
@@ -261,7 +300,6 @@ class BreathingSortViewer(QMainWindow):
                 self.peaks,
                 self.valleys,
                 n_bins=self.n_bins,
-                n_total=n_total,
             )
             self.sys_sorted = [sys[i] for i in Rs['order']]
             self.sys_pos = {sys[i]: float(Rs['corrected'][i]) for i in range(len(sys))}
@@ -484,13 +522,14 @@ class BreathingSortViewer(QMainWindow):
         item.setPen(pen)
         scene.addItem(item)
 
-    def _update_strip(self, strip, sorted_list, current_idx):
+    def _update_strip(self, strip, sorted_list, current_idx, pos_map, ostium_frame):
         half = N_STRIP // 2
         for k, (idx_lab, img_lab) in enumerate(strip['cells']):
             j = current_idx - half + k
             if 0 <= j < len(sorted_list):
                 frame = sorted_list[j]
-                tag = f'[{j}] f{frame + 1}'
+                dist = self._distance_from_ostium(pos_map, ostium_frame, frame)
+                tag = f'[{j}] {dist:.1f}mm' if dist is not None else f'[{j}] f{frame + 1}'
                 if k == half:
                     tag = f'► {tag}'
                 idx_lab.setText(tag)
@@ -574,18 +613,32 @@ class BreathingSortViewer(QMainWindow):
 
         self._draw_main(self.dia_scene, self.dia_pixmap, self.dia_view, dia_frame)
         self._draw_main(self.sys_scene, self.sys_pixmap, self.sys_view, sys_frame)
-        self._update_strip(self.dia_strip, self.dia_sorted, self.dia_idx)
-        self._update_strip(self.sys_strip, self.sys_sorted, self.sys_idx)
+        self._update_strip(self.dia_strip, self.dia_sorted, self.dia_idx, self.dia_pos, self.dia_ostium_frame)
+        self._update_strip(self.sys_strip, self.sys_sorted, self.sys_idx, self.sys_pos, self.sys_ostium_frame)
 
-        self.dia_title.setText(f'Diastole — frame {dia_frame + 1}' if dia_frame is not None else 'Diastole')
-        self.sys_title.setText(f'Systole — frame {sys_frame + 1}' if sys_frame is not None else 'Systole — (none)')
-        dp = self.dia_pos.get(dia_frame) if dia_frame is not None else None
-        sp = self.sys_pos.get(sys_frame) if sys_frame is not None else None
+        # Raw frame number is not a meaningful position once the breathing sort has
+        # reordered frames, so the title/info prefer distance from the ostium (mm)
+        # and only fall back to the frame number when that can't be computed.
+        dia_dist = self._distance_from_ostium(self.dia_pos, self.dia_ostium_frame, dia_frame)
+        sys_dist = self._distance_from_ostium(self.sys_pos, self.sys_ostium_frame, sys_frame)
+        if dia_frame is None:
+            self.dia_title.setText('Diastole')
+        elif dia_dist is not None:
+            self.dia_title.setText(f'Diastole — {dia_dist:.1f} mm from ostium')
+        else:
+            self.dia_title.setText(f'Diastole — frame {dia_frame + 1}')
+        if sys_frame is None:
+            self.sys_title.setText('Systole — (none)')
+        elif sys_dist is not None:
+            self.sys_title.setText(f'Systole — {sys_dist:.1f} mm from ostium')
+        else:
+            self.sys_title.setText(f'Systole — frame {sys_frame + 1}')
+
         txt = f'Slot {self.dia_idx + 1}/{len(self.dia_sorted)}'
-        if dp is not None:
-            txt += f'   dia pos ≈ {dp:.0f}'
-        if sp is not None:
-            txt += f'   sys pos ≈ {sp:.0f}'
+        if dia_dist is not None:
+            txt += f'   dia {dia_dist:.1f} mm from ostium'
+        if sys_dist is not None:
+            txt += f'   sys {sys_dist:.1f} mm from ostium'
         self.info_label.setText(txt)
 
     # ------------------------------------------------------------------
@@ -598,11 +651,13 @@ class BreathingSortViewer(QMainWindow):
     def _write_combined_report(self):
         """Alongside the normal report, write a second file with only the gated
         frames, ordered diastole-then-systole by the breathing-corrected (and
-        possibly hand-adjusted) order from this viewer. The frame/measurement
-        columns follow that new order, but 'position' is decoupled from the
-        frame identity - within each phase block it's just the block's own
-        positions sorted ascending, so it reflects rank along the pullback
-        rather than each frame's original position."""
+        possibly hand-adjusted) order from this viewer. Raw frame number stops
+        being a meaningful position once the breathing sort has reordered frames,
+        so 'position' is overwritten with the breathing-corrected pullback
+        position (mm, via metadata.pullback_length) rather than the original
+        report's raw-frame-based value, and each row also gets
+        'distance_from_ostium_mm': that position relative to the phase's ostium
+        reference frame."""
         if not self.dia_sorted:
             return
 
@@ -612,13 +667,20 @@ class BreathingSortViewer(QMainWindow):
 
         by_frame = report_data.set_index('frame')
 
-        def _rows(order):
-            idx = [f + 1 for f in order if (f + 1) in by_frame.index]
-            rows = by_frame.loc[idx].reset_index()
-            rows['position'] = sorted(rows['position'])
+        def _rows(order, pos_map, ostium_frame):
+            frames = [f for f in order if (f + 1) in by_frame.index]
+            rows = by_frame.loc[[f + 1 for f in frames]].reset_index()
+            rows['position'] = [self._position_mm(pos_map[f]) for f in frames]
+            rows['distance_from_ostium_mm'] = [self._distance_from_ostium(pos_map, ostium_frame, f) for f in frames]
             return rows
 
-        combined = pd.concat([_rows(self.dia_sorted), _rows(self.sys_sorted)], ignore_index=True)
+        combined = pd.concat(
+            [
+                _rows(self.dia_sorted, self.dia_pos, self.dia_ostium_frame),
+                _rows(self.sys_sorted, self.sys_pos, self.sys_ostium_frame),
+            ],
+            ignore_index=True,
+        )
         csv_out_dir = self.main_window.file_name + '_csv_files'
         os.makedirs(csv_out_dir, exist_ok=True)
         out_path = os.path.join(csv_out_dir, 'combined_sorted_manual.csv')
