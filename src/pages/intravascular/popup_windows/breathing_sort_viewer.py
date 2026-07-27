@@ -251,31 +251,42 @@ class BreathingSortViewer(QMainWindow):
         self._anchor_offset = self.sys_sorted.index(sys_ostium) - self.dia_sorted.index(dia_ostium)
         logger.info(f'Breathing sort: ostium anchor offset dia→sys = {self._anchor_offset}')
 
-    def _position_mm(self, corrected_pos: float) -> float | None:
-        """Map a (possibly fractional) breathing-corrected position onto physical
-        pullback distance (mm) by interpolating metadata.pullback_length, which is
-        indexed by raw acquisition frame and (near-linear in it, since it's derived
-        from pullback_speed * time) — so evaluating it at the corrected position
-        gives the mm distance of the breathing-registered location, not the raw,
-        breathing-polluted one."""
-        pullback_length = self.main_window.runtime_data.metadata.get('pullback_length')
-        if pullback_length is None:
+    def _position_mm(self, pos_map: dict[int, float], frame: int | None) -> float | None:
+        """mm position of `frame` along this phase's breathing-corrected pullback
+        axis, per the verified breathing_fix copy.py convention (see
+        plot_bins_after_shift: 'corrected position, 0 near peak bin, increasing
+        toward valley'): the extreme end of the corrected coordinate range --
+        min(pos_map.values()), the peak-bin point -- is pinned at 0 mm, and every
+        other frame's position is its frame-distance from that point times the
+        (constant) pullback speed in mm/frame.
+
+        Deliberately NOT metadata.pullback_length (per-frame, raw-acquisition
+        based): since corrected positions are relative to their own phase's
+        registered axis, not raw frame index, looking them up in that array
+        doesn't apply. Anchoring at the axis's own minimum instead of an
+        arbitrary reference frame guarantees every position is >= 0 and
+        ascending in sorted order, since it's an increasing affine map of the
+        very value frames are sorted by.
+        """
+        if frame is None or frame not in pos_map:
             return None
-        pullback_length = np.asarray(pullback_length, dtype=float)
-        if len(pullback_length) == 0:
+        pullback_speed = self.main_window.runtime_data.metadata.get('pullback_speed')
+        frame_rate = self.main_window.runtime_data.metadata.get('frame_rate')
+        if not pullback_speed or not frame_rate:
             return None
-        x = float(np.clip(corrected_pos, 0, len(pullback_length) - 1))
-        return float(np.interp(x, np.arange(len(pullback_length)), pullback_length))
+        origin = min(pos_map.values())
+        mm_per_frame = pullback_speed / frame_rate
+        return (pos_map[frame] - origin) * mm_per_frame
 
     def _distance_from_ostium(
         self, pos_map: dict[int, float], ostium_frame: int | None, frame: int | None
     ) -> float | None:
         """mm distance of `frame` from its phase's ostium reference frame, in the
         breathing-corrected coordinate system (positive = distal to the ostium)."""
-        if frame is None or ostium_frame is None or frame not in pos_map or ostium_frame not in pos_map:
+        if ostium_frame is None:
             return None
-        ostium_mm = self._position_mm(pos_map[ostium_frame])
-        frame_mm = self._position_mm(pos_map[frame])
+        ostium_mm = self._position_mm(pos_map, ostium_frame)
+        frame_mm = self._position_mm(pos_map, frame)
         if ostium_mm is None or frame_mm is None:
             return None
         return ostium_mm - frame_mm
@@ -670,7 +681,7 @@ class BreathingSortViewer(QMainWindow):
         def _rows(order, pos_map, ostium_frame):
             frames = [f for f in order if (f + 1) in by_frame.index]
             rows = by_frame.loc[[f + 1 for f in frames]].reset_index()
-            rows['position'] = [self._position_mm(pos_map[f]) for f in frames]
+            rows['position'] = [self._position_mm(pos_map, f) for f in frames]
             rows['distance_from_ostium_mm'] = [self._distance_from_ostium(pos_map, ostium_frame, f) for f in frames]
             return rows
 
