@@ -41,6 +41,8 @@ class LongitudinalView(QGraphicsView):
         self._breathing_items: list = []
         self._current_marker = None
         self._areas_hidden = False
+        self._phase_lines_hidden = False
+        self._breathing_hidden = False
         self.num_frames = 0
         self.image_height = 0
         self.color = getattr(main_window.config.display, "color_contour", "green")
@@ -306,6 +308,8 @@ class LongitudinalView(QGraphicsView):
         if not has_artefact:
             curve_pen.setStyle(Qt.PenStyle.DotLine)
         curve_item.setPen(curve_pen)
+        if self._breathing_hidden:
+            curve_item.setVisible(False)
         self.graphics_scene.addItem(curve_item)
         self._breathing_items.append(curve_item)
 
@@ -358,6 +362,8 @@ class LongitudinalView(QGraphicsView):
             item.setPen(pen)
             filled = manual_mode or (idx in manual_idx)
             item.setBrush(brush_color if filled else no_brush)
+            if self._breathing_hidden:
+                item.setVisible(False)
             self.graphics_scene.addItem(item)
             self._breathing_items.append(item)
 
@@ -459,6 +465,18 @@ class LongitudinalView(QGraphicsView):
         for item in self._area_items:
             item.setVisible(True)
 
+    def set_phase_lines_visible(self, visible: bool):
+        """Show/hide the diastolic/systolic frame marker lines."""
+        self._phase_lines_hidden = not visible
+        for item in self._phase_line_items:
+            item.setVisible(visible)
+
+    def set_breathing_visible(self, visible: bool):
+        """Show/hide the breathing curve and its peak/valley markers."""
+        self._breathing_hidden = not visible
+        for item in self._breathing_items:
+            item.setVisible(visible)
+
     def remove_contours(self, lower_limit, upper_limit):
         """Called when contours are deleted for a range; refresh area overlay."""
         self.plot_areas()
@@ -483,6 +501,8 @@ class LongitudinalView(QGraphicsView):
             pen.setCosmetic(True)
             item = QGraphicsLineItem(frame, 0, frame, self.image_height)
             item.setPen(pen)
+            if self._phase_lines_hidden:
+                item.setVisible(False)
             self.graphics_scene.addItem(item)
             self._phase_line_items.append(item)
 
