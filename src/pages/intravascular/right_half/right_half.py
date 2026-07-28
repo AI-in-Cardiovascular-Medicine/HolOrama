@@ -198,7 +198,9 @@ class RightHalf:
         self.content_widget.setParent(None)
         self.content_widget.deleteLater()
 
-        if self.main_window.runtime_data.metadata.get('modality') == 'OCT':
+        is_oct = self.main_window.runtime_data.metadata.get('modality') == 'OCT'
+        self.main_window.longitudinal_view.set_oct_mode(is_oct)
+        if is_oct:
             self.main_window.runtime_data.gated_frames = self.main_window.runtime_data.tagged_frames
             self.content_widget = self._build_oct()
         else:
