@@ -398,11 +398,7 @@ class Display(QGraphicsView, MetricsMixin):
                 spline_geo = SplineGeometry(
                     knot_points_x=x_coords,
                     knot_points_y=y_coords,
-                    n_interpolated_points=(
-                        self.n_interactive_points
-                        if contour_type in (ContourType.LUMEN, ContourType.EEM)
-                        else self.n_interactive_points // 2
-                    ),
+                    n_interpolated_points=self.n_points_contour,
                     start_coords=None,
                     end_coords=None,
                 )
