@@ -41,6 +41,9 @@ class LongitudinalView(QGraphicsView):
         self._breathing_items: list = []
         self._current_marker = None
         self._areas_hidden = False
+        self._phase_lines_hidden = False
+        self._breathing_hidden = False
+        self.oct_mode = False
         self.num_frames = 0
         self.image_height = 0
         self.color = getattr(main_window.config.display, "color_contour", "green")
@@ -225,7 +228,19 @@ class LongitudinalView(QGraphicsView):
             self.graphics_scene.addItem(item)
             self._area_items.append(item)
 
-        self.plot_breathing_signal(areas, max_area)
+        if self.oct_mode:
+            self._clear_breathing_items()
+        else:
+            self.plot_breathing_signal(areas, max_area)
+
+    def _clear_breathing_items(self):
+        for item in self._breathing_items:
+            try:
+                if item.scene() == self.graphics_scene:
+                    self.graphics_scene.removeItem(item)
+            except RuntimeError:
+                pass
+        self._breathing_items = []
 
     def plot_breathing_signal(self, areas: dict[int, float], max_area: float):
         """Compute and overlay a respiratory envelope derived from the area dots.
@@ -235,14 +250,11 @@ class LongitudinalView(QGraphicsView):
         and valleys (magenta).  Peaks/valleys can be edited with the Peak / Valley
         / Delete buttons; once the user edits, the markers become fully manual
         (seeded from the auto guess) so all of them are deletable.
+
+        OCT pullbacks have no cardiac/breathing gating; callers must not invoke
+        this when `oct_mode` is set (see plot_areas).
         """
-        for item in self._breathing_items:
-            try:
-                if item.scene() == self.graphics_scene:
-                    self.graphics_scene.removeItem(item)
-            except RuntimeError:
-                pass
-        self._breathing_items = []
+        self._clear_breathing_items()
 
         if len(areas) < 30 or self.image_height == 0:
             return
@@ -306,6 +318,8 @@ class LongitudinalView(QGraphicsView):
         if not has_artefact:
             curve_pen.setStyle(Qt.PenStyle.DotLine)
         curve_item.setPen(curve_pen)
+        if self._breathing_hidden:
+            curve_item.setVisible(False)
         self.graphics_scene.addItem(curve_item)
         self._breathing_items.append(curve_item)
 
@@ -358,6 +372,8 @@ class LongitudinalView(QGraphicsView):
             item.setPen(pen)
             filled = manual_mode or (idx in manual_idx)
             item.setBrush(brush_color if filled else no_brush)
+            if self._breathing_hidden:
+                item.setVisible(False)
             self.graphics_scene.addItem(item)
             self._breathing_items.append(item)
 
@@ -433,12 +449,14 @@ class LongitudinalView(QGraphicsView):
 
     def contextMenuEvent(self, event):
         # Right-click = delete nearest breathing label (never a segmentation point).
+        if self.oct_mode:
+            return
         self._delete_nearest_manual_marker(self.mapToScene(event.pos()).x())
         event.accept()
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
-        if event.button() != Qt.MouseButton.LeftButton:
+        if self.oct_mode or event.button() != Qt.MouseButton.LeftButton:
             return
 
         clicked_x = self.mapToScene(event.pos()).x()
@@ -459,11 +477,23 @@ class LongitudinalView(QGraphicsView):
         for item in self._area_items:
             item.setVisible(True)
 
+    def set_phase_lines_visible(self, visible: bool):
+        """Show/hide the diastolic/systolic frame marker lines."""
+        self._phase_lines_hidden = not visible
+        for item in self._phase_line_items:
+            item.setVisible(visible)
+
+    def set_breathing_visible(self, visible: bool):
+        """Show/hide the breathing curve and its peak/valley markers."""
+        self._breathing_hidden = not visible
+        for item in self._breathing_items:
+            item.setVisible(visible)
+
     def remove_contours(self, lower_limit, upper_limit):
         """Called when contours are deleted for a range; refresh area overlay."""
         self.plot_areas()
 
-    def _update_phase_lines(self):
+    def _clear_phase_line_items(self):
         for item in self._phase_line_items:
             try:
                 if item.scene() == self.graphics_scene:
@@ -471,6 +501,11 @@ class LongitudinalView(QGraphicsView):
             except RuntimeError:
                 pass
         self._phase_line_items = []
+
+    def _update_phase_lines(self):
+        self._clear_phase_line_items()
+        if self.oct_mode:  # OCT pullbacks have no diastolic/systolic gating
+            return
 
         mw = self.main_window
         dia_frames = getattr(mw.runtime_data, 'gated_frames_dia', [])
@@ -483,6 +518,8 @@ class LongitudinalView(QGraphicsView):
             pen.setCosmetic(True)
             item = QGraphicsLineItem(frame, 0, frame, self.image_height)
             item.setPen(pen)
+            if self._phase_lines_hidden:
+                item.setVisible(False)
             self.graphics_scene.addItem(item)
             self._phase_line_items.append(item)
 
@@ -507,8 +544,25 @@ class LongitudinalView(QGraphicsView):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.stretch_to_fit()
+        if self.oct_mode:
+            return
         self._peak_btn.move(4, 4)
         self._valley_btn.move(63, 4)
         self._delete_btn.move(122, 4)
         self._reset_btn.move(181, 4)
         self._artefact_cb.move(240, 5)
+
+    def set_oct_mode(self, oct_mode: bool):
+        """OCT pullbacks have no cardiac/breathing gating: show only the area
+        dots, hide the peak/valley/breathing editing controls, and drop any
+        diastolic/systolic lines or breathing curve already on the scene.
+        """
+        self.oct_mode = oct_mode
+        for widget in (self._peak_btn, self._valley_btn, self._delete_btn, self._reset_btn, self._artefact_cb):
+            widget.setVisible(not oct_mode)
+        if oct_mode:
+            self._peak_btn.setChecked(False)
+            self._valley_btn.setChecked(False)
+            self._delete_btn.setChecked(False)
+            self._clear_breathing_items()
+            self._clear_phase_line_items()

@@ -4,8 +4,10 @@ from functools import partial
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
     QFrame,
     QHBoxLayout,
+    QLabel,
     QLayout,
     QPushButton,
     QSplitter,
@@ -106,8 +108,30 @@ class RightHalf:
         self.raw_btn.clicked.connect(partial(set_longitudinal_mode, mw, 'raw'))
         self.filtered_btn.clicked.connect(partial(set_longitudinal_mode, mw, 'filtered'))
 
+        hide_label = QLabel('Hide')
+
+        self.hide_phase_lines_cb = QCheckBox('Dia/Sys Lines')
+        self.hide_phase_lines_cb.setToolTip(
+            'Clear the diastolic/systolic frame marker lines from the longitudinal view'
+        )
+        self.hide_phase_lines_cb.toggled.connect(partial(toggle_phase_lines_visible, mw))
+
+        self.hide_breathing_cb = QCheckBox('Breathing')
+        self.hide_breathing_cb.setToolTip(
+            'Clear the breathing curve and peak/valley markers from the longitudinal view'
+        )
+        self.hide_breathing_cb.toggled.connect(partial(toggle_breathing_visible, mw))
+
+        self.hide_areas_cb = QCheckBox('Areas')
+        self.hide_areas_cb.setToolTip('Clear the lumen-area dots from the longitudinal view')
+        self.hide_areas_cb.toggled.connect(partial(toggle_areas_visible, mw))
+
         btn_col.addWidget(self.raw_btn)
         btn_col.addWidget(self.filtered_btn)
+        btn_col.addWidget(hide_label)
+        btn_col.addWidget(self.hide_phase_lines_cb)
+        btn_col.addWidget(self.hide_breathing_cb)
+        btn_col.addWidget(self.hide_areas_cb)
         btn_col.addStretch(1)
 
         hbox.addLayout(btn_col)
@@ -174,7 +198,9 @@ class RightHalf:
         self.content_widget.setParent(None)
         self.content_widget.deleteLater()
 
-        if self.main_window.runtime_data.metadata.get('modality') == 'OCT':
+        is_oct = self.main_window.runtime_data.metadata.get('modality') == 'OCT'
+        self.main_window.longitudinal_view.set_oct_mode(is_oct)
+        if is_oct:
             self.main_window.runtime_data.gated_frames = self.main_window.runtime_data.tagged_frames
             self.content_widget = self._build_oct()
         else:
@@ -290,6 +316,21 @@ def set_longitudinal_mode(main_window, mode):
         main_window.breathing_sort_viewer.show()
     else:
         main_window.status_bar.showMessage(main_window.waiting_status)
+
+
+def toggle_phase_lines_visible(main_window, checked):
+    main_window.longitudinal_view.set_phase_lines_visible(not checked)
+
+
+def toggle_breathing_visible(main_window, checked):
+    main_window.longitudinal_view.set_breathing_visible(not checked)
+
+
+def toggle_areas_visible(main_window, checked):
+    if checked:
+        main_window.longitudinal_view.hide_lview_contours()
+    else:
+        main_window.longitudinal_view.show_lview_contours()
 
 
 def open_small_display(main_window):
