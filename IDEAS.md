@@ -1,2 +1,0 @@
-# Fixing breathing sorting
-- Plot reveals potentially should be sorted by y-axis, more specifically distance between valley and peak. Reasoning: similar to systole and diastole these two points define a stable phase.
