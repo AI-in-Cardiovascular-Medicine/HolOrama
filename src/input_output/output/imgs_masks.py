@@ -264,9 +264,12 @@ def contours_to_mask(images, contoured_frames, data):
 
     Where structures overlap, priority follows an "onion" rule: the structure
     whose pixels sit farther (on average) from the lumen centroid displaces
-    the one closer to it. Two exceptions override that rule: the wire shadow
-    is always the bottom-most layer, and the lumen always displaces an
-    overlapping side branch.
+    the one closer to it. Three exceptions override that rule: the wire shadow
+    is always the bottom-most layer, the EEM wall is always painted right on
+    top of it (a backdrop that never hides lumen/branch/plaques — since a
+    plaque's pixels are a subset of the EEM annulus, its mean distance can
+    lose to the annulus average even though it must stay visible), and the
+    lumen always displaces an overlapping side branch.
 
     Parameters
     ----------
@@ -310,10 +313,18 @@ def contours_to_mask(images, contoured_frames, data):
         wire_shadow = _wire_shadow_mask(fd.wire, image_shape, center_y, center_x)
         fm[wire_shadow] = _wire.label
 
+        # EEM is always the backdrop, painted right on top of the wire and below
+        # everything else: it must never hide the lumen, a side branch, or a
+        # plaque, even a small one whose own mean distance loses to the wall
+        # annulus's average (a plaque's pixels are always a subset of this
+        # annulus, so the two masks unavoidably overlap wherever a plaque exists).
+        if fd.eem.contours:
+            fm[eem_mask & ~lumen_mask] = _eem.label
+
         # Onion layering: the remaining structures are painted nearest-centroid
         # first, farthest-centroid last, so a structure farther from the lumen
         # centroid always displaces one that's closer wherever they overlap.
-        regions: list[tuple] = [(_eem, eem_mask & ~lumen_mask), (_lumen, lumen_mask)]
+        regions: list[tuple] = [(_lumen, lumen_mask)]
 
         branch_mask = _contour_obj_to_mask(fd.branch, cx, cy, image_shape) if fd.branch.contours else None
         if branch_mask is not None:
