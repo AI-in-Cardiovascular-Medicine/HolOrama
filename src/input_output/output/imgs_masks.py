@@ -199,6 +199,17 @@ def _contour_obj_to_mask(contour_obj, centroid_x, centroid_y, image_shape):
     return combined
 
 
+def _region_mean_distance(mask: np.ndarray, cx: float, cy: float) -> float | None:
+    """Mean distance of mask's True pixels from (cx, cy); None if mask is empty.
+
+    Used to rank overlapping structures by how far they sit from the lumen
+    centroid (see contours_to_mask's onion-layering)."""
+    ys, xs = np.nonzero(mask)
+    if len(xs) == 0:
+        return None
+    return float(np.hypot(xs - cx, ys - cy).mean())
+
+
 def _wire_shadow_mask(wire, image_shape, center_y, center_x):
     """
     Boolean mask for the guide-wire angular shadow (smaller sector between the
@@ -251,6 +262,12 @@ def contours_to_mask(images, contoured_frames, data):
     7  branch      - side-branch lumen (closed spline, not EEM-clipped)
     9  wire shadow - guide-wire angular shadow
 
+    Where structures overlap, priority follows an "onion" rule: the structure
+    whose pixels sit farther (on average) from the lumen centroid displaces
+    the one closer to it. Two exceptions override that rule: the wire shadow
+    is always the bottom-most layer, and the lumen always displaces an
+    overlapping side branch.
+
     Parameters
     ----------
     images : ndarray, shape (N, H, W)
@@ -288,23 +305,20 @@ def contours_to_mask(images, contoured_frames, data):
 
         fm = np.zeros(image_shape, dtype=np.uint8)
 
-        # Layer bottom-up by paint_order; later layers overwrite earlier ones.
-        # Wire is lowest priority — painted first so all other structures appear on top.
+        # Wire is always the bottom-most layer — painted first so every other
+        # structure sits on top of it, regardless of the onion order below.
         wire_shadow = _wire_shadow_mask(fd.wire, image_shape, center_y, center_x)
         fm[wire_shadow] = _wire.label
 
-        if fd.eem.contours:
-            fm[eem_mask & ~lumen_mask] = _eem.label
+        # Onion layering: the remaining structures are painted nearest-centroid
+        # first, farthest-centroid last, so a structure farther from the lumen
+        # centroid always displaces one that's closer wherever they overlap.
+        regions: list[tuple] = [(_eem, eem_mask & ~lumen_mask), (_lumen, lumen_mask)]
 
-        # Branch before lumen so branch pixels inside lumen are overwritten by lumen.
-        if fd.branch.contours:
-            branch_mask = _contour_obj_to_mask(fd.branch, cx, cy, image_shape)
-            fm[branch_mask] = _branch.label
+        branch_mask = _contour_obj_to_mask(fd.branch, cx, cy, image_shape) if fd.branch.contours else None
+        if branch_mask is not None:
+            regions.append((_branch, branch_mask))
 
-        if fd.lumen.contours:
-            fm[lumen_mask] = _lumen.label
-
-        # Plaques: clipped to EEM when EEM exists, never inside lumen.
         for spec in _plaques:
             contour_obj = getattr(fd, spec.contour_type.value)
             if not contour_obj.contours:
@@ -313,7 +327,25 @@ def contours_to_mask(images, contoured_frames, data):
             if fd.eem.contours:
                 plaque &= eem_mask
             plaque &= ~lumen_mask
-            fm[plaque] = spec.label
+            regions.append((spec, plaque))
+
+        scored: list[tuple] = []
+        for spec, region in regions:
+            dist = _region_mean_distance(region, cx, cy)
+            if dist is not None:
+                scored.append((spec, region, dist))
+        scored.sort(key=lambda entry: entry[2])
+
+        # Exception to the onion order: the lumen is real anatomy and must never
+        # be hidden by an overlapping side branch, so force it after branch here.
+        lumen_pos = next((i for i, e in enumerate(scored) if e[0] is _lumen), None)
+        branch_pos = next((i for i, e in enumerate(scored) if e[0] is _branch), None)
+        if lumen_pos is not None and branch_pos is not None and lumen_pos < branch_pos:
+            lumen_entry = scored.pop(lumen_pos)
+            scored.insert(scored.index(next(e for e in scored if e[0] is _branch)) + 1, lumen_entry)
+
+        for spec, region, _dist in scored:
+            fm[region] = spec.label
 
         mask[i] = fm
 

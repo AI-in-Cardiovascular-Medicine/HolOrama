@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 from loguru import logger
 from PyQt6.QtCore import QLineF, QPointF, Qt
-from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtGui import QColor, QImage, QPixmap
 from PyQt6.QtWidgets import (
     QGraphicsPixmapItem,
     QGraphicsScene,
@@ -597,6 +597,13 @@ class Display(QGraphicsView, MetricsMixin):
         rgb = cv2.cvtColor(cmap, cv2.COLOR_BGR2RGB)
         return rgb, width * 3, QImage.Format.Format_RGB888
 
+    def _contour_rgb(self, contour_type: ContourType) -> tuple[int, int, int]:
+        """RGB for contour_type's configured line color, so the mask fill and brush
+        cursor always match the contour outline instead of MaskSpec's fallback color."""
+        cfg = self.contour_configs.get(contour_type)
+        color = cfg.color if cfg else self.color_contour
+        return QColor(color).getRgb()[:3]
+
     def _apply_mask_overlay(self, display_data, w):
         """
         Alpha-blend per-label segmentation colours into the display image array.
@@ -646,7 +653,7 @@ class Display(QGraphicsView, MetricsMixin):
             pixels = frame_mask == spec.label
             if not pixels.any():
                 continue
-            color = np.array(spec.overlay_color, dtype=np.float32)
+            color = np.array(self._contour_rgb(spec.contour_type), dtype=np.float32)
             rgb[pixels] = rgb[pixels] * (1.0 - MASK_ALPHA) + color * MASK_ALPHA
 
         result = np.clip(rgb, 0, 255).astype(np.uint8)
@@ -682,7 +689,7 @@ class Display(QGraphicsView, MetricsMixin):
         popup = getattr(self.main_window, 'brush_settings_popup', None)
         radius = popup.radius_px if popup is not None else 10
         spec = MASK_SPECS.get(self.active_contour_type)
-        color = spec.overlay_color if spec is not None else (255, 60, 60)
+        color = self._contour_rgb(self.active_contour_type) if spec is not None else (255, 60, 60)
         self._brush_cursor._radius_px = radius
         self._brush_cursor._color = color
         view_scale = self.scaling_factor * self.transform().m11()

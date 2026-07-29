@@ -13,9 +13,9 @@ MASK_ALPHA = 0.45  # overlay opacity (0 = transparent, 1 = opaque)
 @dataclass(frozen=True)
 class MaskSpec:
     label: int
-    overlay_color: tuple[int, int, int]
+    overlay_color: tuple[int, int, int]  # fallback fill color; the live display prefers the matching contour-line color
     contour_type: ContourType
-    paint_order: int  # lower = painted first (lower priority, can be overwritten)
+    paint_order: int  # blend-loop order for the overlay only; mask *priority* is decided dynamically, see contours_to_mask
     read_predicate: Callable[[np.ndarray], np.ndarray] | None = None
 
     def matches(self, mask_array: np.ndarray) -> np.ndarray:
