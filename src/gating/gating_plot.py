@@ -21,6 +21,8 @@ from pages.intravascular.right_half.right_half import (
 
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
+FRAME_TOL = 2
+
 
 class GatingPlot:
     def __init__(self, main_window):
@@ -363,7 +365,7 @@ class GatingPlot:
 
             if self.vertical_lines:
                 distances = [abs(line.get_xdata()[0] - event.xdata) for line in self.vertical_lines]
-                if min(distances) < len(self.frames) / 100:
+                if min(distances) < FRAME_TOL:
                     self.selected_line = self.vertical_lines[np.argmin(distances)]
                     new_line = False
                     set_slider_to = self.selected_line.get_xdata()[0]
