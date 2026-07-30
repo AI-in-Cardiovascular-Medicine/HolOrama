@@ -197,6 +197,8 @@ This application is designed for IVUS, OCT and CCTA images in DICOM or NIfTi for
 - **Automatic segmentation** of (currently only IVUS) lumen for all frames
 - **Automatic gating** with extraction of diastolic/systolic frames if in IVUS mode
 - Manually tag diastolic/systolic frames
+- Longitudinal view: toggle visibility of the diastolic/systolic marker lines, breathing curve, and area dots independently
+- **Breathing motion** is detected automatically from the lumen area signal and can be reviewed/corrected by hand, then used to reorder gated frames into a breathing-corrected pullback
 - Ability to measure up to two distances per frame which will be stored in the report
 - Indicate the wire shadow using an angle
 - Create automatic masks from contour with predefined rulesets
