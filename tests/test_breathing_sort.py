@@ -144,6 +144,12 @@ class TestBreathingPatient:
 
     Instantiate directly (e.g. in a scratch script or notebook) to load and prepare
     the data, then poke at the attributes / call .plot() interactively.
+
+    run by:
+    ```bash
+        $env:PYTHONPATH = "src;tests"
+        python -i -c "from test_breathing_sort import TestBreathingPatient; p = TestBreathingPatient()"
+    ```
     """
 
     __test__ = False  # pytest would otherwise collect this despite having no test_* methods
@@ -239,7 +245,19 @@ class TestBreathingPatient:
         ax_phase.legend(loc="upper right")
 
         fig.tight_layout()
-        return fig, (ax_area, ax_phase)
+        data = {
+            "frames": self.frames,
+            "areas": self.areas,
+            "trend": self.signal["trend"],
+            "dia_frames": self.dia_frames,
+            "dia_areas": self.dia_areas,
+            "sys_frames": self.sys_frames,
+            "sys_areas": self.sys_areas,
+            "breathing_signal": self.breathing_display_signal,
+            "peak_frames": self.frames[self.peaks],
+            "valley_frames": self.frames[self.valleys],
+        }
+        return fig, data
 
     def _phase_frames_areas(self, phase: str):
         if phase == "dia":
@@ -298,7 +316,15 @@ class TestBreathingPatient:
         ax.set_ylabel("lumen area")
         ax.legend(fontsize="small", loc="upper right")
         fig.tight_layout()
-        return fig, ax
+
+        data = {
+            bin_idx: {"frames": frames[bins == bin_idx], "areas": areas[bins == bin_idx]}
+            for bin_idx in range(n_bins)
+            if (bins == bin_idx).any()
+        }
+        data["peak_frames"] = self.frames[self.peaks]
+        data["valley_frames"] = self.frames[self.valleys]
+        return fig, data
 
     def plot_shifted_registration(self, n_bins: int = 5, phase: str = "dia"):
         """Reproduce 'shifted_breathing.png': the same per-bin fits as
@@ -308,7 +334,7 @@ class TestBreathingPatient:
         (rest) end. A correctly registered phase collapses the per-bin fit lines
         onto one shared line.
         """
-        _, areas = self._phase_frames_areas(phase)
+        frames, areas = self._phase_frames_areas(phase)
         result = self.registration_dia if phase == "dia" else self.registration_sys
         corrected, bins_r, shifts = result["corrected"], result["bins"], result["shifts"]
         corrected = corrected - corrected.min()
@@ -333,7 +359,18 @@ class TestBreathingPatient:
         ax.set_ylabel("lumen area")
         ax.legend(fontsize="small", loc="upper right")
         fig.tight_layout()
-        return fig, ax
+
+        data = {
+            bin_idx: {
+                "frames": frames[bins_r == bin_idx],
+                "corrected_position": corrected[bins_r == bin_idx],
+                "areas": areas[bins_r == bin_idx],
+            }
+            for bin_idx in range(n_bins)
+            if (bins_r == bin_idx).any()
+        }
+        data["shifts"] = shifts
+        return fig, data
 
     def test_correct_bin_assignment():
         # visually picked bin 0

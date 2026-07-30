@@ -99,10 +99,22 @@ class BreathingSortViewer(QMainWindow):
         # index offset aligning the two phases at the ostium (most-proximal
         # reference point); None → fall back to nearest-corrected-position pairing
         self._anchor_offset = None
-        # the reference (ostium) frame per phase, used to turn breathing-corrected
-        # position into a distance-from-ostium (frame number is meaningless post-sort)
+        # the reference (ostium) frame per phase, used to gate whether a
+        # distance-from-ostium can be shown at all, and for the dia/sys anchor
+        # offset (frame number is meaningless post-sort)
         self.dia_ostium_frame: int | None = None
         self.sys_ostium_frame: int | None = None
+        # the frame whose corrected position is actually used as the 0 mm pin for
+        # distance-from-ostium: the tail of the sorted list, NOT the marked ostium
+        # frame itself -- register_phase's per-bin shifts can be large enough
+        # (hundreds of frames) to place some other, more-distal-by-raw-index frame
+        # at a higher corrected position than the marked ostium, which would make
+        # that frame read as a nonsensical negative distance if pinned there
+        # instead. Pinning at the tail guarantees distance >= 0 for every frame in
+        # the phase; the marked ostium frame itself may then show a small nonzero
+        # value rather than exactly 0.
+        self.dia_ostium_pin_frame: int | None = None
+        self.sys_ostium_pin_frame: int | None = None
 
         self._compute_sort()
         self._build_ui()
@@ -223,32 +235,58 @@ class BreathingSortViewer(QMainWindow):
         self.sys_shifts = []
 
     def _update_anchor(self):
-        """Compute the dia→sys index offset that lines up the two ostium
-        (most-proximal, highest-frame-index) reference points, one per phase.
+        """Compute the dia→sys index offset that lines up the two ostium PINS
+        (the tail of each phase's own sorted list -- see dia/sys_ostium_pin_frame),
+        one per phase.
 
         Pairing by this fixed offset keeps diastole and systole aligned even when
         the two phases have different frame counts (e.g. ostium has only
         diastole).  None if either phase has no reference point → caller falls
         back to nearest-corrected-position pairing.
+
+        Deliberately aligned on the two PIN frames (each list's own tail), not the
+        two marked reference frames' own index positions: the marked frame need
+        not be the actual tail of its list (see _distance_from_ostium), so pairing
+        on it would let one phase reach its own 0 mm slot (the tail) while the
+        other phase's slider is still short of its tail -- i.e. the two panels
+        could never show 0 mm simultaneously. Pinning both tails together makes
+        the offset just the difference in list lengths, and is exact by
+        construction: whatever index dia's slider is at, sys's tail-relative
+        offset is identical, so dia's tail slot always pairs with sys's tail slot.
         """
         self._anchor_offset = None
         self.dia_ostium_frame = None
         self.sys_ostium_frame = None
+        self.dia_ostium_pin_frame = None
+        self.sys_ostium_pin_frame = None
         if not self.dia_sorted or not self.sys_sorted:
             return
         fdd = self.main_window.runtime_data.frame_data_dct or {}
         dia_refs = [f for f in self.dia_sorted if fdd.get(f) is not None and fdd[f].reference is not None]
         sys_refs = [f for f in self.sys_sorted if fdd.get(f) is not None and fdd[f].reference is not None]
-        # highest frame index = most proximal = ostium; kept per-phase even if only
-        # one phase has a reference point, so that phase alone can still report a
-        # distance-from-ostium (the dia/sys anchor *offset* below still needs both).
-        dia_ostium = max(dia_refs) if dia_refs else None
-        sys_ostium = max(sys_refs) if sys_refs else None
+        # most proximal = ostium = largest breathing-corrected position; picked by
+        # corrected position (self.dia_pos/self.sys_pos), NOT raw frame index --
+        # raw frame number stops being a meaningful position once register_phase's
+        # per-bin shifts have reordered frames (see _distance_from_ostium), so a
+        # reference frame need not be the highest-numbered one to be the most
+        # proximal. Kept per-phase even if only one phase has a reference point,
+        # so that phase alone can still report a distance-from-ostium (the dia/sys
+        # anchor *offset* below still needs both).
+        dia_ostium = max(dia_refs, key=lambda f: self.dia_pos[f]) if dia_refs else None
+        sys_ostium = max(sys_refs, key=lambda f: self.sys_pos[f]) if sys_refs else None
         self.dia_ostium_frame = dia_ostium
         self.sys_ostium_frame = sys_ostium
+        # pin distance-from-ostium at the tail of each phase's own sorted list
+        # (guaranteed to hold the largest corrected position in that phase), not
+        # at the marked ostium frame's own position -- see attribute comment above
+        self.dia_ostium_pin_frame = self.dia_sorted[-1] if dia_ostium is not None else None
+        self.sys_ostium_pin_frame = self.sys_sorted[-1] if sys_ostium is not None else None
         if dia_ostium is None or sys_ostium is None:
             return
-        self._anchor_offset = self.sys_sorted.index(sys_ostium) - self.dia_sorted.index(dia_ostium)
+        # both pins are their list's own tail, so lining them up is just the
+        # difference in list lengths -- invariant under manual reordering (moves
+        # change WHERE frames sit, never the length of either list)
+        self._anchor_offset = len(self.sys_sorted) - len(self.dia_sorted)
         logger.info(f'Breathing sort: ostium anchor offset dia→sys = {self._anchor_offset}')
 
     def _position_mm(self, pos_map: dict[int, float], frame: int | None) -> float | None:
@@ -281,15 +319,38 @@ class BreathingSortViewer(QMainWindow):
     def _distance_from_ostium(
         self, pos_map: dict[int, float], ostium_frame: int | None, frame: int | None
     ) -> float | None:
-        """mm distance of `frame` from its phase's ostium reference frame, in the
-        breathing-corrected coordinate system (positive = distal to the ostium)."""
-        if ostium_frame is None:
+        """mm distance of `frame` from its phase's ostium pin, along the
+        breathing-corrected pullback axis (register_phase's `corrected`, same axis
+        plotted by test_breathing_sort.plot_shifted_registration) -- pinned so
+        `ostium_frame` sits at 0 mm, positive = distal to the ostium (deeper into
+        the vessel).
+
+        `ostium_frame` is the tail of the phase's sorted list (dia/sys_ostium_pin_frame,
+        set in _update_anchor), NOT the raw frame the user marked as the ostium
+        reference point. register_phase's per-bin shifts can be large (hundreds of
+        frames for a strong breathing artefact) relative to the raw-frame gap
+        between candidate frames, so the marked frame is not guaranteed to hold
+        the largest corrected position in its phase -- some other, more-distal
+        frame can outrank it. Pinning at the true tail of the corrected order
+        instead guarantees every frame's distance is >= 0; the marked ostium frame
+        itself may then read as a small nonzero distance rather than exactly 0.
+
+        Deliberately not routed through `_position_mm` (which pins to the phase's
+        own minimum corrected position, for the absolute 'position' column in the
+        combined report): pinning at an arbitrary reference frame instead of a
+        fixed axis extreme would make `_position_mm`'s "always >= 0" guarantee
+        meaningless, so the ostium-relative distance is computed directly here.
+        """
+        if ostium_frame is None or frame is None:
             return None
-        ostium_mm = self._position_mm(pos_map, ostium_frame)
-        frame_mm = self._position_mm(pos_map, frame)
-        if ostium_mm is None or frame_mm is None:
+        if ostium_frame not in pos_map or frame not in pos_map:
             return None
-        return ostium_mm - frame_mm
+        pullback_speed = self.main_window.runtime_data.metadata.get('pullback_speed')
+        frame_rate = self.main_window.runtime_data.metadata.get('frame_rate')
+        if not pullback_speed or not frame_rate:
+            return None
+        mm_per_frame = pullback_speed / frame_rate
+        return (pos_map[ostium_frame] - pos_map[frame]) * mm_per_frame
 
     def _recompute(self, dia, sys, area_of):
         Rd = register_phase(
@@ -624,14 +685,14 @@ class BreathingSortViewer(QMainWindow):
 
         self._draw_main(self.dia_scene, self.dia_pixmap, self.dia_view, dia_frame)
         self._draw_main(self.sys_scene, self.sys_pixmap, self.sys_view, sys_frame)
-        self._update_strip(self.dia_strip, self.dia_sorted, self.dia_idx, self.dia_pos, self.dia_ostium_frame)
-        self._update_strip(self.sys_strip, self.sys_sorted, self.sys_idx, self.sys_pos, self.sys_ostium_frame)
+        self._update_strip(self.dia_strip, self.dia_sorted, self.dia_idx, self.dia_pos, self.dia_ostium_pin_frame)
+        self._update_strip(self.sys_strip, self.sys_sorted, self.sys_idx, self.sys_pos, self.sys_ostium_pin_frame)
 
         # Raw frame number is not a meaningful position once the breathing sort has
         # reordered frames, so the title/info prefer distance from the ostium (mm)
         # and only fall back to the frame number when that can't be computed.
-        dia_dist = self._distance_from_ostium(self.dia_pos, self.dia_ostium_frame, dia_frame)
-        sys_dist = self._distance_from_ostium(self.sys_pos, self.sys_ostium_frame, sys_frame)
+        dia_dist = self._distance_from_ostium(self.dia_pos, self.dia_ostium_pin_frame, dia_frame)
+        sys_dist = self._distance_from_ostium(self.sys_pos, self.sys_ostium_pin_frame, sys_frame)
         if dia_frame is None:
             self.dia_title.setText('Diastole')
         elif dia_dist is not None:
@@ -687,8 +748,8 @@ class BreathingSortViewer(QMainWindow):
 
         combined = pd.concat(
             [
-                _rows(self.dia_sorted, self.dia_pos, self.dia_ostium_frame),
-                _rows(self.sys_sorted, self.sys_pos, self.sys_ostium_frame),
+                _rows(self.dia_sorted, self.dia_pos, self.dia_ostium_pin_frame),
+                _rows(self.sys_sorted, self.sys_pos, self.sys_ostium_pin_frame),
             ],
             ignore_index=True,
         )

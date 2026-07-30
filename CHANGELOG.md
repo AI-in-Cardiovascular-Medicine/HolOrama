@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-07-30
+
+Breathing-sort ostium/distance rework, mask-overlay onion layering, and a batch of smaller fixes.
+
+### Added
+- Longitudinal view: checkboxes to independently hide the diastole/systole marker lines, the breathing curve, or the lumen-area dots
+- Reading a NIfTI mask now autosaves its contours immediately instead of waiting for the next save
+
+### Fixed
+- Console logging was dropping INFO-level messages while the log file kept only ERRORs; console now shows INFO+ and the file keeps WARNING+
+- Automatic segmentation no longer requires a manual trigger to refresh the longitudinal area plot
+- Manually edited calcium/lipid/macrophage/branch contours were saved at half the point density of lumen/EEM contours; every contour type now interpolates to the same configured point count
+- Longitudinal view no longer shows the breathing curve for OCT pullbacks, which have no cardiac/breathing gating
+- Gating plot's click-to-select tolerance scaled with pullback length instead of a fixed number of frames, making it too tight or too loose depending on the case
+- Mask overlay: overlapping structures (calcium/lipid/macrophage/branch/EEM) are now layered by distance from the lumen centroid, so the farther one always displays on top; EEM stays a fixed backdrop and lumen always displaces an overlapping branch
+- Breathing-sort viewer: distance-from-ostium could read negative for frames that are actually distal to the ostium, and the diastole/systole panels could never simultaneously reach their own 0 mm slot; both are now pinned/paired off each phase's own sorted-list extreme instead of the raw marked frame
+
 ## [0.4.0] - 2026-07-11
 
 New Fusion page: aligns an intravascular pullback onto a labelled CCTA vessel tree and stitches them into one combined mesh. CCTA gained the post-cut geometry and centerline tools needed to prepare that vessel-tree data for Fusion.
