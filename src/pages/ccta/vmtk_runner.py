@@ -245,7 +245,7 @@ def run_centerlines(
 ) -> dict[str, str]:
     """Compute the aortic-root, RCA, and LCA centerlines, writing `<label>_cl.vtp`
     into out_dir (a Windows path) for each. ao_source is the shared source point
-    (aortic root/LV side) for all three; ao_target/rca_targets/lca_targets are the
+    (aorta-top cut plane) for all three; ao_target/rca_targets/lca_targets are the
     per-centerline target points."""
     preamble = _activation_preamble(venv_path, build_path)
     return {

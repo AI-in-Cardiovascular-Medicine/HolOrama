@@ -142,7 +142,7 @@ def find_inlet_outlet_centroids(
     aorta_normal: np.ndarray,
     tol_voxels: float = 1.5,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Locate the inlet (LVOT cut plane) and outlet (aorta-top cut plane) centroids
+    """Locate the inlet (aorta-top cut plane) and outlet (LVOT cut plane) centroids
     directly from the same plane equations _compute_combined_mask used to cut the
     mask, rather than trying to detect an open mesh boundary — marching cubes always
     produces a closed, watertight surface (the cut shows up as a flat cap, not a
@@ -174,6 +174,6 @@ def find_inlet_outlet_centroids(
             raise ValueError(f'No mesh vertices found near the {name} cut plane. Check the cut lines.')
         return verts[near].mean(axis=0)
 
-    inlet = _plane_centroid(lvot_anchor, lvot_normal, 'LVOT')
-    outlet = _plane_centroid(aorta_anchor, aorta_normal, 'aorta-top')
+    inlet = _plane_centroid(aorta_anchor, aorta_normal, 'aorta-top')
+    outlet = _plane_centroid(lvot_anchor, lvot_normal, 'LVOT')
     return inlet, outlet
