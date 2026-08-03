@@ -86,6 +86,7 @@ class FusionPage(QWidget):
         ic = self.right_half.intravascular_column
         ic.run_load_requested.connect(self._on_run_load_pullback)
         ic.run_align_requested.connect(self._on_run_align)
+        ic.run_align_manual_requested.connect(self._on_run_align_manual)
 
         fc = self.right_half.fusion_column
         fc.run_label_anomalous_requested.connect(self._on_run_label_anomalous)
@@ -427,9 +428,65 @@ class FusionPage(QWidget):
             align_wall_anomalous=self.right_half.geometry_column.is_anomalous(),
             **ic.align_kwargs(),
         )
+        self._apply_align_result(result)
+
+    def _on_run_align_manual(self) -> None:
+        """Same preconditions as _on_run_align, but rotates by an explicit angle around a
+        single reference point instead of searching angle_range_deg. Only meaningful for
+        elliptic (anomalous) vessels — see pipeline.run_align_manual."""
+        ic = self.right_half.intravascular_column
+        if not self._require(self.data.iv_geometry_pair is not None, 'Load a pullback first.'):
+            return
+        if not self._require(self.data.vessel_tree is not None, 'Discretize the vessel tree first.'):
+            return
+        if not self._require(self.data.centerline_rca is not None, 'Run label_geometry first.'):
+            return
+
+        vessel_tree = self.data.vessel_tree
+        centerline_rca = self.data.centerline_rca
+        assert vessel_tree is not None and centerline_rca is not None
+
+        try:
+            main_ref_pt = vessel_tree.rca_references[self.data.selected_rca_reference_index][0]
+            rca_cl_main = centerline_rca.get_branch(ic.branch_index())
+        except (IndexError, AttributeError) as e:
+            ErrorMessage(self, f'Could not resolve reference point / branch: {e}')
+            return
+        ref_point = self._resolve_manual_ref_point(vessel_tree, main_ref_pt, ic.manual_ref_point_offset())
+
+        result = self._run(
+            'Aligning intravascular geometry (manual)…',
+            'Manual alignment done.',
+            pipeline.run_align_manual,
+            rca_cl_main,
+            self.data.iv_geometry_pair,
+            ic.manual_rotation_angle_deg(),
+            ref_point,
+            align_wall_anomalous=self.right_half.geometry_column.is_anomalous(),
+            **ic.manual_align_kwargs(),
+        )
+        self._apply_align_result(result)
+
+    def _resolve_manual_ref_point(
+        self, vessel_tree, main_ref_pt: tuple[float, float, float], offset: int
+    ) -> tuple[float, float, float]:
+        """offset=0 is main_ref_pt itself; +N/-N walks N contours distal/proximal along
+        vessel_tree.discretized_rca_main — the same step_size-spaced contours the
+        automatic reference triplets (rca_references) are themselves derived from."""
+        centroids = [c.centroid for c in vessel_tree.discretized_rca_main]
+        distances = [float(np.linalg.norm(np.array(c) - np.array(main_ref_pt))) for c in centroids]
+        base_index = int(np.argmin(distances))
+        index = max(0, min(len(centroids) - 1, base_index + offset))
+        return centroids[index]
+
+    def _apply_align_result(self, result) -> None:
         if result is None:
             return
-        self.data.aligned, self.data.resampled_centerline = result
+        self.data.aligned, self.data.resampled_centerline, total_rotation_deg = result
+        # Prefill the Manual group with whatever angle this alignment landed on (automatic
+        # search or a previous manual value round-tripped back) so nudging it further starts
+        # from here instead of 0.
+        self.right_half.intravascular_column.set_manual_rotation_angle(total_rotation_deg)
 
         self.left_half.viewer.add_points(
             FusionScene.INTRAVASCULAR_ALIGNED,

@@ -140,7 +140,7 @@ def run_align_combined(
     watertight: bool = True,
     output_dir: str = 'output/aligned',
     align_wall_anomalous: bool = False,
-) -> tuple[Any, Any]:
+) -> tuple[Any, Any, float]:
     return mm.align_combined(
         centerline,
         geometry,
@@ -152,6 +152,27 @@ def run_align_combined(
         write=write,
         watertight=watertight,
         output_dir=output_dir,
+        align_wall_anomalous=align_wall_anomalous,
+    )
+
+
+def run_align_manual(
+    centerline,
+    geometry,
+    rotation_angle_deg: float,
+    ref_point: tuple[float, float, float],
+    *,
+    watertight: bool = True,
+    align_wall_anomalous: bool = False,
+) -> tuple[Any, Any, float]:
+    """Only works for elliptic vessels (anomalous coronaries) — see mm.align_manual."""
+    return mm.align_manual(
+        centerline,
+        geometry,
+        rotation_angle_deg,
+        ref_point,
+        write=False,
+        watertight=watertight,
         align_wall_anomalous=align_wall_anomalous,
     )
 
