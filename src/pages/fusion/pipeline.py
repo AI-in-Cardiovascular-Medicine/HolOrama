@@ -38,7 +38,7 @@ def load_ccta_mesh(path: str) -> trimesh.Trimesh:
 
 
 def run_label_geometry(
-    path_ccta_geometry: str,
+    path_ccta_geometry: str | trimesh.Trimesh,
     centerline_aorta,
     centerline_rca,
     centerline_lca,
@@ -56,7 +56,8 @@ def run_label_geometry(
         anomalous_rca=anomalous_rca,
         anomalous_lca=anomalous_lca,
         n_points_intramural=n_points_intramural,
-        bounding_sphere_radius_mm=bounding_sphere_radius_mm,
+        bounding_sphere_radius_mm_rca=bounding_sphere_radius_mm,
+        bounding_sphere_radius_mm_lca=bounding_sphere_radius_mm,
         control_plot=False,
     )
 
