@@ -46,7 +46,9 @@ def run_label_geometry(
     anomalous_rca: bool = False,
     anomalous_lca: bool = False,
     n_points_intramural: int = 120,
-    bounding_sphere_radius_mm: float = 3.0,
+    step_size_mm: float = 1.0,
+    bounding_sphere_radius_mm_rca: float = 3.0,
+    bounding_sphere_radius_mm_lca: float = 3.0,
 ) -> tuple[dict, tuple[Any, Any, Any]]:
     return mm.label_geometry(
         path_ccta_geometry=path_ccta_geometry,
@@ -56,8 +58,9 @@ def run_label_geometry(
         anomalous_rca=anomalous_rca,
         anomalous_lca=anomalous_lca,
         n_points_intramural=n_points_intramural,
-        bounding_sphere_radius_mm_rca=bounding_sphere_radius_mm,
-        bounding_sphere_radius_mm_lca=bounding_sphere_radius_mm,
+        step_size_mm=step_size_mm,
+        bounding_sphere_radius_mm_rca=bounding_sphere_radius_mm_rca,
+        bounding_sphere_radius_mm_lca=bounding_sphere_radius_mm_lca,
         control_plot=False,
     )
 

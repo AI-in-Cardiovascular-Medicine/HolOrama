@@ -97,21 +97,33 @@ class GeometryColumn(QWidget):
         box = QGroupBox('Label Geometry')
         layout = QVBoxLayout(box)
 
-        self._n_points_intramural = QSpinBox()
-        self._n_points_intramural.setRange(1, 1000)
-        self._n_points_intramural.setValue(120)
-        layout.addLayout(_row('Intramural points:', self._n_points_intramural))
+        self._bounding_sphere_radius_rca = QDoubleSpinBox()
+        self._bounding_sphere_radius_rca.setRange(0.1, 50.0)
+        self._bounding_sphere_radius_rca.setSingleStep(0.5)
+        self._bounding_sphere_radius_rca.setValue(3.0)
+        layout.addLayout(_row('RCA bounding sphere (mm):', self._bounding_sphere_radius_rca))
 
-        self._bounding_sphere_radius = QDoubleSpinBox()
-        self._bounding_sphere_radius.setRange(0.1, 50.0)
-        self._bounding_sphere_radius.setSingleStep(0.5)
-        self._bounding_sphere_radius.setValue(3.0)
-        layout.addLayout(_row('Bounding sphere (mm):', self._bounding_sphere_radius))
+        self._bounding_sphere_radius_lca = QDoubleSpinBox()
+        self._bounding_sphere_radius_lca.setRange(0.1, 50.0)
+        self._bounding_sphere_radius_lca.setSingleStep(0.5)
+        self._bounding_sphere_radius_lca.setValue(3.0)
+        layout.addLayout(_row('LCA bounding sphere (mm):', self._bounding_sphere_radius_lca))
+
+        self._step_size_labeling = QDoubleSpinBox()
+        self._step_size_labeling.setRange(0.01, 10.0)
+        self._step_size_labeling.setSingleStep(0.1)
+        self._step_size_labeling.setValue(1.0)
+        layout.addLayout(_row('Step size (mm):', self._step_size_labeling))
 
         self._anomalous_rca = QCheckBox('Anomalous RCA')
         self._anomalous_lca = QCheckBox('Anomalous LCA')
         layout.addWidget(self._anomalous_rca)
         layout.addWidget(self._anomalous_lca)
+
+        self._n_points_intramural = QSpinBox()
+        self._n_points_intramural.setRange(1, 1000)
+        self._n_points_intramural.setValue(120)
+        layout.addLayout(_row('Intramural points:', self._n_points_intramural))
 
         run_btn = QPushButton('Run Label Geometry')
         run_btn.clicked.connect(self.run_label_geometry_requested.emit)
@@ -192,7 +204,9 @@ class GeometryColumn(QWidget):
             'anomalous_rca': self._anomalous_rca.isChecked(),
             'anomalous_lca': self._anomalous_lca.isChecked(),
             'n_points_intramural': self._n_points_intramural.value(),
-            'bounding_sphere_radius_mm': self._bounding_sphere_radius.value(),
+            'step_size_mm': self._step_size_labeling.value(),
+            'bounding_sphere_radius_mm_rca': self._bounding_sphere_radius_rca.value(),
+            'bounding_sphere_radius_mm_lca': self._bounding_sphere_radius_lca.value(),
         }
 
     def discretize_tree_kwargs(self) -> dict:
