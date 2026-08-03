@@ -61,7 +61,7 @@ class GeometryColumn(QWidget):
         box = QGroupBox('Centerlines (.vtp)')
         layout = QVBoxLayout(box)
         self._centerline_edits: dict[str, QLineEdit] = {}
-        for key, label in [('aorta', 'Aorta'), ('rca', 'RCA'), ('lca', 'LCA')]:
+        for key, label in [('aorta', 'Aorta'), ('lca', 'LCA'), ('rca', 'RCA')]:
             row = QHBoxLayout()
             row.addWidget(QLabel(f'{label}:'))
             edit = QLineEdit()
@@ -73,6 +73,18 @@ class GeometryColumn(QWidget):
             row.addWidget(browse_btn)
             layout.addLayout(row)
             self._centerline_edits[key] = edit
+
+        self._rm_start_mm = QDoubleSpinBox()
+        self._rm_start_mm.setRange(0.0, 50.0)
+        self._rm_start_mm.setSingleStep(0.5)
+        self._rm_start_mm.setValue(5.0)
+        layout.addLayout(_row('Remove start (mm):', self._rm_start_mm))
+
+        self._smooth_sigma = QDoubleSpinBox()
+        self._smooth_sigma.setRange(0.0, 20.0)
+        self._smooth_sigma.setSingleStep(0.1)
+        self._smooth_sigma.setValue(2.5)
+        layout.addLayout(_row('Smoothing sigma:', self._smooth_sigma))
         return box
 
     def _build_label_geometry_group(self) -> QGroupBox:
@@ -160,6 +172,12 @@ class GeometryColumn(QWidget):
     # ------------------------------------------------------------------
     # Param getters — read by FusionPage when handling the *_requested signals
     # ------------------------------------------------------------------
+
+    def centerline_kwargs(self) -> dict:
+        return {
+            'rm_start_mm': self._rm_start_mm.value(),
+            'smooth_sigma': self._smooth_sigma.value(),
+        }
 
     def label_geometry_kwargs(self) -> dict:
         return {

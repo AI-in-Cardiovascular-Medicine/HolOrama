@@ -131,9 +131,10 @@ class FusionPage(QWidget):
         assert mesh_path is not None
 
         def _run():
-            cl_aorta = pipeline.read_centerline_vtp(gc.centerline_paths['aorta'])
-            cl_rca = pipeline.read_centerline_vtp(gc.centerline_paths['rca'])
-            cl_lca = pipeline.read_centerline_vtp(gc.centerline_paths['lca'])
+            cl_kwargs = gc.centerline_kwargs()
+            cl_aorta = pipeline.read_centerline_vtp(gc.centerline_paths['aorta'], **cl_kwargs)
+            cl_rca = pipeline.read_centerline_vtp(gc.centerline_paths['rca'], **cl_kwargs)
+            cl_lca = pipeline.read_centerline_vtp(gc.centerline_paths['lca'], **cl_kwargs)
             return pipeline.run_label_geometry(mesh_path, cl_aorta, cl_rca, cl_lca, **gc.label_geometry_kwargs())
 
         result = self._run('Running label_geometry…', 'label_geometry done.', _run)
