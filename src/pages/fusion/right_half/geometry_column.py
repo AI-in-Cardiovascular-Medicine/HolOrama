@@ -22,6 +22,7 @@ class GeometryColumn(QWidget):
     run_label_geometry_requested = pyqtSignal()
     run_prepare_centerlines_requested = pyqtSignal()
     run_discretize_tree_requested = pyqtSignal()
+    geometry_files_changed = pyqtSignal()  # mesh and/or centerline path(s) changed
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -85,6 +86,11 @@ class GeometryColumn(QWidget):
         self._smooth_sigma.setSingleStep(0.1)
         self._smooth_sigma.setValue(2.5)
         layout.addLayout(_row('Smoothing sigma:', self._smooth_sigma))
+
+        reload_btn = QPushButton('Load Data')
+        reload_btn.setToolTip('Re-reads the mesh/centerlines with the current parameters above')
+        reload_btn.clicked.connect(self.geometry_files_changed.emit)
+        layout.addWidget(reload_btn)
         return box
 
     def _build_label_geometry_group(self) -> QGroupBox:
@@ -160,6 +166,7 @@ class GeometryColumn(QWidget):
         if path:
             self.mesh_path = path
             self._mesh_edit.setText(path)
+            self.geometry_files_changed.emit()
 
     def _on_browse_centerline(self, key: str) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -168,6 +175,7 @@ class GeometryColumn(QWidget):
         if path:
             self.centerline_paths[key] = path
             self._centerline_edits[key].setText(path)
+            self.geometry_files_changed.emit()
 
     # ------------------------------------------------------------------
     # Param getters — read by FusionPage when handling the *_requested signals

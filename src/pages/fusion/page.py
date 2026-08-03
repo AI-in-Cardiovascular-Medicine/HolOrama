@@ -78,6 +78,7 @@ class FusionPage(QWidget):
         gc.run_label_geometry_requested.connect(self._on_run_label_geometry)
         gc.run_prepare_centerlines_requested.connect(self._on_run_prepare_centerlines)
         gc.run_discretize_tree_requested.connect(self._on_run_discretize_tree)
+        gc.geometry_files_changed.connect(self._on_geometry_preview)
 
         self.left_half.tree_toolbar.reference_selected.connect(self._select_rca_reference)
         self.left_half.viewer.point_picked.connect(self._on_point_picked)
@@ -117,6 +118,40 @@ class FusionPage(QWidget):
     # ------------------------------------------------------------------
     # Column 1: CCTA geometry + centerlines
     # ------------------------------------------------------------------
+
+    def _on_geometry_preview(self) -> None:
+        """Show the raw mesh + centerlines as soon as they're picked (or reloaded via
+        'Load Data' after tweaking rm_start_mm/smooth_sigma), before Run Label Geometry
+        exists to color/label anything."""
+        gc = self.right_half.geometry_column
+        viewer = self.left_half.viewer
+
+        if gc.mesh_path is not None:
+            try:
+                mesh = pipeline.load_ccta_mesh(gc.mesh_path)
+            except Exception as e:
+                logger.warning(f'Could not load CCTA mesh for preview: {e}')
+            else:
+                viewer.add_mesh(FusionScene.CCTA_GEOMETRY, 'mesh', mesh, color=(200, 200, 200), opacity=0.4)
+
+        cl_kwargs = gc.centerline_kwargs()
+        for key, path in gc.centerline_paths.items():
+            try:
+                cl = pipeline.read_centerline_vtp(path, **cl_kwargs)
+            except Exception as e:
+                logger.warning(f'Could not load {key} centerline for preview: {e}')
+                continue
+            layer_key = f'centerline_{key}'
+            viewer.add_points(
+                FusionScene.CCTA_GEOMETRY,
+                layer_key,
+                np.array(cl.points_as_tuples()),
+                color=colors.CENTERLINE_COLORS[layer_key],
+                size=4.0,
+            )
+
+        self.left_half.refresh_toolbar(FusionScene.CCTA_GEOMETRY)
+        self.left_half.show_scene(FusionScene.CCTA_GEOMETRY)
 
     def _on_run_label_geometry(self) -> None:
         gc = self.right_half.geometry_column
