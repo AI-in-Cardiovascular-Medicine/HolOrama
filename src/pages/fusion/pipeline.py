@@ -110,7 +110,7 @@ def run_from_file_singlepair(
     n_points: int = 20,
     output_path: str = 'output/singlepair',
     watertight: bool = True,
-    write_obj: bool = True,
+    write_obj: bool = False,
     smooth: bool = True,
 ) -> tuple[Any, tuple[Any, Any]]:
     # image_center isn't exposed in the UI — always the library default (4.5, 4.5) mm.

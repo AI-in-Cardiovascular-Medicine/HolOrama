@@ -63,12 +63,6 @@ class IntravascularColumn(QWidget):
         labels_row.addWidget(self._label_sys_edit)
         layout.addLayout(labels_row)
 
-        out_row = QHBoxLayout()
-        self._output_path_edit = QLineEdit('output/rest')
-        out_row.addWidget(QLabel('Output path:'))
-        out_row.addWidget(self._output_path_edit, 1)
-        layout.addLayout(out_row)
-
         self._step_rotation = QDoubleSpinBox()
         self._step_rotation.setRange(0.01, 45.0)
         self._step_rotation.setSingleStep(0.1)
@@ -126,12 +120,6 @@ class IntravascularColumn(QWidget):
         self._watertight = QCheckBox('Watertight')
         layout.addWidget(self._watertight)
 
-        out_row = QHBoxLayout()
-        self._align_output_dir = QLineEdit('output/aligned')
-        out_row.addWidget(QLabel('Output dir:'))
-        out_row.addWidget(self._align_output_dir, 1)
-        layout.addLayout(out_row)
-
         align_btn = QPushButton('Align')
         align_btn.clicked.connect(self.run_align_requested.emit)
         layout.addWidget(align_btn)
@@ -160,7 +148,6 @@ class IntravascularColumn(QWidget):
         return {
             'input_path': self._input_path_edit.text(),
             'labels': [self._label_dia_edit.text(), self._label_sys_edit.text()],
-            'output_path': self._output_path_edit.text(),
             'step_rotation_deg': self._step_rotation.value(),
             'sample_size': self._sample_size.value(),
             'n_points': self._n_points.value(),
@@ -173,7 +160,6 @@ class IntravascularColumn(QWidget):
         return {
             'angle_range_deg': self._angle_range.value(),
             'watertight': self._watertight.isChecked(),
-            'output_dir': self._align_output_dir.text(),
         }
 
 
