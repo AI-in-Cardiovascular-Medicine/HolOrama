@@ -38,25 +38,31 @@ def load_ccta_mesh(path: str) -> trimesh.Trimesh:
 
 
 def run_label_geometry(
-    path_ccta_geometry: str,
+    path_ccta_geometry: str | trimesh.Trimesh,
     centerline_aorta,
     centerline_rca,
     centerline_lca,
     *,
-    anomalous_rca: bool = False,
-    anomalous_lca: bool = False,
-    n_points_intramural: int = 120,
-    bounding_sphere_radius_mm: float = 3.0,
+    acute_takeoff_rca: bool = False,
+    acute_takeoff_lca: bool = False,
+    n_points_takeoff_rca: int = 120,
+    n_points_takeoff_lca: int = 120,
+    step_size_mm: float = 1.0,
+    bounding_sphere_radius_mm_rca: float = 3.0,
+    bounding_sphere_radius_mm_lca: float = 3.0,
 ) -> tuple[dict, tuple[Any, Any, Any]]:
     return mm.label_geometry(
         path_ccta_geometry=path_ccta_geometry,
         path_centerline_aorta=centerline_aorta,
         path_centerline_rca=centerline_rca,
         path_centerline_lca=centerline_lca,
-        anomalous_rca=anomalous_rca,
-        anomalous_lca=anomalous_lca,
-        n_points_intramural=n_points_intramural,
-        bounding_sphere_radius_mm=bounding_sphere_radius_mm,
+        acute_takeoff_rca=acute_takeoff_rca,
+        acute_takeoff_lca=acute_takeoff_lca,
+        n_points_takeoff_rca=n_points_takeoff_rca,
+        n_points_takeoff_lca=n_points_takeoff_lca,
+        step_size_mm=step_size_mm,
+        bounding_sphere_radius_mm_rca=bounding_sphere_radius_mm_rca,
+        bounding_sphere_radius_mm_lca=bounding_sphere_radius_mm_lca,
         control_plot=False,
     )
 
@@ -106,7 +112,7 @@ def run_from_file_singlepair(
     n_points: int = 20,
     output_path: str = 'output/singlepair',
     watertight: bool = True,
-    write_obj: bool = True,
+    write_obj: bool = False,
     smooth: bool = True,
 ) -> tuple[Any, tuple[Any, Any]]:
     # image_center isn't exposed in the UI — always the library default (4.5, 4.5) mm.
@@ -136,7 +142,7 @@ def run_align_combined(
     watertight: bool = True,
     output_dir: str = 'output/aligned',
     align_wall_anomalous: bool = False,
-) -> tuple[Any, Any]:
+) -> tuple[Any, Any, float]:
     return mm.align_combined(
         centerline,
         geometry,
@@ -148,6 +154,27 @@ def run_align_combined(
         write=write,
         watertight=watertight,
         output_dir=output_dir,
+        align_wall_anomalous=align_wall_anomalous,
+    )
+
+
+def run_align_manual(
+    centerline,
+    geometry,
+    rotation_angle_deg: float,
+    ref_point: tuple[float, float, float],
+    *,
+    watertight: bool = True,
+    align_wall_anomalous: bool = False,
+) -> tuple[Any, Any, float]:
+    """Only works for elliptic vessels (anomalous coronaries) — see mm.align_manual."""
+    return mm.align_manual(
+        centerline,
+        geometry,
+        rotation_angle_deg,
+        ref_point,
+        write=False,
+        watertight=watertight,
         align_wall_anomalous=align_wall_anomalous,
     )
 

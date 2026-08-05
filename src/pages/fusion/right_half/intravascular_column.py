@@ -20,6 +20,7 @@ class IntravascularColumn(QWidget):
 
     run_load_requested = pyqtSignal()
     run_align_requested = pyqtSignal()
+    run_align_manual_requested = pyqtSignal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -36,6 +37,7 @@ class IntravascularColumn(QWidget):
         root.addWidget(self._build_load_group())
         root.addWidget(self._build_reference_group())
         root.addWidget(self._build_align_group())
+        root.addWidget(self._build_manual_align_group())
         root.addStretch(1)
 
     # ------------------------------------------------------------------
@@ -62,12 +64,6 @@ class IntravascularColumn(QWidget):
         labels_row.addWidget(QLabel('Systole label:'))
         labels_row.addWidget(self._label_sys_edit)
         layout.addLayout(labels_row)
-
-        out_row = QHBoxLayout()
-        self._output_path_edit = QLineEdit('output/rest')
-        out_row.addWidget(QLabel('Output path:'))
-        out_row.addWidget(self._output_path_edit, 1)
-        layout.addLayout(out_row)
 
         self._step_rotation = QDoubleSpinBox()
         self._step_rotation.setRange(0.01, 45.0)
@@ -126,15 +122,38 @@ class IntravascularColumn(QWidget):
         self._watertight = QCheckBox('Watertight')
         layout.addWidget(self._watertight)
 
-        out_row = QHBoxLayout()
-        self._align_output_dir = QLineEdit('output/aligned')
-        out_row.addWidget(QLabel('Output dir:'))
-        out_row.addWidget(self._align_output_dir, 1)
-        layout.addLayout(out_row)
-
         align_btn = QPushButton('Align')
         align_btn.clicked.connect(self.run_align_requested.emit)
         layout.addWidget(align_btn)
+        return box
+
+    def _build_manual_align_group(self) -> QGroupBox:
+        box = QGroupBox('Manual Alignment')
+        layout = QVBoxLayout(box)
+
+        self._manual_rotation_angle = QDoubleSpinBox()
+        self._manual_rotation_angle.setRange(-360.0, 360.0)
+        self._manual_rotation_angle.setSingleStep(1.0)
+        self._manual_rotation_angle.setToolTip('Rotation to apply, in degrees.')
+        layout.addLayout(_row('Rotation angle (deg):', self._manual_rotation_angle))
+
+        self._manual_ref_offset = QSpinBox()
+        self._manual_ref_offset.setRange(-100, 100)
+        self._manual_ref_offset.setToolTip(
+            '0 = the reference point selected above (same one used for automatic alignment).\n'
+            'Positive = N contours more distal along the centerline discretization;\n'
+            'negative = N contours more proximal.'
+        )
+        layout.addLayout(_row('Ref. point offset:', self._manual_ref_offset))
+
+        # No "write intermediate files" toggle, same as the automatic Align group above.
+        self._manual_watertight = QCheckBox('Watertight')
+        layout.addWidget(self._manual_watertight)
+
+        align_manual_btn = QPushButton('Align (Manual)')
+        align_manual_btn.setToolTip('Only works for elliptic vessels (anomalous coronaries).')
+        align_manual_btn.clicked.connect(self.run_align_manual_requested.emit)
+        layout.addWidget(align_manual_btn)
         return box
 
     # ------------------------------------------------------------------
@@ -146,6 +165,9 @@ class IntravascularColumn(QWidget):
         path = QFileDialog.getExistingDirectory(self, 'Select Pullback Case Folder', self._default_dir)
         if path:
             self._input_path_edit.setText(path)
+
+    def set_manual_rotation_angle(self, degrees: float) -> None:
+        self._manual_rotation_angle.setValue(degrees)
 
     def set_reference_points(self, aortic, superior, inferior) -> None:
         self._ref_labels['aortic'].setText(f'Aortic: {_fmt_point(aortic)}')
@@ -160,7 +182,6 @@ class IntravascularColumn(QWidget):
         return {
             'input_path': self._input_path_edit.text(),
             'labels': [self._label_dia_edit.text(), self._label_sys_edit.text()],
-            'output_path': self._output_path_edit.text(),
             'step_rotation_deg': self._step_rotation.value(),
             'sample_size': self._sample_size.value(),
             'n_points': self._n_points.value(),
@@ -173,8 +194,16 @@ class IntravascularColumn(QWidget):
         return {
             'angle_range_deg': self._angle_range.value(),
             'watertight': self._watertight.isChecked(),
-            'output_dir': self._align_output_dir.text(),
         }
+
+    def manual_rotation_angle_deg(self) -> float:
+        return self._manual_rotation_angle.value()
+
+    def manual_ref_point_offset(self) -> int:
+        return self._manual_ref_offset.value()
+
+    def manual_align_kwargs(self) -> dict:
+        return {'watertight': self._manual_watertight.isChecked()}
 
 
 def _row(label: str, widget: QWidget) -> QHBoxLayout:

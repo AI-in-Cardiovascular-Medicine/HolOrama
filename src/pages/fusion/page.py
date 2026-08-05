@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
+    QMessageBox,
     QProgressDialog,
     QPushButton,
     QSplitter,
@@ -73,18 +74,44 @@ class FusionPage(QWidget):
         self.right_half.intravascular_column.set_default_dir(path)
         self.status_bar.showMessage(f'Case folder: {path}')
 
+    def _on_clear_all_data(self) -> None:
+        reply = QMessageBox.question(
+            self,
+            'Clear All Data',
+            'Discard every loaded/computed fusion result (centerlines, vessel tree, '
+            'alignment, scaling, stitched mesh) and clear the 3-D viewer?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self.data = FusionRuntimeData()
+        for scene in FusionScene:
+            self.left_half.viewer.clear_scene(scene)
+            self.left_half.refresh_toolbar(scene)
+        self.status_bar.showMessage('Fusion data cleared.')
+
     def _connect_signals(self) -> None:
         gc = self.right_half.geometry_column
         gc.run_label_geometry_requested.connect(self._on_run_label_geometry)
         gc.run_prepare_centerlines_requested.connect(self._on_run_prepare_centerlines)
         gc.run_discretize_tree_requested.connect(self._on_run_discretize_tree)
+        gc.geometry_files_changed.connect(self._on_geometry_preview)
 
         self.left_half.tree_toolbar.reference_selected.connect(self._select_rca_reference)
         self.left_half.viewer.point_picked.connect(self._on_point_picked)
+        for toolbar in (
+            self.left_half.geometry_toolbar,
+            self.left_half.intravascular_loaded_toolbar,
+            self.left_half.alignment_toolbar,
+            self.left_half.tree_toolbar,
+        ):
+            toolbar.clear_all_data_requested.connect(self._on_clear_all_data)
 
         ic = self.right_half.intravascular_column
         ic.run_load_requested.connect(self._on_run_load_pullback)
         ic.run_align_requested.connect(self._on_run_align)
+        ic.run_align_manual_requested.connect(self._on_run_align_manual)
 
         fc = self.right_half.fusion_column
         fc.run_label_anomalous_requested.connect(self._on_run_label_anomalous)
@@ -118,6 +145,39 @@ class FusionPage(QWidget):
     # Column 1: CCTA geometry + centerlines
     # ------------------------------------------------------------------
 
+    def _on_geometry_preview(self) -> None:
+        """Show the raw mesh + centerlines as soon as they're picked (or reloaded via
+        'Load Data' after tweaking rm_start_mm/smooth_sigma), before Run Label Geometry
+        exists to color/label anything."""
+        gc = self.right_half.geometry_column
+        viewer = self.left_half.viewer
+
+        if gc.mesh_path is not None:
+            try:
+                mesh = pipeline.load_ccta_mesh(gc.mesh_path)
+            except Exception as e:
+                logger.warning(f'Could not load CCTA mesh for preview: {e}')
+            else:
+                viewer.add_mesh(FusionScene.CCTA_GEOMETRY, 'mesh', mesh, color=(200, 200, 200), opacity=0.4)
+
+        for key, path in gc.centerline_paths.items():
+            try:
+                cl = pipeline.read_centerline_vtp(path, **gc.centerline_kwargs(key))
+            except Exception as e:
+                logger.warning(f'Could not load {key} centerline for preview: {e}')
+                continue
+            layer_key = f'centerline_{key}'
+            viewer.add_points(
+                FusionScene.CCTA_GEOMETRY,
+                layer_key,
+                np.array(cl.points_as_tuples()),
+                color=colors.CENTERLINE_COLORS[layer_key],
+                size=4.0,
+            )
+
+        self.left_half.refresh_toolbar(FusionScene.CCTA_GEOMETRY)
+        self.left_half.show_scene(FusionScene.CCTA_GEOMETRY)
+
     def _on_run_label_geometry(self) -> None:
         gc = self.right_half.geometry_column
         if not self._require(gc.mesh_path is not None, 'Load a CCTA mesh first.'):
@@ -131,10 +191,11 @@ class FusionPage(QWidget):
         assert mesh_path is not None
 
         def _run():
-            cl_aorta = pipeline.read_centerline_vtp(gc.centerline_paths['aorta'])
-            cl_rca = pipeline.read_centerline_vtp(gc.centerline_paths['rca'])
-            cl_lca = pipeline.read_centerline_vtp(gc.centerline_paths['lca'])
-            return pipeline.run_label_geometry(mesh_path, cl_aorta, cl_rca, cl_lca, **gc.label_geometry_kwargs())
+            mesh = pipeline.load_ccta_mesh(mesh_path)
+            cl_aorta = pipeline.read_centerline_vtp(gc.centerline_paths['aorta'], **gc.centerline_kwargs('aorta'))
+            cl_rca = pipeline.read_centerline_vtp(gc.centerline_paths['rca'], **gc.centerline_kwargs('rca'))
+            cl_lca = pipeline.read_centerline_vtp(gc.centerline_paths['lca'], **gc.centerline_kwargs('lca'))
+            return pipeline.run_label_geometry(mesh, cl_aorta, cl_rca, cl_lca, **gc.label_geometry_kwargs())
 
         result = self._run('Running label_geometry…', 'label_geometry done.', _run)
         if result is None:
@@ -387,12 +448,68 @@ class FusionPage(QWidget):
             ref_points[1],
             ref_points[2],
             results.get('rca_points', []),
-            align_wall_anomalous=self.right_half.geometry_column.is_anomalous(),
+            align_wall_anomalous=self.right_half.geometry_column.has_acute_takeoff(),
             **ic.align_kwargs(),
         )
+        self._apply_align_result(result)
+
+    def _on_run_align_manual(self) -> None:
+        """Same preconditions as _on_run_align, but rotates by an explicit angle around a
+        single reference point instead of searching angle_range_deg. Only meaningful for
+        elliptic (anomalous) vessels — see pipeline.run_align_manual."""
+        ic = self.right_half.intravascular_column
+        if not self._require(self.data.iv_geometry_pair is not None, 'Load a pullback first.'):
+            return
+        if not self._require(self.data.vessel_tree is not None, 'Discretize the vessel tree first.'):
+            return
+        if not self._require(self.data.centerline_rca is not None, 'Run label_geometry first.'):
+            return
+
+        vessel_tree = self.data.vessel_tree
+        centerline_rca = self.data.centerline_rca
+        assert vessel_tree is not None and centerline_rca is not None
+
+        try:
+            main_ref_pt = vessel_tree.rca_references[self.data.selected_rca_reference_index][0]
+            rca_cl_main = centerline_rca.get_branch(ic.branch_index())
+        except (IndexError, AttributeError) as e:
+            ErrorMessage(self, f'Could not resolve reference point / branch: {e}')
+            return
+        ref_point = self._resolve_manual_ref_point(vessel_tree, main_ref_pt, ic.manual_ref_point_offset())
+
+        result = self._run(
+            'Aligning intravascular geometry (manual)…',
+            'Manual alignment done.',
+            pipeline.run_align_manual,
+            rca_cl_main,
+            self.data.iv_geometry_pair,
+            ic.manual_rotation_angle_deg(),
+            ref_point,
+            align_wall_anomalous=self.right_half.geometry_column.has_acute_takeoff(),
+            **ic.manual_align_kwargs(),
+        )
+        self._apply_align_result(result)
+
+    def _resolve_manual_ref_point(
+        self, vessel_tree, main_ref_pt: tuple[float, float, float], offset: int
+    ) -> tuple[float, float, float]:
+        """offset=0 is main_ref_pt itself; +N/-N walks N contours distal/proximal along
+        vessel_tree.discretized_rca_main — the same step_size-spaced contours the
+        automatic reference triplets (rca_references) are themselves derived from."""
+        centroids = [c.centroid for c in vessel_tree.discretized_rca_main]
+        distances = [float(np.linalg.norm(np.array(c) - np.array(main_ref_pt))) for c in centroids]
+        base_index = int(np.argmin(distances))
+        index = max(0, min(len(centroids) - 1, base_index + offset))
+        return centroids[index]
+
+    def _apply_align_result(self, result) -> None:
         if result is None:
             return
-        self.data.aligned, self.data.resampled_centerline = result
+        self.data.aligned, self.data.resampled_centerline, total_rotation_deg = result
+        # Prefill the Manual group with whatever angle this alignment landed on (automatic
+        # search or a previous manual value round-tripped back) so nudging it further starts
+        # from here instead of 0.
+        self.right_half.intravascular_column.set_manual_rotation_angle(total_rotation_deg)
 
         self.left_half.viewer.add_points(
             FusionScene.INTRAVASCULAR_ALIGNED,

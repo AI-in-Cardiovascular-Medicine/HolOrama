@@ -16,6 +16,7 @@ from loguru import logger
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
+    QDialog,
     QFileDialog,
     QGridLayout,
     QLabel,
@@ -36,6 +37,7 @@ from input_output.input.ccta_io import (
 )
 from input_output.output.stl_export import export_nifti, export_stl
 from pages.ccta import cut_geometry, cut_state_io, vmtk_runner
+from pages.ccta.centerline_smoothing_dialog import CenterlineSmoothingDialog
 from pages.ccta.progress_worker import StdoutCapturingWorker
 from pages.ccta.left_half.cut_geometry_viewer import CutGeometryViewer3D
 from pages.ccta.left_half.display import CctaDisplay
@@ -873,8 +875,12 @@ class CctaPage(QWidget):
         if self._centerlines_worker is not None and self._centerlines_worker.isRunning():
             return
         prereqs = self._validate_centerline_prereqs()
-        if prereqs is not None:
-            self._start_centerline_worker(prereqs)
+        if prereqs is None:
+            return
+        dialog = CenterlineSmoothingDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._start_centerline_worker(prereqs, dialog.aorta_params(), dialog.coronary_params())
 
     def _validate_centerline_prereqs(self) -> _CenterlinePrereqs | None:
         """Every guard Calculate Centerlines needs before it can run: a built cut
@@ -919,7 +925,12 @@ class CctaPage(QWidget):
             stem=os.path.basename(self._source_path),
         )
 
-    def _start_centerline_worker(self, prereqs: _CenterlinePrereqs) -> None:
+    def _start_centerline_worker(
+        self,
+        prereqs: _CenterlinePrereqs,
+        ao_smoothing: vmtk_runner.SmoothingParams,
+        coronary_smoothing: vmtk_runner.SmoothingParams,
+    ) -> None:
         """Runs vmtk in a background QThread. This can take minutes — vmtkcenterlines'
         Voronoi-diagram step is slow and often silent — so running it on the main
         thread would freeze the whole app with no way to tell "slow" from "stuck".
@@ -952,6 +963,8 @@ class CctaPage(QWidget):
                 lca_targets=prereqs.lca_points,
                 venv_path=prereqs.venv_path,
                 build_path=prereqs.build_path,
+                ao_smoothing=ao_smoothing,
+                coronary_smoothing=coronary_smoothing,
                 distro=prereqs.distro,
                 log_cb=print,
             )

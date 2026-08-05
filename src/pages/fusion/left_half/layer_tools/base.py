@@ -35,6 +35,7 @@ class SceneToolbar(QWidget):
     layer_opacity_changed = pyqtSignal(str, float)  # layer key, opacity [0, 1]
     pick_mode_toggled = pyqtSignal(bool)
     reset_camera_requested = pyqtSignal()
+    clear_all_data_requested = pyqtSignal()
 
     def __init__(
         self,
@@ -77,9 +78,16 @@ class SceneToolbar(QWidget):
             self.pick_btn.toggled.connect(self.pick_mode_toggled.emit)
             root.addWidget(self.pick_btn)
 
+        view_buttons = QVBoxLayout()
         reset_btn = QPushButton('Reset View')
         reset_btn.clicked.connect(self.reset_camera_requested.emit)
-        root.addWidget(reset_btn)
+        view_buttons.addWidget(reset_btn)
+
+        clear_btn = QPushButton('Clear All Data')
+        clear_btn.setToolTip('Discards every loaded/computed fusion result and clears the 3-D viewer.')
+        clear_btn.clicked.connect(self.clear_all_data_requested.emit)
+        view_buttons.addWidget(clear_btn)
+        root.addLayout(view_buttons)
 
     def refresh(self, layer_states: dict[str, tuple[bool, float]]) -> None:
         """Rebuild the layer visibility/opacity rows for the current set of layers,
