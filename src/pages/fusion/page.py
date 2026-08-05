@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
+    QMessageBox,
     QProgressDialog,
     QPushButton,
     QSplitter,
@@ -73,6 +74,23 @@ class FusionPage(QWidget):
         self.right_half.intravascular_column.set_default_dir(path)
         self.status_bar.showMessage(f'Case folder: {path}')
 
+    def _on_clear_all_data(self) -> None:
+        reply = QMessageBox.question(
+            self,
+            'Clear All Data',
+            'Discard every loaded/computed fusion result (centerlines, vessel tree, '
+            'alignment, scaling, stitched mesh) and clear the 3-D viewer?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self.data = FusionRuntimeData()
+        for scene in FusionScene:
+            self.left_half.viewer.clear_scene(scene)
+            self.left_half.refresh_toolbar(scene)
+        self.status_bar.showMessage('Fusion data cleared.')
+
     def _connect_signals(self) -> None:
         gc = self.right_half.geometry_column
         gc.run_label_geometry_requested.connect(self._on_run_label_geometry)
@@ -82,6 +100,13 @@ class FusionPage(QWidget):
 
         self.left_half.tree_toolbar.reference_selected.connect(self._select_rca_reference)
         self.left_half.viewer.point_picked.connect(self._on_point_picked)
+        for toolbar in (
+            self.left_half.geometry_toolbar,
+            self.left_half.intravascular_loaded_toolbar,
+            self.left_half.alignment_toolbar,
+            self.left_half.tree_toolbar,
+        ):
+            toolbar.clear_all_data_requested.connect(self._on_clear_all_data)
 
         ic = self.right_half.intravascular_column
         ic.run_load_requested.connect(self._on_run_load_pullback)
