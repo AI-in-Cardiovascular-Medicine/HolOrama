@@ -135,10 +135,9 @@ class FusionPage(QWidget):
             else:
                 viewer.add_mesh(FusionScene.CCTA_GEOMETRY, 'mesh', mesh, color=(200, 200, 200), opacity=0.4)
 
-        cl_kwargs = gc.centerline_kwargs()
         for key, path in gc.centerline_paths.items():
             try:
-                cl = pipeline.read_centerline_vtp(path, **cl_kwargs)
+                cl = pipeline.read_centerline_vtp(path, **gc.centerline_kwargs(key))
             except Exception as e:
                 logger.warning(f'Could not load {key} centerline for preview: {e}')
                 continue
@@ -168,10 +167,9 @@ class FusionPage(QWidget):
 
         def _run():
             mesh = pipeline.load_ccta_mesh(mesh_path)
-            cl_kwargs = gc.centerline_kwargs()
-            cl_aorta = pipeline.read_centerline_vtp(gc.centerline_paths['aorta'], **cl_kwargs)
-            cl_rca = pipeline.read_centerline_vtp(gc.centerline_paths['rca'], **cl_kwargs)
-            cl_lca = pipeline.read_centerline_vtp(gc.centerline_paths['lca'], **cl_kwargs)
+            cl_aorta = pipeline.read_centerline_vtp(gc.centerline_paths['aorta'], **gc.centerline_kwargs('aorta'))
+            cl_rca = pipeline.read_centerline_vtp(gc.centerline_paths['rca'], **gc.centerline_kwargs('rca'))
+            cl_lca = pipeline.read_centerline_vtp(gc.centerline_paths['lca'], **gc.centerline_kwargs('lca'))
             return pipeline.run_label_geometry(mesh, cl_aorta, cl_rca, cl_lca, **gc.label_geometry_kwargs())
 
         result = self._run('Running label_geometry…', 'label_geometry done.', _run)

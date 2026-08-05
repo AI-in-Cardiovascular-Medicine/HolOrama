@@ -193,9 +193,11 @@ class GeometryColumn(QWidget):
     # Param getters — read by FusionPage when handling the *_requested signals
     # ------------------------------------------------------------------
 
-    def centerline_kwargs(self) -> dict:
+    def centerline_kwargs(self, key: str) -> dict:
+        """key is 'aorta'/'rca'/'lca' — rm_start_mm trims the inlet of a coronary branch
+        and must never be applied to the aortic centerline, which has no such inlet."""
         return {
-            'rm_start_mm': self._rm_start_mm.value(),
+            'rm_start_mm': 0.0 if key == 'aorta' else self._rm_start_mm.value(),
             'smooth_sigma': self._smooth_sigma.value(),
         }
 
