@@ -115,15 +115,20 @@ class GeometryColumn(QWidget):
         self._step_size_labeling.setValue(1.0)
         layout.addLayout(_row('Step size (mm):', self._step_size_labeling))
 
-        self._anomalous_rca = QCheckBox('Anomalous RCA')
-        self._anomalous_lca = QCheckBox('Anomalous LCA')
-        layout.addWidget(self._anomalous_rca)
-        layout.addWidget(self._anomalous_lca)
+        self._acute_takeoff_rca = QCheckBox('Acute Takeoff RCA')
+        self._acute_takeoff_lca = QCheckBox('Acute Takeoff LCA')
+        layout.addWidget(self._acute_takeoff_rca)
+        layout.addWidget(self._acute_takeoff_lca)
 
-        self._n_points_intramural = QSpinBox()
-        self._n_points_intramural.setRange(1, 1000)
-        self._n_points_intramural.setValue(120)
-        layout.addLayout(_row('Intramural points:', self._n_points_intramural))
+        self._n_points_takeoff_rca = QSpinBox()
+        self._n_points_takeoff_rca.setRange(1, 1000)
+        self._n_points_takeoff_rca.setValue(120)
+        layout.addLayout(_row('RCA takeoff points:', self._n_points_takeoff_rca))
+
+        self._n_points_takeoff_lca = QSpinBox()
+        self._n_points_takeoff_lca.setRange(1, 1000)
+        self._n_points_takeoff_lca.setValue(120)
+        layout.addLayout(_row('LCA takeoff points:', self._n_points_takeoff_lca))
 
         run_btn = QPushButton('Run Label Geometry')
         run_btn.clicked.connect(self.run_label_geometry_requested.emit)
@@ -203,9 +208,10 @@ class GeometryColumn(QWidget):
 
     def label_geometry_kwargs(self) -> dict:
         return {
-            'anomalous_rca': self._anomalous_rca.isChecked(),
-            'anomalous_lca': self._anomalous_lca.isChecked(),
-            'n_points_intramural': self._n_points_intramural.value(),
+            'acute_takeoff_rca': self._acute_takeoff_rca.isChecked(),
+            'acute_takeoff_lca': self._acute_takeoff_lca.isChecked(),
+            'n_points_takeoff_rca': self._n_points_takeoff_rca.value(),
+            'n_points_takeoff_lca': self._n_points_takeoff_lca.value(),
             'step_size_mm': self._step_size_labeling.value(),
             'bounding_sphere_radius_mm_rca': self._bounding_sphere_radius_rca.value(),
             'bounding_sphere_radius_mm_lca': self._bounding_sphere_radius_lca.value(),
@@ -219,10 +225,11 @@ class GeometryColumn(QWidget):
             'bspline_smoothing': self._bspline_smoothing.value(),
         }
 
-    def is_anomalous(self) -> bool:
-        """Whether either coronary was marked anomalous — drives align_wall_anomalous
-        in column 2 automatically instead of a separate manual toggle there."""
-        return self._anomalous_rca.isChecked() or self._anomalous_lca.isChecked()
+    def has_acute_takeoff(self) -> bool:
+        """Whether either coronary was marked with an acute takeoff — drives
+        align_wall_anomalous in column 2 automatically instead of a separate manual
+        toggle there."""
+        return self._acute_takeoff_rca.isChecked() or self._acute_takeoff_lca.isChecked()
 
 
 def _row(label: str, widget: QWidget) -> QHBoxLayout:

@@ -448,7 +448,7 @@ class FusionPage(QWidget):
             ref_points[1],
             ref_points[2],
             results.get('rca_points', []),
-            align_wall_anomalous=self.right_half.geometry_column.is_anomalous(),
+            align_wall_anomalous=self.right_half.geometry_column.has_acute_takeoff(),
             **ic.align_kwargs(),
         )
         self._apply_align_result(result)
@@ -485,7 +485,7 @@ class FusionPage(QWidget):
             self.data.iv_geometry_pair,
             ic.manual_rotation_angle_deg(),
             ref_point,
-            align_wall_anomalous=self.right_half.geometry_column.is_anomalous(),
+            align_wall_anomalous=self.right_half.geometry_column.has_acute_takeoff(),
             **ic.manual_align_kwargs(),
         )
         self._apply_align_result(result)
