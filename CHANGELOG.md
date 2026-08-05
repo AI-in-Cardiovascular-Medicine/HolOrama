@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-08-05
+
+### Added
+- add a viewer for loaded mesh and centerline data, also add steps to smooth with load in.
+- vmtk runner now takes input parameters and prompts the user with pop up window
+- added rm start points and smoothing to the loading of centerlines.
+- added option for manual alignment which takes the output of hausdorff alignment as initial input.
+
+### Changed
+- no rm_start_mm for aorta which results in better discretized vessel trees
+- updated multimodars to v0.5.7 and adjusted holOrama to work with it
+- different radii for rca and lca labeling
+- allowing to clear all data in fusion
+- flipped order for aorta centerline -> fixed alignment issues, by having highest z-coordinate on top
+- work around for broken nnuzoo in install.ps1
+
 ## [0.5.0] - 2026-07-30
 
 Breathing-sort ostium/distance rework, mask-overlay onion layering, and a batch of smaller fixes.
