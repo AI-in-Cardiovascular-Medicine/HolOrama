@@ -19,6 +19,7 @@ vmtksurfacewriter (binary -> ascii).
 import os
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from subprocess import PIPE, STDOUT, Popen
 
@@ -27,6 +28,15 @@ from loguru import logger
 
 _REQUIRED_EXES = ('vmtkcenterlines', 'vmtkcenterlinesmoothing', 'vmtksurfacewriter')
 _HEARTBEAT_SECONDS = 15  # how often to print "still running" while a step is silent
+
+
+@dataclass
+class SmoothingParams:
+    """vmtkcenterlinesmoothing's only two parameters — a moving-average filter over
+    the centerline points. Higher iterations/factor = more aggressive smoothing."""
+
+    iterations: int = 100
+    factor: float = 0.1
 
 
 def _to_wsl_path(win_path: str) -> str:
@@ -173,6 +183,7 @@ def _run_centerline(
     out_dir: str,
     source: np.ndarray,
     targets: list[np.ndarray],
+    smoothing: SmoothingParams,
     distro: str,
     log_cb=None,
 ) -> str:
@@ -211,7 +222,16 @@ def _run_centerline(
     _run_step(
         preamble,
         'vmtkcenterlinesmoothing',
-        ['-ifile', f'"{raw_wsl}"', '-iterations', '300', '-ofile', f'"{raw_wsl}"'],
+        [
+            '-ifile',
+            f'"{raw_wsl}"',
+            '-iterations',
+            str(smoothing.iterations),
+            '-factor',
+            str(smoothing.factor),
+            '-ofile',
+            f'"{raw_wsl}"',
+        ],
         distro,
         log_cb,
     )
@@ -240,16 +260,23 @@ def run_centerlines(
     lca_targets: list[np.ndarray],
     venv_path: str,
     build_path: str,
+    ao_smoothing: SmoothingParams,
+    coronary_smoothing: SmoothingParams,
     distro: str = '',
     log_cb=None,
 ) -> dict[str, str]:
     """Compute the aortic-root, RCA, and LCA centerlines, writing `<label>_cl.vtp`
     into out_dir (a Windows path) for each. ao_source is the shared source point
     (aorta-top cut plane) for all three; ao_target/rca_targets/lca_targets are the
-    per-centerline target points."""
+    per-centerline target points. ao_smoothing/coronary_smoothing are separate since
+    the aorta often needs much heavier smoothing than the finer coronary branches."""
     preamble = _activation_preamble(venv_path, build_path)
     return {
-        'ao': _run_centerline('ao', preamble, stl_path, out_dir, ao_source, [ao_target], distro, log_cb),
-        'rca': _run_centerline('rca', preamble, stl_path, out_dir, ao_source, rca_targets, distro, log_cb),
-        'lca': _run_centerline('lca', preamble, stl_path, out_dir, ao_source, lca_targets, distro, log_cb),
+        'ao': _run_centerline('ao', preamble, stl_path, out_dir, ao_source, [ao_target], ao_smoothing, distro, log_cb),
+        'rca': _run_centerline(
+            'rca', preamble, stl_path, out_dir, ao_source, rca_targets, coronary_smoothing, distro, log_cb
+        ),
+        'lca': _run_centerline(
+            'lca', preamble, stl_path, out_dir, ao_source, lca_targets, coronary_smoothing, distro, log_cb
+        ),
     }
