@@ -156,9 +156,10 @@ class IntravascularColumn(QWidget):
         self._manual_ref_offset = QSpinBox()
         self._manual_ref_offset.setRange(-100, 100)
         self._manual_ref_offset.setToolTip(
-            '0 = the reference point selected above (same one used for automatic alignment).\n'
-            'Positive = N contours more distal along the centerline discretization;\n'
-            'negative = N contours more proximal.'
+            '0 = the RCA centerline point closest to the reference selected above (same one\n'
+            'used for automatic alignment). Positive = N centerline points more distal;\n'
+            'negative = N centerline points more proximal, towards the ostium (point index 0).\n'
+            'Clamped at the ostium — you cannot go more proximal than that.'
         )
         layout.addLayout(_row('Ref. point offset:', self._manual_ref_offset))
 

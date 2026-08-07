@@ -680,7 +680,7 @@ class FusionPage(QWidget):
         except (IndexError, AttributeError) as e:
             ErrorMessage(self, f'Could not resolve reference point / branch: {e}')
             return
-        ref_point = self._resolve_manual_ref_point(vessel_tree, main_ref_pt, ic.manual_ref_point_offset())
+        ref_point = self._resolve_manual_ref_point(rca_cl_main, main_ref_pt, ic.manual_ref_point_offset())
 
         result = self._run(
             'Aligning intravascular geometry (manual)…',
@@ -698,31 +698,32 @@ class FusionPage(QWidget):
         self._apply_align_result(result, rca_cl_main)
 
     def _resolve_manual_ref_point(
-        self, vessel_tree, main_ref_pt: tuple[float, float, float], offset: int
+        self, rca_cl_main, main_ref_pt: tuple[float, float, float], offset: int
     ) -> tuple[float, float, float]:
-        """offset=0 is main_ref_pt itself; +N/-N walks N contours distal/proximal along
-        vessel_tree.discretized_rca_main — the same step_size-spaced contours the
-        automatic reference triplets (rca_references) are themselves derived from.
+        """offset=0 is whichever point of `rca_cl_main` (the same single-branch RCA
+        centerline passed into align_manual/align_combined) lies closest to main_ref_pt —
+        not main_ref_pt itself, since that's a vessel-tree reference point and may not sit
+        exactly on the centerline. +N/-N then walks N *centerline points* — not the coarser
+        step_size-spaced vessel-tree contours — away from/towards point index 0.
 
-        Clamped to [0, len(centroids)-1] — most commonly hit with the default 'RCA ostium'
-        reference selected (index 0 in the Vessel Tree dropdown), since that's already the
-        most proximal contour: base_index is then 0 or close to it, so *any* negative offset
-        clamps straight back to (near) main_ref_pt itself, which looks like negative offsets
-        'don't work'. They do — there's just nothing more proximal than the ostium to walk
-        to. Pick a more distal RCA reference first if you need room to go negative."""
-        centroids = [c.centroid for c in vessel_tree.discretized_rca_main]
-        distances = [float(np.linalg.norm(np.array(c) - np.array(main_ref_pt))) for c in centroids]
+        prepare_centerline's orient_to_reference(aorta) guarantees point index 0 of the RCA
+        main branch is always the proximal/ostium end, regardless of which RCA reference is
+        currently selected — so -N always walks towards the ostium and +N away from it.
+        Clamped to [0, len(points)-1]: if the closest point is already index 0 (e.g. the
+        'RCA ostium' reference itself is selected), negative offsets have nowhere to go and
+        clamp back to it — there's nothing more proximal than the ostium to walk to."""
+        points = rca_cl_main.points_as_tuples()
+        distances = [float(np.linalg.norm(np.array(p) - np.array(main_ref_pt))) for p in points]
         base_index = int(np.argmin(distances))
         raw_index = base_index + offset
-        index = max(0, min(len(centroids) - 1, raw_index))
+        index = max(0, min(len(points) - 1, raw_index))
         if index != raw_index:
-            direction = 'proximal' if raw_index < 0 else 'distal'
+            direction = 'proximal (towards the ostium)' if raw_index < 0 else 'distal'
             self.status_bar.showMessage(
-                f'Ref. point offset clamped: no contour {abs(raw_index - index)} step(s) further {direction} '
-                f'than the selected RCA reference — using the {"first" if direction == "proximal" else "last"} '
-                f'contour of the RCA main path instead.'
+                f'Ref. point offset clamped: no centerline point further {direction} than the selected '
+                f'RCA reference — using the {"first" if raw_index < 0 else "last"} point of the branch instead.'
             )
-        return centroids[index]
+        return points[index]
 
     def _apply_align_result(self, result, source_centerline) -> None:
         """`result` is align_combined/align_manual's (aligned_geometry, spacing_mm,
