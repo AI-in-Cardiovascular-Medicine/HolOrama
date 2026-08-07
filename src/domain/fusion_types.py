@@ -6,6 +6,7 @@ class FusionScene(Enum):
     actors grouped per scene and swapped on tab change)."""
 
     CCTA_GEOMETRY = 'ccta_geometry'
+    CENTERLINE_BRANCHES = 'centerline_branches'
     INTRAVASCULAR_LOADED = 'intravascular_loaded'
     INTRAVASCULAR_ALIGNED = 'intravascular_aligned'
     VESSEL_TREE = 'vessel_tree'
@@ -14,6 +15,7 @@ class FusionScene(Enum):
     def label(cls, scene: 'FusionScene') -> str:
         mapping = {
             cls.CCTA_GEOMETRY: 'CCTA Geometry',
+            cls.CENTERLINE_BRANCHES: 'Centerline Branches',
             cls.INTRAVASCULAR_LOADED: 'Intravascular Loaded',
             cls.INTRAVASCULAR_ALIGNED: 'Intravascular Aligned',
             cls.VESSEL_TREE: 'Vessel Tree',

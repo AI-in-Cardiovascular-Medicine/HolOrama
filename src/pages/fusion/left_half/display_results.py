@@ -14,9 +14,11 @@ from vtkmodules.vtkFiltersCore import vtkTriangleFilter
 from vtkmodules.vtkInteractionStyle import vtkInteractorStyleTrackballCamera
 from vtkmodules.vtkRenderingCore import (
     vtkActor,
+    vtkBillboardTextActor3D,
     vtkCellPicker,
     vtkLightKit,
     vtkPolyDataMapper,
+    vtkProp3D,
     vtkRenderer,
 )
 
@@ -25,7 +27,11 @@ from domain.fusion_types import FusionScene
 
 @dataclass
 class _Layer:
-    actor: vtkActor
+    # A single mesh/points/polyline actor, or a list of billboard text actors for a
+    # text-label layer (see add_labels). Only vtkActor (mesh/points/polyline) has
+    # GetProperty() for opacity — set_layer_opacity guards on isinstance(..., list)
+    # before calling it, since a label group's vtkProp3Ds don't support it.
+    actor: vtkActor | list[vtkProp3D]
     visible: bool = True
     opacity: float = 1.0
     color: tuple[int, int, int] = (200, 200, 200)
@@ -171,6 +177,41 @@ class FusionViewer3D(QWidget):
         actor = self._add_actor(scene, key, mapper, color, 1.0, visible)
         actor.GetProperty().SetPointSize(size)
 
+    def add_labels(
+        self,
+        scene: FusionScene,
+        key: str,
+        points: np.ndarray,
+        texts: list[str],
+        color: tuple[int, int, int] = (255, 255, 255),
+        font_size: int = 14,
+        visible: bool = True,
+    ) -> None:
+        """One billboard text actor per (point, text) pair — always faces the camera,
+        unlike a 3-D-oriented label would. Used for sharp-angle markers (see
+        colors.SHARP_ANGLE_LABEL_COLOR)."""
+        is_first_layer_in_scene = not self._scenes[scene].layers
+
+        self.remove_layer(scene, key)
+        group: list[vtkProp3D] = []
+        r, g, b = color
+        for point, text in zip(points, texts):
+            actor = vtkBillboardTextActor3D()
+            actor.SetPosition(float(point[0]), float(point[1]), float(point[2]))
+            actor.SetInput(str(text))
+            text_prop = actor.GetTextProperty()
+            text_prop.SetColor(r / 255.0, g / 255.0, b / 255.0)
+            text_prop.SetFontSize(font_size)
+            text_prop.SetJustificationToCentered()
+            text_prop.SetBold(True)
+            actor.SetVisibility(int(visible and scene == self._current_scene))
+            self._ren.AddActor(actor)
+            group.append(actor)
+        self._scenes[scene].layers[key] = _Layer(actor=group, visible=visible, opacity=1.0, color=color)
+        if is_first_layer_in_scene and scene == self._current_scene:
+            self._ren.ResetCamera()
+        self._vtk_widget.GetRenderWindow().Render()
+
     def _add_actor(self, scene, key, mapper, color, opacity, visible) -> vtkActor:
         # Empty *before* this add → this is the scene's first-ever layer, so the camera
         # is still wherever it was left (possibly not even pointed at the origin) and
@@ -196,7 +237,8 @@ class FusionViewer3D(QWidget):
     def remove_layer(self, scene: FusionScene, key: str) -> None:
         layer = self._scenes[scene].layers.pop(key, None)
         if layer is not None:
-            self._ren.RemoveActor(layer.actor)
+            for actor in layer.actor if isinstance(layer.actor, list) else [layer.actor]:
+                self._ren.RemoveActor(actor)
 
     def clear_scene(self, scene: FusionScene) -> None:
         for key in list(self._scenes[scene].layers):
@@ -209,7 +251,8 @@ class FusionViewer3D(QWidget):
             return
         layer.visible = visible
         if scene == self._current_scene:
-            layer.actor.SetVisibility(int(visible))
+            for actor in layer.actor if isinstance(layer.actor, list) else [layer.actor]:
+                actor.SetVisibility(int(visible))
             self._vtk_widget.GetRenderWindow().Render()
 
     def isolate_layer(self, scene: FusionScene, key: str) -> None:
@@ -219,7 +262,8 @@ class FusionViewer3D(QWidget):
         for k, layer in self._scenes[scene].layers.items():
             layer.visible = k == key
             if scene == self._current_scene:
-                layer.actor.SetVisibility(int(layer.visible))
+                for actor in layer.actor if isinstance(layer.actor, list) else [layer.actor]:
+                    actor.SetVisibility(int(layer.visible))
         if scene == self._current_scene:
             self._vtk_widget.GetRenderWindow().Render()
 
@@ -228,7 +272,10 @@ class FusionViewer3D(QWidget):
         if layer is None:
             return
         layer.opacity = opacity
-        layer.actor.GetProperty().SetOpacity(opacity)
+        # Text-label layers (a list of vtkBillboardTextActor3D) have no vtkProperty to
+        # set an overall opacity on — visibility toggling is all they support.
+        if not isinstance(layer.actor, list):
+            layer.actor.GetProperty().SetOpacity(opacity)
         if scene == self._current_scene:
             self._vtk_widget.GetRenderWindow().Render()
 
@@ -245,7 +292,9 @@ class FusionViewer3D(QWidget):
         self._current_scene = scene
         for s, scene_layers in self._scenes.items():
             for layer in scene_layers.layers.values():
-                layer.actor.SetVisibility(int(layer.visible and s == scene))
+                visible = int(layer.visible and s == scene)
+                for actor in layer.actor if isinstance(layer.actor, list) else [layer.actor]:
+                    actor.SetVisibility(visible)
         self._ren.ResetCamera()
         self._vtk_widget.GetRenderWindow().Render()
 

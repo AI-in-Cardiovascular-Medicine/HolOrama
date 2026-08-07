@@ -2,13 +2,16 @@
 
 Each function below corresponds to one button in a right_half column and mirrors
 the call signature of the underlying multimodars function as installed
-(multimodars>=0.5.2 — see pyproject.toml). Keeping this as a separate module (rather
+(multimodars>=0.6.0 — see pyproject.toml). Keeping this as a separate module (rather
 than calling multimodars directly from the column widgets or page.py) means the GUI
 code never has to change if a multimodars upgrade renames or reshapes an argument —
-only this file does.
+only this file does. Centerline methods (get_branch, split_branch, merge_branches,
+find_sharp_angles, orient_by_max_z, ...) are called directly on the PyCenterline
+objects in page.py instead, matching how get_branch is already used there — only
+module-level ``mm.*`` functions get a wrapper here.
 
 This application only ever loads centerlines from .vtp files (never CSV/array), via
-``read_centerline_vtp`` below.
+``load_centerline`` below.
 
 None of the wrappers here expose multimodars' own ``control_plot``/``debug_plot``
 parameters — they are always passed as False. Those flags pop up the package's own
@@ -26,11 +29,37 @@ import trimesh
 import multimodars as mm
 
 
-def read_centerline_vtp(path: str, *, rm_start_mm: float = 5.0, smooth: bool = True, smooth_sigma: float = 2.5) -> Any:
-    """Load a centerline .vtp and clean it up (trim side-branch prefixes overlapping the
-    main branch, optionally trim the branch-0 inlet, optionally smooth)."""
-    cl = mm.read_centerline_vtp(path)
-    return cl.cleanup_vtp_data(rm_start_mm=rm_start_mm, smooth=smooth, smooth_sigma=smooth_sigma)
+def load_centerline(path: str, name: str) -> Any:
+    # multimodars>=0.6.0 API (unreleased — see multimoda-rs branch fix/centerline-workflow).
+    # pyproject.toml is still pinned to the last PyPI release (0.5.8), which mypy resolves
+    # against and which lacks this function — bump the pin once 0.6.0 ships and drop these.
+    return mm.load_centerline(path, name)  # type: ignore[attr-defined]
+
+
+def prepare_centerline(
+    centerline: Any,
+    *,
+    ref_centerline: Any | None = None,
+    spacing_mm: float | None = None,
+    branch_spacing_tolerance: float = 2.0,
+    rm_start_mm: float = 0.0,
+    smooth_sigma: float = 2.5,
+) -> Any:
+    """Run the load->branch->order->smooth prep pipeline on one centerline.
+
+    ``ref_centerline`` doubles as the "is this a coronary?" signal — pass the
+    prepared aorta centerline for RCA/LCA, leave it ``None`` for the aorta itself.
+    See ``multimodars.prepare_centerline`` for the full step-by-step docstring.
+    """
+    # multimodars>=0.6.0 API — see the note in load_centerline() above.
+    return mm.prepare_centerline(  # type: ignore[attr-defined]
+        centerline,
+        ref_centerline=ref_centerline,
+        spacing_mm=spacing_mm,
+        branch_spacing_tolerance=branch_spacing_tolerance,
+        rm_start_mm=rm_start_mm,
+        smooth_sigma=smooth_sigma,
+    )
 
 
 def load_ccta_mesh(path: str) -> trimesh.Trimesh:
@@ -45,21 +74,26 @@ def run_label_geometry(
     *,
     acute_takeoff_rca: bool = False,
     acute_takeoff_lca: bool = False,
-    n_points_takeoff_rca: int = 120,
-    n_points_takeoff_lca: int = 120,
+    range_mm_takeoff_rca: float = 60.0,
+    range_mm_takeoff_lca: float = 60.0,
     step_size_mm: float = 1.0,
     bounding_sphere_radius_mm_rca: float = 3.0,
     bounding_sphere_radius_mm_lca: float = 3.0,
-) -> tuple[dict, tuple[Any, Any, Any]]:
-    return mm.label_geometry(
+) -> dict:
+    """Centerlines must already be prepared (see ``prepare_centerline``) — label_geometry
+    no longer loads or orients them itself."""
+    # multimodars>=0.6.0 API — see the note in load_centerline() above. The pinned 0.5.8
+    # stub still has the old path_centerline_*/n_points_takeoff_*/(dict, centerlines)-tuple
+    # signature, hence the call-arg + return-value mismatches silenced below.
+    return mm.label_geometry(  # type: ignore[call-arg, return-value]
         path_ccta_geometry=path_ccta_geometry,
-        path_centerline_aorta=centerline_aorta,
-        path_centerline_rca=centerline_rca,
-        path_centerline_lca=centerline_lca,
+        centerline_aorta=centerline_aorta,
+        centerline_rca=centerline_rca,
+        centerline_lca=centerline_lca,
         acute_takeoff_rca=acute_takeoff_rca,
         acute_takeoff_lca=acute_takeoff_lca,
-        n_points_takeoff_rca=n_points_takeoff_rca,
-        n_points_takeoff_lca=n_points_takeoff_lca,
+        range_mm_takeoff_rca=range_mm_takeoff_rca,
+        range_mm_takeoff_lca=range_mm_takeoff_lca,
         step_size_mm=step_size_mm,
         bounding_sphere_radius_mm_rca=bounding_sphere_radius_mm_rca,
         bounding_sphere_radius_mm_lca=bounding_sphere_radius_mm_lca,
@@ -67,10 +101,13 @@ def run_label_geometry(
     )
 
 
-def run_prepare_centerlines(rca_cl, lca_cl, results: dict, *, branch_sigma: float = 2.0) -> tuple[Any, Any, dict]:
-    """vtp_data is always True here — branch indices are already set from the .vtp file,
-    since that's the only centerline source this app uses, so calculate_branches is skipped."""
-    return mm.prepare_centerlines(rca_cl, lca_cl, results, branch_sigma=branch_sigma, vtp_data=True, control_plot=False)
+def run_label_branches_pair(rca_cl, lca_cl, results: dict) -> dict:
+    """Project rca_cl/lca_cl's branch structure onto results' labelled surface points.
+
+    Call after any manual split_branch/merge_branches edit to the centerlines so the
+    surface-point branch labels (consumed by discretize_vessel_tree) reflect the edit."""
+    # multimodars>=0.6.0 API — see the note in load_centerline() above.
+    return mm.label_branches_pair(rca_cl, lca_cl, results, control_plot=False)  # type: ignore[attr-defined]
 
 
 def run_discretize_vessel_tree(
