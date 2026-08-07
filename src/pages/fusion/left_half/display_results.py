@@ -279,10 +279,11 @@ class FusionViewer3D(QWidget):
         if scene == self._current_scene:
             self._vtk_widget.GetRenderWindow().Render()
 
-    def layer_states(self, scene: FusionScene) -> dict[str, tuple[bool, float]]:
-        """(visible, opacity) per layer key — lets a toolbar initialize its checkboxes/
-        sliders to what's actually on screen instead of always assuming visible/100%."""
-        return {key: (layer.visible, layer.opacity) for key, layer in self._scenes[scene].layers.items()}
+    def layer_states(self, scene: FusionScene) -> dict[str, tuple[bool, float, tuple[int, int, int]]]:
+        """(visible, opacity, color) per layer key — lets a toolbar initialize its
+        checkboxes/sliders/swatches to what's actually on screen instead of always
+        assuming visible/100%/gray."""
+        return {key: (layer.visible, layer.opacity, layer.color) for key, layer in self._scenes[scene].layers.items()}
 
     # ------------------------------------------------------------------
     # Scene switching

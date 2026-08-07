@@ -179,7 +179,11 @@ def run_align_combined(
     watertight: bool = True,
     output_dir: str = 'output/aligned',
     align_wall_anomalous: bool = False,
-) -> tuple[Any, Any, float]:
+) -> tuple[Any, float, float]:
+    """Returns (aligned_geometry, spacing_mm, total_rotation_deg) — multimodars>=0.6.0 no
+    longer returns a resampled centerline here. spacing_mm is the arc-length spacing it
+    derived from `geometry` internally; call centerline.resample(spacing_mm) yourself if
+    you need a centerline at that same spacing (see FusionPage._apply_align_result)."""
     return mm.align_combined(
         centerline,
         geometry,
@@ -203,8 +207,11 @@ def run_align_manual(
     *,
     watertight: bool = True,
     align_wall_anomalous: bool = False,
-) -> tuple[Any, Any, float]:
-    """Only works for elliptic vessels (anomalous coronaries) — see mm.align_manual."""
+) -> tuple[Any, float, float]:
+    """Only works for elliptic vessels (anomalous coronaries) — see mm.align_manual.
+
+    Returns (aligned_geometry, spacing_mm, total_rotation_deg) — see run_align_combined's
+    docstring above for why there's no resampled centerline in this tuple anymore."""
     return mm.align_manual(
         centerline,
         geometry,

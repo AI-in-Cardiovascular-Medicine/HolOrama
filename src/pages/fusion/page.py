@@ -30,9 +30,11 @@ class FusionPage(QWidget):
         self.status_bar = status_bar
         self.data = FusionRuntimeData()
         self._remesh_worker: StdoutCapturingWorker | None = None
-        # Sharp-angle markers currently drawn in the Centerline Branches scene, and which
-        # one (if any) was last clicked — rebuilt from scratch by _refresh_branch_scene on
-        # every prepare/split/merge, since branch IDs get reassigned after each edit.
+        # Every point of the RCA/LCA centerlines currently drawn in the Centerline Branches
+        # scene — pickable for Split, not just the numbered sharp-angle markers, which are
+        # only a visual hint — and which one (if any) was last clicked. Rebuilt from scratch
+        # by _refresh_branch_scene on every prepare/split/merge, since branch IDs get
+        # reassigned after each edit.
         self._branch_markers: list[dict] = []
         self._selected_branch_marker: dict | None = None
 
@@ -365,10 +367,12 @@ class FusionPage(QWidget):
 
     def _refresh_branch_scene(self) -> None:
         """Recreate multimodars' plot_centerline_branches/plot_centerline_edges as native
-        VTK layers: RCA/LCA colored per branch, sharp-angle positions marked and numbered
-        (see colors.BRANCH_COLORS_RCA/LCA). Rebuilds from scratch every time, since
-        split_branch/merge_branches reassign branch IDs (by descending length) on every
-        edit — there's no stable id to update in place."""
+        VTK layers: RCA/LCA colored per branch (see colors.BRANCH_COLORS_RCA/LCA), with
+        sharp-angle positions additionally marked and numbered as a splitting hint — every
+        point on every branch is picked up into self._branch_markers below, though, so
+        Pick Point can split anywhere, not just at a numbered marker. Rebuilds from scratch
+        every time, since split_branch/merge_branches reassign branch IDs (by descending
+        length) on every edit — there's no stable id to update in place."""
         viewer = self.left_half.viewer
         viewer.clear_scene(FusionScene.CENTERLINE_BRANCHES)
         self._branch_markers = []
@@ -411,21 +415,24 @@ class FusionPage(QWidget):
                     size=4.0,
                 )
                 branch_start = cl.branch_start_indices[branch_id] if branch_id < len(cl.branch_start_indices) else 0
-                for point_index in cl.find_sharp_angles(branch_id, cos_threshold):
-                    local_index = point_index - branch_start
-                    if not (0 <= local_index < len(points)):
-                        continue
-                    position = points[local_index]
-                    label_points.append(position)
-                    label_texts.append(str(marker_number))
+                # Every point on this branch is pickable for Split, not just the numbered
+                # sharp-angle ones below — lets the user split anywhere along a branch,
+                # not only at spots the cos-threshold heuristic happened to flag.
+                for local_index, position in enumerate(points):
                     self._branch_markers.append(
                         {
                             'centerline': cl_name,
                             'branch_id': branch_id,
-                            'point_index': point_index,
+                            'point_index': branch_start + local_index,
                             'position': position,
                         }
                     )
+                for point_index in cl.find_sharp_angles(branch_id, cos_threshold):
+                    local_index = point_index - branch_start
+                    if not (0 <= local_index < len(points)):
+                        continue
+                    label_points.append(points[local_index])
+                    label_texts.append(str(marker_number))
                     marker_number += 1
 
             if label_points:
@@ -633,7 +640,9 @@ class FusionPage(QWidget):
             align_wall_anomalous=self.right_half.geometry_column.has_acute_takeoff(),
             **ic.align_kwargs(),
         )
-        self._apply_align_result(result)
+        if result is None:
+            return
+        self._apply_align_result(result, rca_cl_main)
 
     def _on_run_align_manual(self) -> None:
         """Same preconditions as _on_run_align, but rotates by an explicit angle around a
@@ -670,7 +679,9 @@ class FusionPage(QWidget):
             align_wall_anomalous=self.right_half.geometry_column.has_acute_takeoff(),
             **ic.manual_align_kwargs(),
         )
-        self._apply_align_result(result)
+        if result is None:
+            return
+        self._apply_align_result(result, rca_cl_main)
 
     def _resolve_manual_ref_point(
         self, vessel_tree, main_ref_pt: tuple[float, float, float], offset: int
@@ -684,10 +695,15 @@ class FusionPage(QWidget):
         index = max(0, min(len(centroids) - 1, base_index + offset))
         return centroids[index]
 
-    def _apply_align_result(self, result) -> None:
-        if result is None:
-            return
-        self.data.aligned, self.data.resampled_centerline, total_rotation_deg = result
+    def _apply_align_result(self, result, source_centerline) -> None:
+        """`result` is align_combined/align_manual's (aligned_geometry, spacing_mm,
+        total_rotation_deg) — multimodars>=0.6.0 no longer hands back a resampled
+        centerline itself, just the spacing_mm it used internally, so we resample
+        `source_centerline` (the same single-branch RCA centerline that was passed into
+        align_combined/align_manual) ourselves to get the centerline shown alongside the
+        aligned geometry."""
+        self.data.aligned, spacing_mm, total_rotation_deg = result
+        self.data.resampled_centerline = source_centerline.resample(spacing_mm)
         # Prefill the Manual group with whatever angle this alignment landed on (automatic
         # search or a previous manual value round-tripped back) so nudging it further starts
         # from here instead of 0.
