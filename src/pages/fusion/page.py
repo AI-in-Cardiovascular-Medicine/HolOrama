@@ -111,6 +111,7 @@ class FusionPage(QWidget):
         gc.geometry_files_changed.connect(self._on_geometry_preview)
 
         self.left_half.tree_toolbar.reference_selected.connect(self._select_rca_reference)
+        self.left_half.tree_toolbar.lca_reference_selected.connect(self._select_lca_reference)
         self.left_half.branch_toolbar.cos_threshold_changed.connect(self._on_branch_cos_threshold_changed)
         self.left_half.branch_toolbar.split_requested.connect(self._on_split_branch_requested)
         self.left_half.branch_toolbar.merge_requested.connect(self._on_merge_branches_requested)
@@ -128,6 +129,8 @@ class FusionPage(QWidget):
         ic.run_load_requested.connect(self._on_run_load_pullback)
         ic.run_align_requested.connect(self._on_run_align)
         ic.run_align_manual_requested.connect(self._on_run_align_manual)
+        ic.reference_vessel_changed.connect(self._on_reference_vessel_changed)
+        ic.reference_index_changed.connect(self._on_reference_index_changed)
 
         fc = self.right_half.fusion_column
         fc.run_label_anomalous_requested.connect(self._on_run_label_anomalous)
@@ -293,16 +296,41 @@ class FusionPage(QWidget):
             return
         self.data.vessel_tree = tree
 
-        reference_labels = ['RCA ostium'] + [f'RCA branch {i}' for i in range(1, len(tree.rca_references))]
-        self.left_half.tree_toolbar.set_references(reference_labels)
+        self.left_half.tree_toolbar.set_references(self._reference_labels('rca'))
+        self.left_half.tree_toolbar.set_lca_references(self._reference_labels('lca'))
 
         self._refresh_tree_scene()
         self._select_rca_reference(0)
+        self._select_lca_reference(0)
+        self._sync_intravascular_reference_choices()
         self.left_half.show_scene(FusionScene.VESSEL_TREE)
 
+    def _reference_labels(self, vessel: str) -> list[str]:
+        """Label list for vessel_tree.rca_references/lca_references — shared by the Vessel
+        Tree tab's own dropdowns and the Intravascular Alignment column's Reference
+        dropdown, so both always offer the same choices for a given vessel."""
+        tree = self.data.vessel_tree
+        if tree is None:
+            return []
+        refs = tree.rca_references if vessel == 'rca' else tree.lca_references
+        prefix = vessel.upper()
+        return [f'{prefix} ostium'] + [f'{prefix} branch {i}' for i in range(1, len(refs))]
+
+    def _sync_intravascular_reference_choices(self) -> None:
+        """Repopulate the Intravascular Alignment column's Reference dropdown for whichever
+        vessel (RCA/LCA) it currently has selected, and select whatever index that vessel
+        already has active — call after the vessel_tree changes or the column's Centerline
+        (RCA/LCA) selector changes."""
+        ic = self.right_half.intravascular_column
+        vessel = ic.reference_vessel()
+        ic.set_reference_choices(self._reference_labels(vessel))
+        index = self.data.selected_rca_reference_index if vessel == 'rca' else self.data.selected_lca_reference_index
+        ic.set_selected_reference_index(index)
+
     def _select_rca_reference(self, index: int) -> None:
-        """Apply reference triplet `index` (chosen via the dropdown or a scene click) as
-        the alignment reference points, and highlight it in the viewer."""
+        """Apply reference triplet `index` (chosen via the Vessel Tree dropdown, a scene
+        click, or the Intravascular Alignment column's Reference dropdown when RCA is the
+        selected vessel there) and highlight it in the viewer."""
         tree = self.data.vessel_tree
         if tree is None:
             return
@@ -312,11 +340,62 @@ class FusionPage(QWidget):
             logger.warning(f'Vessel tree has no rca_references[{index}].')
             return
         self.data.selected_rca_reference_index = index
-        self.right_half.intravascular_column.set_reference_points(triplet[0], triplet[1], triplet[2])
         self.left_half.tree_toolbar.set_selected_index(index)
         self.left_half.viewer.add_points(
             FusionScene.VESSEL_TREE, 'selected_reference', np.array(triplet), color=(255, 255, 255), size=14.0
         )
+        self._sync_intravascular_reference_ui('rca', index, triplet)
+
+    def _select_lca_reference(self, index: int) -> None:
+        """Same as _select_rca_reference but for the LCA."""
+        tree = self.data.vessel_tree
+        if tree is None:
+            return
+        try:
+            triplet = tree.lca_references[index]
+        except IndexError:
+            logger.warning(f'Vessel tree has no lca_references[{index}].')
+            return
+        self.data.selected_lca_reference_index = index
+        self.left_half.tree_toolbar.set_selected_lca_index(index)
+        self.left_half.viewer.add_points(
+            FusionScene.VESSEL_TREE, 'selected_lca_reference', np.array(triplet), color=(0, 255, 255), size=14.0
+        )
+        self._sync_intravascular_reference_ui('lca', index, triplet)
+
+    def _sync_intravascular_reference_ui(self, vessel: str, index: int, triplet) -> None:
+        """Keep the Intravascular Alignment column's Reference dropdown and Aortic/Superior/
+        Inferior display in step with whichever RCA/LCA reference was just selected — but
+        only when that column currently has this same vessel chosen, so selecting an LCA
+        reference in the Vessel Tree tab doesn't clobber an in-progress RCA alignment setup
+        (and vice versa)."""
+        ic = self.right_half.intravascular_column
+        if ic.reference_vessel() != vessel:
+            return
+        ic.set_selected_reference_index(index)
+        ic.set_reference_points(triplet[0], triplet[1], triplet[2])
+
+    def _on_reference_vessel_changed(self, vessel: str) -> None:
+        """The Intravascular Alignment column's Centerline (RCA/LCA) selector changed —
+        repopulate its Reference dropdown for the new vessel and refresh the Aortic/
+        Superior/Inferior display to match whatever was already selected for it."""
+        self._sync_intravascular_reference_choices()
+        tree = self.data.vessel_tree
+        if tree is None:
+            return
+        refs = tree.rca_references if vessel == 'rca' else tree.lca_references
+        index = self.data.selected_rca_reference_index if vessel == 'rca' else self.data.selected_lca_reference_index
+        if 0 <= index < len(refs):
+            triplet = refs[index]
+            self.right_half.intravascular_column.set_reference_points(triplet[0], triplet[1], triplet[2])
+
+    def _on_reference_index_changed(self, index: int) -> None:
+        """The Intravascular Alignment column's own Reference dropdown changed — route to
+        the same selection path as the Vessel Tree tab so everything stays in sync."""
+        if self.right_half.intravascular_column.reference_vessel() == 'rca':
+            self._select_rca_reference(index)
+        else:
+            self._select_lca_reference(index)
 
     def _on_point_picked(self, x: float, y: float, z: float, scene_value: str) -> None:
         if scene_value == FusionScene.CENTERLINE_BRANCHES.value:
@@ -325,14 +404,21 @@ class FusionPage(QWidget):
         if scene_value != FusionScene.VESSEL_TREE.value or self.data.vessel_tree is None:
             return
         picked = np.array([x, y, z])
-        best_index, best_dist = 0, float('inf')
-        for i, triplet in enumerate(self.data.vessel_tree.rca_references):
-            for pt in triplet:
-                dist = float(np.linalg.norm(np.array(pt) - picked))
-                if dist < best_dist:
-                    best_dist = dist
-                    best_index = i
-        self._select_rca_reference(best_index)
+        best_cl, best_index, best_dist = 'rca', 0, float('inf')
+        for cl_name, refs in (
+            ('rca', self.data.vessel_tree.rca_references),
+            ('lca', self.data.vessel_tree.lca_references),
+        ):
+            for i, triplet in enumerate(refs):
+                for pt in triplet:
+                    dist = float(np.linalg.norm(np.array(pt) - picked))
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_cl, best_index = cl_name, i
+        if best_cl == 'rca':
+            self._select_rca_reference(best_index)
+        else:
+            self._select_lca_reference(best_index)
 
     def _refresh_geometry_scene(self) -> None:
         """Recreate multimodars' plot_results_key (its label_geometry/label_anomalous_region
@@ -617,26 +703,35 @@ class FusionPage(QWidget):
                 viewer.add_mesh(scene, f'{key}_wall', wall_mesh, color=(220, 220, 220), opacity=0.25)
         self.left_half.refresh_toolbar(scene)
 
+    def _selected_align_centerline(self, vessel: str, vessel_tree):
+        """(centerline, references, selected_index) for whichever vessel ('rca'/'lca') the
+        Intravascular Alignment column currently has chosen in its Centerline selector."""
+        if vessel == 'rca':
+            return self.data.centerline_rca, vessel_tree.rca_references, self.data.selected_rca_reference_index
+        return self.data.centerline_lca, vessel_tree.lca_references, self.data.selected_lca_reference_index
+
     def _on_run_align(self) -> None:
         ic = self.right_half.intravascular_column
+        vessel = ic.reference_vessel()
         if not self._require(self.data.iv_geometry_pair is not None, 'Load a pullback first.'):
             return
         if not self._require(self.data.vessel_tree is not None, 'Discretize the vessel tree first.'):
             return
+        vessel_tree = self.data.vessel_tree
+        assert vessel_tree is not None
+        centerline, references, selected_index = self._selected_align_centerline(vessel, vessel_tree)
         if not self._require(
-            self.data.centerline_rca is not None and self.data.results is not None,
+            centerline is not None and self.data.results is not None,
             'Run label_geometry first.',
         ):
             return
 
-        vessel_tree = self.data.vessel_tree
-        centerline_rca = self.data.centerline_rca
         results = self.data.results
-        assert vessel_tree is not None and centerline_rca is not None and results is not None
+        assert centerline is not None and results is not None
 
         try:
-            ref_points = vessel_tree.rca_references[self.data.selected_rca_reference_index]
-            rca_cl_main = centerline_rca.get_branch(ic.branch_index())
+            ref_points = references[selected_index]
+            cl_main = centerline.get_branch(ic.branch_index())
         except (IndexError, AttributeError) as e:
             ErrorMessage(self, f'Could not resolve reference points / branch: {e}')
             return
@@ -645,74 +740,75 @@ class FusionPage(QWidget):
             'Aligning intravascular geometry…',
             'Alignment done.',
             pipeline.run_align_combined,
-            rca_cl_main,
+            cl_main,
             self.data.iv_geometry_pair,
             ref_points[0],
             ref_points[1],
             ref_points[2],
-            results.get('rca_points', []),
-            align_wall_anomalous=self.right_half.geometry_column.has_acute_takeoff(),
+            results.get(f'{vessel}_points', []),
+            align_wall_anomalous=self.right_half.geometry_column.has_acute_takeoff(vessel),
             **ic.align_kwargs(),
         )
         if result is None:
             return
-        self._apply_align_result(result, rca_cl_main)
+        self._apply_align_result(result, cl_main)
 
     def _on_run_align_manual(self) -> None:
         """Same preconditions as _on_run_align, but rotates by an explicit angle around a
         single reference point instead of searching angle_range_deg. Only meaningful for
         elliptic (anomalous) vessels — see pipeline.run_align_manual."""
         ic = self.right_half.intravascular_column
+        vessel = ic.reference_vessel()
         if not self._require(self.data.iv_geometry_pair is not None, 'Load a pullback first.'):
             return
         if not self._require(self.data.vessel_tree is not None, 'Discretize the vessel tree first.'):
             return
-        if not self._require(self.data.centerline_rca is not None, 'Run label_geometry first.'):
-            return
-
         vessel_tree = self.data.vessel_tree
-        centerline_rca = self.data.centerline_rca
-        assert vessel_tree is not None and centerline_rca is not None
+        assert vessel_tree is not None
+        centerline, references, selected_index = self._selected_align_centerline(vessel, vessel_tree)
+        if not self._require(centerline is not None, 'Run label_geometry first.'):
+            return
+        assert centerline is not None
 
         try:
-            main_ref_pt = vessel_tree.rca_references[self.data.selected_rca_reference_index][0]
-            rca_cl_main = centerline_rca.get_branch(ic.branch_index())
+            main_ref_pt = references[selected_index][0]
+            cl_main = centerline.get_branch(ic.branch_index())
         except (IndexError, AttributeError) as e:
             ErrorMessage(self, f'Could not resolve reference point / branch: {e}')
             return
-        ref_point = self._resolve_manual_ref_point(rca_cl_main, main_ref_pt, ic.manual_ref_point_offset())
+        ref_point = self._resolve_manual_ref_point(cl_main, main_ref_pt, ic.manual_ref_point_offset())
 
         result = self._run(
             'Aligning intravascular geometry (manual)…',
             'Manual alignment done.',
             pipeline.run_align_manual,
-            rca_cl_main,
+            cl_main,
             self.data.iv_geometry_pair,
             ic.manual_rotation_angle_deg(),
             ref_point,
-            align_wall_anomalous=self.right_half.geometry_column.has_acute_takeoff(),
+            align_wall_anomalous=self.right_half.geometry_column.has_acute_takeoff(vessel),
             **ic.manual_align_kwargs(),
         )
         if result is None:
             return
-        self._apply_align_result(result, rca_cl_main)
+        self._apply_align_result(result, cl_main)
 
     def _resolve_manual_ref_point(
-        self, rca_cl_main, main_ref_pt: tuple[float, float, float], offset: int
+        self, cl_main, main_ref_pt: tuple[float, float, float], offset: int
     ) -> tuple[float, float, float]:
-        """offset=0 is whichever point of `rca_cl_main` (the same single-branch RCA
+        """offset=0 is whichever point of `cl_main` (the same single-branch RCA/LCA
         centerline passed into align_manual/align_combined) lies closest to main_ref_pt —
         not main_ref_pt itself, since that's a vessel-tree reference point and may not sit
         exactly on the centerline. +N/-N then walks N *centerline points* — not the coarser
         step_size-spaced vessel-tree contours — away from/towards point index 0.
 
-        prepare_centerline's orient_to_reference(aorta) guarantees point index 0 of the RCA
-        main branch is always the proximal/ostium end, regardless of which RCA reference is
-        currently selected — so -N always walks towards the ostium and +N away from it.
-        Clamped to [0, len(points)-1]: if the closest point is already index 0 (e.g. the
-        'RCA ostium' reference itself is selected), negative offsets have nowhere to go and
-        clamp back to it — there's nothing more proximal than the ostium to walk to."""
-        points = rca_cl_main.points_as_tuples()
+        prepare_centerline's orient_to_reference(aorta) guarantees point index 0 of the main
+        branch is always the proximal/ostium end, regardless of which reference is currently
+        selected — so -N always walks towards the ostium and +N away from it. Clamped to
+        [0, len(points)-1]: if the closest point is already index 0 (e.g. the 'ostium'
+        reference itself is selected), negative offsets have nowhere to go and clamp back
+        to it — there's nothing more proximal than the ostium to walk to."""
+        points = cl_main.points_as_tuples()
         distances = [float(np.linalg.norm(np.array(p) - np.array(main_ref_pt))) for p in points]
         base_index = int(np.argmin(distances))
         raw_index = base_index + offset
@@ -721,7 +817,7 @@ class FusionPage(QWidget):
             direction = 'proximal (towards the ostium)' if raw_index < 0 else 'distal'
             self.status_bar.showMessage(
                 f'Ref. point offset clamped: no centerline point further {direction} than the selected '
-                f'RCA reference — using the {"first" if raw_index < 0 else "last"} point of the branch instead.'
+                f'reference — using the {"first" if raw_index < 0 else "last"} point of the branch instead.'
             )
         return points[index]
 
@@ -729,7 +825,7 @@ class FusionPage(QWidget):
         """`result` is align_combined/align_manual's (aligned_geometry, spacing_mm,
         total_rotation_deg) — multimodars>=0.6.0 no longer hands back a resampled
         centerline itself, just the spacing_mm it used internally, so we resample
-        `source_centerline` (the same single-branch RCA centerline that was passed into
+        `source_centerline` (the same single-branch RCA/LCA centerline that was passed into
         align_combined/align_manual) ourselves to get the centerline shown alongside the
         aligned geometry."""
         self.data.aligned, spacing_mm, total_rotation_deg = result

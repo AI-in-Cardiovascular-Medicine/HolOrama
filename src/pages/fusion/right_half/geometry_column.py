@@ -260,11 +260,11 @@ class GeometryColumn(QWidget):
             'bspline_smoothing': self._bspline_smoothing.value(),
         }
 
-    def has_acute_takeoff(self) -> bool:
-        """Whether either coronary was marked with an acute takeoff — drives
-        align_wall_anomalous in column 2 automatically instead of a separate manual
-        toggle there."""
-        return self._acute_takeoff_rca.isChecked() or self._acute_takeoff_lca.isChecked()
+    def has_acute_takeoff(self, vessel: str = 'rca') -> bool:
+        """Whether the given vessel ('rca' or 'lca' — whichever column 2 is currently
+        aligning onto) was marked with an acute takeoff — drives align_wall_anomalous in
+        column 2 automatically instead of a separate manual toggle there."""
+        return self._acute_takeoff_lca.isChecked() if vessel == 'lca' else self._acute_takeoff_rca.isChecked()
 
 
 def _row(label: str, widget: QWidget) -> QHBoxLayout:
