@@ -49,9 +49,9 @@ class FusionColumn(QWidget):
     # ------------------------------------------------------------------
 
     def _build_anomalous_group(self) -> QGroupBox:
-        box = QGroupBox('Anomalous Region')
+        box = QGroupBox('Overlap Region')
         layout = QVBoxLayout(box)
-        btn = QPushButton('Label Anomalous Region')
+        btn = QPushButton('Label Overlap Region')
         btn.clicked.connect(self.run_label_anomalous_requested.emit)
         layout.addWidget(btn)
         return box

@@ -879,16 +879,25 @@ class FusionPage(QWidget):
             return None
 
     def _on_run_label_anomalous(self) -> None:
+        """Label Overlap Region: partitions whichever coronary the pullback was actually
+        aligned onto (see the Centerline: RCA/LCA selector in column 2) into proximal/
+        overlap/distal sub-regions — must match the alignment vessel, not always the RCA,
+        or centerline and results_key end up describing two different vessels."""
         frames = self._aligned_frames()
         if not self._require(frames is not None, 'Align the intravascular geometry first.'):
             return
+        vessel = self.right_half.intravascular_column.reference_vessel()
+        centerline = self.data.centerline_rca if vessel == 'rca' else self.data.centerline_lca
+        if not self._require(centerline is not None, 'Run label_geometry first.'):
+            return
         results = self._run(
-            'Labeling anomalous region…',
-            'Anomalous region labeled.',
+            'Labeling overlap region…',
+            'Overlap region labeled.',
             pipeline.run_label_anomalous_region,
-            self.data.centerline_rca,
+            centerline,
             frames,
             self.data.results,
+            results_key=f'{vessel}_points',
         )
         if results is not None:
             self.data.results = results
