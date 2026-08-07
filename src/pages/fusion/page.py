@@ -390,6 +390,7 @@ class FusionPage(QWidget):
             )
 
         branch_ids_by_cl: dict[str, list[int]] = {'rca': [], 'lca': []}
+        sharp_angle_counts: dict[str, int] = {}
         for cl_name, cl, palette in (
             ('rca', self.data.centerline_rca, colors.BRANCH_COLORS_RCA),
             ('lca', self.data.centerline_lca, colors.BRANCH_COLORS_LCA),
@@ -434,6 +435,7 @@ class FusionPage(QWidget):
                     label_points.append(points[local_index])
                     label_texts.append(str(marker_number))
                     marker_number += 1
+            sharp_angle_counts[cl_name] = marker_number - 1
 
             if label_points:
                 viewer.add_points(
@@ -453,6 +455,18 @@ class FusionPage(QWidget):
 
         self.left_half.branch_toolbar.set_branch_choices(branch_ids_by_cl['rca'], branch_ids_by_cl['lca'])
         self.left_half.refresh_toolbar(FusionScene.CENTERLINE_BRANCHES)
+
+        # find_sharp_angles only decides which points get a numbered marker in the scene —
+        # it never touches branch structure/colors, so nudging the threshold can look like
+        # "nothing happened" if you're watching the branch colors. Report the actual count
+        # so it's obvious the threshold is doing something even when it's subtle on screen
+        # (or genuinely finding nothing, e.g. after heavy smoothing removed the sharp bends).
+        total_sharp = sum(sharp_angle_counts.values())
+        self.status_bar.showMessage(
+            f'Sharp-angle markers (cos ≥ {cos_threshold:.2f}): '
+            f"RCA {sharp_angle_counts.get('rca', 0)}, LCA {sharp_angle_counts.get('lca', 0)} "
+            f'({total_sharp} total).'
+        )
 
     def _on_branch_cos_threshold_changed(self, _value: float) -> None:
         self._refresh_branch_scene()
@@ -688,11 +702,26 @@ class FusionPage(QWidget):
     ) -> tuple[float, float, float]:
         """offset=0 is main_ref_pt itself; +N/-N walks N contours distal/proximal along
         vessel_tree.discretized_rca_main — the same step_size-spaced contours the
-        automatic reference triplets (rca_references) are themselves derived from."""
+        automatic reference triplets (rca_references) are themselves derived from.
+
+        Clamped to [0, len(centroids)-1] — most commonly hit with the default 'RCA ostium'
+        reference selected (index 0 in the Vessel Tree dropdown), since that's already the
+        most proximal contour: base_index is then 0 or close to it, so *any* negative offset
+        clamps straight back to (near) main_ref_pt itself, which looks like negative offsets
+        'don't work'. They do — there's just nothing more proximal than the ostium to walk
+        to. Pick a more distal RCA reference first if you need room to go negative."""
         centroids = [c.centroid for c in vessel_tree.discretized_rca_main]
         distances = [float(np.linalg.norm(np.array(c) - np.array(main_ref_pt))) for c in centroids]
         base_index = int(np.argmin(distances))
-        index = max(0, min(len(centroids) - 1, base_index + offset))
+        raw_index = base_index + offset
+        index = max(0, min(len(centroids) - 1, raw_index))
+        if index != raw_index:
+            direction = 'proximal' if raw_index < 0 else 'distal'
+            self.status_bar.showMessage(
+                f'Ref. point offset clamped: no contour {abs(raw_index - index)} step(s) further {direction} '
+                f'than the selected RCA reference — using the {"first" if direction == "proximal" else "last"} '
+                f'contour of the RCA main path instead.'
+            )
         return centroids[index]
 
     def _apply_align_result(self, result, source_centerline) -> None:

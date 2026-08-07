@@ -114,7 +114,23 @@ class IntravascularColumn(QWidget):
         self._angle_range = QDoubleSpinBox()
         self._angle_range.setRange(1.0, 180.0)
         self._angle_range.setValue(30.0)
+        self._angle_range.setToolTip('Total rotation search range (deg) for the Hausdorff refinement.')
         layout.addLayout(_row('Angle range (deg):', self._angle_range))
+
+        self._angle_step = QDoubleSpinBox()
+        self._angle_step.setRange(0.01, 45.0)
+        self._angle_step.setSingleStep(0.1)
+        self._angle_step.setValue(1.0)
+        self._angle_step.setToolTip('Step size (deg) for the Hausdorff refinement rotation search.')
+        layout.addLayout(_row('Angle step (deg):', self._angle_step))
+
+        self._index_range = QSpinBox()
+        self._index_range.setRange(0, 50)
+        self._index_range.setValue(2)
+        self._index_range.setToolTip(
+            'Number of centerline indices considered around each reference point during refinement.'
+        )
+        layout.addLayout(_row('Index range:', self._index_range))
 
         # No "write intermediate files" toggle — align never writes them in this app.
         # No "align anomalous wall" toggle either — it's driven automatically by
@@ -193,6 +209,8 @@ class IntravascularColumn(QWidget):
     def align_kwargs(self) -> dict:
         return {
             'angle_range_deg': self._angle_range.value(),
+            'angle_step_deg': self._angle_step.value(),
+            'index_range': self._index_range.value(),
             'watertight': self._watertight.isChecked(),
         }
 

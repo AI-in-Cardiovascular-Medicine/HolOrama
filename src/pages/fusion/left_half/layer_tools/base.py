@@ -18,6 +18,10 @@ from domain.fusion_types import FusionScene
 # LeftHalf) so the user can drag it taller when a scene's layer list or extra controls
 # (e.g. BranchEditorToolbar's split/merge groups) need more room than this minimum.
 _LAYERS_MIN_HEIGHT = 60
+# Minimum width for the layer list, so checkbox labels (e.g. 'Rca Branch 3') and their
+# color swatch/opacity slider don't get squeezed down to nothing next to a scene's other
+# controls (e.g. BranchEditorToolbar's Split/Merge groups) when the toolbar is narrow.
+_LAYERS_MIN_WIDTH = 220
 
 
 class SceneToolbar(QWidget):
@@ -67,25 +71,29 @@ class SceneToolbar(QWidget):
             scroll.setWidgetResizable(True)
             scroll.setFrameShape(QFrame.Shape.NoFrame)
             scroll.setMinimumHeight(_LAYERS_MIN_HEIGHT)
+            scroll.setMinimumWidth(_LAYERS_MIN_WIDTH)
             scroll.setWidget(layers_widget)
-            root.addWidget(scroll, 1)
+            root.addWidget(scroll, 2)
         else:
             root.addStretch(1)
 
         for row in extra_rows or []:
             root.addWidget(row)
 
+        # Reset View / Pick Point / Clear All Data, stacked in that order — Pick Point
+        # sits between the two so it reads as "how you interact with the view" rather
+        # than a stray button off to the side.
+        view_buttons = QVBoxLayout()
+        reset_btn = QPushButton('Reset View')
+        reset_btn.clicked.connect(self.reset_camera_requested.emit)
+        view_buttons.addWidget(reset_btn)
+
         if show_pick:
             self.pick_btn = QPushButton('Pick Point')
             self.pick_btn.setCheckable(True)
             self.pick_btn.setToolTip('Click a point in the 3-D scene')
             self.pick_btn.toggled.connect(self.pick_mode_toggled.emit)
-            root.addWidget(self.pick_btn)
-
-        view_buttons = QVBoxLayout()
-        reset_btn = QPushButton('Reset View')
-        reset_btn.clicked.connect(self.reset_camera_requested.emit)
-        view_buttons.addWidget(reset_btn)
+            view_buttons.addWidget(self.pick_btn)
 
         clear_btn = QPushButton('Clear All Data')
         clear_btn.setToolTip('Discards every loaded/computed fusion result and clears the 3-D viewer.')
