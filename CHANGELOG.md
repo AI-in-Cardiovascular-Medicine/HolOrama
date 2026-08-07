@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-08-07
+
+Fusion page adjusted for multimodars 0.6.0's new alignment API, plus a Centerline Branches UI overhaul.
+
+### Added
+- manual alignment's ref. point offset now steps along the actual RCA centerline (point index 0 = ostium) instead of the coarser discretized vessel-tree contours, so negative offsets work
+- exposed angle_step_deg and index_range for the automatic Align to Centerline step
+- Centerline Branches: pick any point along a branch to split at, not just a numbered sharp-angle marker; layer list shows each branch's colour swatch instead of an opacity slider
+
+### Changed
+- Centerline Branches: Split/Merge regrouped into their own boxes, split on top merge below; fusion toolbar strip is now a resizable splitter like the three columns
+
+### Fixed
+- align_combined/align_manual return (geometry, spacing_mm, total_rotation_deg) as of multimodars 0.6.0, not a resampled centerline; the mismatch crashed before the aligned mesh could be added to the viewer
+
 ## [0.6.0] - 2026-08-05
 
 ### Added
