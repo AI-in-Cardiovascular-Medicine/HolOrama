@@ -18,9 +18,9 @@
 </figure>
 
 Currently spans:
-- Quantification of Coronary Artery Anomalies
-- Quantification of Optical Coherence Tomography
-- Quantification of Coronary Computed Tomography Angiography
+- Quantification of Intravascular Ultrasound (IVUS) and Optical Coherence Tomography (OCT)
+- Quantification of Coronary Computed Tomography Angiography (CCTA)
+- Fusion of IVUS/OCT with CCTA
 
 [![version](https://img.shields.io/github/v/tag/AI-in-Cardiovascular-Medicine/HolOrama?label=version&color=yellow)](https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/tags)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)

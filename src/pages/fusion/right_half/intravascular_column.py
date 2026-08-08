@@ -163,7 +163,7 @@ class IntravascularColumn(QWidget):
         return box
 
     def _build_manual_align_group(self) -> QGroupBox:
-        box = QGroupBox('Manual Alignment')
+        box = QGroupBox('Manual Alignment (Optional)')
         layout = QVBoxLayout(box)
 
         self._manual_rotation_angle = QDoubleSpinBox()
