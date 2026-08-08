@@ -24,6 +24,7 @@ class IntravascularColumn(QWidget):
     run_align_manual_requested = pyqtSignal()
     reference_vessel_changed = pyqtSignal(str)  # 'rca' or 'lca'
     reference_index_changed = pyqtSignal(int)  # index chosen from the Reference combo
+    run_label_anomalous_requested = pyqtSignal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -41,6 +42,7 @@ class IntravascularColumn(QWidget):
         root.addWidget(self._build_reference_group())
         root.addWidget(self._build_align_group())
         root.addWidget(self._build_manual_align_group())
+        root.addWidget(self._build_overlap_group())
         root.addStretch(1)
 
     # ------------------------------------------------------------------
@@ -188,6 +190,18 @@ class IntravascularColumn(QWidget):
         align_manual_btn.setToolTip('Only works for elliptic vessels (anomalous coronaries).')
         align_manual_btn.clicked.connect(self.run_align_manual_requested.emit)
         layout.addWidget(align_manual_btn)
+        return box
+
+    def _build_overlap_group(self) -> QGroupBox:
+        box = QGroupBox('Overlap Region')
+        layout = QVBoxLayout(box)
+        btn = QPushButton('Label Overlap Region')
+        btn.setToolTip(
+            'Partitions the aligned pullback into proximal/overlap/distal sub-regions, '
+            'for whichever centerline is selected above.'
+        )
+        btn.clicked.connect(self.run_label_anomalous_requested.emit)
+        layout.addWidget(btn)
         return box
 
     # ------------------------------------------------------------------

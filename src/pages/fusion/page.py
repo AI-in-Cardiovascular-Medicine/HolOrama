@@ -131,9 +131,9 @@ class FusionPage(QWidget):
         ic.run_align_manual_requested.connect(self._on_run_align_manual)
         ic.reference_vessel_changed.connect(self._on_reference_vessel_changed)
         ic.reference_index_changed.connect(self._on_reference_index_changed)
+        ic.run_label_anomalous_requested.connect(self._on_run_label_anomalous)
 
         fc = self.right_half.fusion_column
-        fc.run_label_anomalous_requested.connect(self._on_run_label_anomalous)
         fc.run_compute_scaling_requested.connect(self._on_run_compute_scaling)
         fc.run_apply_scaling_requested.connect(self._on_run_apply_scaling)
         fc.run_remove_points_requested.connect(self._on_run_remove_points)
@@ -907,33 +907,39 @@ class FusionPage(QWidget):
         frames = self._aligned_frames()
         if not self._require(frames is not None, 'Align the intravascular geometry first.'):
             return
+        vessel = self.right_half.intravascular_column.reference_vessel()
+        centerline = self.data.centerline_rca if vessel == 'rca' else self.data.centerline_lca
+        if not self._require(centerline is not None, 'Run label_geometry first.'):
+            return
         scalings = self._run(
             'Computing scaling factors…',
             'Scaling factors computed.',
             pipeline.run_find_scalings,
             frames,
-            self.data.centerline_rca,
+            centerline,
             self.data.centerline_aorta,
             self.data.results,
+            vessel=vessel,
         )
         if scalings is None:
             return
         self.data.prox_scaling = scalings['proximal_scaling']
         self.data.distal_scaling = scalings['distal_scaling']
         self.data.aortic_scaling = scalings['aortic_scaling']
-        self.data.aortic_wall_scaling = scalings['aortic_wall_scaling']
         self.right_half.fusion_column.set_scaling_results(scalings)
 
     def _on_run_apply_scaling(self) -> None:
+        vessel = self.right_half.intravascular_column.reference_vessel()
+        opposite_vessel = 'lca' if vessel == 'rca' else 'rca'
+        centerline = self.data.centerline_rca if vessel == 'rca' else self.data.centerline_lca
+        opposite_centerline = self.data.centerline_lca if vessel == 'rca' else self.data.centerline_rca
         if not self._require(
             None not in (self.data.prox_scaling, self.data.distal_scaling, self.data.aortic_scaling),
             'Compute scaling factors first.',
         ):
             return
         if not self._require(
-            self.data.results is not None
-            and self.data.centerline_rca is not None
-            and self.data.centerline_aorta is not None,
+            self.data.results is not None and centerline is not None and self.data.centerline_aorta is not None,
             'Run label_geometry first.',
         ):
             return
@@ -941,28 +947,44 @@ class FusionPage(QWidget):
         # Read live from the spinboxes, not self.data.*_scaling — the user may have
         # edited them by hand after Compute Scaling Factors filled in the defaults.
         scaling = self.right_half.fusion_column.scaling_values()
+        opposite_scaling = scaling['opposite_vessel_scaling']
+        if not self._require(
+            opposite_scaling == 0.0 or opposite_centerline is not None,
+            f'Missing {opposite_vessel.upper()} centerline for the opposite-vessel scaling — '
+            'run Label Geometry first, or set Opposite vessel (mm) back to 0.',
+        ):
+            return
 
         def _run():
             results = self.data.results
-            centerline_rca = self.data.centerline_rca
             centerline_aorta = self.data.centerline_aorta
-            assert results is not None and centerline_rca is not None and centerline_aorta is not None
+            assert results is not None and centerline is not None and centerline_aorta is not None
             distal_scaling = scaling['distal_scaling']
             aortic_scaling = scaling['aortic_scaling']
             prox_scaling = scaling['proximal_scaling']
             mesh = results['mesh']
 
-            scaled = pipeline.run_scale_region(mesh, results['distal_points'], centerline_rca, distal_scaling)
+            scaled = pipeline.run_scale_region(mesh, results['distal_points'], centerline, distal_scaling)
             results = pipeline.run_sync_results_to_mesh(results, mesh, scaled)
             mesh = results['mesh']
 
-            aortic_region = results['aorta_points'] + results['rca_removed_points']
+            aortic_region = results['aorta_points'] + results[f'{vessel}_removed_points']
             scaled = pipeline.run_scale_region(mesh, aortic_region, centerline_aorta, aortic_scaling)
             results = pipeline.run_sync_results_to_mesh(results, mesh, scaled)
             mesh = results['mesh']
 
-            scaled = pipeline.run_scale_region(mesh, results['proximal_points'], centerline_rca, prox_scaling)
+            scaled = pipeline.run_scale_region(mesh, results['proximal_points'], centerline, prox_scaling)
             results = pipeline.run_sync_results_to_mesh(results, mesh, scaled)
+            mesh = results['mesh']
+
+            # Manual-only: no intravascular data for the opposite coronary, so this is
+            # skipped entirely (not scaled by 0, just left untouched) unless set by hand.
+            if opposite_scaling != 0.0:
+                assert opposite_centerline is not None
+                scaled = pipeline.run_scale_region(
+                    mesh, results[f'{opposite_vessel}_points'], opposite_centerline, opposite_scaling
+                )
+                results = pipeline.run_sync_results_to_mesh(results, mesh, scaled)
             return results
 
         results_out = self._run('Applying scaling to mesh…', 'Scaling applied.', _run)

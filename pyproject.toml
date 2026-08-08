@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "holOrama"
 dynamic = ["version"]
-description = "holOrama: A PyQt6-based application for 3D visualization and analysis of cardiac images (IVUS, OCT and CT)."
+description = "holOrama: A PyQt6-based application for 3D visualization, analysis and fusion of cardiac images (IVUS, OCT and CT)."
 authors = [
     { name = "yungselm" },
     { name = "cardionaut" },

@@ -55,7 +55,6 @@ class FusionRuntimeData:
         self.prox_scaling: float | None = None
         self.distal_scaling: float | None = None
         self.aortic_scaling: float | None = None
-        self.aortic_wall_scaling: float | None = None
         self.stitched: dict | None = None  # result of stitch_ccta_to_intravascular
         self.final_mesh: Any | None = None  # trimesh.Trimesh after remesh/smoothing
 

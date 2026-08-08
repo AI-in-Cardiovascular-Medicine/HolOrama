@@ -272,16 +272,30 @@ def run_label_anomalous_region(centerline, frames, results: dict, *, results_key
     )
 
 
-def run_find_scalings(frames, centerline_vessel, centerline_aorta, results: dict) -> dict[str, float]:
-    """Run all four multimodars scaling lookups and return them by name."""
+def run_find_scalings(
+    frames, centerline_vessel, centerline_aorta, results: dict, *, vessel: str = 'rca'
+) -> dict[str, float]:
+    """Run the proximal/distal/aortic scaling lookups for `vessel` ('rca' or 'lca' —
+    whichever centerline `centerline_vessel` is) and return them by name.
+
+    No aortic-wall scaling for the moment — find_aortic_wall_scaling is dropped from this
+    pipeline pending a clearer use case (see FusionColumn's Scaling Factors group).
+
+    mm.find_aorta_scaling hardcodes ``results['rca_removed_points']`` internally (see
+    multimodars/ccta/manipulating.py) — there's no lca_removed_points equivalent upstream
+    yet. For an LCA case we work around this by handing it a shallow copy of `results` with
+    rca_removed_points aliased to the real lca_removed_points, so it reads the correct
+    vessel's occluded points instead of silently scaling against the wrong (RCA) region.
+    """
     prox, distal = mm.find_distal_and_proximal_scaling(frames=frames, centerline=centerline_vessel, results=results)
-    aortic = mm.find_aorta_scaling(frames=frames, cl_aorta=centerline_aorta, results=results)
-    aortic_wall = mm.find_aortic_wall_scaling(frames=frames, cl_aorta=centerline_aorta, results=results)
+    aortic_results = (
+        results if vessel == 'rca' else {**results, 'rca_removed_points': results.get('lca_removed_points', [])}
+    )
+    aortic = mm.find_aorta_scaling(frames=frames, cl_aorta=centerline_aorta, results=aortic_results)
     return {
         'proximal_scaling': prox,
         'distal_scaling': distal,
         'aortic_scaling': aortic,
-        'aortic_wall_scaling': aortic_wall,
     }
 
 
