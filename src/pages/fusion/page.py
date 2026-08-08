@@ -106,7 +106,6 @@ class FusionPage(QWidget):
         gc = self.right_half.geometry_column
         gc.run_label_geometry_requested.connect(self._on_run_label_geometry)
         gc.prepare_centerlines_requested.connect(self._on_run_prepare_centerlines)
-        gc.run_label_branches_pair_requested.connect(self._on_run_label_branches_pair)
         gc.run_discretize_tree_requested.connect(self._on_run_discretize_tree)
         gc.geometry_files_changed.connect(self._on_geometry_preview)
 
@@ -255,12 +254,14 @@ class FusionPage(QWidget):
         self.data.results = results
         self._refresh_geometry_scene()
         self.left_half.show_scene(FusionScene.CCTA_GEOMETRY)
+        self._run_label_branches_pair()
 
-    def _on_run_label_branches_pair(self) -> None:
-        if not self._require(
-            None not in (self.data.results, self.data.centerline_rca, self.data.centerline_lca),
-            'Run Label Geometry (after preparing centerlines) first.',
-        ):
+    def _run_label_branches_pair(self) -> None:
+        """Project the current RCA/LCA branch structure onto label_geometry's labelled
+        surface points. No button of its own — called right after label_geometry, and
+        again after every split_branch/merge_branches edit, since both change the branch
+        structure this needs to reflect. No-op until label_geometry has actually run."""
+        if None in (self.data.results, self.data.centerline_rca, self.data.centerline_lca):
             return
         results = self._run(
             'Labeling branches…',
@@ -273,7 +274,6 @@ class FusionPage(QWidget):
         if results is None:
             return
         self.data.results = results
-        self.status_bar.showMessage('Branches labeled — ready to discretize the vessel tree.')
 
     def _on_run_discretize_tree(self) -> None:
         gc = self.right_half.geometry_column
@@ -590,6 +590,7 @@ class FusionPage(QWidget):
             f"Split {marker['centerline'].upper()} branch {marker['branch_id']} at point {marker['point_index']}."
         )
         self._refresh_branch_scene()
+        self._run_label_branches_pair()
 
     def _on_merge_branches_requested(self, cl_name: str, branch_id_a: int, branch_id_b: int) -> None:
         cl_attr = 'centerline_rca' if cl_name == 'rca' else 'centerline_lca'
@@ -605,6 +606,7 @@ class FusionPage(QWidget):
         setattr(self.data, cl_attr, new_cl)
         self.status_bar.showMessage(f'Merged {cl_name.upper()} branches {branch_id_a} and {branch_id_b}.')
         self._refresh_branch_scene()
+        self._run_label_branches_pair()
 
     def _refresh_tree_scene(self) -> None:
         """Recreate multimodars' plot_vessel_tree as native VTK layers."""

@@ -16,12 +16,13 @@ from PyQt6.QtWidgets import (
 
 class GeometryColumn(QWidget):
     """Column 1: load the CCTA mesh + centerlines, prepare the centerlines, run
-    label_geometry + label_branches_pair, then discretize_vessel_tree. See
-    pages/fusion/pipeline.py for the multimodars calls each button triggers."""
+    label_geometry, then discretize_vessel_tree. label_branches_pair has no button of its
+    own — FusionPage runs it automatically right after label_geometry and after every
+    split/merge edit on the Centerline Branches tab. See pages/fusion/pipeline.py for the
+    multimodars calls each button triggers."""
 
     run_label_geometry_requested = pyqtSignal()
     prepare_centerlines_requested = pyqtSignal()
-    run_label_branches_pair_requested = pyqtSignal()
     run_discretize_tree_requested = pyqtSignal()
     geometry_files_changed = pyqtSignal()  # mesh and/or centerline path(s) changed
 
@@ -160,16 +161,13 @@ class GeometryColumn(QWidget):
         layout.addLayout(_row('LCA takeoff range (mm):', self._range_mm_takeoff_lca))
 
         run_btn = QPushButton('Run Label Geometry')
+        run_btn.setToolTip(
+            'Also projects the RCA/LCA branch structure onto the labelled surface points '
+            '(label_branches_pair) — redone automatically after every split/merge edit on '
+            'the Centerline Branches tab.'
+        )
         run_btn.clicked.connect(self.run_label_geometry_requested.emit)
         layout.addWidget(run_btn)
-
-        label_branches_btn = QPushButton('Label Branches (Pair)')
-        label_branches_btn.setToolTip(
-            'Project the prepared RCA/LCA branch structure onto the labelled surface points. '
-            'Re-run after editing branches on the Centerline Branches tab.'
-        )
-        label_branches_btn.clicked.connect(self.run_label_branches_pair_requested.emit)
-        layout.addWidget(label_branches_btn)
         return box
 
     def _build_vessel_tree_group(self) -> QGroupBox:
