@@ -475,7 +475,6 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "black", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-    { name = "isort", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "mypy", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "pre-commit", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "pytest", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
@@ -515,7 +514,6 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "black", specifier = ">=26.5.0" },
-    { name = "isort", specifier = ">=8.0.0" },
     { name = "mypy" },
     { name = "pre-commit" },
     { name = "pytest", specifier = ">=9.1.1" },
