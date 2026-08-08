@@ -30,6 +30,13 @@ class FusionPage(QWidget):
         self.status_bar = status_bar
         self.data = FusionRuntimeData()
         self._remesh_worker: StdoutCapturingWorker | None = None
+        # Every point of the RCA/LCA centerlines currently drawn in the Centerline Branches
+        # scene — pickable for Split, not just the numbered sharp-angle markers, which are
+        # only a visual hint — and which one (if any) was last clicked. Rebuilt from scratch
+        # by _refresh_branch_scene on every prepare/split/merge, since branch IDs get
+        # reassigned after each edit.
+        self._branch_markers: list[dict] = []
+        self._selected_branch_marker: dict | None = None
 
         self.left_half = LeftHalf(self)
         self.right_half = RightHalf(self)
@@ -86,6 +93,10 @@ class FusionPage(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
         self.data = FusionRuntimeData()
+        self._branch_markers = []
+        self._selected_branch_marker = None
+        self.left_half.branch_toolbar.set_selected_marker(None)
+        self.left_half.branch_toolbar.set_branch_choices([], [])
         for scene in FusionScene:
             self.left_half.viewer.clear_scene(scene)
             self.left_half.refresh_toolbar(scene)
@@ -94,14 +105,20 @@ class FusionPage(QWidget):
     def _connect_signals(self) -> None:
         gc = self.right_half.geometry_column
         gc.run_label_geometry_requested.connect(self._on_run_label_geometry)
-        gc.run_prepare_centerlines_requested.connect(self._on_run_prepare_centerlines)
+        gc.prepare_centerlines_requested.connect(self._on_run_prepare_centerlines)
+        gc.run_label_branches_pair_requested.connect(self._on_run_label_branches_pair)
         gc.run_discretize_tree_requested.connect(self._on_run_discretize_tree)
         gc.geometry_files_changed.connect(self._on_geometry_preview)
 
         self.left_half.tree_toolbar.reference_selected.connect(self._select_rca_reference)
+        self.left_half.tree_toolbar.lca_reference_selected.connect(self._select_lca_reference)
+        self.left_half.branch_toolbar.cos_threshold_changed.connect(self._on_branch_cos_threshold_changed)
+        self.left_half.branch_toolbar.split_requested.connect(self._on_split_branch_requested)
+        self.left_half.branch_toolbar.merge_requested.connect(self._on_merge_branches_requested)
         self.left_half.viewer.point_picked.connect(self._on_point_picked)
         for toolbar in (
             self.left_half.geometry_toolbar,
+            self.left_half.branch_toolbar,
             self.left_half.intravascular_loaded_toolbar,
             self.left_half.alignment_toolbar,
             self.left_half.tree_toolbar,
@@ -112,9 +129,11 @@ class FusionPage(QWidget):
         ic.run_load_requested.connect(self._on_run_load_pullback)
         ic.run_align_requested.connect(self._on_run_align)
         ic.run_align_manual_requested.connect(self._on_run_align_manual)
+        ic.reference_vessel_changed.connect(self._on_reference_vessel_changed)
+        ic.reference_index_changed.connect(self._on_reference_index_changed)
+        ic.run_label_anomalous_requested.connect(self._on_run_label_anomalous)
 
         fc = self.right_half.fusion_column
-        fc.run_label_anomalous_requested.connect(self._on_run_label_anomalous)
         fc.run_compute_scaling_requested.connect(self._on_run_compute_scaling)
         fc.run_apply_scaling_requested.connect(self._on_run_apply_scaling)
         fc.run_remove_points_requested.connect(self._on_run_remove_points)
@@ -146,9 +165,8 @@ class FusionPage(QWidget):
     # ------------------------------------------------------------------
 
     def _on_geometry_preview(self) -> None:
-        """Show the raw mesh + centerlines as soon as they're picked (or reloaded via
-        'Load Data' after tweaking rm_start_mm/smooth_sigma), before Run Label Geometry
-        exists to color/label anything."""
+        """Show the raw mesh + centerlines as soon as they're picked, before Prepare
+        Centerlines/Run Label Geometry exist to branch/color/label anything."""
         gc = self.right_half.geometry_column
         viewer = self.left_half.viewer
 
@@ -162,7 +180,7 @@ class FusionPage(QWidget):
 
         for key, path in gc.centerline_paths.items():
             try:
-                cl = pipeline.read_centerline_vtp(path, **gc.centerline_kwargs(key))
+                cl = pipeline.load_centerline(path, key.upper())
             except Exception as e:
                 logger.warning(f'Could not load {key} centerline for preview: {e}')
                 continue
@@ -178,13 +196,44 @@ class FusionPage(QWidget):
         self.left_half.refresh_toolbar(FusionScene.CCTA_GEOMETRY)
         self.left_half.show_scene(FusionScene.CCTA_GEOMETRY)
 
+    def _on_run_prepare_centerlines(self) -> None:
+        """Load + prepare all three centerlines: the aorta first (no reference, no branch
+        detection), then RCA/LCA oriented to it (see pipeline.prepare_centerline)."""
+        gc = self.right_half.geometry_column
+        if not self._require(
+            all(k in gc.centerline_paths for k in ('aorta', 'rca', 'lca')),
+            'Load all three centerlines (aorta, RCA, LCA) first.',
+        ):
+            return
+
+        def _run():
+            aorta_raw = pipeline.load_centerline(gc.centerline_paths['aorta'], 'Aorta')
+            aorta_cl = pipeline.prepare_centerline(aorta_raw, **gc.prepare_centerline_kwargs('aorta'))
+            rca_raw = pipeline.load_centerline(gc.centerline_paths['rca'], 'RCA')
+            rca_cl = pipeline.prepare_centerline(
+                rca_raw, ref_centerline=aorta_cl, **gc.prepare_centerline_kwargs('rca')
+            )
+            lca_raw = pipeline.load_centerline(gc.centerline_paths['lca'], 'LCA')
+            lca_cl = pipeline.prepare_centerline(
+                lca_raw, ref_centerline=aorta_cl, **gc.prepare_centerline_kwargs('lca')
+            )
+            return aorta_cl, rca_cl, lca_cl
+
+        result = self._run('Preparing centerlines…', 'Centerlines prepared.', _run)
+        if result is None:
+            return
+        self.data.centerline_aorta, self.data.centerline_rca, self.data.centerline_lca = result
+        self._refresh_geometry_scene()
+        self._refresh_branch_scene()
+        self.left_half.show_scene(FusionScene.CENTERLINE_BRANCHES)
+
     def _on_run_label_geometry(self) -> None:
         gc = self.right_half.geometry_column
         if not self._require(gc.mesh_path is not None, 'Load a CCTA mesh first.'):
             return
         if not self._require(
-            all(k in gc.centerline_paths for k in ('aorta', 'rca', 'lca')),
-            'Load all three centerlines (aorta, RCA, LCA) first.',
+            None not in (self.data.centerline_aorta, self.data.centerline_rca, self.data.centerline_lca),
+            'Prepare all three centerlines first.',
         ):
             return
         mesh_path = gc.mesh_path
@@ -192,46 +241,45 @@ class FusionPage(QWidget):
 
         def _run():
             mesh = pipeline.load_ccta_mesh(mesh_path)
-            cl_aorta = pipeline.read_centerline_vtp(gc.centerline_paths['aorta'], **gc.centerline_kwargs('aorta'))
-            cl_rca = pipeline.read_centerline_vtp(gc.centerline_paths['rca'], **gc.centerline_kwargs('rca'))
-            cl_lca = pipeline.read_centerline_vtp(gc.centerline_paths['lca'], **gc.centerline_kwargs('lca'))
-            return pipeline.run_label_geometry(mesh, cl_aorta, cl_rca, cl_lca, **gc.label_geometry_kwargs())
+            return pipeline.run_label_geometry(
+                mesh,
+                self.data.centerline_aorta,
+                self.data.centerline_rca,
+                self.data.centerline_lca,
+                **gc.label_geometry_kwargs(),
+            )
 
-        result = self._run('Running label_geometry…', 'label_geometry done.', _run)
-        if result is None:
+        results = self._run('Running label_geometry…', 'label_geometry done.', _run)
+        if results is None:
             return
-        results, (cl_rca, cl_lca, cl_aorta) = result
         self.data.results = results
-        self.data.centerline_rca = cl_rca
-        self.data.centerline_lca = cl_lca
-        self.data.centerline_aorta = cl_aorta
         self._refresh_geometry_scene()
         self.left_half.show_scene(FusionScene.CCTA_GEOMETRY)
 
-    def _on_run_prepare_centerlines(self) -> None:
+    def _on_run_label_branches_pair(self) -> None:
         if not self._require(
-            self.data.results is not None and self.data.centerline_rca is not None,
-            'Run label_geometry first.',
+            None not in (self.data.results, self.data.centerline_rca, self.data.centerline_lca),
+            'Run Label Geometry (after preparing centerlines) first.',
         ):
             return
-        result = self._run(
-            'Preparing centerlines…',
-            'Centerlines prepared.',
-            pipeline.run_prepare_centerlines,
+        results = self._run(
+            'Labeling branches…',
+            'Branches labeled.',
+            pipeline.run_label_branches_pair,
             self.data.centerline_rca,
             self.data.centerline_lca,
             self.data.results,
         )
-        if result is None:
+        if results is None:
             return
-        self.data.centerline_rca, self.data.centerline_lca, self.data.results = result
-        self._refresh_geometry_scene()
+        self.data.results = results
+        self.status_bar.showMessage('Branches labeled — ready to discretize the vessel tree.')
 
     def _on_run_discretize_tree(self) -> None:
         gc = self.right_half.geometry_column
         if not self._require(
             self.data.centerline_aorta is not None and self.data.results is not None,
-            'Run label_geometry (and prepare_centerlines) first.',
+            'Prepare centerlines, run Label Geometry, and Label Branches (Pair) first.',
         ):
             return
         tree = self._run(
@@ -248,16 +296,41 @@ class FusionPage(QWidget):
             return
         self.data.vessel_tree = tree
 
-        reference_labels = ['RCA ostium'] + [f'RCA branch {i}' for i in range(1, len(tree.rca_references))]
-        self.left_half.tree_toolbar.set_references(reference_labels)
+        self.left_half.tree_toolbar.set_references(self._reference_labels('rca'))
+        self.left_half.tree_toolbar.set_lca_references(self._reference_labels('lca'))
 
         self._refresh_tree_scene()
         self._select_rca_reference(0)
+        self._select_lca_reference(0)
+        self._sync_intravascular_reference_choices()
         self.left_half.show_scene(FusionScene.VESSEL_TREE)
 
+    def _reference_labels(self, vessel: str) -> list[str]:
+        """Label list for vessel_tree.rca_references/lca_references — shared by the Vessel
+        Tree tab's own dropdowns and the Intravascular Alignment column's Reference
+        dropdown, so both always offer the same choices for a given vessel."""
+        tree = self.data.vessel_tree
+        if tree is None:
+            return []
+        refs = tree.rca_references if vessel == 'rca' else tree.lca_references
+        prefix = vessel.upper()
+        return [f'{prefix} ostium'] + [f'{prefix} branch {i}' for i in range(1, len(refs))]
+
+    def _sync_intravascular_reference_choices(self) -> None:
+        """Repopulate the Intravascular Alignment column's Reference dropdown for whichever
+        vessel (RCA/LCA) it currently has selected, and select whatever index that vessel
+        already has active — call after the vessel_tree changes or the column's Centerline
+        (RCA/LCA) selector changes."""
+        ic = self.right_half.intravascular_column
+        vessel = ic.reference_vessel()
+        ic.set_reference_choices(self._reference_labels(vessel))
+        index = self.data.selected_rca_reference_index if vessel == 'rca' else self.data.selected_lca_reference_index
+        ic.set_selected_reference_index(index)
+
     def _select_rca_reference(self, index: int) -> None:
-        """Apply reference triplet `index` (chosen via the dropdown or a scene click) as
-        the alignment reference points, and highlight it in the viewer."""
+        """Apply reference triplet `index` (chosen via the Vessel Tree dropdown, a scene
+        click, or the Intravascular Alignment column's Reference dropdown when RCA is the
+        selected vessel there) and highlight it in the viewer."""
         tree = self.data.vessel_tree
         if tree is None:
             return
@@ -267,24 +340,85 @@ class FusionPage(QWidget):
             logger.warning(f'Vessel tree has no rca_references[{index}].')
             return
         self.data.selected_rca_reference_index = index
-        self.right_half.intravascular_column.set_reference_points(triplet[0], triplet[1], triplet[2])
         self.left_half.tree_toolbar.set_selected_index(index)
         self.left_half.viewer.add_points(
             FusionScene.VESSEL_TREE, 'selected_reference', np.array(triplet), color=(255, 255, 255), size=14.0
         )
+        self._sync_intravascular_reference_ui('rca', index, triplet)
+
+    def _select_lca_reference(self, index: int) -> None:
+        """Same as _select_rca_reference but for the LCA."""
+        tree = self.data.vessel_tree
+        if tree is None:
+            return
+        try:
+            triplet = tree.lca_references[index]
+        except IndexError:
+            logger.warning(f'Vessel tree has no lca_references[{index}].')
+            return
+        self.data.selected_lca_reference_index = index
+        self.left_half.tree_toolbar.set_selected_lca_index(index)
+        self.left_half.viewer.add_points(
+            FusionScene.VESSEL_TREE, 'selected_lca_reference', np.array(triplet), color=(0, 255, 255), size=14.0
+        )
+        self._sync_intravascular_reference_ui('lca', index, triplet)
+
+    def _sync_intravascular_reference_ui(self, vessel: str, index: int, triplet) -> None:
+        """Keep the Intravascular Alignment column's Reference dropdown and Aortic/Superior/
+        Inferior display in step with whichever RCA/LCA reference was just selected — but
+        only when that column currently has this same vessel chosen, so selecting an LCA
+        reference in the Vessel Tree tab doesn't clobber an in-progress RCA alignment setup
+        (and vice versa)."""
+        ic = self.right_half.intravascular_column
+        if ic.reference_vessel() != vessel:
+            return
+        ic.set_selected_reference_index(index)
+        ic.set_reference_points(triplet[0], triplet[1], triplet[2])
+
+    def _on_reference_vessel_changed(self, vessel: str) -> None:
+        """The Intravascular Alignment column's Centerline (RCA/LCA) selector changed —
+        repopulate its Reference dropdown for the new vessel and refresh the Aortic/
+        Superior/Inferior display to match whatever was already selected for it."""
+        self._sync_intravascular_reference_choices()
+        tree = self.data.vessel_tree
+        if tree is None:
+            return
+        refs = tree.rca_references if vessel == 'rca' else tree.lca_references
+        index = self.data.selected_rca_reference_index if vessel == 'rca' else self.data.selected_lca_reference_index
+        if 0 <= index < len(refs):
+            triplet = refs[index]
+            self.right_half.intravascular_column.set_reference_points(triplet[0], triplet[1], triplet[2])
+
+    def _on_reference_index_changed(self, index: int) -> None:
+        """The Intravascular Alignment column's own Reference dropdown changed — route to
+        the same selection path as the Vessel Tree tab so everything stays in sync."""
+        if self.right_half.intravascular_column.reference_vessel() == 'rca':
+            self._select_rca_reference(index)
+        else:
+            self._select_lca_reference(index)
 
     def _on_point_picked(self, x: float, y: float, z: float, scene_value: str) -> None:
+        if scene_value == FusionScene.CENTERLINE_BRANCHES.value:
+            self._on_branch_marker_picked(x, y, z)
+            return
         if scene_value != FusionScene.VESSEL_TREE.value or self.data.vessel_tree is None:
             return
         picked = np.array([x, y, z])
-        best_index, best_dist = 0, float('inf')
-        for i, triplet in enumerate(self.data.vessel_tree.rca_references):
-            for pt in triplet:
-                dist = float(np.linalg.norm(np.array(pt) - picked))
-                if dist < best_dist:
-                    best_dist = dist
-                    best_index = i
-        self._select_rca_reference(best_index)
+        best_cl, best_index, best_dist = 'rca', 0, float('inf')
+        for cl_name, refs in (
+            ('rca', self.data.vessel_tree.rca_references),
+            ('lca', self.data.vessel_tree.lca_references),
+        ):
+            for i, triplet in enumerate(refs):
+                for pt in triplet:
+                    dist = float(np.linalg.norm(np.array(pt) - picked))
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_cl, best_index = cl_name, i
+        if best_cl == 'rca':
+            self._select_rca_reference(best_index)
+        else:
+            self._select_lca_reference(best_index)
 
     def _refresh_geometry_scene(self) -> None:
         """Recreate multimodars' plot_results_key (its label_geometry/label_anomalous_region
@@ -316,6 +450,161 @@ class FusionPage(QWidget):
                     size=4.0,
                 )
         self.left_half.refresh_toolbar(FusionScene.CCTA_GEOMETRY)
+
+    def _refresh_branch_scene(self) -> None:
+        """Recreate multimodars' plot_centerline_branches/plot_centerline_edges as native
+        VTK layers: RCA/LCA colored per branch (see colors.BRANCH_COLORS_RCA/LCA), with
+        sharp-angle positions additionally marked and numbered as a splitting hint — every
+        point on every branch is picked up into self._branch_markers below, though, so
+        Pick Point can split anywhere, not just at a numbered marker. Rebuilds from scratch
+        every time, since split_branch/merge_branches reassign branch IDs (by descending
+        length) on every edit — there's no stable id to update in place."""
+        viewer = self.left_half.viewer
+        viewer.clear_scene(FusionScene.CENTERLINE_BRANCHES)
+        self._branch_markers = []
+        self._selected_branch_marker = None
+        self.left_half.branch_toolbar.set_selected_marker(None)
+        cos_threshold = self.left_half.branch_toolbar.cos_threshold.value()
+
+        if self.data.centerline_aorta is not None:
+            viewer.add_points(
+                FusionScene.CENTERLINE_BRANCHES,
+                'aorta',
+                np.array(self.data.centerline_aorta.points_as_tuples()),
+                color=colors.CENTERLINE_COLORS['centerline_aorta'],
+                size=3.0,
+            )
+
+        branch_ids_by_cl: dict[str, list[int]] = {'rca': [], 'lca': []}
+        sharp_angle_counts: dict[str, int] = {}
+        for cl_name, cl, palette in (
+            ('rca', self.data.centerline_rca, colors.BRANCH_COLORS_RCA),
+            ('lca', self.data.centerline_lca, colors.BRANCH_COLORS_LCA),
+        ):
+            if cl is None:
+                continue
+            by_branch: dict[int, list[tuple[float, float, float]]] = {}
+            for p in cl.points:
+                by_branch.setdefault(p.branch_id, []).append((p.contour_point.x, p.contour_point.y, p.contour_point.z))
+            branch_ids = sorted(by_branch)
+            branch_ids_by_cl[cl_name] = branch_ids
+
+            label_points: list[tuple[float, float, float]] = []
+            label_texts: list[str] = []
+            marker_number = 1
+            for i, branch_id in enumerate(branch_ids):
+                points = by_branch[branch_id]
+                viewer.add_points(
+                    FusionScene.CENTERLINE_BRANCHES,
+                    f'{cl_name}_branch_{branch_id}',
+                    np.array(points),
+                    color=palette[i % len(palette)],
+                    size=4.0,
+                )
+                branch_start = cl.branch_start_indices[branch_id] if branch_id < len(cl.branch_start_indices) else 0
+                # Every point on this branch is pickable for Split, not just the numbered
+                # sharp-angle ones below — lets the user split anywhere along a branch,
+                # not only at spots the cos-threshold heuristic happened to flag.
+                for local_index, position in enumerate(points):
+                    self._branch_markers.append(
+                        {
+                            'centerline': cl_name,
+                            'branch_id': branch_id,
+                            'point_index': branch_start + local_index,
+                            'position': position,
+                        }
+                    )
+                for point_index in cl.find_sharp_angles(branch_id, cos_threshold):
+                    local_index = point_index - branch_start
+                    if not (0 <= local_index < len(points)):
+                        continue
+                    label_points.append(points[local_index])
+                    label_texts.append(str(marker_number))
+                    marker_number += 1
+            sharp_angle_counts[cl_name] = marker_number - 1
+
+            if label_points:
+                viewer.add_points(
+                    FusionScene.CENTERLINE_BRANCHES,
+                    f'{cl_name}_sharp_angles',
+                    np.array(label_points),
+                    color=colors.SHARP_ANGLE_COLOR,
+                    size=9.0,
+                )
+                viewer.add_labels(
+                    FusionScene.CENTERLINE_BRANCHES,
+                    f'{cl_name}_sharp_angle_labels',
+                    np.array(label_points),
+                    label_texts,
+                    color=colors.SHARP_ANGLE_LABEL_COLOR,
+                )
+
+        self.left_half.branch_toolbar.set_branch_choices(branch_ids_by_cl['rca'], branch_ids_by_cl['lca'])
+        self.left_half.refresh_toolbar(FusionScene.CENTERLINE_BRANCHES)
+
+        # find_sharp_angles only decides which points get a numbered marker in the scene —
+        # it never touches branch structure/colors, so nudging the threshold can look like
+        # "nothing happened" if you're watching the branch colors. Report the actual count
+        # so it's obvious the threshold is doing something even when it's subtle on screen
+        # (or genuinely finding nothing, e.g. after heavy smoothing removed the sharp bends).
+        total_sharp = sum(sharp_angle_counts.values())
+        self.status_bar.showMessage(
+            f'Sharp-angle markers (cos ≥ {cos_threshold:.2f}): '
+            f"RCA {sharp_angle_counts.get('rca', 0)}, LCA {sharp_angle_counts.get('lca', 0)} "
+            f'({total_sharp} total).'
+        )
+
+    def _on_branch_cos_threshold_changed(self, _value: float) -> None:
+        self._refresh_branch_scene()
+
+    def _on_branch_marker_picked(self, x: float, y: float, z: float) -> None:
+        if not self._branch_markers:
+            return
+        picked = np.array([x, y, z])
+        best_marker, best_dist = None, float('inf')
+        for marker in self._branch_markers:
+            dist = float(np.linalg.norm(np.array(marker['position']) - picked))
+            if dist < best_dist:
+                best_dist = dist
+                best_marker = marker
+        self._selected_branch_marker = best_marker
+        if best_marker is not None:
+            description = f"{best_marker['centerline'].upper()} branch {best_marker['branch_id']} @ point {best_marker['point_index']}"
+            self.left_half.branch_toolbar.set_selected_marker(description)
+
+    def _on_split_branch_requested(self) -> None:
+        marker = self._selected_branch_marker
+        if not self._require(marker is not None, 'Click a sharp-angle marker in the scene first.'):
+            return
+        assert marker is not None
+        cl_attr = 'centerline_rca' if marker['centerline'] == 'rca' else 'centerline_lca'
+        cl = getattr(self.data, cl_attr)
+        try:
+            new_cl = cl.split_branch(marker['branch_id'], marker['point_index']).orient_by_max_z()
+        except Exception as e:
+            logger.exception('split_branch failed')
+            ErrorMessage(self, str(e))
+            return
+        setattr(self.data, cl_attr, new_cl)
+        self.status_bar.showMessage(
+            f"Split {marker['centerline'].upper()} branch {marker['branch_id']} at point {marker['point_index']}."
+        )
+        self._refresh_branch_scene()
+
+    def _on_merge_branches_requested(self, cl_name: str, branch_id_a: int, branch_id_b: int) -> None:
+        cl_attr = 'centerline_rca' if cl_name == 'rca' else 'centerline_lca'
+        cl = getattr(self.data, cl_attr)
+        if not self._require(cl is not None, 'Prepare centerlines first.'):
+            return
+        try:
+            new_cl = cl.merge_branches(branch_id_a, branch_id_b).orient_by_max_z()
+        except Exception as e:
+            logger.exception('merge_branches failed')
+            ErrorMessage(self, str(e))
+            return
+        setattr(self.data, cl_attr, new_cl)
+        self.status_bar.showMessage(f'Merged {cl_name.upper()} branches {branch_id_a} and {branch_id_b}.')
+        self._refresh_branch_scene()
 
     def _refresh_tree_scene(self) -> None:
         """Recreate multimodars' plot_vessel_tree as native VTK layers."""
@@ -414,26 +703,35 @@ class FusionPage(QWidget):
                 viewer.add_mesh(scene, f'{key}_wall', wall_mesh, color=(220, 220, 220), opacity=0.25)
         self.left_half.refresh_toolbar(scene)
 
+    def _selected_align_centerline(self, vessel: str, vessel_tree):
+        """(centerline, references, selected_index) for whichever vessel ('rca'/'lca') the
+        Intravascular Alignment column currently has chosen in its Centerline selector."""
+        if vessel == 'rca':
+            return self.data.centerline_rca, vessel_tree.rca_references, self.data.selected_rca_reference_index
+        return self.data.centerline_lca, vessel_tree.lca_references, self.data.selected_lca_reference_index
+
     def _on_run_align(self) -> None:
         ic = self.right_half.intravascular_column
+        vessel = ic.reference_vessel()
         if not self._require(self.data.iv_geometry_pair is not None, 'Load a pullback first.'):
             return
         if not self._require(self.data.vessel_tree is not None, 'Discretize the vessel tree first.'):
             return
+        vessel_tree = self.data.vessel_tree
+        assert vessel_tree is not None
+        centerline, references, selected_index = self._selected_align_centerline(vessel, vessel_tree)
         if not self._require(
-            self.data.centerline_rca is not None and self.data.results is not None,
+            centerline is not None and self.data.results is not None,
             'Run label_geometry first.',
         ):
             return
 
-        vessel_tree = self.data.vessel_tree
-        centerline_rca = self.data.centerline_rca
         results = self.data.results
-        assert vessel_tree is not None and centerline_rca is not None and results is not None
+        assert centerline is not None and results is not None
 
         try:
-            ref_points = vessel_tree.rca_references[self.data.selected_rca_reference_index]
-            rca_cl_main = centerline_rca.get_branch(ic.branch_index())
+            ref_points = references[selected_index]
+            cl_main = centerline.get_branch(ic.branch_index())
         except (IndexError, AttributeError) as e:
             ErrorMessage(self, f'Could not resolve reference points / branch: {e}')
             return
@@ -442,70 +740,96 @@ class FusionPage(QWidget):
             'Aligning intravascular geometry…',
             'Alignment done.',
             pipeline.run_align_combined,
-            rca_cl_main,
+            cl_main,
             self.data.iv_geometry_pair,
             ref_points[0],
             ref_points[1],
             ref_points[2],
-            results.get('rca_points', []),
-            align_wall_anomalous=self.right_half.geometry_column.has_acute_takeoff(),
+            results.get(f'{vessel}_points', []),
+            align_wall_anomalous=self.right_half.geometry_column.has_acute_takeoff(vessel),
             **ic.align_kwargs(),
         )
-        self._apply_align_result(result)
+        if result is None:
+            return
+        self._apply_align_result(result, cl_main)
 
     def _on_run_align_manual(self) -> None:
         """Same preconditions as _on_run_align, but rotates by an explicit angle around a
         single reference point instead of searching angle_range_deg. Only meaningful for
         elliptic (anomalous) vessels — see pipeline.run_align_manual."""
         ic = self.right_half.intravascular_column
+        vessel = ic.reference_vessel()
         if not self._require(self.data.iv_geometry_pair is not None, 'Load a pullback first.'):
             return
         if not self._require(self.data.vessel_tree is not None, 'Discretize the vessel tree first.'):
             return
-        if not self._require(self.data.centerline_rca is not None, 'Run label_geometry first.'):
-            return
-
         vessel_tree = self.data.vessel_tree
-        centerline_rca = self.data.centerline_rca
-        assert vessel_tree is not None and centerline_rca is not None
+        assert vessel_tree is not None
+        centerline, references, selected_index = self._selected_align_centerline(vessel, vessel_tree)
+        if not self._require(centerline is not None, 'Run label_geometry first.'):
+            return
+        assert centerline is not None
 
         try:
-            main_ref_pt = vessel_tree.rca_references[self.data.selected_rca_reference_index][0]
-            rca_cl_main = centerline_rca.get_branch(ic.branch_index())
+            main_ref_pt = references[selected_index][0]
+            cl_main = centerline.get_branch(ic.branch_index())
         except (IndexError, AttributeError) as e:
             ErrorMessage(self, f'Could not resolve reference point / branch: {e}')
             return
-        ref_point = self._resolve_manual_ref_point(vessel_tree, main_ref_pt, ic.manual_ref_point_offset())
+        ref_point = self._resolve_manual_ref_point(cl_main, main_ref_pt, ic.manual_ref_point_offset())
 
         result = self._run(
             'Aligning intravascular geometry (manual)…',
             'Manual alignment done.',
             pipeline.run_align_manual,
-            rca_cl_main,
+            cl_main,
             self.data.iv_geometry_pair,
             ic.manual_rotation_angle_deg(),
             ref_point,
-            align_wall_anomalous=self.right_half.geometry_column.has_acute_takeoff(),
+            align_wall_anomalous=self.right_half.geometry_column.has_acute_takeoff(vessel),
             **ic.manual_align_kwargs(),
         )
-        self._apply_align_result(result)
-
-    def _resolve_manual_ref_point(
-        self, vessel_tree, main_ref_pt: tuple[float, float, float], offset: int
-    ) -> tuple[float, float, float]:
-        """offset=0 is main_ref_pt itself; +N/-N walks N contours distal/proximal along
-        vessel_tree.discretized_rca_main — the same step_size-spaced contours the
-        automatic reference triplets (rca_references) are themselves derived from."""
-        centroids = [c.centroid for c in vessel_tree.discretized_rca_main]
-        distances = [float(np.linalg.norm(np.array(c) - np.array(main_ref_pt))) for c in centroids]
-        base_index = int(np.argmin(distances))
-        index = max(0, min(len(centroids) - 1, base_index + offset))
-        return centroids[index]
-
-    def _apply_align_result(self, result) -> None:
         if result is None:
             return
-        self.data.aligned, self.data.resampled_centerline, total_rotation_deg = result
+        self._apply_align_result(result, cl_main)
+
+    def _resolve_manual_ref_point(
+        self, cl_main, main_ref_pt: tuple[float, float, float], offset: int
+    ) -> tuple[float, float, float]:
+        """offset=0 is whichever point of `cl_main` (the same single-branch RCA/LCA
+        centerline passed into align_manual/align_combined) lies closest to main_ref_pt —
+        not main_ref_pt itself, since that's a vessel-tree reference point and may not sit
+        exactly on the centerline. +N/-N then walks N *centerline points* — not the coarser
+        step_size-spaced vessel-tree contours — away from/towards point index 0.
+
+        prepare_centerline's orient_to_reference(aorta) guarantees point index 0 of the main
+        branch is always the proximal/ostium end, regardless of which reference is currently
+        selected — so -N always walks towards the ostium and +N away from it. Clamped to
+        [0, len(points)-1]: if the closest point is already index 0 (e.g. the 'ostium'
+        reference itself is selected), negative offsets have nowhere to go and clamp back
+        to it — there's nothing more proximal than the ostium to walk to."""
+        points = cl_main.points_as_tuples()
+        distances = [float(np.linalg.norm(np.array(p) - np.array(main_ref_pt))) for p in points]
+        base_index = int(np.argmin(distances))
+        raw_index = base_index + offset
+        index = max(0, min(len(points) - 1, raw_index))
+        if index != raw_index:
+            direction = 'proximal (towards the ostium)' if raw_index < 0 else 'distal'
+            self.status_bar.showMessage(
+                f'Ref. point offset clamped: no centerline point further {direction} than the selected '
+                f'reference — using the {"first" if raw_index < 0 else "last"} point of the branch instead.'
+            )
+        return points[index]
+
+    def _apply_align_result(self, result, source_centerline) -> None:
+        """`result` is align_combined/align_manual's (aligned_geometry, spacing_mm,
+        total_rotation_deg) — multimodars>=0.6.0 no longer hands back a resampled
+        centerline itself, just the spacing_mm it used internally, so we resample
+        `source_centerline` (the same single-branch RCA/LCA centerline that was passed into
+        align_combined/align_manual) ourselves to get the centerline shown alongside the
+        aligned geometry."""
+        self.data.aligned, spacing_mm, total_rotation_deg = result
+        self.data.resampled_centerline = source_centerline.resample(spacing_mm)
         # Prefill the Manual group with whatever angle this alignment landed on (automatic
         # search or a previous manual value round-tripped back) so nudging it further starts
         # from here instead of 0.
@@ -555,16 +879,25 @@ class FusionPage(QWidget):
             return None
 
     def _on_run_label_anomalous(self) -> None:
+        """Label Overlap Region: partitions whichever coronary the pullback was actually
+        aligned onto (see the Centerline: RCA/LCA selector in column 2) into proximal/
+        overlap/distal sub-regions — must match the alignment vessel, not always the RCA,
+        or centerline and results_key end up describing two different vessels."""
         frames = self._aligned_frames()
         if not self._require(frames is not None, 'Align the intravascular geometry first.'):
             return
+        vessel = self.right_half.intravascular_column.reference_vessel()
+        centerline = self.data.centerline_rca if vessel == 'rca' else self.data.centerline_lca
+        if not self._require(centerline is not None, 'Run label_geometry first.'):
+            return
         results = self._run(
-            'Labeling anomalous region…',
-            'Anomalous region labeled.',
+            'Labeling overlap region…',
+            'Overlap region labeled.',
             pipeline.run_label_anomalous_region,
-            self.data.centerline_rca,
+            centerline,
             frames,
             self.data.results,
+            results_key=f'{vessel}_points',
         )
         if results is not None:
             self.data.results = results
@@ -574,33 +907,39 @@ class FusionPage(QWidget):
         frames = self._aligned_frames()
         if not self._require(frames is not None, 'Align the intravascular geometry first.'):
             return
+        vessel = self.right_half.intravascular_column.reference_vessel()
+        centerline = self.data.centerline_rca if vessel == 'rca' else self.data.centerline_lca
+        if not self._require(centerline is not None, 'Run label_geometry first.'):
+            return
         scalings = self._run(
             'Computing scaling factors…',
             'Scaling factors computed.',
             pipeline.run_find_scalings,
             frames,
-            self.data.centerline_rca,
+            centerline,
             self.data.centerline_aorta,
             self.data.results,
+            vessel=vessel,
         )
         if scalings is None:
             return
         self.data.prox_scaling = scalings['proximal_scaling']
         self.data.distal_scaling = scalings['distal_scaling']
         self.data.aortic_scaling = scalings['aortic_scaling']
-        self.data.aortic_wall_scaling = scalings['aortic_wall_scaling']
         self.right_half.fusion_column.set_scaling_results(scalings)
 
     def _on_run_apply_scaling(self) -> None:
+        vessel = self.right_half.intravascular_column.reference_vessel()
+        opposite_vessel = 'lca' if vessel == 'rca' else 'rca'
+        centerline = self.data.centerline_rca if vessel == 'rca' else self.data.centerline_lca
+        opposite_centerline = self.data.centerline_lca if vessel == 'rca' else self.data.centerline_rca
         if not self._require(
             None not in (self.data.prox_scaling, self.data.distal_scaling, self.data.aortic_scaling),
             'Compute scaling factors first.',
         ):
             return
         if not self._require(
-            self.data.results is not None
-            and self.data.centerline_rca is not None
-            and self.data.centerline_aorta is not None,
+            self.data.results is not None and centerline is not None and self.data.centerline_aorta is not None,
             'Run label_geometry first.',
         ):
             return
@@ -608,28 +947,44 @@ class FusionPage(QWidget):
         # Read live from the spinboxes, not self.data.*_scaling — the user may have
         # edited them by hand after Compute Scaling Factors filled in the defaults.
         scaling = self.right_half.fusion_column.scaling_values()
+        opposite_scaling = scaling['opposite_vessel_scaling']
+        if not self._require(
+            opposite_scaling == 0.0 or opposite_centerline is not None,
+            f'Missing {opposite_vessel.upper()} centerline for the opposite-vessel scaling — '
+            'run Label Geometry first, or set Opposite vessel (mm) back to 0.',
+        ):
+            return
 
         def _run():
             results = self.data.results
-            centerline_rca = self.data.centerline_rca
             centerline_aorta = self.data.centerline_aorta
-            assert results is not None and centerline_rca is not None and centerline_aorta is not None
+            assert results is not None and centerline is not None and centerline_aorta is not None
             distal_scaling = scaling['distal_scaling']
             aortic_scaling = scaling['aortic_scaling']
             prox_scaling = scaling['proximal_scaling']
             mesh = results['mesh']
 
-            scaled = pipeline.run_scale_region(mesh, results['distal_points'], centerline_rca, distal_scaling)
+            scaled = pipeline.run_scale_region(mesh, results['distal_points'], centerline, distal_scaling)
             results = pipeline.run_sync_results_to_mesh(results, mesh, scaled)
             mesh = results['mesh']
 
-            aortic_region = results['aorta_points'] + results['rca_removed_points']
+            aortic_region = results['aorta_points'] + results[f'{vessel}_removed_points']
             scaled = pipeline.run_scale_region(mesh, aortic_region, centerline_aorta, aortic_scaling)
             results = pipeline.run_sync_results_to_mesh(results, mesh, scaled)
             mesh = results['mesh']
 
-            scaled = pipeline.run_scale_region(mesh, results['proximal_points'], centerline_rca, prox_scaling)
+            scaled = pipeline.run_scale_region(mesh, results['proximal_points'], centerline, prox_scaling)
             results = pipeline.run_sync_results_to_mesh(results, mesh, scaled)
+            mesh = results['mesh']
+
+            # Manual-only: no intravascular data for the opposite coronary, so this is
+            # skipped entirely (not scaled by 0, just left untouched) unless set by hand.
+            if opposite_scaling != 0.0:
+                assert opposite_centerline is not None
+                scaled = pipeline.run_scale_region(
+                    mesh, results[f'{opposite_vessel}_points'], opposite_centerline, opposite_scaling
+                )
+                results = pipeline.run_sync_results_to_mesh(results, mesh, scaled)
             return results
 
         results_out = self._run('Applying scaling to mesh…', 'Scaling applied.', _run)

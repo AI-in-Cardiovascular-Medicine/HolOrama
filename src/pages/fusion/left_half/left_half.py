@@ -1,10 +1,12 @@
 from functools import partial
 
-from PyQt6.QtWidgets import QTabWidget, QVBoxLayout
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QSplitter, QTabWidget, QVBoxLayout
 
 from domain.fusion_types import FusionScene
 from pages.fusion.left_half.display_results import FusionViewer3D
 from pages.fusion.left_half.layer_tools.alignment_tools import AlignmentToolbar, IntravascularLoadedToolbar
+from pages.fusion.left_half.layer_tools.branch_tools import BranchEditorToolbar
 from pages.fusion.left_half.layer_tools.geometry_tools import GeometryToolbar
 from pages.fusion.left_half.layer_tools.tree_tools import TreeToolbar
 from pages.intravascular.utils.helpers import SplitterPane
@@ -22,18 +24,21 @@ class LeftHalf:
         self.viewer = FusionViewer3D()
 
         self.geometry_toolbar = GeometryToolbar()
+        self.branch_toolbar = BranchEditorToolbar()
         self.intravascular_loaded_toolbar = IntravascularLoadedToolbar()
         self.alignment_toolbar = AlignmentToolbar()
         self.tree_toolbar = TreeToolbar()
 
         self._scene_order = [
             FusionScene.CCTA_GEOMETRY,
+            FusionScene.CENTERLINE_BRANCHES,
             FusionScene.VESSEL_TREE,
             FusionScene.INTRAVASCULAR_LOADED,
             FusionScene.INTRAVASCULAR_ALIGNED,
         ]
         self._toolbars = {
             FusionScene.CCTA_GEOMETRY: self.geometry_toolbar,
+            FusionScene.CENTERLINE_BRANCHES: self.branch_toolbar,
             FusionScene.INTRAVASCULAR_LOADED: self.intravascular_loaded_toolbar,
             FusionScene.INTRAVASCULAR_ALIGNED: self.alignment_toolbar,
             FusionScene.VESSEL_TREE: self.tree_toolbar,
@@ -50,11 +55,21 @@ class LeftHalf:
             self.tabs.addTab(self._toolbars[scene], FusionScene.label(scene))
         self.tabs.currentChanged.connect(self._on_tab_changed)
 
+        # Vertical splitter (not a fixed layout) so the toolbar strip can be dragged taller
+        # when a scene's controls need more room than the default — e.g. Centerline
+        # Branches' layer list + split/merge groups — the same way RightHalf's three
+        # columns are resizable relative to each other.
+        splitter = QSplitter(Qt.Orientation.Vertical, self.widget)
+        splitter.addWidget(self.tabs)
+        splitter.addWidget(self.viewer)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([160, 600])
+
         layout = QVBoxLayout(self.widget)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self.tabs, 0)
-        layout.addWidget(self.viewer, 1)
+        layout.addWidget(splitter)
 
         self._on_tab_changed(0)
 

@@ -3,6 +3,26 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-08-08
+
+Fusion page adjusted for multimodars 0.6.0's new alignment API; Centerline Branches UI overhaul; RCA/LCA now selectable throughout alignment, overlap labeling, and scaling.
+
+### Added
+- manual alignment's ref. point offset now steps along the actual centerline (point index 0 = ostium) instead of the coarser discretized vessel-tree contours, so negative offsets work
+- exposed angle_step_deg and index_range for the automatic Align to Centerline step
+- Centerline Branches: pick any point along a branch to split at, not just a numbered sharp-angle marker; layer list shows each branch's colour swatch instead of an opacity slider
+- Intravascular Alignment: Centerline (RCA/LCA) + Reference selector, coupled with the Vessel Tree tab's own dropdowns — alignment, Label Overlap Region, and scaling all follow whichever vessel is picked
+- manual "opposite vessel" scaling field for the coronary with no pullback data of its own
+
+### Changed
+- Centerline Branches: Split/Merge regrouped into their own boxes, split on top merge below; fusion toolbar strip is now a resizable splitter like the three columns
+- Label Anomalous Region renamed to Label Overlap Region and moved to the bottom of the Intravascular Alignment column
+- dropped aortic wall scaling for now — it was computed and displayed but never applied to the mesh
+
+### Fixed
+- align_combined/align_manual return (geometry, spacing_mm, total_rotation_deg) as of multimodars 0.6.0, not a resampled centerline; the mismatch crashed before the aligned mesh could be added to the viewer
+- scaling factors and Label Overlap Region were hardcoded to the RCA regardless of which vessel was actually aligned
+
 ## [0.6.0] - 2026-08-05
 
 ### Added
@@ -350,6 +370,9 @@ Now runs on PyQt6
 - Declared first stable release (after paper publication).
 - Updated citation from medRxiv to *Computer Methods and Programs in Biomedicine*.
 
+[0.7.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.1.0...v0.2.0

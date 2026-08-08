@@ -18,7 +18,6 @@ class FusionColumn(QWidget):
     """Column 3: scale the CCTA geometry to match the intravascular lumen, stitch the two
     together, then remesh/smooth/export. See pages/fusion/pipeline.py."""
 
-    run_label_anomalous_requested = pyqtSignal()
     run_compute_scaling_requested = pyqtSignal()
     run_apply_scaling_requested = pyqtSignal()
     run_remove_points_requested = pyqtSignal()
@@ -38,7 +37,6 @@ class FusionColumn(QWidget):
         title.setStyleSheet('font-weight: bold;')
         root.addWidget(title)
 
-        root.addWidget(self._build_anomalous_group())
         root.addWidget(self._build_scaling_group())
         root.addWidget(self._build_cleanup_group())
         root.addWidget(self._build_stitch_group())
@@ -48,24 +46,18 @@ class FusionColumn(QWidget):
 
     # ------------------------------------------------------------------
 
-    def _build_anomalous_group(self) -> QGroupBox:
-        box = QGroupBox('Anomalous Region')
-        layout = QVBoxLayout(box)
-        btn = QPushButton('Label Anomalous Region')
-        btn.clicked.connect(self.run_label_anomalous_requested.emit)
-        layout.addWidget(btn)
-        return box
-
     def _build_scaling_group(self) -> QGroupBox:
         box = QGroupBox('Scaling Factors')
         layout = QVBoxLayout(box)
 
+        # No aortic-wall scaling for the moment: find_aortic_wall_scaling is dropped from
+        # this UI/pipeline pending a clearer use case — it was computed and displayed but
+        # never actually applied to the mesh in _on_run_apply_scaling anyway.
         self._scaling_spinboxes: dict[str, QDoubleSpinBox] = {}
         for key, text in [
             ('proximal_scaling', 'Proximal (mm):'),
             ('distal_scaling', 'Distal (mm):'),
             ('aortic_scaling', 'Aortic (mm):'),
-            ('aortic_wall_scaling', 'Aortic wall (mm):'),
         ]:
             spin = QDoubleSpinBox()
             spin.setRange(-20.0, 20.0)
@@ -80,8 +72,26 @@ class FusionColumn(QWidget):
         compute_btn.clicked.connect(self.run_compute_scaling_requested.emit)
         layout.addWidget(compute_btn)
 
+        # Below Compute, not above with the other three: this one is never auto-filled —
+        # there's no intravascular pullback for the opposite coronary to compute it from,
+        # so it's manual-only. Scales that vessel's whole region on Apply, not just a
+        # proximal/distal boundary.
+        opposite_spin = QDoubleSpinBox()
+        opposite_spin.setRange(-20.0, 20.0)
+        opposite_spin.setDecimals(3)
+        opposite_spin.setSingleStep(0.05)
+        opposite_spin.setToolTip(
+            'Manual only — not computed. Scales the whole opposite-vessel region (the coronary '
+            'not selected as Centerline in column 2) when applying. Leave at 0 to skip it.'
+        )
+        self._scaling_spinboxes['opposite_vessel_scaling'] = opposite_spin
+        layout.addLayout(_row('Opposite vessel (mm):', opposite_spin))
+
         apply_btn = QPushButton('Apply Scaling to Mesh')
-        apply_btn.setToolTip('Morphs the distal, aortic, and proximal regions along their centerlines in sequence')
+        apply_btn.setToolTip(
+            'Morphs the distal, aortic, proximal, and (if non-zero) opposite-vessel regions '
+            'along their centerlines in sequence'
+        )
         apply_btn.clicked.connect(self.run_apply_scaling_requested.emit)
         layout.addWidget(apply_btn)
         return box

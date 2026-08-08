@@ -15,12 +15,13 @@ from PyQt6.QtWidgets import (
 
 
 class GeometryColumn(QWidget):
-    """Column 1: load the CCTA mesh + centerlines, run label_geometry, then
-    discretize_vessel_tree. See pages/fusion/pipeline.py for the multimodars calls
-    each button triggers."""
+    """Column 1: load the CCTA mesh + centerlines, prepare the centerlines, run
+    label_geometry + label_branches_pair, then discretize_vessel_tree. See
+    pages/fusion/pipeline.py for the multimodars calls each button triggers."""
 
     run_label_geometry_requested = pyqtSignal()
-    run_prepare_centerlines_requested = pyqtSignal()
+    prepare_centerlines_requested = pyqtSignal()
+    run_label_branches_pair_requested = pyqtSignal()
     run_discretize_tree_requested = pyqtSignal()
     geometry_files_changed = pyqtSignal()  # mesh and/or centerline path(s) changed
 
@@ -40,6 +41,7 @@ class GeometryColumn(QWidget):
 
         root.addWidget(self._build_mesh_group())
         root.addWidget(self._build_centerline_group())
+        root.addWidget(self._build_prepare_centerline_group())
         root.addWidget(self._build_label_geometry_group())
         root.addWidget(self._build_vessel_tree_group())
         root.addStretch(1)
@@ -74,23 +76,48 @@ class GeometryColumn(QWidget):
             row.addWidget(browse_btn)
             layout.addLayout(row)
             self._centerline_edits[key] = edit
+        return box
 
-        self._rm_start_mm = QDoubleSpinBox()
-        self._rm_start_mm.setRange(0.0, 50.0)
-        self._rm_start_mm.setSingleStep(0.5)
-        self._rm_start_mm.setValue(5.0)
-        layout.addLayout(_row('Remove start (mm):', self._rm_start_mm))
+    def _build_prepare_centerline_group(self) -> QGroupBox:
+        box = QGroupBox('Prepare Centerline')
+        layout = QVBoxLayout(box)
 
-        self._smooth_sigma = QDoubleSpinBox()
-        self._smooth_sigma.setRange(0.0, 20.0)
-        self._smooth_sigma.setSingleStep(0.1)
-        self._smooth_sigma.setValue(2.5)
-        layout.addLayout(_row('Smoothing sigma:', self._smooth_sigma))
+        resample_row = QHBoxLayout()
+        self._pc_resample = QCheckBox('Resample to spacing (mm):')
+        self._pc_resample.setChecked(True)
+        self._pc_spacing_mm = QDoubleSpinBox()
+        self._pc_spacing_mm.setRange(0.01, 10.0)
+        self._pc_spacing_mm.setSingleStep(0.1)
+        self._pc_spacing_mm.setValue(1.0)
+        resample_row.addWidget(self._pc_resample)
+        resample_row.addWidget(self._pc_spacing_mm, 1)
+        layout.addLayout(resample_row)
 
-        reload_btn = QPushButton('Load Data')
-        reload_btn.setToolTip('Re-reads the mesh/centerlines with the current parameters above')
-        reload_btn.clicked.connect(self.geometry_files_changed.emit)
-        layout.addWidget(reload_btn)
+        self._pc_branch_tolerance = QDoubleSpinBox()
+        self._pc_branch_tolerance.setRange(0.1, 20.0)
+        self._pc_branch_tolerance.setSingleStep(0.1)
+        self._pc_branch_tolerance.setValue(2.0)
+        layout.addLayout(_row('Branch spacing tolerance (mm):', self._pc_branch_tolerance))
+
+        self._pc_rm_start_mm = QDoubleSpinBox()
+        self._pc_rm_start_mm.setRange(0.0, 50.0)
+        self._pc_rm_start_mm.setSingleStep(0.5)
+        self._pc_rm_start_mm.setValue(5.0)
+        self._pc_rm_start_mm.setToolTip('Applied to RCA/LCA only — the aorta has no inlet to trim.')
+        layout.addLayout(_row('Remove start — RCA/LCA (mm):', self._pc_rm_start_mm))
+
+        self._pc_smooth_sigma = QDoubleSpinBox()
+        self._pc_smooth_sigma.setRange(0.0, 20.0)
+        self._pc_smooth_sigma.setSingleStep(0.1)
+        self._pc_smooth_sigma.setValue(2.5)
+        layout.addLayout(_row('Smoothing sigma:', self._pc_smooth_sigma))
+
+        prepare_btn = QPushButton('Prepare Centerlines')
+        prepare_btn.setToolTip(
+            'Load + branch/order/smooth all three centerlines (aorta first, then RCA/LCA oriented to it)'
+        )
+        prepare_btn.clicked.connect(self.prepare_centerlines_requested.emit)
+        layout.addWidget(prepare_btn)
         return box
 
     def _build_label_geometry_group(self) -> QGroupBox:
@@ -120,24 +147,29 @@ class GeometryColumn(QWidget):
         layout.addWidget(self._acute_takeoff_rca)
         layout.addWidget(self._acute_takeoff_lca)
 
-        self._n_points_takeoff_rca = QSpinBox()
-        self._n_points_takeoff_rca.setRange(1, 1000)
-        self._n_points_takeoff_rca.setValue(120)
-        layout.addLayout(_row('RCA takeoff points:', self._n_points_takeoff_rca))
+        self._range_mm_takeoff_rca = QDoubleSpinBox()
+        self._range_mm_takeoff_rca.setRange(0.1, 200.0)
+        self._range_mm_takeoff_rca.setSingleStep(1.0)
+        self._range_mm_takeoff_rca.setValue(60.0)
+        layout.addLayout(_row('RCA takeoff range (mm):', self._range_mm_takeoff_rca))
 
-        self._n_points_takeoff_lca = QSpinBox()
-        self._n_points_takeoff_lca.setRange(1, 1000)
-        self._n_points_takeoff_lca.setValue(120)
-        layout.addLayout(_row('LCA takeoff points:', self._n_points_takeoff_lca))
+        self._range_mm_takeoff_lca = QDoubleSpinBox()
+        self._range_mm_takeoff_lca.setRange(0.1, 200.0)
+        self._range_mm_takeoff_lca.setSingleStep(1.0)
+        self._range_mm_takeoff_lca.setValue(60.0)
+        layout.addLayout(_row('LCA takeoff range (mm):', self._range_mm_takeoff_lca))
 
         run_btn = QPushButton('Run Label Geometry')
         run_btn.clicked.connect(self.run_label_geometry_requested.emit)
         layout.addWidget(run_btn)
 
-        prepare_btn = QPushButton('Prepare Centerlines')
-        prepare_btn.setToolTip('Compute branches + validate/label both coronary centerlines')
-        prepare_btn.clicked.connect(self.run_prepare_centerlines_requested.emit)
-        layout.addWidget(prepare_btn)
+        label_branches_btn = QPushButton('Label Branches (Pair)')
+        label_branches_btn.setToolTip(
+            'Project the prepared RCA/LCA branch structure onto the labelled surface points. '
+            'Re-run after editing branches on the Centerline Branches tab.'
+        )
+        label_branches_btn.clicked.connect(self.run_label_branches_pair_requested.emit)
+        layout.addWidget(label_branches_btn)
         return box
 
     def _build_vessel_tree_group(self) -> QGroupBox:
@@ -198,20 +230,23 @@ class GeometryColumn(QWidget):
     # Param getters — read by FusionPage when handling the *_requested signals
     # ------------------------------------------------------------------
 
-    def centerline_kwargs(self, key: str) -> dict:
-        """key is 'aorta'/'rca'/'lca' — rm_start_mm trims the inlet of a coronary branch
-        and must never be applied to the aortic centerline, which has no such inlet."""
+    def prepare_centerline_kwargs(self, key: str) -> dict:
+        """key is 'aorta'/'rca'/'lca'. spacing_mm/branch_spacing_tolerance/smooth_sigma are
+        shared across all three; rm_start_mm trims a coronary's inlet and must never be
+        applied to the aortic centerline, which has no such inlet."""
         return {
-            'rm_start_mm': 0.0 if key == 'aorta' else self._rm_start_mm.value(),
-            'smooth_sigma': self._smooth_sigma.value(),
+            'spacing_mm': self._pc_spacing_mm.value() if self._pc_resample.isChecked() else None,
+            'branch_spacing_tolerance': self._pc_branch_tolerance.value(),
+            'rm_start_mm': 0.0 if key == 'aorta' else self._pc_rm_start_mm.value(),
+            'smooth_sigma': self._pc_smooth_sigma.value(),
         }
 
     def label_geometry_kwargs(self) -> dict:
         return {
             'acute_takeoff_rca': self._acute_takeoff_rca.isChecked(),
             'acute_takeoff_lca': self._acute_takeoff_lca.isChecked(),
-            'n_points_takeoff_rca': self._n_points_takeoff_rca.value(),
-            'n_points_takeoff_lca': self._n_points_takeoff_lca.value(),
+            'range_mm_takeoff_rca': self._range_mm_takeoff_rca.value(),
+            'range_mm_takeoff_lca': self._range_mm_takeoff_lca.value(),
             'step_size_mm': self._step_size_labeling.value(),
             'bounding_sphere_radius_mm_rca': self._bounding_sphere_radius_rca.value(),
             'bounding_sphere_radius_mm_lca': self._bounding_sphere_radius_lca.value(),
@@ -225,11 +260,11 @@ class GeometryColumn(QWidget):
             'bspline_smoothing': self._bspline_smoothing.value(),
         }
 
-    def has_acute_takeoff(self) -> bool:
-        """Whether either coronary was marked with an acute takeoff — drives
-        align_wall_anomalous in column 2 automatically instead of a separate manual
-        toggle there."""
-        return self._acute_takeoff_rca.isChecked() or self._acute_takeoff_lca.isChecked()
+    def has_acute_takeoff(self, vessel: str = 'rca') -> bool:
+        """Whether the given vessel ('rca' or 'lca' — whichever column 2 is currently
+        aligning onto) was marked with an acute takeoff — drives align_wall_anomalous in
+        column 2 automatically instead of a separate manual toggle there."""
+        return self._acute_takeoff_lca.isChecked() if vessel == 'lca' else self._acute_takeoff_rca.isChecked()
 
 
 def _row(label: str, widget: QWidget) -> QHBoxLayout:

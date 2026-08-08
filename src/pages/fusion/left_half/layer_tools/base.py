@@ -13,22 +13,29 @@ from PyQt6.QtWidgets import (
 
 from domain.fusion_types import FusionScene
 
-# Caps the toolbar's height regardless of how many layer rows it holds, so a scene
-# with many layers (CCTA_GEOMETRY can have a dozen) never pushes the 3-D viewer down.
-# The layer list scrolls internally within this budget instead.
-_LAYERS_MAX_HEIGHT = 90
-_TOOLBAR_MAX_HEIGHT = 110
+# Minimum height for the layer list's internal scroll area — below this a couple of rows
+# wouldn't even fit. The toolbar itself has no max height: it sits in a QSplitter (see
+# LeftHalf) so the user can drag it taller when a scene's layer list or extra controls
+# (e.g. BranchEditorToolbar's split/merge groups) need more room than this minimum.
+_LAYERS_MIN_HEIGHT = 60
+# Minimum width for the layer list, so checkbox labels (e.g. 'Rca Branch 3') and their
+# color swatch/opacity slider don't get squeezed down to nothing next to a scene's other
+# controls (e.g. BranchEditorToolbar's Split/Merge groups) when the toolbar is narrow.
+_LAYERS_MIN_WIDTH = 220
 
 
 class SceneToolbar(QWidget):
     """Toolbar shown above the 3-D viewer for one FusionScene tab.
 
     Provides the controls every scene needs (reset camera) and, when show_layers=True,
-    a per-layer visibility/opacity list capped to a fixed, internally-scrolling height.
-    Point picking (show_pick=True) is only wired up end-to-end for the Vessel Tree scene
-    (see FusionPage._on_point_picked), so other scenes leave it off. Subclasses add
-    scene-specific extras by passing extra_rows — see geometry_tools.py /
-    alignment_tools.py / tree_tools.py.
+    a per-layer visibility list with either an opacity slider or (show_color_swatch=True)
+    a small color swatch matching that layer's actual render color — more useful than
+    opacity for scenes made of colored point clouds (e.g. Centerline Branches) where you
+    want to match a legend entry to what's on screen, not fade it. Point picking
+    (show_pick=True) is only wired up end-to-end for the Vessel Tree and Centerline
+    Branches scenes (see FusionPage._on_point_picked), so other scenes leave it off.
+    Subclasses add scene-specific extras by passing extra_rows — see geometry_tools.py /
+    alignment_tools.py / tree_tools.py / branch_tools.py.
     """
 
     layer_visibility_changed = pyqtSignal(str, bool)  # layer key, visible
@@ -43,18 +50,19 @@ class SceneToolbar(QWidget):
         extra_rows: list[QWidget] | None = None,
         show_layers: bool = True,
         show_pick: bool = False,
+        show_color_swatch: bool = False,
         parent=None,
     ) -> None:
         super().__init__(parent)
         self.scene = scene
         self._show_layers = show_layers
-        self.setMaximumHeight(_TOOLBAR_MAX_HEIGHT)
+        self._show_color_swatch = show_color_swatch
 
         root = QHBoxLayout(self)
         root.setContentsMargins(6, 4, 6, 4)
         root.setSpacing(8)
 
-        self._layer_rows: dict[str, tuple[QCheckBox, QSlider]] = {}
+        self._layer_rows: dict[str, tuple[QCheckBox, QSlider | QLabel]] = {}
         if show_layers:
             self._layers_box = QVBoxLayout()
             layers_widget = QWidget()
@@ -62,26 +70,30 @@ class SceneToolbar(QWidget):
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
             scroll.setFrameShape(QFrame.Shape.NoFrame)
-            scroll.setMaximumHeight(_LAYERS_MAX_HEIGHT)
+            scroll.setMinimumHeight(_LAYERS_MIN_HEIGHT)
+            scroll.setMinimumWidth(_LAYERS_MIN_WIDTH)
             scroll.setWidget(layers_widget)
-            root.addWidget(scroll, 1)
+            root.addWidget(scroll, 2)
         else:
             root.addStretch(1)
 
         for row in extra_rows or []:
             root.addWidget(row)
 
+        # Reset View / Pick Point / Clear All Data, stacked in that order — Pick Point
+        # sits between the two so it reads as "how you interact with the view" rather
+        # than a stray button off to the side.
+        view_buttons = QVBoxLayout()
+        reset_btn = QPushButton('Reset View')
+        reset_btn.clicked.connect(self.reset_camera_requested.emit)
+        view_buttons.addWidget(reset_btn)
+
         if show_pick:
             self.pick_btn = QPushButton('Pick Point')
             self.pick_btn.setCheckable(True)
             self.pick_btn.setToolTip('Click a point in the 3-D scene')
             self.pick_btn.toggled.connect(self.pick_mode_toggled.emit)
-            root.addWidget(self.pick_btn)
-
-        view_buttons = QVBoxLayout()
-        reset_btn = QPushButton('Reset View')
-        reset_btn.clicked.connect(self.reset_camera_requested.emit)
-        view_buttons.addWidget(reset_btn)
+            view_buttons.addWidget(self.pick_btn)
 
         clear_btn = QPushButton('Clear All Data')
         clear_btn.setToolTip('Discards every loaded/computed fusion result and clears the 3-D viewer.')
@@ -89,32 +101,43 @@ class SceneToolbar(QWidget):
         view_buttons.addWidget(clear_btn)
         root.addLayout(view_buttons)
 
-    def refresh(self, layer_states: dict[str, tuple[bool, float]]) -> None:
-        """Rebuild the layer visibility/opacity rows for the current set of layers,
-        initializing each checkbox/slider to that layer's actual (visible, opacity) —
-        not a fixed assumed default, since layers can be added at less than 100% opacity
+    def refresh(self, layer_states: dict[str, tuple[bool, float, tuple[int, int, int]]]) -> None:
+        """Rebuild the layer visibility rows for the current set of layers, initializing
+        each checkbox (and slider/swatch) to that layer's actual (visible, opacity, color)
+        — not a fixed assumed default, since layers can be added at less than 100% opacity
         (e.g. a translucent base mesh). No-op when built with show_layers=False."""
         if not self._show_layers:
             return
         _clear_layout(self._layers_box)
         self._layer_rows.clear()
 
-        for key, (visible, opacity) in layer_states.items():
+        for key, (visible, opacity, color) in layer_states.items():
             row = QHBoxLayout()
             box = QCheckBox(key.replace('_', ' ').title())
             box.setChecked(visible)
             box.toggled.connect(lambda checked, k=key: self.layer_visibility_changed.emit(k, checked))
-
-            slider = QSlider(Qt.Orientation.Horizontal)
-            slider.setRange(0, 100)
-            slider.setValue(round(opacity * 100))
-            slider.setFixedWidth(80)
-            slider.valueChanged.connect(lambda value, k=key: self.layer_opacity_changed.emit(k, value / 100.0))
-
             row.addWidget(box)
-            row.addWidget(slider)
+
+            if self._show_color_swatch:
+                r, g, b = color
+                swatch = QLabel()
+                swatch.setFixedSize(20, 14)
+                swatch.setToolTip(f'rgb({r}, {g}, {b})')
+                swatch.setStyleSheet(
+                    f'background-color: rgb({r}, {g}, {b}); border: 1px solid #666; border-radius: 2px;'
+                )
+                row.addWidget(swatch)
+                self._layer_rows[key] = (box, swatch)
+            else:
+                slider = QSlider(Qt.Orientation.Horizontal)
+                slider.setRange(0, 100)
+                slider.setValue(round(opacity * 100))
+                slider.setFixedWidth(80)
+                slider.valueChanged.connect(lambda value, k=key: self.layer_opacity_changed.emit(k, value / 100.0))
+                row.addWidget(slider)
+                self._layer_rows[key] = (box, slider)
+
             self._layers_box.addLayout(row)
-            self._layer_rows[key] = (box, slider)
 
 
 def _clear_layout(layout) -> None:

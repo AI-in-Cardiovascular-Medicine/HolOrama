@@ -41,6 +41,25 @@ TREE_REF_COLORS: tuple[tuple[int, int, int], ...] = (
 )
 
 
+# Centerline Branches scene, from plot_centerline_branches()/plot_centerline_edges().
+BRANCH_COLORS_RCA: tuple[tuple[int, int, int], ...] = (
+    (31, 119, 180),
+    (23, 190, 207),
+    (148, 103, 189),
+    (44, 160, 44),
+    (127, 127, 127),
+)
+BRANCH_COLORS_LCA: tuple[tuple[int, int, int], ...] = (
+    (214, 39, 40),
+    (255, 127, 14),
+    (227, 119, 194),
+    (188, 189, 34),
+    (140, 86, 75),
+)
+SHARP_ANGLE_COLOR: tuple[int, int, int] = (255, 0, 0)
+SHARP_ANGLE_LABEL_COLOR: tuple[int, int, int] = (255, 255, 255)
+
+
 def branch_ramp_color(base: tuple[int, int, int], index: int, count: int) -> tuple[int, int, int]:
     """Shade base color progressively lighter for branch index `index` of `count`
     (mirrors the 4-shade ramps plot_vessel_tree uses for side branches)."""

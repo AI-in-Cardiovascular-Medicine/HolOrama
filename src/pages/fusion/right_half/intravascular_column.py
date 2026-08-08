@@ -1,6 +1,7 @@
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDoubleSpinBox,
     QFileDialog,
     QGroupBox,
@@ -16,11 +17,14 @@ from PyQt6.QtWidgets import (
 
 class IntravascularColumn(QWidget):
     """Column 2: load an intravascular (IVUS/OCT) pullback pair and align it onto the
-    RCA centerline computed in column 1. See pages/fusion/pipeline.py."""
+    RCA or LCA centerline computed in column 1. See pages/fusion/pipeline.py."""
 
     run_load_requested = pyqtSignal()
     run_align_requested = pyqtSignal()
     run_align_manual_requested = pyqtSignal()
+    reference_vessel_changed = pyqtSignal(str)  # 'rca' or 'lca'
+    reference_index_changed = pyqtSignal(int)  # index chosen from the Reference combo
+    run_label_anomalous_requested = pyqtSignal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -38,6 +42,7 @@ class IntravascularColumn(QWidget):
         root.addWidget(self._build_reference_group())
         root.addWidget(self._build_align_group())
         root.addWidget(self._build_manual_align_group())
+        root.addWidget(self._build_overlap_group())
         root.addStretch(1)
 
     # ------------------------------------------------------------------
@@ -94,6 +99,20 @@ class IntravascularColumn(QWidget):
     def _build_reference_group(self) -> QGroupBox:
         box = QGroupBox('Reference Points (from Vessel Tree)')
         layout = QVBoxLayout(box)
+
+        self._ref_vessel_combo = QComboBox()
+        self._ref_vessel_combo.addItems(['RCA', 'LCA'])
+        self._ref_vessel_combo.setToolTip('Which coronary to align the pullback onto.')
+        self._ref_vessel_combo.currentIndexChanged.connect(
+            lambda _: self.reference_vessel_changed.emit(self.reference_vessel())
+        )
+        layout.addLayout(_row('Centerline:', self._ref_vessel_combo))
+
+        self._ref_index_combo = QComboBox()
+        self._ref_index_combo.setToolTip('Same reference list as the Vessel Tree tab, for the centerline above.')
+        self._ref_index_combo.currentIndexChanged.connect(self._on_ref_index_changed)
+        layout.addLayout(_row('Reference:', self._ref_index_combo))
+
         self._ref_labels = {
             'aortic': QLabel('Aortic: —'),
             'superior': QLabel('Superior: —'),
@@ -103,8 +122,8 @@ class IntravascularColumn(QWidget):
             layout.addWidget(lbl)
         self._branch_index = QSpinBox()
         self._branch_index.setRange(0, 20)
-        self._branch_index.setToolTip('rca_cl.get_branch(index) — alignment needs a single-branch centerline')
-        layout.addLayout(_row('RCA branch index:', self._branch_index))
+        self._branch_index.setToolTip('centerline.get_branch(index) — alignment needs a single-branch centerline')
+        layout.addLayout(_row('Branch index:', self._branch_index))
         return box
 
     def _build_align_group(self) -> QGroupBox:
@@ -114,7 +133,23 @@ class IntravascularColumn(QWidget):
         self._angle_range = QDoubleSpinBox()
         self._angle_range.setRange(1.0, 180.0)
         self._angle_range.setValue(30.0)
+        self._angle_range.setToolTip('Total rotation search range (deg) for the Hausdorff refinement.')
         layout.addLayout(_row('Angle range (deg):', self._angle_range))
+
+        self._angle_step = QDoubleSpinBox()
+        self._angle_step.setRange(0.01, 45.0)
+        self._angle_step.setSingleStep(0.1)
+        self._angle_step.setValue(1.0)
+        self._angle_step.setToolTip('Step size (deg) for the Hausdorff refinement rotation search.')
+        layout.addLayout(_row('Angle step (deg):', self._angle_step))
+
+        self._index_range = QSpinBox()
+        self._index_range.setRange(0, 50)
+        self._index_range.setValue(2)
+        self._index_range.setToolTip(
+            'Number of centerline indices considered around each reference point during refinement.'
+        )
+        layout.addLayout(_row('Index range:', self._index_range))
 
         # No "write intermediate files" toggle — align never writes them in this app.
         # No "align anomalous wall" toggle either — it's driven automatically by
@@ -140,9 +175,10 @@ class IntravascularColumn(QWidget):
         self._manual_ref_offset = QSpinBox()
         self._manual_ref_offset.setRange(-100, 100)
         self._manual_ref_offset.setToolTip(
-            '0 = the reference point selected above (same one used for automatic alignment).\n'
-            'Positive = N contours more distal along the centerline discretization;\n'
-            'negative = N contours more proximal.'
+            '0 = the centerline point closest to the reference selected above (same one used\n'
+            'for automatic alignment). Positive = N centerline points more distal;\n'
+            'negative = N centerline points more proximal, towards the ostium (point index 0).\n'
+            'Clamped at the ostium — you cannot go more proximal than that.'
         )
         layout.addLayout(_row('Ref. point offset:', self._manual_ref_offset))
 
@@ -154,6 +190,18 @@ class IntravascularColumn(QWidget):
         align_manual_btn.setToolTip('Only works for elliptic vessels (anomalous coronaries).')
         align_manual_btn.clicked.connect(self.run_align_manual_requested.emit)
         layout.addWidget(align_manual_btn)
+        return box
+
+    def _build_overlap_group(self) -> QGroupBox:
+        box = QGroupBox('Overlap Region')
+        layout = QVBoxLayout(box)
+        btn = QPushButton('Label Overlap Region')
+        btn.setToolTip(
+            'Partitions the aligned pullback into proximal/overlap/distal sub-regions, '
+            'for whichever centerline is selected above.'
+        )
+        btn.clicked.connect(self.run_label_anomalous_requested.emit)
+        layout.addWidget(btn)
         return box
 
     # ------------------------------------------------------------------
@@ -174,6 +222,26 @@ class IntravascularColumn(QWidget):
         self._ref_labels['superior'].setText(f'Superior: {_fmt_point(superior)}')
         self._ref_labels['inferior'].setText(f'Inferior: {_fmt_point(inferior)}')
 
+    def reference_vessel(self) -> str:
+        return 'rca' if self._ref_vessel_combo.currentText() == 'RCA' else 'lca'
+
+    def set_reference_choices(self, labels: list[str]) -> None:
+        """Repopulate the Reference dropdown — same label list as the Vessel Tree tab's
+        RCA/LCA dropdown for whichever vessel is currently selected above."""
+        self._ref_index_combo.blockSignals(True)
+        self._ref_index_combo.clear()
+        self._ref_index_combo.addItems(labels)
+        self._ref_index_combo.blockSignals(False)
+
+    def set_selected_reference_index(self, index: int) -> None:
+        self._ref_index_combo.blockSignals(True)
+        self._ref_index_combo.setCurrentIndex(index)
+        self._ref_index_combo.blockSignals(False)
+
+    def _on_ref_index_changed(self, index: int) -> None:
+        if index >= 0:
+            self.reference_index_changed.emit(index)
+
     # ------------------------------------------------------------------
     # Param getters
     # ------------------------------------------------------------------
@@ -193,6 +261,8 @@ class IntravascularColumn(QWidget):
     def align_kwargs(self) -> dict:
         return {
             'angle_range_deg': self._angle_range.value(),
+            'angle_step_deg': self._angle_step.value(),
+            'index_range': self._index_range.value(),
             'watertight': self._watertight.isChecked(),
         }
 
