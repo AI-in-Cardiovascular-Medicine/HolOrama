@@ -27,6 +27,7 @@ from typing import Any
 import numpy as np
 import trimesh
 import multimodars as mm
+from loguru import logger
 
 
 def load_centerline(path: str, name: str) -> Any:
@@ -291,7 +292,15 @@ def run_find_scalings(
     aortic_results = (
         results if vessel == 'rca' else {**results, 'rca_removed_points': results.get('lca_removed_points', [])}
     )
-    aortic = mm.find_aorta_scaling(frames=frames, cl_aorta=centerline_aorta, results=aortic_results)
+    try:
+        # mm.find_aorta_scaling raises ValueError when none of `frames` carries the
+        # aortic_thickness/"Wall" extras it needs (e.g. not an anomalous-takeoff case,
+        # where those extras are never written) — no wall reference just means no
+        # aortic scaling to apply, not a pipeline failure.
+        aortic = mm.find_aorta_scaling(frames=frames, cl_aorta=centerline_aorta, results=aortic_results)
+    except ValueError as e:
+        logger.warning(f'No aortic wall reference in frames — defaulting aortic_scaling to 0.0 ({e})')
+        aortic = 0.0
     return {
         'proximal_scaling': prox,
         'distal_scaling': distal,
