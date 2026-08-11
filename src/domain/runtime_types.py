@@ -49,7 +49,8 @@ class FusionRuntimeData:
         self.iv_geometry_pair: Any | None = None  # PyGeometryPair from from_file_singlepair
         self.iv_align_logs: tuple | None = None
         self.aligned: Any | None = None  # PyGeometryPair | PyGeometry from align_combined
-        self.resampled_centerline: Any | None = None
+        self.resampled_centerline: Any | None = None  # aligned vessel (rca/lca), at align_combined's spacing_mm
+        self.resampled_centerline_aorta: Any | None = None  # centerline_aorta resampled to that same spacing_mm
 
         # -- Column 3: fusion / scaling / stitching --------------------------------------
         self.prox_scaling: float | None = None

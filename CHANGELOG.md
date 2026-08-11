@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.7.1] - 2026-08-11
+
+### Fix
+- Passed the wrong centerline to the anomalous region labeling, resulting in index mismatching.
+
 ## [0.7.0] - 2026-08-08
 
 Fusion page adjusted for multimodars 0.6.0's new alignment API; Centerline Branches UI overhaul; RCA/LCA now selectable throughout alignment, overlap labeling, and scaling.

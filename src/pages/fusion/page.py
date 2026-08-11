@@ -829,9 +829,15 @@ class FusionPage(QWidget):
         centerline itself, just the spacing_mm it used internally, so we resample
         `source_centerline` (the same single-branch RCA/LCA centerline that was passed into
         align_combined/align_manual) ourselves to get the centerline shown alongside the
-        aligned geometry."""
+        aligned geometry. centerline_aorta gets the same treatment — any frames-correlated
+        step downstream (label_anomalous_region, find_distal_and_proximal_scaling,
+        find_aorta_scaling) needs its centerline argument at this same spacing_mm to line up
+        with `frames`, not whatever spacing prepare_centerline originally left it at."""
         self.data.aligned, spacing_mm, total_rotation_deg = result
         self.data.resampled_centerline = source_centerline.resample(spacing_mm)
+        self.data.resampled_centerline_aorta = (
+            self.data.centerline_aorta.resample(spacing_mm) if self.data.centerline_aorta is not None else None
+        )
         # Prefill the Manual group with whatever angle this alignment landed on (automatic
         # search or a previous manual value round-tripped back) so nudging it further starts
         # from here instead of 0.
@@ -889,7 +895,7 @@ class FusionPage(QWidget):
         if not self._require(frames is not None, 'Align the intravascular geometry first.'):
             return
         vessel = self.right_half.intravascular_column.reference_vessel()
-        centerline = self.data.centerline_rca if vessel == 'rca' else self.data.centerline_lca
+        centerline = self.data.resampled_centerline
         if not self._require(centerline is not None, 'Run label_geometry first.'):
             return
         results = self._run(
@@ -910,7 +916,7 @@ class FusionPage(QWidget):
         if not self._require(frames is not None, 'Align the intravascular geometry first.'):
             return
         vessel = self.right_half.intravascular_column.reference_vessel()
-        centerline = self.data.centerline_rca if vessel == 'rca' else self.data.centerline_lca
+        centerline = self.data.resampled_centerline
         if not self._require(centerline is not None, 'Run label_geometry first.'):
             return
         scalings = self._run(
@@ -919,7 +925,7 @@ class FusionPage(QWidget):
             pipeline.run_find_scalings,
             frames,
             centerline,
-            self.data.centerline_aorta,
+            self.data.resampled_centerline_aorta,
             self.data.results,
             vessel=vessel,
         )
