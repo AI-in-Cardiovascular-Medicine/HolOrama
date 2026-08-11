@@ -6,4 +6,4 @@ class GeometryToolbar(SceneToolbar):
     """Toolbar for the CCTA Geometry scene: mesh + centerline layer toggles."""
 
     def __init__(self, parent=None) -> None:
-        super().__init__(FusionScene.CCTA_GEOMETRY, parent=parent)
+        super().__init__(FusionScene.CCTA_GEOMETRY, show_lasso=True, parent=parent)

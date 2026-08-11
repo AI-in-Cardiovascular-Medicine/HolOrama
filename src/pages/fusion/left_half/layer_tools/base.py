@@ -41,6 +41,7 @@ class SceneToolbar(QWidget):
     layer_visibility_changed = pyqtSignal(str, bool)  # layer key, visible
     layer_opacity_changed = pyqtSignal(str, float)  # layer key, opacity [0, 1]
     pick_mode_toggled = pyqtSignal(bool)
+    lasso_mode_toggled = pyqtSignal(bool)
     reset_camera_requested = pyqtSignal()
     clear_all_data_requested = pyqtSignal()
 
@@ -50,6 +51,7 @@ class SceneToolbar(QWidget):
         extra_rows: list[QWidget] | None = None,
         show_layers: bool = True,
         show_pick: bool = False,
+        show_lasso: bool = False,
         show_color_swatch: bool = False,
         parent=None,
     ) -> None:
@@ -80,9 +82,9 @@ class SceneToolbar(QWidget):
         for row in extra_rows or []:
             root.addWidget(row)
 
-        # Reset View / Pick Point / Clear All Data, stacked in that order — Pick Point
-        # sits between the two so it reads as "how you interact with the view" rather
-        # than a stray button off to the side.
+        # Reset View / Pick Point / Lasso / Clear All Data, stacked in that order — Pick
+        # Point and Lasso sit between the two so they read as "how you interact with the
+        # view" rather than a stray button off to the side.
         view_buttons = QVBoxLayout()
         reset_btn = QPushButton('Reset View')
         reset_btn.clicked.connect(self.reset_camera_requested.emit)
@@ -95,11 +97,25 @@ class SceneToolbar(QWidget):
             self.pick_btn.toggled.connect(self.pick_mode_toggled.emit)
             view_buttons.addWidget(self.pick_btn)
 
+        if show_lasso:
+            self.lasso_btn = QPushButton('Lasso')
+            self.lasso_btn.setCheckable(True)
+            self.lasso_btn.setToolTip(
+                'Draw a closed lasso around points (left-click to add points, click near the\n'
+                'start or right-click to close), then choose which label to reclassify them as.'
+            )
+            self.lasso_btn.toggled.connect(self._on_lasso_toggled)
+            view_buttons.addWidget(self.lasso_btn)
+
         clear_btn = QPushButton('Clear All Data')
         clear_btn.setToolTip('Discards every loaded/computed fusion result and clears the 3-D viewer.')
         clear_btn.clicked.connect(self.clear_all_data_requested.emit)
         view_buttons.addWidget(clear_btn)
         root.addLayout(view_buttons)
+
+    def _on_lasso_toggled(self, checked: bool) -> None:
+        self.lasso_btn.setText('Cancel Lasso' if checked else 'Lasso')
+        self.lasso_mode_toggled.emit(checked)
 
     def refresh(self, layer_states: dict[str, tuple[bool, float, tuple[int, int, int]]]) -> None:
         """Rebuild the layer visibility rows for the current set of layers, initializing

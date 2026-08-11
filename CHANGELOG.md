@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026
+
+### Added
+- lasso tool on Fusion's CCTA Geometry tab to reclassify labeled points between regions (e.g. rca_points → aorta_points) by drawing a closed lasso around them in the 3-D view
+- extracted the lasso polygon/projection mechanics shared by this and CCTA's existing mask-erase lasso into tools/lasso.py
+
 ## [0.7.1] - 2026-08-11
 
 ### Fix
@@ -375,6 +381,7 @@ Now runs on PyQt6
 - Declared first stable release (after paper publication).
 - Updated citation from medRxiv to *Computer Methods and Programs in Biomedicine*.
 
+[0.8.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.4.0...v0.5.0

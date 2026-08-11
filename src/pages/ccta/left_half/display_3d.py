@@ -1,7 +1,6 @@
 import numpy as np
 import vtkmodules.vtkInteractionStyle  # noqa: F401
 import vtkmodules.vtkRenderingOpenGL2  # noqa: F401
-from matplotlib.path import Path as MplPath
 from PyQt6.QtCore import QEvent, QPoint, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
@@ -13,23 +12,19 @@ from PyQt6.QtWidgets import (
 )
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from vtkmodules.util import numpy_support
-from vtkmodules.vtkCommonCore import vtkPoints
-from vtkmodules.vtkCommonDataModel import vtkCellArray, vtkImageData, vtkPolyData
+from vtkmodules.vtkCommonDataModel import vtkImageData
 from vtkmodules.vtkFiltersSources import vtkSphereSource
 from vtkmodules.vtkInteractionStyle import vtkInteractorStyleTrackballCamera
 from vtkmodules.vtkRenderingCore import (
     vtkActor,
-    vtkActor2D,
-    vtkCoordinate,
     vtkLightKit,
     vtkPolyDataMapper,
-    vtkPolyDataMapper2D,
     vtkRenderer,
 )
 
 from domain.ccta_display_types import LABEL_COLORS
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
-from tools.geometry import SplineGeometry
+from tools.lasso import Lasso2D, project_world_batch
 
 # ---------------------------------------------------------------------------
 # Algorithm selection — prefer fastest available in installed VTK build
@@ -113,8 +108,7 @@ class CctaViewer3D(QWidget):
 
         # Lasso state
         self._lasso_mode: bool = False
-        self._lasso_pts: list[tuple[int, int]] = []  # screen coords (VTK, y from bottom)
-        self._lasso_overlay: list[vtkActor2D] = []  # actors to clean up
+        self._lasso = Lasso2D(self._ren)
 
         self._vtk_widget.installEventFilter(self)
 
@@ -309,9 +303,7 @@ class CctaViewer3D(QWidget):
         self._crosshair_actor = actor
         self._vtk_widget.GetRenderWindow().Render()
 
-    # ── lasso erase ────────────────────────────────────────────────────────
-
-    _LASSO_CLOSE_PX = 15  # pixels — clicking within this radius of the first point closes the lasso
+    # ── lasso erase (mechanics shared with Fusion's reclassify lasso via tools.lasso) ──
 
     def _on_lasso_toggled(self, checked: bool) -> None:
         if checked and (self._mask is None or self._voxel_spacing is None):
@@ -326,58 +318,18 @@ class CctaViewer3D(QWidget):
             self._lasso_clear()
 
     def _lasso_add_point(self, sx: int, sy: int) -> None:
-        # Close the spline when clicking near the first control point (≥3 pts already placed)
-        if len(self._lasso_pts) >= 3:
-            fx, fy = self._lasso_pts[0]
-            if abs(sx - fx) <= self._LASSO_CLOSE_PX and abs(sy - fy) <= self._LASSO_CLOSE_PX:
-                self._lasso_execute()
-                return
-        self._lasso_pts.append((sx, sy))
-        self._lasso_redraw()
+        if self._lasso.add_point(sx, sy):
+            self._lasso_execute()
+            return
+        self._lasso.redraw()
+        self._vtk_widget.GetRenderWindow().Render()
 
     def _lasso_clear(self) -> None:
-        self._lasso_pts.clear()
-        for a in self._lasso_overlay:
-            self._ren.RemoveActor2D(a)
-        self._lasso_overlay.clear()
+        self._lasso.clear()
         self._vtk_widget.GetRenderWindow().Render()
-
-    def _lasso_redraw(self) -> None:
-        for a in self._lasso_overlay:
-            self._ren.RemoveActor2D(a)
-        self._lasso_overlay.clear()
-
-        for sx, sy in self._lasso_pts:
-            self._lasso_overlay.append(self._make_dot2d(sx, sy))
-
-        if len(self._lasso_pts) >= 2:
-            self._lasso_overlay.append(self._make_polyline2d(self._lasso_spline_pts()))
-
-        for a in self._lasso_overlay:
-            self._ren.AddActor2D(a)
-        self._vtk_widget.GetRenderWindow().Render()
-
-    def _lasso_spline_pts(self) -> list[tuple[float, float]]:
-        """Interpolated polygon in screen space (SplineGeometry on control points)."""
-        pts = self._lasso_pts
-        if len(pts) >= 3:
-            try:
-                geom = SplineGeometry(
-                    [p[0] for p in pts],
-                    [p[1] for p in pts],
-                    300,
-                    None,
-                    None,
-                    is_closed=True,
-                )
-                cx, cy = geom.full_contour
-                return list(zip(cx.tolist(), cy.tolist()))
-            except Exception:
-                pass
-        return [(float(x), float(y)) for x, y in pts] + [(float(pts[0][0]), float(pts[0][1]))]
 
     def _lasso_execute(self) -> None:
-        if len(self._lasso_pts) < 3:
+        if len(self._lasso.points) < 3:
             ErrorMessage(self, 'Draw at least 3 points to define a lasso.')
             return
 
@@ -397,11 +349,10 @@ class CctaViewer3D(QWidget):
                 return
             label = int(chosen)
 
-        polygon = np.array(self._lasso_spline_pts())
-        self._erase_inside_lasso(label, polygon)
+        self._erase_inside_lasso(label)
         self._lasso_btn.setChecked(False)  # triggers _on_lasso_toggled → _lasso_clear
 
-    def _erase_inside_lasso(self, label: int, polygon: np.ndarray) -> None:
+    def _erase_inside_lasso(self, label: int) -> None:
         assert self._mask is not None and self._voxel_spacing is not None
         dz, dy, dx = self._voxel_spacing
         _, Y, _ = self._mask.shape
@@ -414,80 +365,14 @@ class CctaViewer3D(QWidget):
         wy = (Y - 1 - y_idx).astype(np.float64) * dy  # undo Y-flip from _build_vtk_image
         wz = z_idx.astype(np.float64) * dz
 
-        screen = self._project_world_batch(wx, wy, wz)
-        inside = MplPath(polygon).contains_points(screen)
+        screen = project_world_batch(self._ren, self._vtk_widget.GetRenderWindow().GetSize(), wx, wy, wz)
+        inside = self._lasso.contains(screen)
         if not inside.any():
             return
         self.mask_about_to_change.emit()
         self._mask[z_idx[inside], y_idx[inside], x_idx[inside]] = 0
         self.mask_erased.emit()
         self._rebuild_active_actors()
-
-    def _project_world_batch(self, wx: np.ndarray, wy: np.ndarray, wz: np.ndarray) -> np.ndarray:
-        """Vectorised world → VTK display-pixel projection. Returns (N, 2) float array."""
-        vtk_mat = self._ren.GetActiveCamera().GetCompositeProjectionTransformMatrix(
-            self._ren.GetTiledAspectRatio(), -1.0, 1.0
-        )
-        m = np.array([[vtk_mat.GetElement(r, c) for c in range(4)] for r in range(4)])
-
-        world_h = np.stack([wx, wy, wz, np.ones(len(wx))], axis=1)  # (N, 4)
-        clip = (m @ world_h.T).T  # (N, 4)
-
-        w = np.where(np.abs(clip[:, 3]) > 1e-10, clip[:, 3], 1.0)
-        ndc_x = clip[:, 0] / w
-        ndc_y = clip[:, 1] / w
-
-        vp = self._ren.GetViewport()
-        W, H = self._vtk_widget.GetRenderWindow().GetSize()
-        sx = (ndc_x + 1.0) * 0.5 * (vp[2] - vp[0]) * W + vp[0] * W
-        sy = (ndc_y + 1.0) * 0.5 * (vp[3] - vp[1]) * H + vp[1] * H
-        return np.column_stack([sx, sy])
-
-    # ── 2D overlay helpers (VTK Actor2D in display coords) ──────────────────
-
-    def _make_dot2d(self, sx: float, sy: float, size: int = 8) -> vtkActor2D:
-        pts = vtkPoints()
-        pts.InsertNextPoint(float(sx), float(sy), 0.0)
-        verts = vtkCellArray()
-        verts.InsertNextCell(1)
-        verts.InsertCellPoint(0)
-        poly = vtkPolyData()
-        poly.SetPoints(pts)
-        poly.SetVerts(verts)
-        coord = vtkCoordinate()
-        coord.SetCoordinateSystemToDisplay()
-        mapper = vtkPolyDataMapper2D()
-        mapper.SetInputData(poly)
-        mapper.SetTransformCoordinate(coord)
-        actor = vtkActor2D()
-        actor.SetMapper(mapper)
-        actor.GetProperty().SetColor(1.0, 1.0, 0.0)
-        actor.GetProperty().SetPointSize(size)
-        return actor
-
-    def _make_polyline2d(self, pts: list[tuple[float, float]]) -> vtkActor2D:
-        vtk_pts = vtkPoints()
-        for x, y in pts:
-            vtk_pts.InsertNextPoint(float(x), float(y), 0.0)
-        n = len(pts)
-        lines = vtkCellArray()
-        for i in range(n - 1):
-            lines.InsertNextCell(2)
-            lines.InsertCellPoint(i)
-            lines.InsertCellPoint(i + 1)
-        poly = vtkPolyData()
-        poly.SetPoints(vtk_pts)
-        poly.SetLines(lines)
-        coord = vtkCoordinate()
-        coord.SetCoordinateSystemToDisplay()
-        mapper = vtkPolyDataMapper2D()
-        mapper.SetInputData(poly)
-        mapper.SetTransformCoordinate(coord)
-        actor = vtkActor2D()
-        actor.SetMapper(mapper)
-        actor.GetProperty().SetColor(1.0, 1.0, 0.0)
-        actor.GetProperty().SetLineWidth(2)
-        return actor
 
     def _rebuild_active_actors(self) -> None:
         """Regenerate the mesh for every currently-visible label from the current

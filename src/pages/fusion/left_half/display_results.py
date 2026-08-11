@@ -4,7 +4,7 @@ import numpy as np
 import trimesh
 import vtkmodules.vtkInteractionStyle  # noqa: F401
 import vtkmodules.vtkRenderingOpenGL2  # noqa: F401
-from PyQt6.QtCore import QPoint, Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, QPoint, Qt, pyqtSignal
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from vtkmodules.util import numpy_support
@@ -23,6 +23,8 @@ from vtkmodules.vtkRenderingCore import (
 )
 
 from domain.fusion_types import FusionScene
+from pages.intravascular.popup_windows.message_boxes import ErrorMessage
+from tools.lasso import Lasso2D, project_world_batch
 
 
 @dataclass
@@ -95,6 +97,7 @@ class FusionViewer3D(QWidget):
     """
 
     point_picked = pyqtSignal(float, float, float, str)  # x, y, z, scene.value
+    lasso_closed = pyqtSignal()  # lasso polygon closed — caller decides what "inside" means
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -128,6 +131,9 @@ class FusionViewer3D(QWidget):
         self._pick_mode = False
         self._press_qt = QPoint()
         self._vtk_widget.installEventFilter(self)
+
+        self._lasso_mode = False
+        self._lasso = Lasso2D(self._ren)
 
         self._scenes: dict[FusionScene, _SceneLayers] = {scene: _SceneLayers() for scene in FusionScene}
         self._current_scene: FusionScene = FusionScene.CCTA_GEOMETRY
@@ -317,16 +323,54 @@ class FusionViewer3D(QWidget):
         self._pick_mode = enabled
 
     def eventFilter(self, obj, event) -> bool:
-        if obj is self._vtk_widget and self._pick_mode:
-            from PyQt6.QtCore import QEvent
-
-            if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
-                self._press_qt = event.pos()
-            elif event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
-                dp = event.pos() - self._press_qt
-                if abs(dp.x()) <= 3 and abs(dp.y()) <= 3:
+        if obj is self._vtk_widget:
+            if self._lasso_mode:
+                if event.type() == QEvent.Type.MouseButtonPress:
                     vtk_y = self._vtk_widget.height() - 1 - event.pos().y()
-                    if self._picker.Pick(event.pos().x(), vtk_y, 0, self._ren):
-                        x, y, z = self._picker.GetPickPosition()
-                        self.point_picked.emit(x, y, z, self._current_scene.value)
+                    if event.button() == Qt.MouseButton.LeftButton:
+                        if self._lasso.add_point(event.pos().x(), vtk_y):
+                            self.lasso_closed.emit()
+                        else:
+                            self._lasso.redraw()
+                            self._vtk_widget.GetRenderWindow().Render()
+                        return True  # block VTK camera move
+                    if event.button() == Qt.MouseButton.RightButton:
+                        if len(self._lasso.points) >= 3:
+                            self.lasso_closed.emit()
+                        else:
+                            ErrorMessage(self, 'Draw at least 3 points to define a lasso.')
+                        return True
+            elif self._pick_mode:
+                if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+                    self._press_qt = event.pos()
+                elif event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
+                    dp = event.pos() - self._press_qt
+                    if abs(dp.x()) <= 3 and abs(dp.y()) <= 3:
+                        vtk_y = self._vtk_widget.height() - 1 - event.pos().y()
+                        if self._picker.Pick(event.pos().x(), vtk_y, 0, self._ren):
+                            x, y, z = self._picker.GetPickPosition()
+                            self.point_picked.emit(x, y, z, self._current_scene.value)
         return super().eventFilter(obj, event)
+
+    # ------------------------------------------------------------------
+    # Lasso (reclassify points between labels — drawing/projection mechanics shared
+    # with CCTA's mask-erase lasso via tools.lasso)
+    # ------------------------------------------------------------------
+
+    def set_lasso_mode(self, enabled: bool) -> None:
+        self._lasso_mode = enabled
+        if not enabled:
+            self._lasso.clear()
+            self._vtk_widget.GetRenderWindow().Render()
+
+    def clear_lasso(self) -> None:
+        self._lasso.clear()
+        self._vtk_widget.GetRenderWindow().Render()
+
+    def points_inside_lasso(self, points: np.ndarray) -> np.ndarray:
+        """Boolean mask over `points` (N, 3 world xyz): which fall inside the closed
+        lasso polygon. Call only after lasso_closed has fired."""
+        screen = project_world_batch(
+            self._ren, self._vtk_widget.GetRenderWindow().GetSize(), points[:, 0], points[:, 1], points[:, 2]
+        )
+        return self._lasso.contains(screen)

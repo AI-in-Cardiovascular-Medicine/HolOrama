@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
+    QInputDialog,
     QMessageBox,
     QProgressDialog,
     QPushButton,
@@ -115,6 +116,8 @@ class FusionPage(QWidget):
         self.left_half.branch_toolbar.split_requested.connect(self._on_split_branch_requested)
         self.left_half.branch_toolbar.merge_requested.connect(self._on_merge_branches_requested)
         self.left_half.viewer.point_picked.connect(self._on_point_picked)
+        self.left_half.geometry_toolbar.lasso_mode_toggled.connect(self._on_lasso_mode_toggled)
+        self.left_half.viewer.lasso_closed.connect(self._on_lasso_closed)
         for toolbar in (
             self.left_half.geometry_toolbar,
             self.left_half.branch_toolbar,
@@ -433,6 +436,11 @@ class FusionPage(QWidget):
                 points = results.get(key)
                 if points:
                     viewer.add_points(FusionScene.CCTA_GEOMETRY, key, np.array(points), color=color)
+                else:
+                    # A reclassify (or upstream removal) can empty out a region that was
+                    # previously rendered — drop its stale layer rather than leaving it on
+                    # screen with points that no longer belong to it.
+                    viewer.remove_layer(FusionScene.CCTA_GEOMETRY, key)
         for key, cl in (
             ('centerline_aorta', self.data.centerline_aorta),
             ('centerline_rca', self.data.centerline_rca),
@@ -450,6 +458,67 @@ class FusionPage(QWidget):
                     size=4.0,
                 )
         self.left_half.refresh_toolbar(FusionScene.CCTA_GEOMETRY)
+
+    def _on_lasso_mode_toggled(self, enabled: bool) -> None:
+        # The sole slot on GeometryToolbar.lasso_mode_toggled — deliberately not wired
+        # generically alongside pick_mode in LeftHalf, since turning lasso mode on needs
+        # this guard to run (and possibly veto) before the viewer's mode flips, and a
+        # second independent slot on the same signal couldn't undo an already-dispatched
+        # `enabled=True` call to the viewer.
+        if enabled:
+            results = self.data.results
+            if results is None or not any(results.get(key) for key in colors.REGION_COLORS):
+                ErrorMessage(self, 'Run label_geometry first — no labeled points to reclassify.')
+                self.left_half.geometry_toolbar.lasso_btn.setChecked(False)
+                return
+        self.left_half.viewer.set_lasso_mode(enabled)
+
+    def _on_lasso_closed(self) -> None:
+        """Move the points enclosed by the just-closed lasso from one labeled region to
+        another in self.data.results — the fusion analogue of CCTA's lasso mask erase,
+        except here there's no single voxel array to flip: each region is its own list of
+        (x, y, z) tuples (see colors.REGION_COLORS), so "reclassify" means popping the
+        enclosed tuples out of the source list and appending them to the destination list."""
+        viewer = self.left_half.viewer
+        results = self.data.results
+        if results is None:
+            return
+
+        sources = [key for key in colors.REGION_COLORS if results.get(key)]
+        if not sources:
+            ErrorMessage(self, 'No labeled points available to reclassify.')
+            self.left_half.geometry_toolbar.lasso_btn.setChecked(False)
+            return
+
+        if len(sources) == 1:
+            source = sources[0]
+        else:
+            source, ok = QInputDialog.getItem(
+                self, 'Reclassify points', 'Select points to reclassify:', sources, 0, False
+            )
+            if not ok:
+                return
+
+        dest_choices = [key for key in colors.REGION_COLORS if key != source]
+        dest, ok = QInputDialog.getItem(
+            self, 'Reclassify points', f'Relabel selected "{source}" points as:', dest_choices, 0, False
+        )
+        if not ok:
+            return
+
+        points = np.array(results[source])
+        inside = viewer.points_inside_lasso(points)
+        if not inside.any():
+            ErrorMessage(self, 'No points fell inside the lasso.')
+            return
+
+        moved = [tuple(p) for p in points[inside]]
+        results[source] = [tuple(p) for p in points[~inside]]
+        results[dest] = list(results.get(dest) or []) + moved
+
+        self._refresh_geometry_scene()
+        self.status_bar.showMessage(f'Reclassified {len(moved)} point(s): {source} → {dest}.')
+        self.left_half.geometry_toolbar.lasso_btn.setChecked(False)  # ends lasso mode, clears overlay
 
     def _refresh_branch_scene(self) -> None:
         """Recreate multimodars' plot_centerline_branches/plot_centerline_edges as native
