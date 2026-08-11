@@ -103,6 +103,7 @@ class CctaViewer3D(QWidget):
         self._actors: dict[int, vtkActor] = {}
         self._hidden_labels: set[int] = set()
         self._custom_colors: list[tuple[int, int, int]] | None = None
+        self._label_names: dict[int, str] = {}
         self._crosshair_actor: vtkActor | None = None
         self._press_qt: QPoint = QPoint()
 
@@ -123,7 +124,11 @@ class CctaViewer3D(QWidget):
         self._voxel_spacing = voxel_spacing
         self._hidden_labels = set()
         self._custom_colors = None
+        self._label_names = {}
         self.clear_mesh()
+
+    def update_label_name(self, label: int, name: str) -> None:
+        self._label_names[label] = name
 
     def update_mask_data(self, mask: np.ndarray, voxel_spacing: tuple[float, float, float] | None = None) -> None:
         """Swap in new voxel data for the same label set (undo/redo of a brush or lasso
@@ -342,12 +347,11 @@ class CctaViewer3D(QWidget):
         if len(visible) == 1:
             label = visible[0]
         else:
-            chosen, ok = QInputDialog.getItem(
-                self, 'Select label', 'Erase voxels of label:', [str(lbl) for lbl in visible], 0, False
-            )
+            items = [self._label_names.get(lbl, f'Label {lbl}') for lbl in visible]
+            chosen, ok = QInputDialog.getItem(self, 'Select label', 'Erase voxels of label:', items, 0, False)
             if not ok:
                 return
-            label = int(chosen)
+            label = visible[items.index(chosen)]
 
         self._erase_inside_lasso(label)
         self._lasso_btn.setChecked(False)  # triggers _on_lasso_toggled → _lasso_clear

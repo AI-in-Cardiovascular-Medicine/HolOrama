@@ -126,6 +126,7 @@ class CctaPage(QWidget):
         self._mask_tab.label_visibility_changed.connect(self._on_label_visibility_changed)
         self._mask_tab.label_colors_changed.connect(self._on_label_colors_changed)
         self._mask_tab.label_name_changed.connect(self._on_label_name_changed)
+        self._mask_tab.label_name_changed.connect(self._3d_viewer.update_label_name)
 
         self._brush_panel = BrushPanel()
         self._brush_panel.brush_enabled_changed.connect(self._on_brush_enabled_changed)
