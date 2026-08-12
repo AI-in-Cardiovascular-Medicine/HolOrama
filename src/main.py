@@ -120,7 +120,9 @@ def _load_config(path: Path) -> SimpleNamespace:
         return obj
 
     with open(path, encoding="utf-8") as f:
-        return _to_ns(yaml.safe_load(f))
+        config = _to_ns(yaml.safe_load(f))
+    config._config_path = path
+    return config
 
 
 def main() -> None:

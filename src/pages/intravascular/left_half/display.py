@@ -64,33 +64,14 @@ class Display(QGraphicsView, MetricsMixin):
 
         self.color_contour = getattr(config.display, "color_contour", (255, 255, 255))
         self.alpha_contour = getattr(config.display, "alpha_contour", 255)  # config uses 0..255
+        self.color_eem: str = getattr(config.display, "color_eem", "red")
+        self.color_calcium: str = getattr(config.display, "color_calcium", "white")
+        self.color_branch: str = getattr(config.display, "color_branch", "green")
+        self.color_lipid: str = getattr(config.display, "color_lipid", "yellow")
+        self.color_macrophage: str = getattr(config.display, "color_macrophage", "blue")
+        self.color_reference: str = getattr(config.display, "color_reference", "yellow")
 
-        _default_colors = {
-            ContourType.LUMEN: getattr(config.display, "color_contour", "green"),
-            ContourType.EEM: getattr(config.display, "color_eem", "red"),
-            ContourType.CALCIUM: getattr(config.display, "color_calcium", "white"),
-            ContourType.BRANCH: getattr(config.display, "color_branch", "green"),
-            ContourType.LIPID: getattr(config.display, "color_lipid", "yellow"),
-            ContourType.MACROPHAGE: getattr(config.display, "color_macrophage", "blue"),
-            ContourType.WIRE: getattr(config.display, "color_angle", "#ffa500"),
-            ContourType.REFERENCE: getattr(config.display, "color_reference", "yellow"),
-        }
-
-        self.contour_configs = {}
-        for ct in ContourType:
-            self.contour_configs[ct] = ContourConfig(
-                color=_default_colors.get(ct, self.color_contour),
-                thickness=self.contour_thickness,
-                point_radius=self.point_radius,
-                point_thickness=self.point_thickness,
-                alpha=self.alpha_contour,
-                n_points_contour=self.n_points_contour,
-                n_interactive_points=(
-                    self.n_interactive_points
-                    if ct in (ContourType.LUMEN, ContourType.EEM)
-                    else self.n_interactive_points // 2
-                ),
-            )
+        self.contour_configs = self._build_contour_configs()
 
         # scene data
         self.graphics_scene = QGraphicsScene(self)
@@ -151,6 +132,57 @@ class Display(QGraphicsView, MetricsMixin):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)  # ensures keyPressEvent fires after a click
+
+    def _build_contour_configs(self) -> dict:
+        """(Re)build contour_configs from the current cached scalar attrs."""
+        default_colors = {
+            ContourType.LUMEN: self.color_contour,
+            ContourType.EEM: self.color_eem,
+            ContourType.CALCIUM: self.color_calcium,
+            ContourType.BRANCH: self.color_branch,
+            ContourType.LIPID: self.color_lipid,
+            ContourType.MACROPHAGE: self.color_macrophage,
+            ContourType.WIRE: self.color_angle,
+            ContourType.REFERENCE: self.color_reference,
+        }
+        configs = {}
+        for ct in ContourType:
+            configs[ct] = ContourConfig(
+                color=default_colors.get(ct, self.color_contour),
+                thickness=self.contour_thickness,
+                point_radius=self.point_radius,
+                point_thickness=self.point_thickness,
+                alpha=self.alpha_contour,
+                n_points_contour=self.n_points_contour,
+                n_interactive_points=(
+                    self.n_interactive_points
+                    if ct in (ContourType.LUMEN, ContourType.EEM)
+                    else self.n_interactive_points // 2
+                ),
+            )
+        return configs
+
+    def apply_display_settings(self, values: dict) -> None:
+        """Apply edited Display Settings (from DisplaySettingsDialog) live to this Display."""
+        self.windowing_sensitivity = values['windowing_sensitivity']
+        self.zoom_sensitivity = values['zoom_sensitivity']
+        self.alpha_contour = values['alpha_contour']
+        self.n_points_contour = values['n_points_contour']
+        self.n_interactive_points = values['n_interactive_points']
+        self.contour_thickness = values['contour_thickness']
+        self.point_thickness = values['point_thickness']
+        self.point_radius = values['point_radius']
+        self.color_contour = values['color_contour']
+        self.color_eem = values['color_eem']
+        self.color_calcium = values['color_calcium']
+        self.color_branch = values['color_branch']
+        self.start_color = values['color_start_point']
+        self.end_color = values['color_end_point']
+        self.color_angle = values['color_angle']
+
+        self.contour_configs = self._build_contour_configs()
+        if self.images is not None:
+            self.update_display()
 
     def reset(self) -> None:
         """Reset all per-image interaction state. Called before a new image is loaded."""
