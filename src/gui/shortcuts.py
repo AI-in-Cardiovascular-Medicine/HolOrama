@@ -194,8 +194,6 @@ def init_menu(main_window, ccta_page):
     view_menu.addAction('Reset Zoom', partial(reset_zoom, main_window))
     toggle_color_action = view_menu.addAction('Toggle Color', partial(toggle_color, main_window))
     toggle_color_action.setShortcut('C')
-    view_menu.addSeparator()
-    view_menu.addAction('Display Settings...', partial(open_display_settings, main_window))
 
     run_menu = main_window.menu_bar.addMenu('Run')
     run_menu.addAction('Extract Diastolic and Systolic Frames', main_window.gating_plot)
@@ -203,6 +201,9 @@ def init_menu(main_window, ccta_page):
 
     metadata_menu = main_window.menu_bar.addMenu('Metadata')
     metadata_menu.addAction('Show Metadata', partial(show_metadata, main_window))
+
+    settings_menu = main_window.menu_bar.addMenu('Settings')
+    settings_menu.addAction('Display Settings...', partial(open_display_settings, main_window))
 
     help_menu = main_window.menu_bar.addMenu('Help')
     help_menu.addAction('GitHub Page', partial(open_url, main_window, description='github'))
