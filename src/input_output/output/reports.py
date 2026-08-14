@@ -4,6 +4,7 @@ import os
 from itertools import combinations
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 from loguru import logger
 from PyQt6.QtWidgets import QApplication, QProgressDialog
@@ -11,6 +12,33 @@ from shapely.errors import TopologicalError
 from shapely.geometry import Polygon
 
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
+
+
+def _pullback_positions(main_window) -> np.ndarray:
+    """Per-frame axial position (mm), indexable by 0-based frame index.
+
+    metadata['pullback_length'] is intentionally dual-typed (see input/metadata.py): IVUS
+    and NIfTI store a per-frame array, whereas OCT stores a single scalar (the total
+    pullback length). The report code indexes it per frame, so a scalar OCT value crashed
+    here with "'float' object is not subscriptable". Normalize the scalar/missing case into
+    the same per-frame array the array case already provides, derived from pullback_speed /
+    frame_rate — the mm-per-frame the longitudinal and breathing views already use, and the
+    same np.arange(1, N+1) * step convention as the IVUS/NIfTI per-frame arrays."""
+    md = main_window.runtime_data.metadata
+    pl = md.get('pullback_length')
+    if isinstance(pl, np.ndarray):
+        return pl
+    if isinstance(pl, (list, tuple)):
+        return np.asarray(pl, dtype=float)
+
+    num_frames = md.get('num_frames')
+    if not num_frames:
+        fdd = main_window.runtime_data.frame_data_dct
+        num_frames = (max(fdd) + 1) if fdd else 0
+    speed = md.get('pullback_speed')
+    frame_rate = md.get('frame_rate')
+    mm_per_frame = (speed / frame_rate) if speed and frame_rate else 0.0
+    return np.arange(1, num_frames + 1) * mm_per_frame
 
 
 def report(main_window, lower_limit=None, upper_limit=None, suppress_messages=False, write_files=True):
@@ -235,16 +263,16 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
     report_data['position'] = 0
     n_frames = main_window.runtime_data.metadata.get('num_frames', len(contoured_frames))
     start_frame = main_window.runtime_data.metadata['pullback_start_frame']
+    positions = _pullback_positions(main_window)
     if start_frame <= 0.25 * n_frames:
-        offset = main_window.runtime_data.metadata['pullback_length'][start_frame - 1]
-        report_data['position'] = [
-            main_window.runtime_data.metadata['pullback_length'][frame] for frame in contoured_frames
-        ]
+        # start_frame == 0 has no prior frame to reference — measure from frame 0 (offset 0)
+        # rather than letting [start_frame - 1] wrap to positions[-1] (the total length),
+        # which would collapse the whole column to zero after the max(x, 0) clamp below.
+        offset = positions[start_frame - 1] if start_frame >= 1 else 0.0
+        report_data['position'] = [positions[frame] for frame in contoured_frames]
         report_data['position'] = report_data['position'] - offset
     else:
-        report_data['position'] = [
-            main_window.runtime_data.metadata['pullback_length'][frame] for frame in contoured_frames
-        ]
+        report_data['position'] = [positions[frame] for frame in contoured_frames]
     report_data['position'] = report_data['position'].apply(lambda x: max(x, 0))
     report_data['phase'] = [main_window.runtime_data.frame_data_dct[frame].phase for frame in contoured_frames]
     report_data['lumen_area'] = [lumen_area[frame] for frame in contoured_frames]
@@ -281,43 +309,31 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
         if elliptic_ratio[frame] is not None:
             fd.lumen.measurements.elliptic_ratio = elliptic_ratio[frame]
 
-    # Save CSVs for lumen (diastolic/systolic) and for other contours if present
+    # Save CSVs for lumen and for other contours if present. One group per phase family
+    # that actually has frames: diastolic/systolic for IVUS gating, tagged for OCT — the
+    # latter previously produced nothing, since only the dia/sys groups were ever written.
     if save_as_csv:
-        save_csv_files(
-            main_window, lumen_x, lumen_y, name='diastolic', frames=main_window.runtime_data.gated_frames_dia
-        )
-        save_csv_files(main_window, lumen_x, lumen_y, name='systolic', frames=main_window.runtime_data.gated_frames_sys)
+        rt = main_window.runtime_data
+        frame_groups = [
+            ('diastolic', rt.gated_frames_dia),
+            ('systolic', rt.gated_frames_sys),
+            ('tagged', rt.tagged_frames),
+        ]
+        frame_groups = [(suffix, frames) for suffix, frames in frame_groups if frames]
+
+        for suffix, frames in frame_groups:
+            save_csv_files(main_window, lumen_x, lumen_y, name=suffix, frames=frames)
 
         # save EEM/Calcium/Branch CSVs if contours exist for any frame
         if eem_x is not None and any(elem is not None for elem in eem_x):
-            save_csv_files(
-                main_window, eem_x, eem_y, name='eem_diastolic', frames=main_window.runtime_data.gated_frames_dia
-            )
-            save_csv_files(
-                main_window, eem_x, eem_y, name='eem_systolic', frames=main_window.runtime_data.gated_frames_sys
-            )
+            for suffix, frames in frame_groups:
+                save_csv_files(main_window, eem_x, eem_y, name=f'eem_{suffix}', frames=frames)
         if calc_x is not None and any(elem is not None for elem in calc_x):
-            save_csv_files(
-                main_window, calc_x, calc_y, name='calcium_diastolic', frames=main_window.runtime_data.gated_frames_dia
-            )
-            save_csv_files(
-                main_window, calc_x, calc_y, name='calcium_systolic', frames=main_window.runtime_data.gated_frames_sys
-            )
+            for suffix, frames in frame_groups:
+                save_csv_files(main_window, calc_x, calc_y, name=f'calcium_{suffix}', frames=frames)
         if branch_x is not None and any(elem is not None for elem in branch_x):
-            save_csv_files(
-                main_window,
-                branch_x,
-                branch_y,
-                name='branch_diastolic',
-                frames=main_window.runtime_data.gated_frames_dia,
-            )
-            save_csv_files(
-                main_window,
-                branch_x,
-                branch_y,
-                name='branch_systolic',
-                frames=main_window.runtime_data.gated_frames_sys,
-            )
+            for suffix, frames in frame_groups:
+                save_csv_files(main_window, branch_x, branch_y, name=f'branch_{suffix}', frames=frames)
 
         if plot:
             index_1 = int(len(contoured_frames) * 0.2)
@@ -484,10 +500,11 @@ def save_csv_files(main_window, lumen_x, lumen_y, name, frames):
     logger.info(f'Saving {name} contours to {csv_out_dir}')
     os.makedirs(csv_out_dir, exist_ok=True)
     img_dim_mm = main_window.runtime_data.metadata['dimension'] * main_window.runtime_data.metadata['resolution']
+    positions = _pullback_positions(main_window)
 
     with open(os.path.join(csv_out_dir, f'{name}_contours.csv'), 'w', newline='') as contours_file:
         contours_writer = csv.writer(contours_file, delimiter='\t')
-        distance_offset = main_window.runtime_data.metadata['pullback_length'][frames[0]]
+        distance_offset = positions[frames[0]]
         for frame in frames:
             if lumen_x[frame] is None:
                 continue
@@ -496,14 +513,10 @@ def save_csv_files(main_window, lumen_x, lumen_y, name, frames):
                 [abs(y * main_window.runtime_data.metadata['resolution'] - img_dim_mm) for y in lumen_y[frame]],
             )
             for row in rows:
-                csv_row = (
-                    [frame + 1]
-                    + list(row)
-                    + [main_window.runtime_data.metadata['pullback_length'][frame] - distance_offset]
-                )
+                csv_row = [frame + 1] + list(row) + [positions[frame] - distance_offset]
                 contours_writer.writerow(csv_row)
 
-    if name in ('diastolic', 'systolic'):
+    if name in ('diastolic', 'systolic', 'tagged'):
         ref_file_name = f'{name}_reference_points.csv'
         with open(os.path.join(csv_out_dir, ref_file_name), 'w', newline='') as reference_file:
             reference_writer = csv.writer(reference_file, delimiter='\t')
@@ -516,6 +529,6 @@ def save_csv_files(main_window, lumen_x, lumen_y, name, frames):
                             frame + 1,
                             ref[0] * main_window.runtime_data.metadata['resolution'],
                             abs(ref[1] * main_window.runtime_data.metadata['resolution'] - img_dim_mm),
-                            main_window.runtime_data.metadata['pullback_length'][frame] - distance_offset,
+                            positions[frame] - distance_offset,
                         ]
                     )
