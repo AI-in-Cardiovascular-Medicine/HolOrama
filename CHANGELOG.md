@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.9.0] - 2026-08-14
+## [0.9.0] - 2026-08-14 Release Initial Compiled Binary
 
 ### Added
 - Fusion Intravascular Alignment: IVUS/OCT selector when loading a pullback. IVUS shows Diastole/Systole checkboxes, each with its own label field (both → dia/sys pair via `from_file_singlepair`, one → single phase via `from_file_single`); OCT shows a single label field and loads the exported tagged-frame arrays via `from_array`. Alignment/overlap/stitch now handle a single `PyGeometry`, not just a dia/sys `PyGeometryPair`.
@@ -405,6 +405,7 @@ Now runs on PyQt6
 - Declared first stable release (after paper publication).
 - Updated citation from medRxiv to *Computer Methods and Programs in Biomedicine*.
 
+[0.9.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.5.0...v0.6.0
