@@ -529,6 +529,12 @@ class FusionPage(QWidget):
         every time, since split_branch/merge_branches reassign branch IDs (by descending
         length) on every edit — there's no stable id to update in place."""
         viewer = self.left_half.viewer
+        # Unlike the geometry/tree scenes (which re-add by key and so keep visibility/
+        # opacity automatically), this scene is torn down and rebuilt from scratch every
+        # time because branch IDs get reassigned. Snapshot the per-layer state first and
+        # reapply it below for any key that still exists after the rebuild, so a
+        # threshold nudge or split/merge doesn't re-check every box the user had cleared.
+        saved_states = viewer.layer_states(FusionScene.CENTERLINE_BRANCHES)
         viewer.clear_scene(FusionScene.CENTERLINE_BRANCHES)
         self._branch_markers = []
         self._selected_branch_marker = None
@@ -607,6 +613,14 @@ class FusionPage(QWidget):
                     label_texts,
                     color=colors.SHARP_ANGLE_LABEL_COLOR,
                 )
+
+        # Reapply the visibility/opacity captured before the rebuild for any layer key
+        # that survived it (aorta, sharp-angle markers/labels, and any branch key whose
+        # id happened to be reused) — before refreshing the toolbar, so its checkboxes
+        # initialize to the restored state rather than the fresh defaults.
+        for key, (visible, opacity, _color) in saved_states.items():
+            viewer.set_layer_visible(FusionScene.CENTERLINE_BRANCHES, key, visible)
+            viewer.set_layer_opacity(FusionScene.CENTERLINE_BRANCHES, key, opacity)
 
         self.left_half.branch_toolbar.set_branch_choices(branch_ids_by_cl['rca'], branch_ids_by_cl['lca'])
         self.left_half.refresh_toolbar(FusionScene.CENTERLINE_BRANCHES)

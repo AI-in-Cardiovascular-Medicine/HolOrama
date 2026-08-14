@@ -198,6 +198,13 @@ class FusionViewer3D(QWidget):
         colors.SHARP_ANGLE_LABEL_COLOR)."""
         is_first_layer_in_scene = not self._scenes[scene].layers
 
+        # Same preservation as _add_actor: a re-add of an existing label layer keeps the
+        # user's checkbox state instead of forcing it back on. (Label layers have no
+        # opacity control, so only `visible` is carried over.)
+        existing = self._scenes[scene].layers.get(key)
+        if existing is not None:
+            visible = existing.visible
+
         self.remove_layer(scene, key)
         group: list[vtkProp3D] = []
         r, g, b = color
@@ -225,6 +232,17 @@ class FusionViewer3D(QWidget):
         # later re-adds/updates to an already-populated scene must NOT re-fit, or every
         # button click while the user has zoomed in would yank the camera back out.
         is_first_layer_in_scene = not self._scenes[scene].layers
+
+        # Preserve the user's current visibility/opacity across a re-add of the same key.
+        # Every pipeline step (scaling, point removal, stitch, remesh, smooth, …) re-adds
+        # its layers with the caller's default visible=True/opacity=…, which would
+        # otherwise silently re-check every box and reset every slider the user had
+        # adjusted. Only the *first* add of a key honors the caller's requested defaults
+        # (e.g. a translucent base mesh at 0.4); re-adds keep whatever the user set.
+        existing = self._scenes[scene].layers.get(key)
+        if existing is not None:
+            visible = existing.visible
+            opacity = existing.opacity
 
         self.remove_layer(scene, key)
         actor = vtkActor()
