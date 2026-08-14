@@ -73,20 +73,20 @@ class IntravascularColumn(QWidget):
         self._step_rotation = QDoubleSpinBox()
         self._step_rotation.setRange(0.01, 45.0)
         self._step_rotation.setSingleStep(0.1)
-        self._step_rotation.setValue(0.5)
+        self._step_rotation.setValue(0.1)
         self._step_rotation.setToolTip(
             'Rotation step (deg) for the coarse alignment search. Finer = more precise but slower.'
         )
         layout.addLayout(_row('Step rotation (deg):', self._step_rotation))
 
         self._sample_size = QSpinBox()
-        self._sample_size.setRange(1, 100000)
-        self._sample_size.setValue(500)
+        self._sample_size.setRange(1, 1000)
+        self._sample_size.setValue(200)
         self._sample_size.setToolTip('Number of points each frame is downsampled to before alignment.')
         layout.addLayout(_row('Sample size:', self._sample_size))
 
         self._n_points = QSpinBox()
-        self._n_points.setRange(3, 1000)
+        self._n_points.setRange(0, 1000)
         self._n_points.setValue(20)
         self._n_points.setToolTip('Number of points on the synthetic catheter contour (not the lumen contour).')
         layout.addLayout(_row('Catheter points:', self._n_points))

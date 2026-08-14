@@ -61,8 +61,8 @@ class FusionColumn(QWidget):
         ]:
             spin = QDoubleSpinBox()
             spin.setRange(-20.0, 20.0)
-            spin.setDecimals(3)
-            spin.setSingleStep(0.05)
+            spin.setDecimals(2)
+            spin.setSingleStep(0.1)
             spin.setToolTip('Auto-filled by "Compute Scaling Factors" — adjust freely before applying.')
             self._scaling_spinboxes[key] = spin
             layout.addLayout(_row(text, spin))
@@ -78,8 +78,8 @@ class FusionColumn(QWidget):
         # proximal/distal boundary.
         opposite_spin = QDoubleSpinBox()
         opposite_spin.setRange(-20.0, 20.0)
-        opposite_spin.setDecimals(3)
-        opposite_spin.setSingleStep(0.05)
+        opposite_spin.setDecimals(2)
+        opposite_spin.setSingleStep(0.1)
         opposite_spin.setToolTip(
             'Manual only — not computed. Scales the whole opposite-vessel region (the coronary '
             'not selected as Centerline in column 2) when applying. Leave at 0 to skip it.'
