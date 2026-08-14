@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.9.0] - 2026-08-14
+
+### Added
+- Fusion Intravascular Alignment: IVUS/OCT selector when loading a pullback. IVUS shows Diastole/Systole checkboxes, each with its own label field (both → dia/sys pair via `from_file_singlepair`, one → single phase via `from_file_single`); OCT shows a single label field and loads the exported tagged-frame arrays via `from_array`. Alignment/overlap/stitch now handle a single `PyGeometry`, not just a dia/sys `PyGeometryPair`.
+- Report export now covers OCT tagged frames: per-contour CSVs (lumen/eem/calcium/branch) and gated-image `.npy` files are written for tagged frames, not only diastole/systole.
+- Reporting always writes `combined_sorted_manual.csv` (previously only produced on breathing-sort viewer close): IVUS gated diastole-then-systole in acquisition order, OCT the tagged frames.
+
+### Fixed
+- Fusion 3-D viewer no longer resets every layer's checkbox/opacity when a pipeline step re-renders a scene; visibility and opacity are preserved across re-adds (branch scene snapshots and restores around its full rebuild).
+- Saving a report for OCT crashed (`pullback_length` is a scalar total length for OCT but a per-frame array for IVUS/NIfTI); per-frame positions are now derived consistently.
+- EEM/calcium/sidebranch contours were never written to CSV for any modality (they read a non-existent `display.full_contours`); they now come from the per-frame contour data like lumen.
+
 ## [0.8.1] - 2026-08-12
 
 ### Added
