@@ -85,11 +85,48 @@ def report(main_window, lower_limit=None, upper_limit=None, suppress_messages=Fa
                 index=False,
                 header=True,
             )
+            save_combined_sorted_manual(main_window, report_data)
 
         if not suppress_messages:
             SuccessMessage(main_window, 'Write report')
 
     return report_data
+
+
+def save_combined_sorted_manual(main_window, report_data) -> None:
+    """Always write combined_sorted_manual.csv alongside the report: the gated/tagged
+    frames as one CSV, with no breathing rearrangement.
+
+    This is the un-sorted baseline of the file the breathing-sort viewer produces. For IVUS
+    it's the diastolic then systolic gated frames, each in acquisition order; for OCT there
+    is no dia/sys gating, so it's the tagged frames instead. The breathing-sort viewer
+    overwrites this same file with its hand-adjusted ordering (and a breathing-corrected
+    position/distance_from_ostium_mm) when that tool is used — see
+    breathing_sort_viewer._write_combined_report."""
+    if report_data is None or report_data.empty:
+        return
+    rt = main_window.runtime_data
+    if rt.metadata.get('modality') == 'OCT':
+        ordered_frames = sorted(rt.tagged_frames)
+    else:
+        # Diastole block then systole block — the same combined order the breathing viewer
+        # concatenates, just without reordering within each block.
+        ordered_frames = sorted(rt.gated_frames_dia) + sorted(rt.gated_frames_sys)
+    if not ordered_frames:
+        return
+
+    # report_data['frame'] is 1-based (frame + 1); our frame indices are 0-based.
+    by_frame = report_data.set_index('frame')
+    wanted = [f + 1 for f in ordered_frames if (f + 1) in by_frame.index]
+    if not wanted:
+        return
+    combined = by_frame.loc[wanted].reset_index()
+
+    csv_out_dir = main_window.file_name + '_csv_files'
+    os.makedirs(csv_out_dir, exist_ok=True)
+    out_path = os.path.join(csv_out_dir, 'combined_sorted_manual.csv')
+    combined.to_csv(out_path, index=False)
+    logger.info(f'Saved combined_sorted_manual.csv ({len(combined)} frames) to {csv_out_dir}')
 
 
 def _safe_polygon_area(x_coords, y_coords, frame, contour_name, main_window):
