@@ -60,7 +60,17 @@ Currently spans:
 
 ## Installation
 
-The easiest way to install is via the provided scripts — they handle all platform-specific steps automatically. If you run into problems, follow the step-by-step instructions further below.
+### Pre-built Windows installer (recommended for most users)
+
+If you just want to run the app — no Python, no coding — download the latest **`HolOrama-Setup-<version>.exe`** from the [**Releases**](https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/releases/latest) page and run it. It installs per-user (no administrator rights), adds Start-Menu and Desktop shortcuts, and bundles everything it needs — logs and settings live in `%LOCALAPPDATA%\HolOrama`, while your analysis outputs are saved next to the files you open.
+
+> On first launch Windows may show a **"Windows protected your PC"** (SmartScreen) prompt because the installer isn't code-signed — click **More info → Run anyway**.
+
+The packaged build does **not** include automatic AI segmentation (which requires a full PyTorch/TensorFlow install). For segmentation or for development, install from source as described below.
+
+### From source
+
+The easiest way to install from source is via the provided scripts — they handle all platform-specific steps automatically. If you run into problems, follow the step-by-step instructions further below.
 
 ### Linux / macOS — script
 

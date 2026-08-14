@@ -1,6 +1,7 @@
 import atexit
 import logging
 import os
+import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -17,8 +18,23 @@ from PyQt6.QtWidgets import QApplication
 from gui.app import Master
 from version import __version__
 
-LOG_DIR = Path("logs")
-LOG_DIR.mkdir(exist_ok=True)
+# When frozen (Nuitka standalone), the app may be installed under a read-only
+# location such as C:\Program Files, and the shortcut's working directory points
+# there. The only two things the app writes on its own — its logs and its config
+# file — must therefore live in a per-user, always-writable directory instead of
+# next to the exe / relative to the CWD (which raises PermissionError on startup).
+# User data (contours, reports, NIfTi/STL exports) is unaffected: it keeps writing
+# next to the opened data file. Uncompiled dev runs keep the original in-repo paths.
+IS_FROZEN = "__compiled__" in globals()
+
+
+def _user_data_dir() -> Path:
+    base = Path(os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or Path.home())
+    return base / "HolOrama"
+
+
+LOG_DIR = (_user_data_dir() / "logs") if IS_FROZEN else Path("logs")
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / f"app_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 
 
@@ -125,8 +141,23 @@ def _load_config(path: Path) -> SimpleNamespace:
     return config
 
 
+def _resolve_config_path() -> Path:
+    """Return the config.yaml to load. In dev this is the copy next to the source; in
+    the frozen app it must be a writable per-user copy so 'Display Settings...' can save
+    back to it (the bundled one may sit under read-only C:\\Program Files). The per-user
+    copy is seeded from the bundled default on first run."""
+    bundled = Path(__file__).parent / 'config.yaml'
+    if not IS_FROZEN:
+        return bundled
+    user_cfg = _user_data_dir() / 'config.yaml'
+    if not user_cfg.exists():
+        user_cfg.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(bundled, user_cfg)
+    return user_cfg
+
+
 def main() -> None:
-    config = _load_config(Path(__file__).parent / 'config.yaml')
+    config = _load_config(_resolve_config_path())
     app = QApplication(sys.argv)
     app.setApplicationVersion(__version__)
 

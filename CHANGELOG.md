@@ -3,12 +3,19 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.9.0] - 2026-08-14
+## [0.9.0] - 2026-08-14 Release Initial Compiled Binary
 
 ### Added
 - Fusion Intravascular Alignment: IVUS/OCT selector when loading a pullback. IVUS shows Diastole/Systole checkboxes, each with its own label field (both → dia/sys pair via `from_file_singlepair`, one → single phase via `from_file_single`); OCT shows a single label field and loads the exported tagged-frame arrays via `from_array`. Alignment/overlap/stitch now handle a single `PyGeometry`, not just a dia/sys `PyGeometryPair`.
 - Report export now covers OCT tagged frames: per-contour CSVs (lumen/eem/calcium/branch) and gated-image `.npy` files are written for tagged frames, not only diastole/systole.
 - Reporting always writes `combined_sorted_manual.csv` (previously only produced on breathing-sort viewer close): IVUS gated diastole-then-systole in acquisition order, OCT the tagged frames.
+- Standalone Windows distribution: a Nuitka-compiled, inference-free build (excludes torch/torchvision/tensorflow/nnUNetv2 and the dev toolchain — so automatic segmentation is unavailable in the packaged app) wrapped by Inno Setup into a single `HolOrama-Setup-<version>.exe`. Installs per-user with no admin/UAC prompt, creates Start-Menu and Desktop shortcuts, embeds `desktop_img.ico`, and bundles `config.yaml` and `media/`. New build scripts: `build_nuitka.ps1`, `build_installer.ps1`, and `installer/HolOrama.iss`.
+
+### Changed
+- The frozen app keeps its own writes — logs and `config.yaml` — under `%LOCALAPPDATA%\HolOrama\` so it runs correctly from read-only install locations such as `C:\Program Files`. User data (contours, reports, NIfTi/STL exports) is unaffected and still writes next to the opened data file. Uncompiled dev runs are unchanged (`./logs`, in-repo config).
+
+### Removed
+- About video (Help → About) and its `VideoPlayer`/`about.mp4` wiring.
 
 ### Fixed
 - Fusion 3-D viewer no longer resets every layer's checkbox/opacity when a pipeline step re-renders a scene; visibility and opacity are preserved across re-adds (branch scene snapshots and restores around its full rebuild).
@@ -398,6 +405,7 @@ Now runs on PyQt6
 - Declared first stable release (after paper publication).
 - Updated citation from medRxiv to *Computer Methods and Programs in Biomedicine*.
 
+[0.9.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.5.0...v0.6.0

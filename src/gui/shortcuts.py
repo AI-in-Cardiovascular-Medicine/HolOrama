@@ -21,7 +21,8 @@ from pages.intravascular.popup_windows.display_settings_dialog import DisplaySet
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 from pages.intravascular.popup_windows.results_plot import ResultsPlot
-from pages.intravascular.popup_windows.video_player import VideoPlayer
+
+# from pages.intravascular.popup_windows.video_player import VideoPlayer  # About video disabled
 from pages.intravascular.utils.contours_gui import (
     new_angle,
     new_contour,
@@ -211,8 +212,8 @@ def init_menu(main_window, ccta_page):
     help_menu.addAction('Keyboard Shortcuts', partial(open_url, main_window, description='keyboard_shortcuts'))
     help_menu.addAction('Report a Problem', partial(open_url, main_window, description='issue'))
     help_menu.addAction('Request a Feature', partial(open_url, main_window, description='feature'))
-    help_menu.addSeparator()
-    help_menu.addAction('About', partial(open_url, main_window))
+    # help_menu.addSeparator()  # About video disabled
+    # help_menu.addAction('About', partial(open_url, main_window))  # About video disabled
 
 
 def _copy_contour_from_frame(main_window, source_frame: int) -> None:
@@ -497,9 +498,10 @@ def open_url(main_window, description=None):
     elif description == 'feature':
         url = 'https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/issues/new?template=feature_request.md'
     else:
-        video_player = VideoPlayer(main_window)
-        video_player.play('../media/about.mp4')
-        video_player.move(main_window.x() + main_window.width() // 2, main_window.y() + main_window.height() // 2)
+        # About video disabled
+        # video_player = VideoPlayer(main_window)
+        # video_player.play('../media/about.mp4')
+        # video_player.move(main_window.x() + main_window.width() // 2, main_window.y() + main_window.height() // 2)
         return
     if not QDesktopServices.openUrl(QUrl(url)):
         ErrorMessage(main_window, 'Could not open the browser. Please visit\n' + url)
