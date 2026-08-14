@@ -748,29 +748,89 @@ class FusionPage(QWidget):
 
     def _on_run_load_pullback(self) -> None:
         ic = self.right_half.intravascular_column
-        kwargs = ic.load_kwargs()
-        if not self._require(bool(kwargs['input_path']), 'Select a pullback case folder first.'):
+        plan = ic.load_plan()
+        if not self._require(bool(plan['input_path']), 'Select a pullback case folder first.'):
             return
-        result = self._run('Loading pullback…', 'Pullback loaded.', pipeline.run_from_file_singlepair, **kwargs)
+        common = {
+            'input_path': plan['input_path'],
+            'step_rotation_deg': plan['step_rotation_deg'],
+            'sample_size': plan['sample_size'],
+            'n_points': plan['n_points'],
+        }
+
+        if plan['mode'] == 'oct':
+            # OCT: single geometry loaded from the exported tagged-frame arrays.
+            result = self._run(
+                'Loading OCT pullback…', 'Pullback loaded.', pipeline.run_from_array, labels=plan['label'], **common
+            )
+        else:
+            dia, sys = plan['diastole'], plan['systole']
+            if not self._require(dia or sys, 'Select Diastole, Systole, or both.'):
+                return
+            if dia and sys:
+                # Both phases → the existing diastole/systole pair.
+                result = self._run(
+                    'Loading pullback (dia + sys)…',
+                    'Pullback loaded.',
+                    pipeline.run_from_file_singlepair,
+                    labels=[plan['dia_label'], plan['sys_label']],
+                    **common,
+                )
+            else:
+                # Exactly one phase → single geometry, diastole flag picks which.
+                label = plan['dia_label'] if dia else plan['sys_label']
+                result = self._run(
+                    'Loading pullback…',
+                    'Pullback loaded.',
+                    pipeline.run_from_file_single,
+                    label=label,
+                    diastole=dia,
+                    **common,
+                )
         if result is None:
             return
-        geometry_pair, align_logs = result
-        self.data.iv_geometry_pair = geometry_pair
+        geometry, align_logs = result
+        # May be a PyGeometryPair (dia/sys) or a single PyGeometry (OCT / one IVUS phase) —
+        # everything downstream normalizes via _phase_geoms / _primary_geom.
+        self.data.iv_geometry_pair = geometry
         self.data.iv_align_logs = align_logs
 
         # Shown before centerline alignment so a bad final result can be traced back to
         # whether it was already wrong here (dia/sys self-alignment) or introduced later.
-        self._add_geometry_pair_meshes(FusionScene.INTRAVASCULAR_LOADED, geometry_pair, 'raw_geom')
+        self._add_geometry_pair_meshes(FusionScene.INTRAVASCULAR_LOADED, geometry, 'raw_geom')
         self.left_half.show_scene(FusionScene.INTRAVASCULAR_LOADED)
+
+    @staticmethod
+    def _phase_geoms(geometry):
+        """Normalize a loaded/aligned intravascular result to (phase_key, geom, color) rows.
+        from_file_singlepair yields a PyGeometryPair (geom_a=diastole, geom_b=systole);
+        from_file_single / from_array yield a bare PyGeometry (one IVUS phase or OCT), which
+        is treated as a single phase-a geometry."""
+        geom_a = getattr(geometry, 'geom_a', None)
+        geom_b = getattr(geometry, 'geom_b', None)
+        if geom_a is None and geom_b is None:
+            return [('a', geometry, colors.DIASTOLE_COLOR)]
+        rows = []
+        if geom_a is not None:
+            rows.append(('a', geom_a, colors.DIASTOLE_COLOR))
+        if geom_b is not None:
+            rows.append(('b', geom_b, colors.SYSTOLE_COLOR))
+        return rows
+
+    @staticmethod
+    def _primary_geom(geometry):
+        """The single PyGeometry to read frames from / stitch: geom_a for a pair, or the
+        geometry itself when it's already a single PyGeometry."""
+        if geometry is None:
+            return None
+        geom_a = getattr(geometry, 'geom_a', None)
+        return geometry if geom_a is None else geom_a
 
     def _add_geometry_pair_meshes(self, scene: FusionScene, geometry_pair, key_prefix: str) -> None:
         """Loft lumen + wall meshes for both cardiac phases of a PyGeometryPair into `scene`.
         Used for both the pre-centerline-alignment (raw) and post-alignment scenes."""
         viewer = self.left_half.viewer
-        for phase_key, geom, color in (
-            ('a', getattr(geometry_pair, 'geom_a', None), colors.DIASTOLE_COLOR),
-            ('b', getattr(geometry_pair, 'geom_b', None), colors.SYSTOLE_COLOR),
-        ):
+        for phase_key, geom, color in self._phase_geoms(geometry_pair):
             if geom is None:
                 continue
             key = f'{key_prefix}_{phase_key}'
@@ -933,9 +993,10 @@ class FusionPage(QWidget):
             color=(0, 200, 0),
             size=4.0,
         )
-        # geom_a/geom_b are the two cardiac phases from from_file_singlepair's `labels`
-        # kwarg (default aligned_dia/aligned_sys — see IntravascularColumn.load_kwargs) —
-        # assumed diastole/systole in that order to match the app's existing color convention.
+        # For a pair, geom_a/geom_b are the two cardiac phases from from_file_singlepair's
+        # `labels` (default aligned_dia/aligned_sys — see IntravascularColumn.load_plan),
+        # assumed diastole/systole in that order to match the app's color convention; a
+        # single-phase (OCT / one IVUS phase) result renders as one geometry via _phase_geoms.
         self._add_geometry_pair_meshes(FusionScene.INTRAVASCULAR_ALIGNED, self.data.aligned, 'aligned_geom')
         self._refresh_aligned_ccta_mesh()
         self.left_half.show_scene(FusionScene.INTRAVASCULAR_ALIGNED)
@@ -962,10 +1023,11 @@ class FusionPage(QWidget):
     # ------------------------------------------------------------------
 
     def _aligned_frames(self):
-        if self.data.aligned is None:
+        geom = self._primary_geom(self.data.aligned)
+        if geom is None:
             return None
         try:
-            return self.data.aligned.geom_a.frames
+            return geom.frames
         except AttributeError:
             return None
 
@@ -1107,14 +1169,14 @@ class FusionPage(QWidget):
             return
         if not self._require(self.data.results is not None, 'Run label_geometry first.'):
             return
-        aligned = self.data.aligned
         results = self.data.results
-        assert aligned is not None and results is not None
+        aligned_geom = self._primary_geom(self.data.aligned)  # geom_a for a pair, else the single geometry
+        assert aligned_geom is not None and results is not None
         stitched = self._run(
             'Stitching CCTA to intravascular…',
             'Stitched.',
             pipeline.run_stitch,
-            aligned.geom_a,
+            aligned_geom,
             results['mesh'],
             results,
             **fc.stitch_kwargs(),

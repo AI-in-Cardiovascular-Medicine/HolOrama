@@ -1,5 +1,6 @@
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
@@ -9,6 +10,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QRadioButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -51,6 +53,23 @@ class IntravascularColumn(QWidget):
         box = QGroupBox('Load Pullback')
         layout = QVBoxLayout(box)
 
+        # Modality selector — drives which label fields show below and which pipeline entry
+        # point runs (see FusionPage._on_run_load_pullback):
+        #   IVUS → from_file_singlepair (both phases) or from_file_single (one phase)
+        #   OCT  → from_array (the exported tagged_contours.csv / tagged_reference_points.csv)
+        modality_row = QHBoxLayout()
+        self._ivus_radio = QRadioButton('IVUS')
+        self._oct_radio = QRadioButton('OCT')
+        self._ivus_radio.setChecked(True)
+        self._modality_group = QButtonGroup(self)
+        self._modality_group.addButton(self._ivus_radio)
+        self._modality_group.addButton(self._oct_radio)
+        modality_row.addWidget(QLabel('Modality:'))
+        modality_row.addWidget(self._ivus_radio)
+        modality_row.addWidget(self._oct_radio)
+        modality_row.addStretch(1)
+        layout.addLayout(modality_row)
+
         row = QHBoxLayout()
         self._input_path_edit = QLineEdit()
         self._input_path_edit.setReadOnly(True)
@@ -61,14 +80,32 @@ class IntravascularColumn(QWidget):
         row.addWidget(browse_btn)
         layout.addLayout(row)
 
-        labels_row = QHBoxLayout()
+        # IVUS: one checkbox + label field per phase. Check both → load a diastole/systole
+        # pair; check exactly one → load just that phase (diastole True/False).
+        self._ivus_phase_widget = QWidget()
+        ivus_layout = QVBoxLayout(self._ivus_phase_widget)
+        ivus_layout.setContentsMargins(0, 0, 0, 0)
+        ivus_layout.setSpacing(4)
+        self._dia_check = QCheckBox('Diastole')
+        self._dia_check.setChecked(True)
         self._label_dia_edit = QLineEdit('aligned_dia')
+        ivus_layout.addLayout(_checkbox_row(self._dia_check, self._label_dia_edit))
+        self._sys_check = QCheckBox('Systole')
+        self._sys_check.setChecked(True)
         self._label_sys_edit = QLineEdit('aligned_sys')
-        labels_row.addWidget(QLabel('Diastole label:'))
-        labels_row.addWidget(self._label_dia_edit)
-        labels_row.addWidget(QLabel('Systole label:'))
-        labels_row.addWidget(self._label_sys_edit)
-        layout.addLayout(labels_row)
+        ivus_layout.addLayout(_checkbox_row(self._sys_check, self._label_sys_edit))
+        layout.addWidget(self._ivus_phase_widget)
+
+        # OCT: a single label field; loads the tagged-frame arrays via from_array.
+        self._oct_label_widget = QWidget()
+        oct_layout = QHBoxLayout(self._oct_label_widget)
+        oct_layout.setContentsMargins(0, 0, 0, 0)
+        self._label_oct_edit = QLineEdit('tagged')
+        oct_layout.addWidget(QLabel('Label:'))
+        oct_layout.addWidget(self._label_oct_edit, 1)
+        layout.addWidget(self._oct_label_widget)
+
+        self._ivus_radio.toggled.connect(self._on_modality_toggled)
 
         self._step_rotation = QDoubleSpinBox()
         self._step_rotation.setRange(0.01, 45.0)
@@ -94,7 +131,14 @@ class IntravascularColumn(QWidget):
         load_btn = QPushButton('Load Pullback')
         load_btn.clicked.connect(self.run_load_requested.emit)
         layout.addWidget(load_btn)
+
+        self._on_modality_toggled()  # set initial IVUS/OCT field visibility
         return box
+
+    def _on_modality_toggled(self, *_) -> None:
+        is_ivus = self._ivus_radio.isChecked()
+        self._ivus_phase_widget.setVisible(is_ivus)
+        self._oct_label_widget.setVisible(not is_ivus)
 
     def _build_reference_group(self) -> QGroupBox:
         box = QGroupBox('Reference Points (from Vessel Tree)')
@@ -246,13 +290,25 @@ class IntravascularColumn(QWidget):
     # Param getters
     # ------------------------------------------------------------------
 
-    def load_kwargs(self) -> dict:
-        return {
+    def load_plan(self) -> dict:
+        """Everything FusionPage._on_run_load_pullback needs to pick and parameterize the
+        right pipeline entry point. `mode` is 'oct' or 'ivus'; the common alignment params
+        are shared by all three entry points (from_array / from_file_single / _singlepair)."""
+        common = {
             'input_path': self._input_path_edit.text(),
-            'labels': [self._label_dia_edit.text(), self._label_sys_edit.text()],
             'step_rotation_deg': self._step_rotation.value(),
             'sample_size': self._sample_size.value(),
             'n_points': self._n_points.value(),
+        }
+        if self._oct_radio.isChecked():
+            return {'mode': 'oct', 'label': self._label_oct_edit.text(), **common}
+        return {
+            'mode': 'ivus',
+            'diastole': self._dia_check.isChecked(),
+            'systole': self._sys_check.isChecked(),
+            'dia_label': self._label_dia_edit.text(),
+            'sys_label': self._label_sys_edit.text(),
+            **common,
         }
 
     def branch_index(self) -> int:
@@ -279,6 +335,13 @@ class IntravascularColumn(QWidget):
 def _row(label: str, widget: QWidget) -> QHBoxLayout:
     layout = QHBoxLayout()
     layout.addWidget(QLabel(label))
+    layout.addWidget(widget, 1)
+    return layout
+
+
+def _checkbox_row(checkbox: QCheckBox, widget: QWidget) -> QHBoxLayout:
+    layout = QHBoxLayout()
+    layout.addWidget(checkbox)
     layout.addWidget(widget, 1)
     return layout
 

@@ -19,8 +19,9 @@ matplotlib/trimesh scenes, which would fight with our VTK viewer; we recreate th
 visualizations as native VTK layers instead (see page.py's ``_refresh_*_scene`` methods
 and left_half/colors.py for the color legend, ported from multimodars/ccta/debug_plots.py).
 """
-
 from __future__ import annotations
+
+import os
 
 from typing import Any
 
@@ -141,15 +142,83 @@ def run_discretize_vessel_tree(
     )
 
 
+def run_from_array(
+    input_path: str,
+    labels: str,
+    *,
+    step_rotation_deg: float = 0.1,
+    sample_size: int = 200,
+    n_points: int = 20,
+    output_path: str = 'output/single',
+    watertight: bool = False,
+    write_obj: bool = False,
+    smooth: bool = True,
+) -> tuple[Any, Any]:
+    # Tab-delimited to match the report exporter (save_csv_files writes these with
+    # csv.writer(delimiter='\t')). Each row is [frame, x_mm, y_mm, position_mm], i.e.
+    # [frame_index, x, y, z] as numpy_to_inputdata expects.
+    oct_raw = np.genfromtxt(os.path.join(input_path, "tagged_contours.csv"), delimiter='\t')
+    oct_ref = np.genfromtxt(os.path.join(input_path, "tagged_reference_points.csv"), delimiter='\t')
+
+    oct_input = mm.numpy_to_inputdata(
+        lumen_arr=oct_raw,
+        ref_point=oct_ref,
+        record=None,
+        diastole=True,
+        label=labels,
+    )
+
+    return mm.from_array_single(
+        input_data=oct_input,
+        step_rotation_deg=step_rotation_deg,
+        sample_size=sample_size,
+        image_center=(5.0, 5.0),
+        n_points=n_points,
+        output_path=output_path,
+        watertight=watertight,
+        write_obj=write_obj,
+        smooth=smooth,
+    )
+
+
+def run_from_file_single(
+    input_path: str,
+    label: str,
+    *,
+    diastole: bool = True,
+    step_rotation_deg: float = 0.1,
+    sample_size: int = 200,
+    n_points: int = 20,
+    output_path: str = 'output/single',
+    watertight: bool = False,
+    write_obj: bool = False,
+    smooth: bool = True,
+) -> tuple[Any, Any]:
+    # from_file_single takes labels as a 1-element list; `diastole` picks which phase of
+    # the IVUS CSV folder to read. Returns a single PyGeometry (not a pair).
+    return mm.from_file_single(
+        input_path=input_path,
+        labels=[label],
+        diastole=diastole,
+        step_rotation_deg=step_rotation_deg,
+        sample_size=sample_size,
+        n_points=n_points,
+        output_path=output_path,
+        watertight=watertight,
+        write_obj=write_obj,
+        smooth=smooth,
+    )
+
+
 def run_from_file_singlepair(
     input_path: str,
     labels: list[str],
     *,
-    step_rotation_deg: float = 0.5,
-    sample_size: int = 500,
+    step_rotation_deg: float = 0.1,
+    sample_size: int = 200,
     n_points: int = 20,
     output_path: str = 'output/singlepair',
-    watertight: bool = True,
+    watertight: bool = False,
     write_obj: bool = False,
     smooth: bool = True,
 ) -> tuple[Any, tuple[Any, Any]]:
