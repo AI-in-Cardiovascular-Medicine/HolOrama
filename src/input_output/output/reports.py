@@ -211,24 +211,30 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
             return fc
         return None
 
-    # Lumen full contours (defensive)
-    lumen_full_list = _get_full_list_by_name("lumen")
-    # Fallback: try display.get_full_contour_list for backward compatibility
-    if lumen_full_list is None:
+    # Per-type interpolated contour lists. Prefer a display.full_contours dict if one is
+    # ever present (backward compat), otherwise read from frame_data_dct via
+    # get_full_contour_list — the modality-agnostic source. Previously only lumen had this
+    # fallback, so eem/calcium/branch always resolved to None (display.full_contours does
+    # not exist) and were never written to CSV for ANY modality — most visible on OCT,
+    # where lumen was the only contour that ever showed up in the export.
+    from domain.all_types import ContourType
+
+    def _full_list(name, contour_type):
+        lst = _get_full_list_by_name(name)
+        if lst is not None:
+            return lst
         try:
-            from domain.all_types import ContourType
-
-            lumen_full_list = main_window.display.get_full_contour_list(ContourType.LUMEN)
-        except (ImportError, AttributeError) as e:
+            return main_window.display.get_full_contour_list(contour_type)
+        except AttributeError as e:
             logger.bind(file=main_window.file_name).warning(
-                f'Could not import ContourType/get_full_contour_list; using display.full_contours fallback. Reason: {e}'
+                f'Could not fetch {name} full contour list via get_full_contour_list: {e}'
             )
-            lumen_full_list = getattr(main_window.display, "full_contours", None)
+            return getattr(main_window.display, "full_contours", None)
 
-    # !! Build other contour full lists (eem, calcium, branch) for CSV saving / optional metrics, careful if new added !!
-    eem_full_list = _get_full_list_by_name("eem")
-    calc_full_list = _get_full_list_by_name("calcium")
-    branch_full_list = _get_full_list_by_name("branch")
+    lumen_full_list = _full_list("lumen", ContourType.LUMEN)
+    eem_full_list = _full_list("eem", ContourType.EEM)
+    calc_full_list = _full_list("calcium", ContourType.CALCIUM)
+    branch_full_list = _full_list("branch", ContourType.BRANCH)
 
     def build_xy_lists(full_list):
         if full_list is None:
