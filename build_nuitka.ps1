@@ -49,6 +49,12 @@ $nuitkaArgs = @(
     '--include-package=pydicom',
     '--include-package=pylibjpeg',
     '--include-package=libjpeg',
+    # pylibjpeg discovers its decoders via importlib.metadata entry points, which
+    # live in the packages' .dist-info metadata. Nuitka drops that metadata by
+    # default, so without this the libjpeg decoder is invisible at runtime and
+    # JPEG-compressed DICOMs fail with "'pylibjpeg-libjpeg' plugin is not installed".
+    '--include-distribution-metadata=pylibjpeg',
+    '--include-distribution-metadata=pylibjpeg-libjpeg',
     # Windows executable metadata.
     '--company-name=HolOrama',
     '--product-name=HolOrama',
