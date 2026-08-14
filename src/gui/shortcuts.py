@@ -17,6 +17,7 @@ from input_output.output.contours import write_contours
 from input_output.output.imgs_masks import save_as_nifti
 from input_output.output.other_fmt import save_gated_images
 from input_output.output.reports import report
+from pages.intravascular.popup_windows.display_settings_dialog import DisplaySettingsDialog, apply_and_save
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 from pages.intravascular.popup_windows.results_plot import ResultsPlot
@@ -193,7 +194,6 @@ def init_menu(main_window, ccta_page):
     view_menu.addAction('Reset Zoom', partial(reset_zoom, main_window))
     toggle_color_action = view_menu.addAction('Toggle Color', partial(toggle_color, main_window))
     toggle_color_action.setShortcut('C')
-    view_menu.addSeparator()
 
     run_menu = main_window.menu_bar.addMenu('Run')
     run_menu.addAction('Extract Diastolic and Systolic Frames', main_window.gating_plot)
@@ -201,6 +201,9 @@ def init_menu(main_window, ccta_page):
 
     metadata_menu = main_window.menu_bar.addMenu('Metadata')
     metadata_menu.addAction('Show Metadata', partial(show_metadata, main_window))
+
+    settings_menu = main_window.menu_bar.addMenu('Settings')
+    settings_menu.addAction('Display Settings...', partial(open_display_settings, main_window))
 
     help_menu = main_window.menu_bar.addMenu('Help')
     help_menu.addAction('GitHub Page', partial(open_url, main_window, description='github'))
@@ -616,6 +619,12 @@ def toggle_color(main_window):
     if main_window.image_displayed:
         main_window.colormap_enabled = not main_window.colormap_enabled
         main_window.display.display_image(update_image=True)
+
+
+def open_display_settings(main_window):
+    dialog = DisplaySettingsDialog(main_window)
+    if dialog.exec():
+        apply_and_save(main_window, dialog.get_values())
 
 
 def plot_results(main_window):

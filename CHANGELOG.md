@@ -3,7 +3,12 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.8.0] - 2026
+## [0.8.1] - 2026-08-12
+
+### Added
+- The config is now displayed in it's own tab, where ever value can be changed manually (including colors)
+
+## [0.8.0] - 2026-08-11
 
 ### Added
 - lasso tool on Fusion's CCTA Geometry tab to reclassify labeled points between regions (e.g. rca_points → aorta_points) by drawing a closed lasso around them in the 3-D view
