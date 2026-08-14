@@ -321,7 +321,7 @@ def run_sync_results_to_mesh(results: dict, old_mesh: trimesh.Trimesh, new_mesh:
 
 
 def run_remove_labeled_points(results: dict, region_keys: list[str] | str) -> dict:
-    return mm.remove_labeled_points_from_mesh(results, region_keys)
+    return mm.remove_labeled_points_from_mesh(results, region_keys, target_boundaries=2)
 
 
 def run_stitch(
