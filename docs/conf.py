@@ -12,8 +12,8 @@ def get_version():
     return ns.get('__version__', '0.0.0')
 
 
-project = 'AIVUS-CAA'
-copyright = '2025, AI-in-Cardiovascular-Medicine'
+project = 'HolOrama'
+copyright = '2026, AI-in-Cardiovascular-Medicine'
 author = 'Anselm W. Stark'
 release = get_version()
 version = '.'.join(release.split('.')[:2])
@@ -33,7 +33,7 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 myst_heading_anchors = 3
 
 html_theme = 'furo'
-html_title = 'AIVUS-CAA Documentation'
+html_title = 'HolOrama Documentation'
 html_theme_options = {
     'navigation_with_keys': True,
 }

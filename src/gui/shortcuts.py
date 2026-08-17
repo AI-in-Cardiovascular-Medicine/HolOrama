@@ -492,7 +492,7 @@ def open_url(main_window, description=None):
     elif description == 'docs':
         url = 'https://holorama.readthedocs.io/en/latest'
     elif description == 'keyboard_shortcuts':
-        url = 'https://holorama.readthedocs.io/en/latest/contents/usage.html'
+        url = 'https://holorama.readthedocs.io/en/latest/contents/shortcuts.html'
     elif description == 'issue':
         url = 'https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/issues/new?template=bug_report.md'
     elif description == 'feature':
