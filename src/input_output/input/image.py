@@ -156,12 +156,8 @@ def read_image(main_window) -> None:
 
         if success:
             # scaling_factor is now set; batch-compute areas for all contoured frames
-            # so the longitudinal view is fully populated without requiring navigation.
-            main_window.display.compute_all_frame_metrics()
-            try:
-                main_window.longitudinal_view.plot_areas()
-            except Exception:
-                pass
+            # so the pullback overviews are fully populated without requiring navigation.
+            main_window.display.refresh_all_frame_metrics()
 
         main_window.display_slider.setValue(num_frames - 1)
         main_window.right_half.update_for_modality()
@@ -262,6 +258,8 @@ def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) 
 
     main_window.segmentation = True
     main_window.display.set_frame(main_window.display.frame)
+    if contour_type is ContourType.LUMEN:  # the overviews are built from lumen measurements
+        main_window.display.refresh_all_frame_metrics()
     write_contours(main_window, force=True)
 
 

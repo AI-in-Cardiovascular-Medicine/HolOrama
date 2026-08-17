@@ -28,6 +28,7 @@ from pages.intravascular.right_half.right_half import (
     use_diastolic,
     use_tagged,
 )
+from pages.intravascular.utils.oct_plot import OCTPlot
 from pages.intravascular.utils.slider import Communicate, Slider
 from segmentation.predict import Predict
 
@@ -90,6 +91,7 @@ class IntravascularPage(QSplitter):
         self.use_diastolic_button.setToolTip('Press button to switch between diastolic and systolic frames')
         self.gating_display: GatingDisplay = GatingDisplay(self)
         self.longitudinal_view: LongitudinalView = LongitudinalView(self)
+        self.oct_plot: OCTPlot = OCTPlot(self)  # OCT counterpart of the gating plot
 
         self.tagged_frame_button: QCheckBox = QCheckBox('Tagged Frame')
         self.tagged_frame_button.setChecked(False)
@@ -150,6 +152,7 @@ class IntravascularPage(QSplitter):
             self.small_display.close()
             self.small_display = None
         self.display.reset()
+        self.oct_plot.reset()
         self.file_name = None
         self.image_displayed = False
         self.segmentation = False

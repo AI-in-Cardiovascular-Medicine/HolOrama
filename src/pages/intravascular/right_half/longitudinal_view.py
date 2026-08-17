@@ -185,6 +185,16 @@ class LongitudinalView(QGraphicsView):
                 self.graphics_scene.removeItem(item)
         self._area_items = []
 
+        # plot_areas() is the app's "contours changed, redraw the pullback overviews" call
+        # (see its call sites in display.py / shortcuts.py / segment.py), so the OCT
+        # schematic above this view refreshes from here too — before the early returns
+        # below, so deleting the last contour clears it as well. Its per-frame cache keeps
+        # a refresh with nothing changed cheap.
+        if self.oct_mode:
+            oct_plot = getattr(self.main_window, 'oct_plot', None)
+            if oct_plot is not None:
+                oct_plot.refresh()
+
         if not self.main_window.runtime_data.frame_data_dct or self.image_height == 0:
             return
 

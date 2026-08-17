@@ -1,12 +1,12 @@
-from typing import Any, Tuple
+from typing import Any, Sequence, Tuple
 
-import numpy as np
 from loguru import logger
 from PyQt6.QtCore import QLineF, Qt
 from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import QGraphicsTextItem
 from shapely.geometry import Polygon
 
+from domain.io_types import FrameData, Measurements
 from input_output.output.reports import (
     closest_points,
     compute_polygon_metrics,
@@ -15,6 +15,14 @@ from input_output.output.reports import (
 
 # Internal imports based on your file structure
 from tools.geometry import get_qt_pen
+
+
+def clear_lumen_measurements(frame_data: FrameData) -> None:
+    """Forget everything derived from a frame's lumen contour."""
+    frame_data.lumen.measurements = Measurements()
+    frame_data.centroid = None
+    frame_data.closest_points = None
+    frame_data.farthest_points = None
 
 
 class MetricsMixin:
@@ -36,10 +44,11 @@ class MetricsMixin:
 
     def _maybe_compute_metrics(
         self,
-        unscaled_lumen: Tuple[np.ndarray, np.ndarray] | None = None,
-        unscaled_eem: Tuple[np.ndarray, np.ndarray] | None = None,
+        unscaled_lumen: Tuple[Sequence[float], Sequence[float]] | None = None,
+        unscaled_eem: Tuple[Sequence[float], Sequence[float]] | None = None,
     ):
         if unscaled_lumen is None:
+            self._clear_lumen_metrics_if_uncontoured()
             return
 
         try:
@@ -95,6 +104,32 @@ class MetricsMixin:
             self.build_frame_metrics_text(
                 lumen_area, lumen_circumf, ell, longest_d, shortest_d, eem_area, pct, update_phase=False
             )
+
+    def _clear_lumen_metrics_if_uncontoured(self):
+        """Drop the current frame's lumen measurements once its contour is gone.
+
+        The measurements are what the longitudinal view and the OCT schematic plot, so
+        leaving them behind after a delete keeps drawing a frame that no longer has a
+        contour. Only clears when frame_data agrees the contour is gone — a contour that
+        merely failed to interpolate keeps its numbers.
+        """
+        frame_data = self.main_window.runtime_data.frame_data_dct.get(self.frame)
+        if frame_data is None or frame_data.lumen.contours:
+            return
+        clear_lumen_measurements(frame_data)
+
+    def refresh_all_frame_metrics(self):
+        """Recompute every contoured frame's metrics, then redraw the pullback overviews.
+
+        For contour changes made across many frames at once — automatic segmentation,
+        mask import, file load — where per-frame measurements would otherwise only appear
+        as the user visits each frame, leaving both overviews blank in the meantime.
+        """
+        self.compute_all_frame_metrics()
+        try:
+            self.main_window.longitudinal_view.plot_areas()
+        except Exception as exc:
+            logger.debug(f'Could not refresh the pullback overviews: {exc}')
 
     def compute_all_frame_metrics(self):
         """Batch-compute lumen area and minor axis for every frame that has a contour.

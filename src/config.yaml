@@ -17,6 +17,7 @@ display:
   color_end_point: 'red'
   color_angle: '#ffa500'
   alpha_contour: 100 # 0-255
+  catheter_diameter: 0.9  # mm, drawn in the OCT vessel schematic (0.9 = 2.7 F imaging catheter)
 
 gating:
   normalize_step: 100

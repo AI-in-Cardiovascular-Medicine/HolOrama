@@ -159,7 +159,7 @@ class RightHalf:
         vbox.addLayout(checkboxes)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
-        splitter.addWidget(QWidget())  # empty top placeholder — add functionality later
+        splitter.addWidget(mw.oct_plot)  # the IVUS gating plot's slot: OCT has no gating to show
         splitter.addWidget(mw.longitudinal_view)
         splitter.setStretchFactor(0, mw.config.display.gating_display_stretch)
         splitter.setStretchFactor(1, mw.config.display.lview_display_stretch)
@@ -194,16 +194,26 @@ class RightHalf:
     # ------------------------------------------------------------------
 
     def update_for_modality(self):
+        mw = self.main_window
+        # These widgets live on main_window and are only borrowed by the per-modality
+        # layout, so detach them before that layout is destroyed — otherwise Qt deletes
+        # them along with their parent tree and the next rebuild reuses a dead object.
+        for widget in (mw.gating_display, mw.gating_display.toolbar, mw.longitudinal_view, mw.oct_plot):
+            widget.setParent(None)
+
         self.right_layout.removeWidget(self.content_widget)
         self.content_widget.setParent(None)
         self.content_widget.deleteLater()
 
-        is_oct = self.main_window.runtime_data.metadata.get('modality') == 'OCT'
-        self.main_window.longitudinal_view.set_oct_mode(is_oct)
+        is_oct = mw.runtime_data.metadata.get('modality') == 'OCT'
+        mw.longitudinal_view.set_oct_mode(is_oct)
         if is_oct:
-            self.main_window.runtime_data.gated_frames = self.main_window.runtime_data.tagged_frames
+            mw.runtime_data.gated_frames = mw.runtime_data.tagged_frames
             self.content_widget = self._build_oct()
+            mw.oct_plot.set_frame(mw.display_slider.value())
+            mw.oct_plot.refresh()
         else:
+            mw.oct_plot.reset()  # drops the old pullback and stops its background measuring
             self.content_widget = self._build_non_oct()
 
         self.right_layout.addWidget(self.content_widget)
@@ -285,13 +295,14 @@ def set_oct_quality(main_window, label):
 
 
 def update_oct_display(main_window, frame):
-    """Update Tagged Frame checkbox and quality buttons when the slider moves (OCT only)."""
+    """Update Tagged Frame checkbox, quality buttons and schematic marker on slider moves (OCT only)."""
     if main_window.image_displayed and main_window.runtime_data.metadata.get('modality') == 'OCT':
         main_window.tagged_frame_button.blockSignals(True)
         main_window.tagged_frame_button.setChecked(frame in main_window.runtime_data.tagged_frames)
         main_window.tagged_frame_button.blockSignals(False)
         quality = main_window.runtime_data.frame_data_dct[frame].quality
         main_window.oct_quality_buttons[quality].setChecked(True)
+        main_window.oct_plot.set_frame(frame)
 
 
 # ---------------------------------------------------------------------------

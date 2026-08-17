@@ -253,6 +253,84 @@ def _wire_shadow_mask(wire, image_shape, center_y, center_x):
 # ---------------------------------------------------------------------------
 
 
+def _scaled_frame_view(frame_data, factor: float):
+    """A stand-in FrameData with every contour this module rasterizes scaled by *factor*.
+
+    Only the fields _contour_obj_to_mask / _open_outer_sector_mask read are filled in;
+    the original frame is left untouched.
+    """
+    from domain.io_types import Contour, FrameData
+
+    def scaled(contour_obj):
+        entries = []
+        for entry in contour_obj.contours:
+            xs = entry[0] if entry else []
+            ys = entry[1] if len(entry) > 1 else []
+            entries.append(([x * factor for x in xs], [y * factor for y in ys]))
+        return Contour(contours=entries, closed=list(contour_obj.closed))
+
+    centroid = frame_data.centroid
+    return FrameData(
+        lumen=scaled(frame_data.lumen),
+        eem=scaled(frame_data.eem),
+        calcium=scaled(frame_data.calcium),
+        lipid=scaled(frame_data.lipid),
+        macrophage=scaled(frame_data.macrophage),
+        centroid=(centroid[0] * factor, centroid[1] * factor) if centroid is not None else None,
+    )
+
+
+def frame_region_areas(frame_data, image_shape, resolution: float, downsample: int = 1) -> dict[str, float]:
+    """Areas (mm²) of one frame's lumen, wall and plaque regions, rasterized.
+
+    Plaques are clipped to the wall (inside EEM, outside lumen) exactly the way
+    contours_to_mask clips them, so every plaque area is a subset of `wall` and a
+    caller's plaque/wall fraction stays in 0..1. Rasterizing rather than taking a
+    polygon area is what makes the plaques measurable at all: calcium/lipid are
+    usually drawn as open arcs, which only enclose a region once closed against
+    the EEM boundary (see _open_outer_sector_mask).
+
+    Unlike contours_to_mask this does not apply the onion-layering priority — each
+    region is measured on its own, so overlapping plaques both count in full.
+
+    `downsample` > 1 rasterizes on a grid that many times smaller in each direction
+    (cost drops with its square). Boundary pixels then carry more area each, so use
+    it where a fraction of a region is wanted rather than an exact mm² — measuring a
+    whole pullback, say — and leave it at 1 when the absolute area matters.
+    """
+    if downsample > 1:
+        factor = 1.0 / downsample
+        frame_data = _scaled_frame_view(frame_data, factor)
+        image_shape = (max(int(image_shape[0] * factor), 1), max(int(image_shape[1] * factor), 1))
+        resolution = float(resolution) * downsample
+
+    px_area = float(resolution) ** 2
+    cx, cy = frame_data.centroid if frame_data.centroid is not None else (image_shape[1] / 2.0, image_shape[0] / 2.0)
+
+    lumen_mask = _contour_obj_to_mask(frame_data.lumen, cx, cy, image_shape)
+    has_eem = bool(frame_data.eem.contours)
+    eem_mask = _contour_obj_to_mask(frame_data.eem, cx, cy, image_shape) if has_eem else None
+    wall = (eem_mask & ~lumen_mask) if eem_mask is not None else np.zeros(image_shape, dtype=bool)
+
+    areas = {
+        'lumen': float(lumen_mask.sum()) * px_area,
+        'eem': float(eem_mask.sum()) * px_area if eem_mask is not None else 0.0,
+        'wall': float(wall.sum()) * px_area,
+    }
+    for contour_type in (ContourType.CALCIUM, ContourType.LIPID, ContourType.MACROPHAGE):
+        contour_obj = getattr(frame_data, contour_type.value)
+        if not contour_obj.contours:
+            areas[contour_type.value] = 0.0
+            continue
+        plaque = _contour_obj_to_mask(contour_obj, cx, cy, image_shape)
+        if eem_mask is not None:
+            plaque &= eem_mask
+        plaque &= ~lumen_mask
+        areas[contour_type.value] = float(plaque.sum()) * px_area
+
+    return areas
+
+
 def contours_to_mask(images, contoured_frames, data):
     """
     Convert IVUS contours to a multi-label numpy mask.
