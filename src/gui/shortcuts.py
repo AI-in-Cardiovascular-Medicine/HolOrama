@@ -30,6 +30,7 @@ from pages.intravascular.utils.contours_gui import (
     new_measure,
     set_tool,
 )
+from pages.intravascular.utils.metrics import clear_lumen_measurements
 
 
 def _sync_contour_combo(main_window, contour_type):
@@ -361,12 +362,16 @@ def remove_contours(main_window):
             main_window.status_bar.showMessage('Removing contours...')
             lower_limit, upper_limit = dialog.getInputs()
             key = main_window.display.contour_key()
+            is_lumen = key == ContourType.LUMEN.value
             for frame in range(lower_limit, upper_limit):
                 fd = main_window.runtime_data.frame_data_dct.get(frame)
                 if fd:
                     contour_obj = getattr(fd, key, None)
                     if contour_obj:
                         contour_obj.contours = []
+                    if is_lumen:
+                        # the overviews plot these, so they must go with the contour
+                        clear_lumen_measurements(fd)
             main_window.longitudinal_view.remove_contours(lower_limit, upper_limit)
             main_window.display.update_display()
             main_window.status_bar.showMessage(main_window.waiting_status)
@@ -579,6 +584,10 @@ def delete_contour(main_window):
                     main_window.display.active_contour_index = 0
 
         main_window.display.display_image(update_contours=True)
+        try:  # the deleted contour must disappear from the pullback overviews too
+            main_window.longitudinal_view.plot_areas()
+        except Exception as e:
+            logger.debug(f'Could not update longitudinal view after contour delete: {e}')
 
 
 def undo_last_contour_edit(main_window):

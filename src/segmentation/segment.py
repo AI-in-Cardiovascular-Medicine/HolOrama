@@ -39,7 +39,10 @@ def segment(main_window):
             main_window.hide_contours_box.setChecked(False)
 
     SuccessMessage(main_window, 'Automatic segmentation')
-    main_window.longitudinal_view.plot_areas()
+    # Every segmented frame needs its metrics computed here: a frame is otherwise only
+    # measured when displayed, so the pullback overviews would stay empty until the user
+    # scrolled through the whole segmented range.
+    main_window.display.refresh_all_frame_metrics()
     main_window.status_bar.showMessage(main_window.waiting_status)
 
 

@@ -545,35 +545,21 @@ class Display(QGraphicsView, MetricsMixin):
             self.main_window.longitudinal_view.hide_lview_contours()
         else:
             if update_contours:
-                lumen_key = self.contour_key(ContourType.LUMEN)
-                eem_key = self.contour_key(ContourType.EEM)
-                lumen_contour = None
-                lumen = self.finalized_splines.get(lumen_key)
-                if lumen:
-                    if isinstance(lumen, list):
-                        first = lumen[0] if len(lumen) > 0 else None
-                    else:
-                        first = lumen
-                    if first is not None:
-                        lumen_contour = first.get_unscaled_contour(self.scaling_factor)
-
-                eem_contour = None
-                eem = self.finalized_splines.get(eem_key)
-                if eem:
-                    if isinstance(eem, list):
-                        first = eem[0] if len(eem) > 0 else None
-                    else:
-                        first = eem
-                    if first is not None:
-                        eem_contour = first.get_unscaled_contour(self.scaling_factor)
-
                 self._draw_contours_frame()
                 self._draw_measure()
                 self._draw_reference()
                 self._draw_angles()
                 self._draw_open_spline_edge_lines()
 
-                self._maybe_compute_metrics(lumen_contour, eem_contour)
+                # Read the splines only after _draw_contours_frame() has rebuilt them from
+                # frame_data_dct. Reading them first measured whatever was on screen before
+                # this call, which is right while a knot is dragged (the spline object is
+                # mutated in place) but wrong for every edit that *replaces* the frame's
+                # contour — copy from a neighbour, brush commit, undo, mask import — where
+                # the metrics then kept the previous frame's numbers, or none at all.
+                self._maybe_compute_metrics(
+                    self._first_spline_contour(ContourType.LUMEN), self._first_spline_contour(ContourType.EEM)
+                )
                 self.update_active_contour()
             else:
                 for it in old_overlays:
@@ -581,6 +567,14 @@ class Display(QGraphicsView, MetricsMixin):
 
         if update_phase:
             self.update_phase_text()
+
+    def _first_spline_contour(self, contour_type: ContourType) -> Tuple[List[float], List[float]] | None:
+        """Unscaled (x, y) of the first finalized spline of *contour_type*, or None."""
+        entry = self.finalized_splines.get(self.contour_key(contour_type))
+        spline: Spline | None = entry[0] if isinstance(entry, list) and entry else None
+        if spline is None:
+            return None
+        return spline.get_unscaled_contour(self.scaling_factor)
 
     def update_display(self):
         """Syntax sugar method to update the entire display after changes to contours or image."""
