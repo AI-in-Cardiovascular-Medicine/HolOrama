@@ -490,13 +490,13 @@ def open_url(main_window, description=None):
     if description == 'github':
         url = 'https://github.com/AI-in-Cardiovascular-Medicine/HolOrama'
     elif description == 'docs':
-        url = 'https://aivus-caa.readthedocs.io/en/latest'
+        url = 'https://holorama.readthedocs.io/en/latest'
     elif description == 'keyboard_shortcuts':
-        url = 'https://aivus-caa.readthedocs.io/en/latest/contents/usage.html'
+        url = 'https://holorama.readthedocs.io/en/latest/contents/usage.html'
     elif description == 'issue':
-        url = 'https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/issues/new?template=bug_report.md'
+        url = 'https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/issues/new?template=bug_report.md'
     elif description == 'feature':
-        url = 'https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/issues/new?template=feature_request.md'
+        url = 'https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/issues/new?template=feature_request.md'
     else:
         # About video disabled
         # video_player = VideoPlayer(main_window)

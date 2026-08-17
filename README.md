@@ -13,7 +13,7 @@
 
 <figure class="epigraph" style="text-align: center; font-style: italic;">
   <blockquote>
-    "A mixture from greek 'Holo' meaning full and 'Orama' meaning vision. Together building the promise of this GUI application to visualize the whole heart from different modalities."
+    "A mixture from greek 'Holo' meaning full and 'Orama' meaning vision. Together building the promise of this GUI application to visualize the whole heart from different modalities, and by fusing them creating a full vision of the heart."
   </blockquote>
 </figure>
 
@@ -24,7 +24,7 @@ Currently spans:
 
 [![version](https://img.shields.io/github/v/tag/AI-in-Cardiovascular-Medicine/HolOrama?label=version&color=yellow)](https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/tags)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Docs](https://img.shields.io/readthedocs/HolOrama)](https://HolOrama.readthedocs.io)
+[![Docs](https://img.shields.io/readthedocs/holorama)](https://holorama.readthedocs.io/en/latest/)
 [![DOI](https://img.shields.io/badge/DOI-10.1016%2Fj.cmpb.2025.109065-blue)](https://doi.org/10.1016/j.cmpb.2025.109065)
 
 # Demo
