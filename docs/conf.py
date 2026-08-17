@@ -32,11 +32,10 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 myst_heading_anchors = 3
 
-html_theme = 'sphinx_rtd_theme'
+html_theme = 'furo'
 html_title = 'AIVUS-CAA Documentation'
 html_theme_options = {
-    'navigation_depth': 3,
-    'collapse_navigation': False,
+    'navigation_with_keys': True,
 }
 
 autodoc_default_options = {

@@ -13,11 +13,6 @@ Window Manipulation
 
 Hold :kbd:`RMB` to adjust windowing; press :kbd:`R` to reset.
 
-.. image:: ../../media/explanation_software_part1.gif
-   :alt: Window manipulation demo
-   :align: center
-   :width: 800px
-
 Contour Manipulation
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -26,11 +21,6 @@ Contour Manipulation
 3. Use :kbd:`A` and :kbd:`D` or :kbd:`MW` to navigate through frames (or use the slider below the image).
 4. Press :kbd:`E` to draw a new contour by left-clicking to place points. Close the contour by clicking on the initial point. Drag existing points to adjust; click on the contour line to add new points.
 5. Press :kbd:`Ctrl+Z` to undo the last action.
-
-.. image:: ../../media/explanation_software_part2.gif
-   :alt: Contour manipulation demo
-   :align: center
-   :width: 800px
 
 Gating Module
 ~~~~~~~~~~~~~
@@ -53,11 +43,6 @@ A Butterworth filter (passband: 45-180 bpm) smooths each curve; the unfiltered s
 - Press :kbd:`Alt+Delete` to delete all gating results and start over.
 - Press :kbd:`Alt+P` to plot results for gated frames.
 
-.. image:: ../../media/explanation_software_part3.gif
-   :alt: Gating module demo
-   :align: center
-   :width: 800px
-
 v1.1.x — Full Segmentation
 ----------------------------
 
@@ -75,25 +60,10 @@ Since version 1.2.0, OCT images can be loaded and additional contouring function
 
 First, a catheter angle is added from the toolbar. Then a lumen contour is drawn as a closed spline, followed by an EEM contour. The EEM contour is given an uncertain region between a start point (yellow) and end point (red) by double-clicking. Zoom via mouse scroll is also demonstrated.
 
-.. image:: ../../media/explanation_software_part4.gif
-   :alt: OCT catheter angle and contour demo
-   :align: center
-   :width: 800px
-
 **Example: Open spline for calcium and side branch**
 
 An open spline is created for a calcium contour (open splines automatically calculate the angle from the lumen center to the start and end points). Points are removed with :kbd:`RMB`. Using :kbd:`Ctrl+7` and selecting closed spline, a second calcium contour is drawn. Finally, a side branch contour is added.
 
-.. image:: ../../media/explanation_software_part5.gif
-   :alt: Open spline calcium and side branch demo
-   :align: center
-   :width: 800px
-
 **Example: Mask mode and hiding contours**
 
 The display can switch between normal and mask mode (with pre-applied contour layering logic). Contours can also be hidden via the corresponding checkbox.
-
-.. image:: ../../media/explanation_software_part6.gif
-   :alt: Mask mode demo
-   :align: center
-   :width: 800px
