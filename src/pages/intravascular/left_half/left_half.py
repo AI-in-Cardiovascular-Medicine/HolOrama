@@ -90,9 +90,15 @@ class LeftHalf:
 
         self.angle_btn = QPushButton('📐 Angle Wire')
         self.angle_btn.setCheckable(True)
-        self.angle_btn.setToolTip("Set angle between two points for wire shadow")
+        self.angle_btn.setToolTip("Set angle between two points for wire shadow (replaces existing wires)")
         self.angle_btn.setStyleSheet(f'border-color: {main_window.display.color_angle}')
         self.angle_btn.clicked.connect(partial(new_angle, main_window, ContourType.WIRE))
+
+        self.add_angle_btn = QPushButton('➕📐 Add Wire')
+        self.add_angle_btn.setCheckable(True)
+        self.add_angle_btn.setToolTip("Add another wire shadow, keeping the existing ones")
+        self.add_angle_btn.setStyleSheet(f'border-color: {main_window.display.color_angle}')
+        self.add_angle_btn.clicked.connect(partial(new_angle, main_window, ContourType.WIRE, True))
 
         self.display_buttons = [
             self.closed_spline_btn,
@@ -102,6 +108,7 @@ class LeftHalf:
             self.measure_btn_1,
             self.measure_btn_2,
             self.angle_btn,
+            self.add_angle_btn,
         ]
         for btn in self.display_buttons:
             self.display_button_group.addButton(btn)

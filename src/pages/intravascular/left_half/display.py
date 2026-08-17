@@ -20,7 +20,7 @@ from domain.all_types import (
     ContourType,
     SegmentationTool,
 )
-from domain.io_types import Measure
+from domain.io_types import Contour, Measure, iter_wires, set_wire_points, wire_points
 from domain.mask_types import MASK_ALPHA, MASK_SPECS
 from domain.undo import push_contour_snapshot
 from input_output.output.imgs_masks import contours_to_mask
@@ -780,7 +780,9 @@ class Display(QGraphicsView, MetricsMixin):
 
         ct = self.active_contour_type
         spec = MASK_SPECS.get(ct)
-        if spec is None:
+        # A wire is stored as two angle points, not a paintable region — a brushed
+        # boundary cannot be turned back into one.
+        if spec is None or ct is ContourType.WIRE:
             self._brush_add = None
             self._brush_erase = None
             return
@@ -891,6 +893,8 @@ class Display(QGraphicsView, MetricsMixin):
         was_drawing = self.drawing_mode
         self.drawing_mode = False
         self.reference_mode = False
+        if self.angle_mode:
+            self._discard_incomplete_wire()
         self.angle_mode = False
         self.append_contour_mode = False
         self._contour_close_committed = False
@@ -1344,14 +1348,26 @@ class Display(QGraphicsView, MetricsMixin):
 
     ################################################################################################
 
-    def start_angle(self):
-        """Initializes the angle measurement mode."""
+    def start_angle(self, append: bool = False):
+        """Initializes the angle measurement mode for one wire.
+
+        append=False replaces every wire on the frame; append=True adds another one
+        (a pullback can show more than one guide wire).
+        """
         if self.drawing_mode:
             self.stop_contour()
         self.angle_mode = True
         self.angle_clicks = []
         self.main_window.display.setCursor(Qt.CursorShape.CrossCursor)
-        self.main_window.runtime_data.frame_data_dct[self.frame].wire = None
+
+        key = self.contour_key(ContourType.WIRE)
+        push_contour_snapshot(self.main_window.runtime_data, self.frame, key, self.active_contour_index)
+
+        fd = self.main_window.runtime_data.frame_data_dct[self.frame]
+        if not append:
+            fd.wire = Contour()
+        # The new wire becomes the active instance, so Delete/Ctrl+Z act on it.
+        self.active_contour_index = len(fd.wire.contours)
         self.display_image(update_contours=True)
         if self.active_segmentation_tool == SegmentationTool.OPEN_SPLINE:
             self.main_window.left_half.open_spline_btn.setChecked(True)
@@ -1361,44 +1377,63 @@ class Display(QGraphicsView, MetricsMixin):
             self.main_window.left_half.closed_spline_btn.setChecked(True)
 
     def _handle_angle_placement(self, pos: QPointF):
-        """Handles the two clicks required to define an angle."""
+        """Handles the two clicks required to define the wire currently being drawn."""
         self.angle_clicks.append(pos)
         original_point = (pos.x() / self.scaling_factor, pos.y() / self.scaling_factor)
         fd = self.main_window.runtime_data.frame_data_dct[self.frame]
+        first = wire_points(fd.wire, self.active_contour_index)
 
-        if len(self.angle_clicks) == 1:
-            fd.wire = (original_point,)
+        if len(self.angle_clicks) < 2 or not first:
+            # First click, or the frame changed mid-placement: (re)start on this frame.
+            self.angle_clicks = [pos]
+            self.active_contour_index = len(fd.wire.contours)
+            set_wire_points(fd.wire, self.active_contour_index, [original_point])
             self.display_image(update_contours=True)
-        elif len(self.angle_clicks) == 2:
-            fd.wire = (fd.wire[0], original_point)
-            self.angle_mode = False
-            self.main_window.display.setCursor(Qt.CursorShape.ArrowCursor)
-            self.display_image(update_contours=True)
+            return
+
+        set_wire_points(fd.wire, self.active_contour_index, [first[0], original_point])
+        self.angle_mode = False
+        self.main_window.display.setCursor(Qt.CursorShape.ArrowCursor)
+        self.display_image(update_contours=True)
+
+    def _discard_incomplete_wire(self):
+        """Drop the wire being placed if the user left angle mode after one click:
+        a single point defines no shadow sector and would only draw a stray line."""
+        fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
+        if fd is None or self.active_contour_type is not ContourType.WIRE:
+            return
+        index = self.active_contour_index
+        if index < len(fd.wire.contours) and len(wire_points(fd.wire, index)) < 2:
+            for lst in (fd.wire.contours, fd.wire.closed, fd.wire.start_coords, fd.wire.end_coords):
+                if index < len(lst):
+                    del lst[index]
+            self.active_contour_index = max(len(fd.wire.contours) - 1, 0)
 
     def _draw_angles(self):
-        """Draws lines from center through the stored wire/angle points, stopping at image edges."""
+        """Draws lines from center through every wire's angle points, stopping at image edges."""
         fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
-        if fd is None or not fd.wire:
+        if fd is None:
             return
 
         half_size = self.image_size / 2
         center = QPointF(half_size, half_size)
         pen = get_qt_pen(self.color_angle, self.point_thickness)
 
-        for pt_coords in fd.wire:
-            target_pt = QPointF(pt_coords[0] * self.scaling_factor, pt_coords[1] * self.scaling_factor)
-            dx = target_pt.x() - center.x()
-            dy = target_pt.y() - center.y()
-            if dx == 0 and dy == 0:
-                continue
-            t_x = abs(half_size / dx) if dx != 0 else float('inf')
-            t_y = abs(half_size / dy) if dy != 0 else float('inf')
-            t = min(t_x, t_y)
-            edge_pt = QPointF(center.x() + t * dx, center.y() + t * dy)
-            self.graphics_scene.addLine(QLineF(center, edge_pt), pen)
-            self.graphics_scene.addItem(
-                Point((target_pt.x(), target_pt.y()), self.point_thickness, self.point_radius, 0, self.color_angle)
-            )
+        for wire in iter_wires(fd.wire):
+            for pt_coords in wire:
+                target_pt = QPointF(pt_coords[0] * self.scaling_factor, pt_coords[1] * self.scaling_factor)
+                dx = target_pt.x() - center.x()
+                dy = target_pt.y() - center.y()
+                if dx == 0 and dy == 0:
+                    continue
+                t_x = abs(half_size / dx) if dx != 0 else float('inf')
+                t_y = abs(half_size / dy) if dy != 0 else float('inf')
+                t = min(t_x, t_y)
+                edge_pt = QPointF(center.x() + t * dx, center.y() + t * dy)
+                self.graphics_scene.addLine(QLineF(center, edge_pt), pen)
+                self.graphics_scene.addItem(
+                    Point((target_pt.x(), target_pt.y()), self.point_thickness, self.point_radius, 0, self.color_angle)
+                )
 
     def _draw_open_spline_edge_lines(self):
         """Draw lines from open spline start/end points to image edge, in direction away from contour centroid."""
@@ -1829,6 +1864,8 @@ class Display(QGraphicsView, MetricsMixin):
 
     def _scale_active_contour(self, delta: int) -> None:
         """Move all knot points of the active contour toward (delta<0) or away (delta>0) from their centroid."""
+        if self.active_contour_type is ContourType.WIRE:
+            return  # a wire's two points mark angles from the image centre; scaling them is meaningless
         key = self.contour_key(self.active_contour_type)
         fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
         if fd is None:

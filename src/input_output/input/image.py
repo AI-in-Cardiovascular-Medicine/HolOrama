@@ -195,7 +195,9 @@ def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) 
         ErrorMessage(main_window, 'Load an image before importing a mask')
         return
 
-    if contour_type not in MASK_SPECS:
+    # Wires are not spline contours (each entry holds two angle points, see FrameData.wire),
+    # so a traced mask boundary cannot be imported into them.
+    if contour_type not in MASK_SPECS or contour_type is ContourType.WIRE:
         return
     spec = MASK_SPECS[contour_type]
 

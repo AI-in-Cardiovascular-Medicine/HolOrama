@@ -28,7 +28,8 @@ The layout
 .. rubric:: Left half — the image
 
 - **Row 1, drawing tools:** ⭕ **Closed Spline**, ➰ **Open Spline**, 🖌️ **Brush**,
-  🟡 **Reference**, 📏 **Measurement 1**, 📏 **Measurement 2**, 📐 **Angle Wire**.
+  🟡 **Reference**, 📏 **Measurement 1**, 📏 **Measurement 2**, 📐 **Angle Wire**,
+  ➕📐 **Add Wire**.
   Exactly one is active at a time; which ones are enabled depends on the selected contour
   type.
 - **Row 2, contour selector:** a dropdown (Lumen / EEM / Calcium / Branch / Lipid /
@@ -199,7 +200,13 @@ Colours of the start/end markers are configurable (``color_start_point``,
 
 - 📏 **Measurement 1** (:kbd:`1`) and **Measurement 2** (:kbd:`2`) each measure a distance
   between two clicked points. Both are stored per frame and end up in the report.
-- 📐 **Angle Wire** (:kbd:`3`) marks the guide-wire shadow as an angular sector.
+- 📐 **Angle Wire** (:kbd:`3`) marks the guide-wire shadow as an angular sector: click two
+  points and the sector between the two radial lines through them becomes the shadow.
+  ➕📐 **Add Wire** (:kbd:`Ctrl+3`) marks another wire on the same frame, keeping the ones
+  already there — some pullbacks show more than one wire. Drawing with **Angle Wire**
+  instead replaces every wire on the frame. Wires behave like the other multi-instance
+  contours (calcification, lipid, …): each is stored separately, all of them are exported
+  to the mask (label 9), and :kbd:`Ctrl+Z` undoes the last one.
 - 🟡 **Reference** places a reference point on the frame. This point defines the rotational
   reference used when the pullback is later aligned in the :doc:`fusion` module.
 - :kbd:`G` hides the measurement overlays, :kbd:`H` hides all contours.

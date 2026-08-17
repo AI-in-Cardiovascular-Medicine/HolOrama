@@ -7,6 +7,7 @@ from scipy.interpolate import splev, splprep
 from skimage.draw import polygon2mask
 
 from domain.all_types import ContourType
+from domain.io_types import iter_wires
 from domain.mask_types import MASK_SPECS
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
@@ -212,34 +213,39 @@ def _region_mean_distance(mask: np.ndarray, cx: float, cy: float) -> float | Non
 
 def _wire_shadow_mask(wire, image_shape, center_y, center_x):
     """
-    Boolean mask for the guide-wire angular shadow (smaller sector between the
-    two radial wire lines).
+    Boolean mask for the guide-wire angular shadow(s): per wire, the smaller
+    sector between its two radial lines, unioned over every wire on the frame.
 
-    wire: None | tuple of 1-2 (x, y) points in original image pixel coords.
+    wire: Contour holding one entry of 1-2 (x, y) points per wire, in original
+    image pixel coords. Wires with fewer than two points are still being drawn
+    and contribute no shadow.
     """
-    if wire is None or len(wire) < 2:
-        return np.zeros(image_shape, dtype=bool)
+    shadow = np.zeros(image_shape, dtype=bool)
+    wires = [pts for pts in iter_wires(wire) if len(pts) >= 2]
+    if not wires:
+        return shadow
 
     H, W = image_shape
     yy, xx = np.mgrid[0:H, 0:W]
-
-    p1x, p1y = wire[0]
-    p2x, p2y = wire[1]
-
-    a1 = np.arctan2(p1y - center_y, p1x - center_x)
-    a2 = np.arctan2(p2y - center_y, p2x - center_x)
-
     pixel_angles = np.arctan2(yy.astype(float) - center_y, xx.astype(float) - center_x)
 
-    # CCW arc from a1 → a2; pick the smaller of the two arcs
-    ccw_size = (a2 - a1) % (2 * np.pi)
-    if ccw_size <= np.pi:
-        # CCW a1→a2 is the smaller sector
-        return ((pixel_angles - a1) % (2 * np.pi)) <= ccw_size
-    else:
-        # CCW a2→a1 is the smaller sector
-        cw_size = (a1 - a2) % (2 * np.pi)
-        return ((pixel_angles - a2) % (2 * np.pi)) <= cw_size
+    for pts in wires:
+        (p1x, p1y), (p2x, p2y) = pts[0], pts[1]
+
+        a1 = np.arctan2(p1y - center_y, p1x - center_x)
+        a2 = np.arctan2(p2y - center_y, p2x - center_x)
+
+        # CCW arc from a1 → a2; pick the smaller of the two arcs
+        ccw_size = (a2 - a1) % (2 * np.pi)
+        if ccw_size <= np.pi:
+            # CCW a1→a2 is the smaller sector
+            shadow |= ((pixel_angles - a1) % (2 * np.pi)) <= ccw_size
+        else:
+            # CCW a2→a1 is the smaller sector
+            cw_size = (a1 - a2) % (2 * np.pi)
+            shadow |= ((pixel_angles - a2) % (2 * np.pi)) <= cw_size
+
+    return shadow
 
 
 # ---------------------------------------------------------------------------

@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Tuple
 from loguru import logger
 
 from domain.all_types import OCT_QUALITY_LABELS
-from domain.io_types import Contour, FrameData, Measure, Measurements
+from domain.io_types import Contour, FrameData, Measure, Measurements, set_wire_points
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from version import version_file_str
 
@@ -131,7 +131,7 @@ def _build_frame_data(raw: dict) -> Dict[int, FrameData]:
             measurement_1=_build_measure(frame_raw.get('measurement_1')),
             measurement_2=_build_measure(frame_raw.get('measurement_2')),
             reference=frame_raw.get('reference'),
-            wire=frame_raw.get('wire'),
+            wire=_build_wire(frame_raw.get('wire')),
             centroid=frame_raw.get('centroid'),
             closest_points=frame_raw.get('closest_points'),
             farthest_points=frame_raw.get('farthest_points'),
@@ -205,6 +205,37 @@ def _build_contour(raw: Optional[dict]) -> Contour:
         start_coords=start_coords,
         end_coords=end_coords,
     )
+
+
+def _build_wire(raw) -> Contour:
+    """Reconstruct the frame's wires from either persisted shape.
+
+    Current format is a Contour dict with one entry per wire (several wires per
+    frame are allowed). Files written before that stored a single wire directly as
+    [[x1, y1], [x2, y2]] — migrate it into the first (and only) wire entry.
+    """
+    if not raw:
+        return Contour()
+    if isinstance(raw, dict):
+        wire = Contour(
+            contours=[],
+            measurements=Measurements(**raw.get('measurements', {})),
+            closed=raw.get('closed', []),
+            start_coords=[_normalize_coord_entry(e) for e in raw.get('start_coords', [])],
+            end_coords=[_normalize_coord_entry(e) for e in raw.get('end_coords', [])],
+        )
+        for entry in raw.get('contours', []):
+            x = list(entry[0]) if entry else []
+            y = list(entry[1]) if len(entry) > 1 else []
+            wire.contours.append((x, y))
+        return wire
+
+    points = _normalize_coord_entry(raw)
+    if not points:
+        return Contour()
+    wire = Contour()
+    set_wire_points(wire, 0, points)
+    return wire
 
 
 def _normalize_coord_entry(item) -> List[Tuple[float, float]]:
