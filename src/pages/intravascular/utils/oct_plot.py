@@ -182,6 +182,17 @@ def _interpolate(points: dict[int, float], n_frames: int) -> np.ndarray:
     return out
 
 
+def _frame_indices(flags: np.ndarray) -> list[int]:
+    """Frame numbers where *flags* is True, as plain ints.
+
+    Iterating a numpy index array hands out numpy integers, which read fine but type
+    as `signedinteger` — enough for a strict mypy run to reject them where a frame is
+    otherwise an `int` (and enough to need an `int()` at every Qt call). One conversion
+    here keeps frame numbers ordinary ints everywhere they are used.
+    """
+    return np.flatnonzero(flags).tolist()
+
+
 def _runs(flags: np.ndarray) -> list[tuple[int, int]]:
     """Inclusive (start, end) spans of consecutive True entries."""
     spans: list[tuple[int, int]] = []
@@ -501,7 +512,7 @@ class OCTPlot(QWidget):
 
         # 1. plaque across the whole EEM span, faded: everything here is at least partly
         #    interpolated until proven otherwise by the measured pass below.
-        eem_frames = [int(f) for f in np.flatnonzero(~np.isnan(eem_r))]
+        eem_frames = _frame_indices(~np.isnan(eem_r))
         if len(eem_frames) > 1:
             painter.setBrush(self._tissue_brush(y_top, y_bottom, INTERPOLATED_ALPHA))
             painter.drawPath(self._tube_path(eem_frames, [eem_r[f] for f in eem_frames], x_of, y_of))
@@ -513,7 +524,7 @@ class OCTPlot(QWidget):
                 painter.drawPath(self._tube_path(frames, [eem_r[f] for f in frames], x_of, y_of))
 
         # 3. the lumen itself, punched out of the plaque band
-        lumen_frames = [int(f) for f in np.flatnonzero(~np.isnan(lumen_r))]
+        lumen_frames = _frame_indices(~np.isnan(lumen_r))
         if len(lumen_frames) > 1:
             painter.setBrush(LUMEN_FILL)
             painter.drawPath(self._tube_path(lumen_frames, [lumen_r[f] for f in lumen_frames], x_of, y_of))
@@ -541,12 +552,12 @@ class OCTPlot(QWidget):
         # 5. dots on the frames the numbers actually come from
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(self._lumen_color())
-        for frame in np.flatnonzero(profile.lumen_measured):
-            radius = lumen_r[frame]
+        for measured_frame in _frame_indices(profile.lumen_measured):
+            radius = lumen_r[measured_frame]
             if math.isnan(radius):
                 continue
             for sign in (1, -1):
-                painter.drawEllipse(QPointF(x_of(int(frame)), y_of(sign * radius)), 1.5, 1.5)
+                painter.drawEllipse(QPointF(x_of(measured_frame), y_of(sign * radius)), 1.5, 1.5)
         painter.setBrush(Qt.BrushStyle.NoBrush)
 
     def _paint_catheter(self, painter: QPainter, x0: float, x1: float, y_of) -> None:
@@ -559,10 +570,10 @@ class OCTPlot(QWidget):
             painter.drawLine(QPointF(x0, y), QPointF(x1, y))
 
     def _paint_strips(self, painter: QPainter, profile: _Profile, x_of, top: float, bottom: float) -> None:
-        known = np.flatnonzero(profile.strip_measured)
-        if known.size == 0:
+        known = _frame_indices(profile.strip_measured)
+        if not known:
             return
-        x_start, x_end = x_of(int(known[0])), x_of(int(known[-1]))
+        x_start, x_end = x_of(known[0]), x_of(known[-1])
         width = max(x_end - x_start, 1.0)
         metrics = QFontMetrics(painter.font())
 
@@ -574,7 +585,7 @@ class OCTPlot(QWidget):
             rect = QRectF(x_start, y, width, STRIP_HEIGHT)
             gradient = QLinearGradient(QPointF(rect.left(), 0.0), QPointF(rect.right(), 0.0))
             for frame in known:
-                position = (x_of(int(frame)) - x_start) / width
+                position = (x_of(frame) - x_start) / width
                 gradient.setColorAt(min(max(position, 0.0), 1.0), _ramp_color(ramp, float(values[frame]) / full_scale))
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(gradient)
