@@ -15,7 +15,7 @@ Related projects
    * - `nnUZoo <https://github.com/AI-in-Cardiovascular-Medicine/nnUZoo>`_
      - Segmentation model zoo behind the **Automatic Segmentation** button. Installed
        separately, see :doc:`installation`.
-   * - `vmtk <http://www.vmtk.org/>`_
+   * - `vmtk <https://vmtk.github.io>`_
      - The Vascular Modelling Toolkit, used for centerline extraction in the
        :doc:`modules/ccta` module. Installed separately by the user, see
        :ref:`install-vmtk`.
