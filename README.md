@@ -82,7 +82,7 @@ The default install is GPU-ready (CUDA 11.8). Optional flags:
 
 | Flag | Effect |
 |------|--------|
-| `--dev` | Also install dev dependencies |
+| `--dev` | Also install dev + docs dependencies (linters, test runner, Sphinx) |
 | `--nnuzoo` | Install nnUZoo from GitHub |
 | `--cpu` | Switch to CPU-only torch (no GPU) |
 | `--cuda 121` | Switch to CUDA 12.1 build instead of the default cu118 |
@@ -99,7 +99,7 @@ The script automatically applies all Windows-specific fixes (missing OpenMP DLL,
 
 | Flag | Effect |
 |------|--------|
-| `-Dev` | Also install dev dependencies |
+| `-Dev` | Also install dev + docs dependencies (linters, test runner, Sphinx) |
 | `-NnUZoo` | Install nnUZoo from GitHub |
 | `-Cpu` | Switch to CPU-only torch (no GPU) |
 | `-Cuda 121` | Switch to CUDA 12.1 build instead of the default cu118 |
@@ -118,7 +118,7 @@ source .venv/bin/activate
 
 For developers:
 ```bash
-uv sync --group dev
+uv sync --group dev --group docs
 ```
 
 For nnUZoo (automatic segmentation):

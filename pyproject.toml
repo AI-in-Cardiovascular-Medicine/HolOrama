@@ -50,6 +50,12 @@ dev = [
     "mypy",
     "ruff",
 ]
+docs = [
+    "sphinx",
+    "furo",
+    "sphinx-autodoc-typehints",
+    "myst-parser",
+]
 
 [tool.hatch.version]
 path = "src/version.py"

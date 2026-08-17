@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Usage: ./install.sh [--dev] [--nnuzoo] [--cpu] [--cuda 121]
 # Default installs CUDA 11.8 (cu118) torch -- GPU-ready out of the box.
-# --dev            also install dev dependencies
+# --dev            also install dev + docs dependencies (linters, tests, sphinx)
 # --nnuzoo         install nnUZoo from GitHub
 # --cpu            install CPU-only torch instead (overrides default GPU build)
 # --cuda 121       switch to CUDA 12.1 build instead of the default cu118
@@ -33,7 +33,7 @@ fi
 export UV_HTTP_TIMEOUT=300
 
 SYNC_ARGS=("sync")
-if $DEV_DEPS; then SYNC_ARGS+=("--group" "dev"); fi
+if $DEV_DEPS; then SYNC_ARGS+=("--group" "dev" "--group" "docs"); fi
 uv "${SYNC_ARGS[@]}"
 
 PYTHON="./.venv/bin/python"

@@ -57,7 +57,7 @@ Multi-label segmentation and 3-D model building on a CT volume.
   structures the segmentation picked up by mistake.
 - Draw **cut planes** (LVOT and aorta top) and extract the aortic root together with the
   coronaries as one combined NIfTI mask or STL mesh, then **smooth**, **reduce** and — if
-  you have `vmtk <http://www.vmtk.org/>`_ installed — compute **centerlines**.
+  you have `vmtk <https://vmtk.github.io>`_ installed — compute **centerlines**.
 
 .. rubric:: Fusion
 

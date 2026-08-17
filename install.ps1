@@ -1,6 +1,6 @@
 # Usage: .\install.ps1 [-Dev] [-NnUZoo] [-Cpu] [-Cuda 121]
 # Default installs CUDA 11.8 (cu118) torch -- GPU-ready out of the box.
-# -Dev             also install dev dependencies
+# -Dev             also install dev + docs dependencies (linters, tests, sphinx)
 # -NnUZoo          install nnUZoo from GitHub
 # -Cpu             install CPU-only torch instead (overrides default GPU build)
 # -Cuda 121        switch to CUDA 12.1 build instead of the default cu118
@@ -27,7 +27,7 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 $env:UV_HTTP_TIMEOUT = '300'
 
 $syncArgs = @('sync')
-if ($Dev) { $syncArgs += '--group', 'dev' }
+if ($Dev) { $syncArgs += '--group', 'dev', '--group', 'docs' }
 uv @syncArgs
 if ($LASTEXITCODE -ne 0) { throw "uv sync failed with exit code $LASTEXITCODE" }
 

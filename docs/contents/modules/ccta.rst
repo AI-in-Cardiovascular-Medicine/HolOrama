@@ -153,7 +153,7 @@ In that tab:
 8. Optional — compute centerlines
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Centerlines are computed with `vmtk <http://www.vmtk.org/>`_, which you install yourself —
+Centerlines are computed with `vmtk <https://vmtk.github.io>`_, which you install yourself —
 see :ref:`install-vmtk`. Everything up to this point works without it.
 
 #. Place the outlet points. Click **Add RCA Outlet**, then click on the cut geometry at the

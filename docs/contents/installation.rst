@@ -81,7 +81,8 @@ fixes automatically (the missing OpenMP DLL and the ``optree`` version pin — s
    * - Flag
      - Effect
    * - ``-Dev``
-     - Also install the development dependencies (linters, test runner)
+     - Also install the development and documentation dependencies (linters, test runner,
+       Sphinx)
    * - ``-NnUZoo``
      - Install nnUZoo from GitHub (required for automatic segmentation)
    * - ``-Cpu``
@@ -107,7 +108,8 @@ Linux / macOS — script
    * - Flag
      - Effect
    * - ``--dev``
-     - Also install the development dependencies
+     - Also install the development and documentation dependencies (linters, test runner,
+       Sphinx)
    * - ``--nnuzoo``
      - Install nnUZoo from GitHub (required for automatic segmentation)
    * - ``--cpu``
@@ -201,11 +203,11 @@ Linux / macOS
    uv sync                      # creates .venv and installs all dependencies
    source .venv/bin/activate
 
-Development dependencies:
+Development and documentation dependencies:
 
 .. code-block:: bash
 
-   uv sync --group dev
+   uv sync --group dev --group docs
 
 nnUZoo, for automatic segmentation:
 
@@ -238,7 +240,7 @@ Optional: vmtk, for CCTA centerlines
 ------------------------------------
 
 **Calculate Centerlines** in the :doc:`CCTA module <modules/ccta>` drives `vmtk
-<http://www.vmtk.org/>`_, the Vascular Modelling Toolkit. vmtk is **not** bundled with
+<https://vmtk.github.io>`_, the Vascular Modelling Toolkit. vmtk is **not** bundled with
 HolOrama — its build is too involved to ship inside a binary — so installing it is left to
 you. Everything else in the CCTA module works without it; only centerline computation is
 disabled.

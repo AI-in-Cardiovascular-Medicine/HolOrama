@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://holorama.readthedocs.io/en/latest/
+    about: Installation, module tutorials, keyboard shortcuts and output-file reference.
+  - name: Questions and general discussion
+    url: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/discussions
+    about: Ask how to do something, or discuss an idea before opening a feature request.

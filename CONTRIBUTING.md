@@ -29,14 +29,17 @@ cd HolOrama
 ```bash
 git checkout -b feature/new-feature
 ```
-3. install dependencies and run tests (test not yet implemented!)
+3. Install dependencies (including the dev group) and run the tests
 ```bash
-pip install -e
+bash install.sh --dev      # Linux/macOS
+.\install.ps1 -Dev         # Windows
 pytest
 ```
+See the [installation guide](https://holorama.readthedocs.io/en/latest/contents/installation.html) if a script fails.
+
 ## I have a Question 
 Before opening an issue:
-- Read the [Documentation](https://aivus-caa.readthedocs.io/en/latest/index.html)
+- Read the [Documentation](https://holorama.readthedocs.io/en/latest/index.html)
 - Search existing [Issues](https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/issues?q=is%3Aissue) 
 
 If you still need help:
@@ -82,12 +85,15 @@ Open a [feature request issue](https://github.com/AI-in-Cardiovascular-Medicine/
 - Type-annotate new functions and check with `mypy`
 - Add or update tests in `tests/` for any changed behaviour
 - Run the full suite with `pytest` before opening a PR
+- Run `pre-commit run --all-files` — this is exactly what CI checks (black, ruff, mypy)
 
 ## Writing Documentation
 
 Documentation lives in `docs/` and is built with Sphinx.
-- Edit `.rst` files under `docs/contents/` for narrative docs
+- Install the docs toolchain once: `uv sync --group docs`
+- Edit `.rst` files under `docs/contents/` for narrative docs — one page per module under `docs/contents/modules/`
 - Run `.\make.bat html` (Windows) or `make html` (Linux/macOS) to preview locally
+- Read the Docs builds with `fail_on_warning: true`, so check with `sphinx-build -W -b html docs docs/_build/html` before opening a PR: every page must be reachable from a toctree and every cross-reference must resolve
 
 ## Where to Get Help
 

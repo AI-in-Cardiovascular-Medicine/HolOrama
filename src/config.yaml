@@ -12,7 +12,7 @@ display:
   color_contour: 'green' # 20 predefined colors in PyQt6 (https://doc.qt.io/qt-6/qcolor.html)
   color_eem: '#03b1fc'
   color_calcium: 'white'
-  color_branch: '#0d877d'
+  color_branch: '#146450'
   color_start_point: 'yellow'
   color_end_point: 'red'
   color_angle: '#ffa500'
