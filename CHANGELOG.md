@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- Wire shadows are now a multi-instance contour type like calcium or lipid: a frame can carry several wires instead of one. ➕📐 **Add Wire** (`Ctrl+3`) adds another wire, 📐 **Angle Wire** (`3`) still replaces all of them. Every wire is exported into the mask (label 9), `Ctrl+Z` undoes the last one, and **Remove Contours** clears them over a frame range. `FrameData.wire` changed from a single point tuple to a `Contour` holding one entry per wire; contour files written with the old shape are migrated on load.
+
 ## [0.9.0] - 2026-08-14 Release Initial Compiled Binary
 
 ### Added

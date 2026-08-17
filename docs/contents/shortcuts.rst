@@ -91,8 +91,8 @@ Drawing
      - Select the closed-spline / open-spline / brush tool
    * - :kbd:`1` / :kbd:`2`
      - Draw measurement 1 / measurement 2
-   * - :kbd:`3`
-     - Draw the wire-shadow angle
+   * - :kbd:`3` / :kbd:`Ctrl+3`
+     - Draw a new / additional wire-shadow angle (a frame may carry several wires)
    * - :kbd:`Delete`
      - Delete the active contour
    * - :kbd:`Ctrl+Z`

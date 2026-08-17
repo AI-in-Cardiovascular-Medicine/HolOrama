@@ -210,7 +210,7 @@ This application is designed for IVUS, OCT and CCTA images in DICOM or NIfTi for
 - Longitudinal view: toggle visibility of the diastolic/systolic marker lines, breathing curve, and area dots independently
 - **Breathing motion** is detected automatically from the lumen area signal and can be reviewed/corrected by hand, then used to reorder gated frames into a breathing-corrected pullback
 - Ability to measure up to two distances per frame which will be stored in the report
-- Indicate the wire shadow using an angle
+- Indicate one or several wire shadows per frame, each using an angle
 - Create automatic masks from contour with predefined rulesets
 - Copy/paste contours from neighbouring, gated or tagged frames
 - **Auto-save** of contours and tags enabled by default with user-definable interval

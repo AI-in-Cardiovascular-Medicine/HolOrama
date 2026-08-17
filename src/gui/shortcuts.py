@@ -178,6 +178,10 @@ def init_menu(main_window, ccta_page):
     measure_2.setShortcut('2')
     angle_wire = edit_menu.addAction('Angle Wire Shadow', partial(new_angle, main_window, ContourType.WIRE))
     angle_wire.setShortcut('3')
+    add_angle_wire = edit_menu.addAction(
+        'Add Angle Wire Shadow', partial(new_angle, main_window, ContourType.WIRE, True)
+    )
+    add_angle_wire.setShortcut('Ctrl+3')
     closed_spline = edit_menu.addAction('Closed Spline', partial(set_tool, main_window, SegmentationTool.CLOSED_SPLINE))
     closed_spline.setShortcut('4')
     open_spline = edit_menu.addAction('Open Spline', partial(set_tool, main_window, SegmentationTool.OPEN_SPLINE))
