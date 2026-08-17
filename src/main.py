@@ -13,6 +13,7 @@ from loguru import logger
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 import qdarktheme
 from PyQt6.QtCore import QtMsgType, qInstallMessageHandler
+from PyQt6.QtGui import QFont, QFontDatabase
 from PyQt6.QtWidgets import QApplication
 
 from gui.app import Master
@@ -156,12 +157,64 @@ def _resolve_config_path() -> Path:
     return user_cfg
 
 
+def _resolve_media_dir() -> Path:
+    """Locate the bundled media/ directory. Nuitka maps '--include-data-dir=media=media'
+    to the dist root, which is also Path(__file__).parent for this module once compiled;
+    in an uncompiled run media/ instead sits one level above src/."""
+    return (Path(__file__).parent if IS_FROZEN else Path(__file__).parent.parent) / 'media'
+
+
+def _apply_app_font(app: QApplication) -> str | None:
+    """Register the bundled JetBrains Mono cuts and make them the app-wide default.
+    Returns the family name so the caller can also feed it to the theme's stylesheet.
+
+    All four cuts report the same family ('JetBrains Mono') with distinct styles, so Qt
+    resolves bold/italic itself instead of synthesising them. Point size stays at 9 to
+    match the Segoe UI default this replaces: JetBrains Mono is a monospace face and
+    renders ~1.15-1.35x wider at the same size, so bumping the size compounds that.
+    A missing or unreadable font is not fatal - the app falls back to the system font."""
+    font_dir = _resolve_media_dir() / 'fonts'
+    families: list[str] = []
+    for ttf in sorted(font_dir.glob('JetBrainsMono-*.ttf')):
+        font_id = QFontDatabase.addApplicationFont(str(ttf))
+        if font_id == -1:
+            logger.warning(f'Could not load bundled font {ttf.name}; skipping it')
+            continue
+        families.extend(QFontDatabase.applicationFontFamilies(font_id))
+
+    if not families:
+        logger.warning(f'No bundled fonts loaded from {font_dir}; using the system default font')
+        return None
+
+    app.setFont(QFont(families[0], 9))
+    logger.info(f'Application font set to {families[0]} 9pt')
+    return families[0]
+
+
+def _font_qss(family: str) -> str:
+    """Stylesheet rules for the widget classes that QApplication.setFont cannot reach.
+
+    The Windows platform theme registers class-specific default fonts (MenuFont,
+    MenuBarFont, ItemViewFont, ...) and a class-specific font outranks the general
+    application font, so menus, the status bar and item views otherwise stay on Segoe UI.
+    Registering per class via setFont(font, className) does work, but Qt rebuilds that
+    class-font hash whenever the style is re-applied, so it does not survive startup.
+    A stylesheet rule outranks both and is re-applied with the theme. Type selectors also
+    match subclasses, so QAbstractItemView covers the list/table/tree views."""
+    return f'QMenuBar, QMenu, QStatusBar, QAbstractItemView, QHeaderView, QToolTip {{ font-family: "{family}"; }}'
+
+
 def main() -> None:
     config = _load_config(_resolve_config_path())
     app = QApplication(sys.argv)
     app.setApplicationVersion(__version__)
 
-    qdarktheme.setup_theme('dark')  # switch to auto to recognize system mode
+    # Before Master(): widgets that snapshot self.font() at construction would otherwise
+    # keep the old family. qdarktheme's own stylesheet sets no font rules, so the only
+    # font-related qss is the _font_qss() one handed to it here.
+    family = _apply_app_font(app)
+    # switch theme to auto to recognize system mode
+    qdarktheme.setup_theme('dark', additional_qss=_font_qss(family) if family else None)
     _window = Master(config)
 
     sys.exit(app.exec())

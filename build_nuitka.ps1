@@ -39,7 +39,8 @@ $nuitkaArgs = @(
     # config.yaml is loaded via Path(__file__).parent / 'config.yaml' in main.py,
     # so it must sit next to the executable.
     '--include-data-files=src\config.yaml=config.yaml',
-    # media/ holds the window icon (desktop_img.ico) and the About video.
+    # media/ holds the window icon (desktop_img.ico), the About video and the
+    # bundled JetBrains Mono cuts in media/fonts (recursive, so fonts come along).
     '--include-data-dir=media=media',
     '--windows-icon-from-ico=media\desktop_img.ico',
     # pydicom registers codec plugins at import time via importlib.import_module

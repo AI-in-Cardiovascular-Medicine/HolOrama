@@ -3,7 +3,7 @@ from typing import Any, Sequence, Tuple
 from loguru import logger
 from PyQt6.QtCore import QLineF, Qt
 from PyQt6.QtGui import QColor, QFont
-from PyQt6.QtWidgets import QGraphicsTextItem
+from PyQt6.QtWidgets import QApplication, QGraphicsTextItem
 from shapely.geometry import Polygon
 
 from domain.io_types import FrameData, Measurements
@@ -15,6 +15,17 @@ from input_output.output.reports import (
 
 # Internal imports based on your file structure
 from tools.geometry import get_qt_pen
+
+
+def _overlay_font(point_size: int, bold: bool = False) -> QFont:
+    """Font for the text overlaid on the intravascular display. Takes its family from the
+    application font (JetBrains Mono, set in main.py) rather than hardcoding one, so these
+    items match the rest of the UI. The size stays caller-controlled because it scales with
+    the image, not with the UI."""
+    font = QFont(QApplication.font().family(), point_size)
+    if bold:
+        font.setWeight(QFont.Weight.Bold)
+    return font
 
 
 def clear_lumen_measurements(frame_data: FrameData) -> None:
@@ -205,7 +216,7 @@ class MetricsMixin:
         self.phase_text = QGraphicsTextItem(text)
         self.phase_text.setDefaultTextColor(color)
         self.phase_text.setX(self.image_size - self.image_size / 3.75)
-        self.phase_text.setFont(QFont("Helvetica", int(self.image_size / 50), QFont.Weight.Bold))
+        self.phase_text.setFont(_overlay_font(int(self.image_size / 50), bold=True))
         self.graphics_scene.addItem(self.phase_text)
 
     def update_active_contour(self):
@@ -229,9 +240,14 @@ class MetricsMixin:
         self.active_contour_text.setDefaultTextColor(color)
 
         font_size = max(8, int(self.image_size / 45))
-        self.active_contour_text.setFont(QFont("Helvetica", font_size, QFont.Weight.Bold))
+        self.active_contour_text.setFont(_overlay_font(font_size, bold=True))
 
-        self.active_contour_text.setPos(10, self.image_size - (font_size * 2.5))
+        # Sit the label on the bottom edge using its real height rather than guessing it
+        # from the point size: 'font_size * 2.5' overshot and clipped the descenders at
+        # small image sizes (image_size is not fixed, and each font has its own line
+        # height), which is why this reads the laid-out bounding rect instead.
+        text_height = self.active_contour_text.boundingRect().height()
+        self.active_contour_text.setPos(10, self.image_size - text_height - 5)
 
         self.graphics_scene.addItem(self.active_contour_text)
 
@@ -297,38 +313,26 @@ class MetricsMixin:
         except Exception:
             pass
 
-        lines = [
-            (
-                f"Lumen area:\t\t{round(lumen_area, 2)} (mm\N{SUPERSCRIPT TWO})"
-                if lumen_area is not None
-                else "Lumen area:\t\tn/a"
-            ),
-            f"Lumen circ:\t\t{round(lumen_circumf, 2)} (mm)" if lumen_circumf is not None else "Lumen circ:\t\tn/a",
-            (
-                f"Elliptic ratio:\t\t{round(elliptic_ratio, 2)}"
-                if elliptic_ratio is not None
-                else "Elliptic ratio:\t\tn/a"
-            ),
-            (
-                f"Longest distance:\t{round(longest_distance, 2)} (mm)"
-                if longest_distance is not None
-                else "Longest distance:\t\tn/a"
-            ),
-            (
-                f"Shortest distance:\t{round(shortest_distance, 2)} (mm)"
-                if shortest_distance is not None
-                else "Shortest distance:\t\tn/a"
-            ),
-            (
-                f"EEM area:\t\t{round(eem_area, 2)} (mm\N{SUPERSCRIPT TWO})"
-                if eem_area is not None
-                else "EEM area:\t\tn/a"
-            ),
-            f"Plaque burden:\t\t{percent_stenosis_text}",
+        # Label/value pairs padded to a common width rather than separated by tabs. The
+        # old '\t'/'\t\t' mix relied on the 80px default tab stop landing just past each
+        # label, which only held for the proportional font this used to hardcode; in the
+        # monospace UI font the labels straddle that stop and the values end up in two
+        # different columns. Padding aligns them exactly, whatever the label lengths.
+        squared = '(mm\N{SUPERSCRIPT TWO})'
+        metrics = [
+            ('Lumen area:', f'{round(lumen_area, 2)} {squared}' if lumen_area is not None else 'n/a'),
+            ('Lumen circ:', f'{round(lumen_circumf, 2)} (mm)' if lumen_circumf is not None else 'n/a'),
+            ('Elliptic ratio:', f'{round(elliptic_ratio, 2)}' if elliptic_ratio is not None else 'n/a'),
+            ('Longest distance:', f'{round(longest_distance, 2)} (mm)' if longest_distance is not None else 'n/a'),
+            ('Shortest distance:', f'{round(shortest_distance, 2)} (mm)' if shortest_distance is not None else 'n/a'),
+            ('EEM area:', f'{round(eem_area, 2)} {squared}' if eem_area is not None else 'n/a'),
+            ('Plaque burden:', f'{percent_stenosis_text}'),
         ]
+        label_width = max(len(label) for label, _ in metrics) + 2
+        lines = [f'{label:<{label_width}}{value}' for label, value in metrics]
 
         self.frame_metrics_text = QGraphicsTextItem("\n".join(lines))
-        self.frame_metrics_text.setFont(QFont("Helvetica", int(self.image_size / 50)))
+        self.frame_metrics_text.setFont(_overlay_font(int(self.image_size / 50)))
 
         self.frame_metrics_text.setPos(5, 5)
         self.graphics_scene.addItem(self.frame_metrics_text)

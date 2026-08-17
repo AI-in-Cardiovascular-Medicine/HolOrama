@@ -217,7 +217,6 @@ class CctaPage(QWidget):
                 self,
                 'Open DICOM Folder',
                 '',
-                options=QFileDialog.Option.DontUseNativeDialog,
             )
             return (path, 'dicom') if path else None
         if clicked == nifti_btn:
@@ -226,7 +225,6 @@ class CctaPage(QWidget):
                 'Open NIfTI File',
                 '',
                 'NIfTI files (*.nii *.nii.gz);;All Files (*)',
-                options=QFileDialog.Option.DontUseNativeDialog,
             )
             return (path, 'nifti') if path else None
         return None
@@ -411,7 +409,6 @@ class CctaPage(QWidget):
             'Open CCTA Mask',
             self._last_image_dir or '..',
             'NIfTI files (*.nii *.nii.gz);;All Files (*)',
-            options=QFileDialog.Option.DontUseNativeDialog,
         )
         if not path:
             return
@@ -715,7 +712,6 @@ class CctaPage(QWidget):
                 'Save NIfTI Mask',
                 '',
                 'NIfTI (*.nii.gz)',
-                options=QFileDialog.Option.DontUseNativeDialog,
             )
             if not path:
                 return
@@ -727,7 +723,6 @@ class CctaPage(QWidget):
                 'Save STL',
                 '',
                 'STL (*.stl)',
-                options=QFileDialog.Option.DontUseNativeDialog,
             )
             if not path:
                 return

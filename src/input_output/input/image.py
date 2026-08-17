@@ -42,9 +42,7 @@ def read_image(main_window) -> None:
         master._switch_page(ActivePage.INTRAVASCULAR.value)
 
     main_window.status_bar.showMessage('Reading image file...')
-    file_name, _ = QFileDialog.getOpenFileName(
-        main_window, 'Open File', '..', 'All files (*)', options=QFileDialog.Option.DontUseNativeDialog
-    )
+    file_name, _ = QFileDialog.getOpenFileName(main_window, 'Open File', '..', 'All files (*)')
     if not file_name:
         main_window.status_bar.showMessage(main_window.waiting_status)
         return
@@ -202,7 +200,6 @@ def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) 
         'Open NIfTI Mask',
         getattr(main_window, '_last_image_dir', None) or '..',
         'NIfTI files (*.nii *.nii.gz)',
-        options=QFileDialog.Option.DontUseNativeDialog,
     )
     if not file_name:
         return
