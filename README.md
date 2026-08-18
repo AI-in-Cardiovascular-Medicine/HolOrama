@@ -10,6 +10,10 @@
 
 
 # HolOrama: A unified platform for cardiac image analysis <!-- omit in toc -->
+[![version](https://img.shields.io/github/v/tag/AI-in-Cardiovascular-Medicine/HolOrama?label=version&color=yellow)](https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/tags)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Docs](https://img.shields.io/readthedocs/holorama)](https://holorama.readthedocs.io/en/latest/)
+[![DOI](https://img.shields.io/badge/DOI-10.1016%2Fj.cmpb.2025.109065-blue)](https://doi.org/10.1016/j.cmpb.2025.109065)
 
 <figure class="epigraph" style="text-align: center; font-style: italic;">
   <blockquote>
@@ -21,11 +25,6 @@ Currently spans:
 - Quantification of Intravascular Ultrasound (IVUS) and Optical Coherence Tomography (OCT)
 - Quantification of Coronary Computed Tomography Angiography (CCTA)
 - Fusion of IVUS/OCT with CCTA
-
-[![version](https://img.shields.io/github/v/tag/AI-in-Cardiovascular-Medicine/HolOrama?label=version&color=yellow)](https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/tags)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Docs](https://img.shields.io/readthedocs/holorama)](https://holorama.readthedocs.io/en/latest/)
-[![DOI](https://img.shields.io/badge/DOI-10.1016%2Fj.cmpb.2025.109065-blue)](https://doi.org/10.1016/j.cmpb.2025.109065)
 
 # Demo
 <p align="left">
