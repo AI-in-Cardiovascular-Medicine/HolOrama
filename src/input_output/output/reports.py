@@ -79,7 +79,7 @@ def report(main_window, lower_limit=None, upper_limit=None, suppress_messages=Fa
 
         if write_files:
             report_data.to_csv(
-                os.path.splitext(main_window.file_name)[0] + '_report.txt',
+                main_window.file_name + '_report.txt',  # already extension-free; see write_contours
                 sep='\t',
                 float_format='%.2f',
                 index=False,

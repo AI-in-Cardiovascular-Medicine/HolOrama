@@ -15,7 +15,7 @@ import pytest
 import yaml
 
 from domain.io_types import FrameData
-from domain.undo import UndoStack
+from domain.runtime_types import RuntimeData
 from pages.intravascular.utils.metrics import clear_lumen_measurements
 
 DIM = 200  # frame is DIM x DIM pixels
@@ -53,13 +53,11 @@ def display(qt_app):
 
     frames = {i: FrameData() for i in range(N_FRAMES)}
     plot_areas_calls = []
-    runtime = SimpleNamespace(
-        frame_data_dct=frames,
-        metadata={'num_frames': N_FRAMES, 'resolution': RESOLUTION, 'modality': 'OCT', 'dimension': DIM},
-        images=np.full((N_FRAMES, DIM, DIM), 100, dtype=np.uint8),
-        images_rgb=None,
-        contour_undo=UndoStack(),
-    )
+    save_requests = []
+    runtime = RuntimeData()  # the real container, so mark_unsaved/contour_undo behave
+    runtime.frame_data_dct = frames
+    runtime.metadata = {'num_frames': N_FRAMES, 'resolution': RESOLUTION, 'modality': 'OCT', 'dimension': DIM}
+    runtime.images = np.full((N_FRAMES, DIM, DIM), 100, dtype=np.uint8)
     longitudinal_view = SimpleNamespace(
         set_data=lambda images: None,
         plot_areas=lambda: plot_areas_calls.append(1),
@@ -79,13 +77,22 @@ def display(qt_app):
         file_name='test',
         status_bar=SimpleNamespace(showMessage=lambda *args: None),
     )
+    # stands in for IntravascularPage.save_contours_soon
+    main_window.save_contours_soon = lambda: (save_requests.append(1), runtime.mark_unsaved())
 
     from pages.intravascular.left_half.display import Display
 
     widget = Display(main_window)
     main_window.display = widget
     widget.set_data(runtime.images)
-    return SimpleNamespace(widget=widget, frames=frames, plot_areas_calls=plot_areas_calls, main_window=main_window)
+    return SimpleNamespace(
+        widget=widget,
+        frames=frames,
+        plot_areas_calls=plot_areas_calls,
+        save_requests=save_requests,
+        runtime=runtime,
+        main_window=main_window,
+    )
 
 
 def _expected_area(radius_px):

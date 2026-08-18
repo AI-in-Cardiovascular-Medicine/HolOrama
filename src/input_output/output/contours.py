@@ -13,20 +13,27 @@ from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from version import CONTOURS_VERSION_TAG
 
 
-def write_contours(main_window, force: bool = True) -> None:
+def write_contours(main_window, force: bool = True, blocking: bool | None = None) -> None:
     """Serialize main_window.runtime_data.frame_data_dct (Dict[int, FrameData]) to JSON.
 
-    force=True  (default, used by Ctrl+S): always writes synchronously.
-    force=False (used by auto-save): skips if content unchanged since last save,
-                                     otherwise writes on a background thread.
+    force=True  (default, used by Ctrl+S): always writes.
+    force=False (used by auto-save): skips if content unchanged since last save.
+    blocking:   write on the calling thread rather than a background one. Defaults to
+                `force`; pass True whenever the caller may not outlive the write — the
+                app closing or a page being replaced — because the background writer is
+                a daemon thread and dies with the interpreter.
     """
     if not main_window.image_displayed:
         if force:
             ErrorMessage(main_window, 'Cannot write contours before reading input file.')
         return
 
-    base = os.path.splitext(main_window.file_name)[0]
-    out_path = f'{base}_contours_{CONTOURS_VERSION_TAG}.json'
+    # main_window.file_name is already the extension-free stem (see read_image), and
+    # read_contours globs '<stem>_contours*.json' against it. Splitting an extension off
+    # it again would eat a second dot-separated segment, so a pullback named after a
+    # dotted DICOM UID ('1.2.840.…604688.dcm') saved to a stem the loader never looks at
+    # and every contour came back empty on the next open.
+    out_path = f'{main_window.file_name}_contours_{CONTOURS_VERSION_TAG}.json'
 
     try:
         serializable = {str(i): asdict(frame) for i, frame in main_window.runtime_data.frame_data_dct.items()}
@@ -36,15 +43,16 @@ def write_contours(main_window, force: bool = True) -> None:
         logger.exception(f'Failed to serialize contours: {e}')
         return
 
-    if not force:
-        content_hash = hashlib.md5(content.encode()).hexdigest()
-        if getattr(main_window, '_last_contours_hash', None) == content_hash:
-            return
-        main_window._last_contours_hash = content_hash
-        threading.Thread(target=_write_to_disk, args=(content, out_path), daemon=True).start()
-    else:
-        main_window._last_contours_hash = hashlib.md5(content.encode()).hexdigest()
+    content_hash = hashlib.md5(content.encode()).hexdigest()
+    if not force and getattr(main_window, '_last_contours_hash', None) == content_hash:
+        return
+    main_window._last_contours_hash = content_hash
+
+    write_here = force if blocking is None else blocking
+    if write_here:
         _write_to_disk(content, out_path)
+    else:
+        threading.Thread(target=_write_to_disk, args=(content, out_path), daemon=True).start()
 
 
 def _write_to_disk(content: str, out_path: str) -> None:

@@ -1,5 +1,3 @@
-import os
-
 import numpy as np
 from loguru import logger
 
@@ -23,7 +21,7 @@ def save_gated_images(main_window) -> None:
         if group is not None:
             groups[group].append(main_window.runtime_data.images[i])
 
-    base = os.path.splitext(main_window.file_name)[0]
+    base = main_window.file_name  # already the extension-free stem; see write_contours
     saved = []
     for name, images in groups.items():
         if images:

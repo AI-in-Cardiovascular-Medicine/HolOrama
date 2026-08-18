@@ -578,6 +578,7 @@ class Display(QGraphicsView, MetricsMixin):
 
     def update_display(self):
         """Syntax sugar method to update the entire display after changes to contours or image."""
+        self.main_window.save_contours_soon()
         self._base_mask_cache = None  # contours may have changed; stale cache must be dropped
         self.display_image(update_image=True, update_contours=True, update_phase=True)
 
@@ -957,6 +958,7 @@ class Display(QGraphicsView, MetricsMixin):
             contour_obj.start_coords = []  # will be populated in stop_contour
             contour_obj.end_coords = []
             contour_obj.closed = []
+            self.main_window.save_contours_soon()
         self.display_image(update_contours=True)
 
     def add_contour(self, click_pos, segmentation_tool: SegmentationTool = SegmentationTool.CLOSED_SPLINE):
@@ -1166,6 +1168,7 @@ class Display(QGraphicsView, MetricsMixin):
                 lst[self.active_contour_index] = self.working_spline
 
             self._interrupt_drawing_mode()
+            self.main_window.save_contours_soon()
 
             try:
                 self.main_window.longitudinal_view.plot_areas()
@@ -1262,6 +1265,7 @@ class Display(QGraphicsView, MetricsMixin):
                 attr,
                 Measure(points=(p1_orig, (orig_x, orig_y)), length=length),
             )
+            self.main_window.save_contours_soon()
             self.pending_measure_points[index] = None
             self.graphics_scene.addLine(
                 line, get_qt_pen(self.main_window.left_half.measure_colors[index], self.point_thickness)
@@ -1279,6 +1283,7 @@ class Display(QGraphicsView, MetricsMixin):
         fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
         if fd:
             setattr(fd, f'measurement_{index + 1}', None)
+            self.main_window.save_contours_soon()
         self.pending_measure_points[index] = None
         self.main_window.display.setCursor(Qt.CursorShape.CrossCursor)
         self.measure_index = index
@@ -1322,6 +1327,7 @@ class Display(QGraphicsView, MetricsMixin):
         fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
         if fd:
             fd.reference = None
+            self.main_window.save_contours_soon()
         self.display_image(update_contours=True)
         if self.active_segmentation_tool == SegmentationTool.OPEN_SPLINE:
             self.main_window.left_half.open_spline_btn.setChecked(True)
@@ -1338,6 +1344,7 @@ class Display(QGraphicsView, MetricsMixin):
         )
         self.reference_mode = False
         self.main_window.display.setCursor(Qt.CursorShape.ArrowCursor)
+        self.main_window.save_contours_soon()
         self.display_image(update_contours=True)
 
     ################################################################################################
@@ -1382,12 +1389,14 @@ class Display(QGraphicsView, MetricsMixin):
             self.angle_clicks = [pos]
             self.active_contour_index = len(fd.wire.contours)
             set_wire_points(fd.wire, self.active_contour_index, [original_point])
+            self.main_window.save_contours_soon()
             self.display_image(update_contours=True)
             return
 
         set_wire_points(fd.wire, self.active_contour_index, [first[0], original_point])
         self.angle_mode = False
         self.main_window.display.setCursor(Qt.CursorShape.ArrowCursor)
+        self.main_window.save_contours_soon()
         self.display_image(update_contours=True)
 
     def _discard_incomplete_wire(self):
@@ -1402,6 +1411,7 @@ class Display(QGraphicsView, MetricsMixin):
                 if index < len(lst):
                     del lst[index]
             self.active_contour_index = max(len(fd.wire.contours) - 1, 0)
+            self.main_window.save_contours_soon()
 
     def _draw_angles(self):
         """Draws lines from center through every wire's angle points, stopping at image edges."""
@@ -1839,6 +1849,7 @@ class Display(QGraphicsView, MetricsMixin):
                     getattr(self.main_window, 'mask_mode_box', None) and self.main_window.mask_mode_box.isChecked()
                 )
                 self.display_image(update_image=mask_active, update_contours=True)
+                self.main_window.save_contours_soon()
                 self.active_point_index = None
                 try:
                     self.main_window.longitudinal_view.plot_areas()
@@ -1902,6 +1913,7 @@ class Display(QGraphicsView, MetricsMixin):
             new_ys.append(cy + dy * scale)
 
         contour_obj.contours[ci] = [new_xs, new_ys]
+        self.main_window.save_contours_soon()
         self.display_image(update_contours=True)
         try:
             self.main_window.longitudinal_view.plot_areas()

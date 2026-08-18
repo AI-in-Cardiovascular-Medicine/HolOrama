@@ -1,4 +1,3 @@
-import os
 import time
 from functools import partial
 
@@ -344,6 +343,7 @@ def spawn_eem_from_lumen(main_window):
     cy = sum(ys) / len(ys)
     scale = 1.1
 
+    main_window.save_contours_soon()
     eem_obj.contours = [[[cx + (x - cx) * scale for x in xs], [cy + (y - cy) * scale for y in ys]]]
     eem_obj.closed = [True]
     eem_obj.start_coords = [[]]
@@ -372,6 +372,7 @@ def remove_contours(main_window):
                     if is_lumen:
                         # the overviews plot these, so they must go with the contour
                         clear_lumen_measurements(fd)
+            main_window.save_contours_soon()
             main_window.longitudinal_view.remove_contours(lower_limit, upper_limit)
             main_window.display.update_display()
             main_window.status_bar.showMessage(main_window.waiting_status)
@@ -583,6 +584,7 @@ def delete_contour(main_window):
                 else:
                     main_window.display.active_contour_index = 0
 
+        main_window.save_contours_soon()
         main_window.display.display_image(update_contours=True)
         try:  # the deleted contour must disappear from the pullback overviews too
             main_window.longitudinal_view.plot_areas()
@@ -673,7 +675,7 @@ def save_video_pullback(main_window):
         fps = 30
 
     H, W = image_stack[0].shape[:2]
-    out_path = os.path.splitext(main_window.file_name)[0] + '_pullback.mp4'
+    out_path = main_window.file_name + '_pullback.mp4'  # already extension-free; see write_contours
     out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (W, H), use_color)  # type: ignore[attr-defined]
     wl = main_window.display.window_level
     ww = main_window.display.window_width

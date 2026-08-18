@@ -115,6 +115,7 @@ class LongitudinalView(QGraphicsView):
             gs.pop('breathing_manual_peaks', None)
             gs.pop('breathing_manual_valleys', None)
             gs['breathing_manual_mode'] = False
+        self.main_window.save_contours_soon()
         self._peak_btn.setChecked(False)
         self._valley_btn.setChecked(False)
         self._delete_btn.setChecked(False)
@@ -130,6 +131,7 @@ class LongitudinalView(QGraphicsView):
             gs = {}
             self.main_window.runtime_data.gating_signal = gs
         gs['has_breathing_artefact'] = bool(checked)
+        self.main_window.save_contours_soon()
         self.plot_areas()  # redraw curve solid/dotted
 
     def set_data(self, images):
@@ -404,7 +406,12 @@ class LongitudinalView(QGraphicsView):
         return max(10, int(fs // 2))
 
     def _enter_manual_mode(self):
-        """Switch breathing labels to fully-manual editing (seeded from auto)."""
+        """Switch breathing labels to fully-manual editing (seeded from auto).
+
+        Called by both label edit paths, before they mutate, so flagging here covers
+        every peak/valley change — including the ones made once already in manual mode.
+        """
+        self.main_window.save_contours_soon()
         gs = self.main_window.runtime_data.gating_signal
         if gs is None:
             gs = {}

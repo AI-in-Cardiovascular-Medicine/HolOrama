@@ -41,7 +41,12 @@ class ContourSnapshot:
 
 
 def push_contour_snapshot(runtime_data: RuntimeData, frame: int, key: str, active_index: int) -> None:
-    """Record the current state of `frame_data_dct[frame].<key>` before it gets mutated."""
+    """Record the current state of `frame_data_dct[frame].<key>` before it gets mutated.
+
+    Taking a snapshot means an edit is about to happen, so this also flags the frame data
+    as unsaved — every caller is by definition a contour-changing operation.
+    """
+    runtime_data.mark_unsaved()
     if runtime_data.frame_data_dct is None:
         return
     fd = runtime_data.frame_data_dct.get(frame)

@@ -412,6 +412,7 @@ class BreathingSortViewer(QMainWindow):
         gs['sort_sys_pos'] = [[int(f), float(p)] for f, p in self.sys_pos.items()]
         gs['sort_dia_shifts'] = [float(s) for s in self.dia_shifts]
         gs['sort_sys_shifts'] = [float(s) for s in self.sys_shifts]
+        self.main_window.save_contours_soon()
 
     def _nearest_sys(self, corrected_pos: float) -> int:
         if not self.sys_sorted:

@@ -292,6 +292,7 @@ def set_oct_quality(main_window, label):
     if main_window.image_displayed:
         frame = main_window.display_slider.value()
         main_window.runtime_data.frame_data_dct[frame].quality = label
+        main_window.save_contours_soon()
 
 
 def update_oct_display(main_window, frame):

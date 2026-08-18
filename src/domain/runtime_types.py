@@ -108,3 +108,15 @@ class RuntimeData:
         self.tagged_frames: list[int] = []
         self.contour_undo: UndoStack = UndoStack()  # last 5 contour-edit snapshots, for Ctrl+Z
         self.gating_signal: GatingSignal = {}
+        # Set by every operation that edits frame data; the page saves shortly after and
+        # clears it again (see IntravascularPage.save_contours_soon).
+        self.unsaved_changes: bool = False
+
+    def mark_unsaved(self) -> None:
+        """Flag the frame data as edited, so the pending-changes save picks it up.
+
+        Call this from anything that writes to frame_data_dct — contours, phases, quality
+        labels, measurements — including batch operations that touch frames the user is
+        not looking at.
+        """
+        self.unsaved_changes = True

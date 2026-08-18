@@ -1,6 +1,7 @@
 import os
 from types import SimpleNamespace
 
+from loguru import logger
 from PyQt6.QtCore import QSize
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
@@ -125,6 +126,7 @@ class Master(QMainWindow):
 
     def reload_intravascular(self) -> None:
         old = self.intravascular_page
+        old.flush_contours()  # this page is about to be destroyed: its edits go now or never
         old.hide()
         self.stack.removeWidget(old)
         old.deleteLater()
@@ -162,6 +164,12 @@ class Master(QMainWindow):
         self.active_page = active
 
     def closeEvent(self, event) -> None:
+        # Pending intravascular edits go to disk first: the auto-save only runs on an
+        # interval, and its background writer would not survive the interpreter exiting.
+        try:
+            self.intravascular_page.flush_contours()
+        except Exception:
+            logger.exception('Could not save contours while closing')
         self.ccta_page.shutdown()
         self.fusion_page.shutdown()
         super().closeEvent(event)

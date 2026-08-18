@@ -37,6 +37,7 @@ def segment(main_window):
             main_window.contours_drawn = True
             main_window.display.set_data(main_window.runtime_data.images)
             main_window.hide_contours_box.setChecked(False)
+            main_window.save_contours_soon()  # a whole frame range was rewritten
 
     SuccessMessage(main_window, 'Automatic segmentation')
     # Every segmented frame needs its metrics computed here: a frame is otherwise only

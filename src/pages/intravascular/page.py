@@ -32,6 +32,8 @@ from pages.intravascular.utils.oct_plot import OCTPlot
 from pages.intravascular.utils.slider import Communicate, Slider
 from segmentation.predict import Predict
 
+PENDING_SAVE_DELAY_MS = 1500  # quiet time after an edit before the pending changes are written
+
 
 class IntravascularPage(QSplitter):
     def __init__(self, config: SimpleNamespace, menu_bar, status_bar) -> None:
@@ -121,9 +123,18 @@ class IntravascularPage(QSplitter):
         self.addWidget(self.right_half())
         self.setChildrenCollapsible(False)
 
-        timer: QTimer = QTimer(self)
-        timer.timeout.connect(self.auto_save)
-        timer.start(self.config.save.autosave_interval)
+        # Two save timers with different jobs. The debounce fires shortly after an edit
+        # so a change is on disk while the user is still looking at it; the periodic one
+        # re-serializes everything and writes if the content moved, catching any edit that
+        # forgot to flag itself.
+        self._pending_save_timer: QTimer = QTimer(self)
+        self._pending_save_timer.setSingleShot(True)
+        self._pending_save_timer.setInterval(PENDING_SAVE_DELAY_MS)
+        self._pending_save_timer.timeout.connect(self._save_pending_changes)
+
+        self._autosave_timer: QTimer = QTimer(self)
+        self._autosave_timer.timeout.connect(self.auto_save)
+        self._autosave_timer.start(self.config.save.autosave_interval)
 
     def sizeHint(self) -> QSize:
         return QSize(0, 0)
@@ -145,7 +156,38 @@ class IntravascularPage(QSplitter):
         if self.image_displayed:
             write_contours(self, force=False)
 
+    def save_contours_soon(self) -> None:
+        """Note that frame data changed and save once the edits stop coming.
+
+        Called by every contour-changing operation (directly, or via push_contour_snapshot
+        / Display.update_display). Restarting the timer on each edit means a burst of edits
+        costs one write, and serializing the whole pullback — ~0.1-0.3 s — never lands in
+        the middle of an interaction.
+        """
+        self.runtime_data.mark_unsaved()
+        if self.image_displayed:
+            self._pending_save_timer.start()
+
+    def _save_pending_changes(self) -> None:
+        if self.image_displayed and self.runtime_data.unsaved_changes:
+            write_contours(self, force=False)
+            self.runtime_data.unsaved_changes = False
+
+    def flush_contours(self) -> None:
+        """Write outstanding changes now — before this page is replaced or the app closes.
+
+        Blocking on purpose: the background writer is a daemon thread, so a write started
+        here would be killed on the way out. Unchanged content still costs nothing (the
+        hash check in write_contours skips the write), and the hash is checked rather than
+        the flag so an edit that never flagged itself is saved too.
+        """
+        self._pending_save_timer.stop()
+        if self.image_displayed:
+            write_contours(self, force=False, blocking=True)
+            self.runtime_data.unsaved_changes = False
+
     def reset_state(self) -> None:
+        self._pending_save_timer.stop()
         if self.results_plot is not None:
             self.results_plot.close()
         if self.small_display is not None:

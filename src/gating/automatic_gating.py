@@ -248,4 +248,5 @@ class AutomaticGating:
             if frame in self.main_window.runtime_data.frame_data_dct:
                 self.main_window.runtime_data.frame_data_dct[frame].phase = 'S'
 
+        self.main_window.save_contours_soon()
         logger.info(f'Gating applied: {len(dia_frames)} diastolic, {len(sys_frames)} systolic')
