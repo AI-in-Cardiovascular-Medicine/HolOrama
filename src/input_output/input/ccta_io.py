@@ -217,7 +217,7 @@ def read_nifti_volume(path: str) -> tuple[np.ndarray, dict]:
         metadata: dict with pixel_spacing (dy, dx) in mm, slice_thickness in mm, n_slices
 
     Raises:
-        ValueError: if the file cannot be read or is not 3-D
+        ValueError: if the file cannot be read or is not 3D
     """
     try:
         img = sitk.ReadImage(path)
@@ -225,7 +225,7 @@ def read_nifti_volume(path: str) -> tuple[np.ndarray, dict]:
         raise ValueError(f'Could not read NIfTI file: {e}') from e
 
     if img.GetDimension() != 3:
-        raise ValueError(f'Expected a 3-D NIfTI volume, got {img.GetDimension()}-D.')
+        raise ValueError(f'Expected a 3D NIfTI volume, got {img.GetDimension()}-D.')
 
     volume = sitk.GetArrayFromImage(img).astype(np.int16)  # (Z, Y, X)
     dx, dy, dz = img.GetSpacing()  # SimpleITK order: x, y, z
@@ -251,7 +251,7 @@ def read_mask_volume(path: str) -> tuple[np.ndarray, dict]:
         metadata: dict with pixel_spacing (dy, dx) in mm, slice_thickness in mm, n_slices
 
     Raises:
-        ValueError: if the file cannot be read or is not 3-D
+        ValueError: if the file cannot be read or is not 3D
     """
     try:
         img = sitk.ReadImage(path)
@@ -259,7 +259,7 @@ def read_mask_volume(path: str) -> tuple[np.ndarray, dict]:
         raise ValueError(f'Could not read mask file: {e}') from e
 
     if img.GetDimension() != 3:
-        raise ValueError(f'Expected a 3-D mask volume, got {img.GetDimension()}-D.')
+        raise ValueError(f'Expected a 3D mask volume, got {img.GetDimension()}-D.')
 
     mask = sitk.GetArrayFromImage(img).astype(np.uint8)  # (Z, Y, X)
     dx, dy, dz = img.GetSpacing()

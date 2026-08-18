@@ -6,17 +6,44 @@ Overview
 What HolOrama is for
 --------------------
 
-HolOrama turns cardiac images into **geometry you can measure, export and reuse**:
+HolOrama grew out of a personal need during my PhD. Intravascular ultrasound (IVUS) was
+central to uncovering the pathophysiology of coronary artery anomalies, but that meant
+segmenting thousands of images and the existing tools felt slow and not flexible enough 
+to build an efficient workflow around. So the first goal was simply the most intuitive 
+and efficient segmentation tool I could get, fast enough to keep training deep-learning 
+models on real data.
 
-- **Annotation.** Draw contours on intravascular (IVUS/OCT) frames or paint labels on a
-  CCTA volume, with tools designed to record *how certain* you are about a border rather
-  than forcing a single crisp line.
+The next need had no tool at all: turning intravascular images into 3D models and merging
+them with coronary computed tomography angiography (CCTA) into one geometry. That brings in
+engineering concepts most physicians never meet — gating, breathing correction, alignment,
+fusion — so the challenge became hiding all of it behind an interface any clinician can 
+intuitively use.
+
+Hence the two promises of HolOrama: intuitive even where the topic is complex, and flexible
+enough to fit your own workflow.
+
+Specifically HolOrama spans the following functionalities:
+
+- **Intravascular segmentation.** Draw contours on IVUS/OCT frames — lumen, EEM, calcium,
+  side branches and more — with tools designed to record *how certain* you are about a
+  border rather than forcing a single crisp line. On a source install, lumen contours can
+  be pre-segmented automatically and then corrected by hand.
+- **Motion correction.** IVUS pullbacks carry substantial motion artefacts, from the
+  heartbeat and from breathing. HolOrama gates the pullback from the images alone (no ECG
+  needed) and can detect and remove the breathing component.
+- **Clinical reports.** Per-frame metrics for both IVUS and OCT pullbacks as a report file 
+  plus contour CSVs including lumen and EEM area, circumference, longest and shortest diameter, 
+  elliptic ratio, pullback position.
 - **Export for machine learning.** Every intravascular annotation can be written out as
   paired image/mask NIfTI files, so a segmentation model can be trained directly on your
   labels.
-- **Reconstruction.** Build a 3-D model of the aortic root with the coronaries from CCTA,
-  and fuse it with an intravascular pullback into a single geometry — for example as
-  input to a computational fluid dynamics study.
+- **CCTA segmentation and 3D geometry.** Paint and correct multi-label masks on a CT
+  volume, inspect and clean them in a 3D rendering, cut out the aortic root with the
+  coronaries, and compute centerlines with `vmtk <https://vmtk.github.io>`_.
+- **Fusion.** A complete GUI wrapper around
+  `multimodars <https://pypi.org/project/multimodars>`_ that fuses the CCTA geometry with
+  an intravascular pullback into a single mesh — for example as input to a computational
+  fluid dynamics study.
 
 The three modules
 -----------------
@@ -47,18 +74,33 @@ IVUS pullbacks additionally get two signal-processing tools:
   from the lumen-area signal and can reorder the gated frames into a breathing-corrected
   pullback.
 
+.. image:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/IVUS_demo.gif
+   :alt: Contouring an IVUS pullback in HolOrama
+   :align: center
+   :width: 760px
+
+.. image:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/OCT_demo.gif
+   :alt: Contouring an OCT pullback in HolOrama
+   :align: center
+   :width: 760px
+
 .. rubric:: CCTA
 
-Multi-label segmentation and 3-D model building on a CT volume.
+Multi-label segmentation and 3D model building on a CT volume.
 
 - Synchronised axial / coronal / sagittal views of a DICOM folder or NIfTI file.
 - **Brush** to add to or erase from any label, on any of the three views.
-- **3-D volume rendering** of the visible labels, with a **lasso** tool to delete
+- **3D volume rendering** of the visible labels, with a **lasso** tool to delete
   everything of one label inside a drawn region — the fast way to remove noise and
   structures the segmentation picked up by mistake.
 - Draw **cut planes** (LVOT and aorta top) and extract the aortic root together with the
   coronaries as one combined NIfTI mask or STL mesh, then **smooth**, **reduce** and — if
   you have `vmtk <https://vmtk.github.io>`_ installed — compute **centerlines**.
+
+.. image:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/CCTA_demo.gif
+   :alt: Segmenting and cleaning a CCTA volume in HolOrama
+   :align: center
+   :width: 760px
 
 .. rubric:: Fusion
 
@@ -72,6 +114,11 @@ the other two modules produced and merges them:
 - remove the overlapping points, shrink or expand CCTA regions along their centerline so
   the calibre matches the intravascular measurement,
 - stitch everything together, remesh and smooth, and export a single STL.
+
+.. image:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/Fusion_demo.gif
+   :alt: Fusing CCTA and intravascular data in HolOrama
+   :align: center
+   :width: 760px
 
 How the modules connect
 -----------------------

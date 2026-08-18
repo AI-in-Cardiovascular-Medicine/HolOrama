@@ -1,8 +1,8 @@
-"""Screen-space lasso polygon for VTK 3-D views.
+"""Screen-space lasso polygon for VTK 3D views.
 
 Shared by CCTA's mask-erase lasso (pages/ccta/left_half/display_3d.py) and Fusion's
 point-reclassify lasso (pages/fusion/left_half/display_results.py): both let a user
-click out a polygon over the render window, close it, then test which 3-D points
+click out a polygon over the render window, close it, then test which 3D points
 project inside it. What "inside" means to the caller — erase a mask voxel, move a
 point from one label to another — is left entirely to the caller; this module only
 owns the polygon capture/drawing/projection/containment mechanics.

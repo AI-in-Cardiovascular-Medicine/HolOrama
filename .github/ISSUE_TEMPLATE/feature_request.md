@@ -10,7 +10,7 @@ assignees: ''
 **Which module would this affect?**
 <!-- Tick everything that applies. -->
 - [ ] Intravascular (IVUS / OCT segmentation, gating, breathing correction)
-- [ ] CCTA (segmentation, 3-D render, cut geometry, centerlines)
+- [ ] CCTA (segmentation, 3D render, cut geometry, centerlines)
 - [ ] Fusion
 - [ ] Export / file formats
 - [ ] Documentation

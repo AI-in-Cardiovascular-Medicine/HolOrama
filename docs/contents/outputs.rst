@@ -77,9 +77,9 @@ case directory named after the mode: ``contoured_frames/``, ``gated_frames/`` or
    * - File
      - Written when
    * - ``<case>_img.nii.gz``
-     - ``save.save_3d: True`` — the whole selected stack as one 3-D image volume
+     - ``save.save_3d: True`` — the whole selected stack as one 3D image volume
    * - ``<case>_seg.nii.gz``
-     - ``save.save_3d: True`` — the matching 3-D mask volume
+     - ``save.save_3d: True`` — the matching 3D mask volume
    * - ``<case>_frame_<n>_img.nii.gz``
      - ``save.save_2d: True`` — one image file per frame
    * - ``<case>_frame_<n>_seg.nii.gz``

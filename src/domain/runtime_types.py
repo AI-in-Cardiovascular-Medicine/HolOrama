@@ -30,7 +30,7 @@ class FusionRuntimeData:
     labeling (column 1), intravascular alignment (column 2), fusion/scaling/stitching
     (column 3). Nothing here is serialized as-is -> each stage writes its own output file
     (STL, VTP, JSON) via pipeline.py, and this container just keeps the in-memory objects
-    needed to feed the next stage and to redraw the 3-D viewer.
+    needed to feed the next stage and to redraw the 3D viewer.
     """
 
     def __init__(self):

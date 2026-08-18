@@ -2,7 +2,7 @@
 mesh, smooth it, and locate the inlet/outlet cut-plane centroids.
 
 Kept separate from stl_export.py (which only ever writes straight to disk) because
-this module keeps the mesh in memory so it can be added as a 3-D layer, smoothed,
+this module keeps the mesh in memory so it can be added as a 3D layer, smoothed,
 and re-inspected before anything is exported.
 """
 

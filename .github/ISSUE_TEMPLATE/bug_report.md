@@ -10,7 +10,7 @@ assignees: ''
 **Which module?**
 <!-- Tick the one where the problem occurs. -->
 - [ ] Intravascular (IVUS / OCT segmentation, gating, breathing correction)
-- [ ] CCTA (segmentation, 3-D render, cut geometry, centerlines)
+- [ ] CCTA (segmentation, 3D render, cut geometry, centerlines)
 - [ ] Fusion
 - [ ] Installation / startup
 - [ ] Other / not sure
@@ -28,7 +28,7 @@ Steps to reproduce the behaviour:
 What you expected to happen instead.
 
 **Screenshots**
-If applicable, add screenshots — especially of the error dialog and of the state of the 3-D view or the contours.
+If applicable, add screenshots — especially of the error dialog and of the state of the 3D view or the contours.
 
 **Log file (please attach)**
 The application writes a log file on every run. This is the single most helpful thing you can provide.

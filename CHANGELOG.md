@@ -31,7 +31,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - About video (Help → About) and its `VideoPlayer`/`about.mp4` wiring.
 
 ### Fixed
-- Fusion 3-D viewer no longer resets every layer's checkbox/opacity when a pipeline step re-renders a scene; visibility and opacity are preserved across re-adds (branch scene snapshots and restores around its full rebuild).
+- Fusion 3D viewer no longer resets every layer's checkbox/opacity when a pipeline step re-renders a scene; visibility and opacity are preserved across re-adds (branch scene snapshots and restores around its full rebuild).
 - Saving a report for OCT crashed (`pullback_length` is a scalar total length for OCT but a per-frame array for IVUS/NIfTI); per-frame positions are now derived consistently.
 - EEM/calcium/sidebranch contours were never written to CSV for any modality (they read a non-existent `display.full_contours`); they now come from the per-frame contour data like lumen.
 
@@ -43,7 +43,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [0.8.0] - 2026-08-11
 
 ### Added
-- lasso tool on Fusion's CCTA Geometry tab to reclassify labeled points between regions (e.g. rca_points → aorta_points) by drawing a closed lasso around them in the 3-D view
+- lasso tool on Fusion's CCTA Geometry tab to reclassify labeled points between regions (e.g. rca_points → aorta_points) by drawing a closed lasso around them in the 3D view
 - extracted the lasso polygon/projection mechanics shared by this and CCTA's existing mask-erase lasso into tools/lasso.py
 
 ## [0.7.1] - 2026-08-11

@@ -4,13 +4,17 @@
 HolOrama documentation
 ========================
 
-*A unified platform for cardiac image analysis — segment, quantify and fuse intravascular
-and coronary CT imaging.*
-
 .. image:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/logo_holOrama.jpg
    :alt: HolOrama logo
    :align: center
    :width: 640px
+
+*A unified platform for cardiac image analysis. Segment, quantify and fuse intravascular
+and coronary CT imaging.*
+
+.. warning::
+   This software is provided *as is*, for research use only. It is not a medical device.
+   Users should independently verify all results.
 
 HolOrama is a desktop application (PyQt6) for annotating and analysing cardiac images.
 Its name mixes the greek *holo* ("full") and *orama* ("vision"): the promise of visualising
@@ -33,18 +37,22 @@ on the far left of the window:
        <contents/modules/gating>` and :doc:`breathing-motion detection and correction
        <contents/modules/breathing>`.
    * - :doc:`CCTA <contents/modules/ccta>`
-     - Multi-label segmentation of coronary CT angiography with a brush tool, 3-D volume
+     - Multi-label segmentation of coronary CT angiography with a brush tool, 3D volume
        rendering, a lasso tool for removing structures, and construction of a combined
-       aortic-root-and-coronaries model from user-defined cut planes — which can then be
-       smoothed, decimated and (with a user-supplied vmtk install) turned into centerlines.
+       aortic-root-and-coronaries model from user-defined cut planes, which can then be
+       smoothed and reduced. Further, with a user-supplied vmtk install, centerlines
+       can be installed.
    * - :doc:`Fusion <contents/modules/fusion>`
      - A GUI wrapper around the `multimodars <https://pypi.org/project/multimodars>`_
        package: takes the cut CCTA geometry, its centerlines and an IVUS/OCT pullback and
        merges them into one geometry.
 
-.. warning::
-   This software is provided *as is*, for research use only. It is not a medical device.
-   Users should independently verify all results.
+.. note::
+   We additionally provide to pre-trained deep learning models, for IVUS and CCTA.
+   The IVUS model is trained specifically for coronary artery anomalies, while the CCTA
+   model can detect all structures. However, they are not included in the precompiled
+   version (Installer), especially to my fellow physicians, who probably lack the programming
+   experience feel free to reach out, I'm always happy to help.
 
 New here? Start with the :doc:`contents/overview`, then :doc:`contents/installation`,
 then the tutorial for the module you need.
@@ -121,14 +129,14 @@ This package is covered by the open source `MIT License
 Developers
 ----------
 
- - `Anselm Stark <https://github.com/yungselm>`_:sup:`1,2`
- - `Sebastian Balzer <https://github.com/cardionaut>`_:sup:`1,2`
- - `Pooya Mohammadi Kazaj <https://github.com/pooya-mohammadi>`_:sup:`1,2`
- - `Isaac Shiri <https://github.com/Isaacshiri>`_:sup:`1`
+ - `Anselm Stark, MD, PhD <https://github.com/yungselm>`_:sup:`1,2`
+ - `Sebastian Balzer, MSc <https://github.com/cardionaut>`_:sup:`1`
+ - `Pooya Mohammadi Kazaj, MSc <https://github.com/pooya-mohammadi>`_:sup:`1,2`
+ - `Isaac Shiri, PhD <https://github.com/Isaacshiri>`_:sup:`1, 2`
 
 :sup:`1`\ Department of Cardiology, Inselspital, Bern University Hospital, University of Bern, Switzerland
 
-:sup:`2`\ Graduate School for Cellular and Biomedical Sciences, University of Bern, Bern, Switzerland
+:sup:`2`\ Department of Digital Medicine, University of Bern, Switzerland
 
 Contributing
 ------------

@@ -112,7 +112,7 @@ class CctaPage(QWidget):
         grid.setColumnStretch(1, 1)
 
         # Cut geometry gets its own tab (own VTK render window) rather than sharing
-        # the segmentation 3-D view — it has its own mask/picking, unrelated to the
+        # the segmentation 3D view — it has its own mask/picking, unrelated to the
         # per-label segmentation actors shown in "Segmentation".
         self._cut_viewer = CutGeometryViewer3D()
 
@@ -527,7 +527,7 @@ class CctaPage(QWidget):
             d._render()
 
     def _on_mask_about_to_change(self) -> None:
-        """Record the mask right before a brush stroke or 3-D erase mutates it, for Ctrl+Z."""
+        """Record the mask right before a brush stroke or 3D erase mutates it, for Ctrl+Z."""
         if self.data.mask is not None:
             self.data.mask_undo.push(self.data.mask.copy())
 
@@ -738,7 +738,7 @@ class CctaPage(QWidget):
         QApplication.processEvents()
 
         # STL: if the cut geometry has already been built (and possibly smoothed) in
-        # 3-D, export exactly that mesh — what's shown in the viewer is what's on
+        # 3D, export exactly that mesh — what's shown in the viewer is what's on
         # disk, and smoothing is otherwise lost since it never touches the voxel mask.
         # NIfTI is a voxel format, so it always re-derives the combined mask fresh.
         if fmt == 'stl' and self.data.cut_mesh is not None:

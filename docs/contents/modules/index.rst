@@ -18,7 +18,7 @@ left of the window. Each keeps its own loaded data, so switching does not discar
      - :doc:`gating`
    * - Detect breathing motion and reorder a gated pullback to compensate for it
      - :doc:`breathing`
-   * - Segment a CCTA volume, clean it up in 3-D and build an aortic-root model
+   * - Segment a CCTA volume, clean it up in 3D and build an aortic-root model
      - :doc:`ccta`
    * - Merge a CCTA model and an intravascular pullback into one geometry
      - :doc:`fusion`

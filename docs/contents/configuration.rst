@@ -128,7 +128,7 @@ Parameters of the image-based gating and breathing algorithms — see
    * - ``save_2d``
      - Also write each frame's image/mask as an individual 2-D NIfTI file.
    * - ``save_3d``
-     - Write the full stack of frames as a single 3-D NIfTI volume.
+     - Write the full stack of frames as a single 3D NIfTI volume.
 
 ``vmtk``
 --------

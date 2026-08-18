@@ -31,12 +31,12 @@ All application code lives under ``src/``::
     │   │   ├── popup_windows/   dialogs — frame range, breathing sort viewer, settings
     │   │   └── utils/           helpers shared across the intravascular page
     │   ├── ccta/
-    │   │   ├── left_half/       tri-plane viewer, VTK 3-D renderer, cut-geometry viewer
+    │   │   ├── left_half/       tri-plane viewer, VTK 3D renderer, cut-geometry viewer
     │   │   ├── right_half/      mask panel, brush panel, STL extraction panel
     │   │   ├── cut_geometry.py  mask → mesh, inlet/outlet location
     │   │   └── vmtk_runner.py   drives an external vmtk install for centerlines
     │   └── fusion/
-    │       ├── left_half/       shared 3-D viewer and per-scene toolbars
+    │       ├── left_half/       shared 3D viewer and per-scene toolbars
     │       ├── right_half/      the three pipeline columns
     │       └── pipeline.py      thin wrappers around the multimodars calls
     ├── segmentation/        automatic segmentation — nnUZoo wrapper, mask→contour

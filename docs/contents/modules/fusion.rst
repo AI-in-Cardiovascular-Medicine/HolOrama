@@ -9,17 +9,12 @@ the true lumen cross-section, and the result carries both.
 
 It is a graphical front end for the `multimodars <https://pypi.org/project/multimodars>`_
 package — every button corresponds to a step of that pipeline, with the intermediate result
-rendered in 3-D so you can check it before continuing.
-
-.. image:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/Fusion_demo.gif
-   :alt: Fusing CCTA and intravascular data in HolOrama
-   :align: center
-   :width: 760px
+rendered in 3D so you can check it before continuing.
 
 The layout
 ----------
 
-.. rubric:: Left — the 3-D viewer
+.. rubric:: Left — the 3D viewer
 
 One VTK view, with a tab per scene. Each tab has its own toolbar listing that scene's
 layers with a visibility checkbox and a colour swatch, plus **Reset View**, **Pick Point**

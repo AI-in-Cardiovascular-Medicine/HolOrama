@@ -25,7 +25,7 @@ _LAYERS_MIN_WIDTH = 220
 
 
 class SceneToolbar(QWidget):
-    """Toolbar shown above the 3-D viewer for one FusionScene tab.
+    """Toolbar shown above the 3D viewer for one FusionScene tab.
 
     Provides the controls every scene needs (reset camera) and, when show_layers=True,
     a per-layer visibility list with either an opacity slider or (show_color_swatch=True)
@@ -93,7 +93,7 @@ class SceneToolbar(QWidget):
         if show_pick:
             self.pick_btn = QPushButton('Pick Point')
             self.pick_btn.setCheckable(True)
-            self.pick_btn.setToolTip('Click a point in the 3-D scene')
+            self.pick_btn.setToolTip('Click a point in the 3D scene')
             self.pick_btn.toggled.connect(self.pick_mode_toggled.emit)
             view_buttons.addWidget(self.pick_btn)
 
@@ -108,7 +108,7 @@ class SceneToolbar(QWidget):
             view_buttons.addWidget(self.lasso_btn)
 
         clear_btn = QPushButton('Clear All Data')
-        clear_btn.setToolTip('Discards every loaded/computed fusion result and clears the 3-D viewer.')
+        clear_btn.setToolTip('Discards every loaded/computed fusion result and clears the 3D viewer.')
         clear_btn.clicked.connect(self.clear_all_data_requested.emit)
         view_buttons.addWidget(clear_btn)
         root.addLayout(view_buttons)

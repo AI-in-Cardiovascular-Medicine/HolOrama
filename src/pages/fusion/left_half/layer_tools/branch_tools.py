@@ -14,7 +14,7 @@ class BranchEditorToolbar(SceneToolbar):
 
     Split is on top, Merge below, each in its own labeled group so the two unrelated
     actions don't run together. To split: click 'Pick Point' then click *any* point on an
-    RCA/LCA branch in the 3-D scene (not just a numbered sharp-angle marker) —
+    RCA/LCA branch in the 3D scene (not just a numbered sharp-angle marker) —
     FusionPage._on_point_picked resolves the click to the nearest actual centerline point
     and calls set_selected_marker() below. The cos threshold only controls which points get
     a numbered marker in the scene; it doesn't limit what you can pick.

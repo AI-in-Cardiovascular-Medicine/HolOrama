@@ -8,16 +8,6 @@ contours with the tool that matches the structure, mark where you are uncertain,
 the result — as a metrics report, as contour CSVs, or as image/mask NIfTI pairs ready to
 train a segmentation model.
 
-.. image:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/IVUS_demo.gif
-   :alt: Contouring an IVUS pullback in HolOrama
-   :align: center
-   :width: 760px
-
-.. image:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/OCT_demo.gif
-   :alt: Contouring an OCT pullback in HolOrama
-   :align: center
-   :width: 760px
-
 Both modalities share the same contouring tools. IVUS pullbacks additionally get
 :doc:`gating` and :doc:`breathing`; OCT pullbacks instead get frame *tagging* and a
 per-frame image-quality rating.
@@ -268,7 +258,7 @@ The NIfTI export is the intended bridge to model training: masks are rasterised 
 contours using a fixed layering ruleset, so overlapping structures resolve the same way
 every time. Choose **All Frames** for a dense dataset, or **Contoured Frames** to export
 only what you actually annotated. ``save.save_2d`` and ``save.save_3d`` control whether you
-get one file per frame, a single 3-D volume, or both.
+get one file per frame, a single 3D volume, or both.
 
 Next steps
 ----------

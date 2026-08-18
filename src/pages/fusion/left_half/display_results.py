@@ -194,7 +194,7 @@ class FusionViewer3D(QWidget):
         visible: bool = True,
     ) -> None:
         """One billboard text actor per (point, text) pair — always faces the camera,
-        unlike a 3-D-oriented label would. Used for sharp-angle markers (see
+        unlike a 3D-oriented label would. Used for sharp-angle markers (see
         colors.SHARP_ANGLE_LABEL_COLOR)."""
         is_first_layer_in_scene = not self._scenes[scene].layers
 

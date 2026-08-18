@@ -50,7 +50,7 @@ except ImportError:
 
 class CctaViewer3D(QWidget):
     cursor_moved = pyqtSignal(int, int, int)  # z, y, x voxel coords
-    mask_erased = pyqtSignal()  # 3-D lasso erase modified the mask
+    mask_erased = pyqtSignal()  # 3D lasso erase modified the mask
     mask_about_to_change = pyqtSignal()  # emitted before a lasso erase mutates the mask
 
     def __init__(self, parent=None):
@@ -230,7 +230,7 @@ class CctaViewer3D(QWidget):
         return super().eventFilter(obj, event)
 
     def set_cursor(self, z: int, y_vox: int, x_vox: int) -> None:
-        """Place the 3-D marker at a voxel position (called from 2-D view crosshair moves)."""
+        """Place the 3D marker at a voxel position (called from 2-D view crosshair moves)."""
         if self._mask is None or self._voxel_spacing is None:
             return
         wx, wy, wz = self.voxel_to_world(z, y_vox, x_vox)
@@ -381,7 +381,7 @@ class CctaViewer3D(QWidget):
     def _rebuild_active_actors(self) -> None:
         """Regenerate the mesh for every currently-visible label from the current
         `self._mask`, preserving the camera. No-op if nothing has been rendered yet
-        (the 3-D mesh is opt-in via the Render button)."""
+        (the 3D mesh is opt-in via the Render button)."""
         if not self._actors:
             return
         camera = self._ren.GetActiveCamera()

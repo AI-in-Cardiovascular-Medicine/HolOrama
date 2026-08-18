@@ -373,7 +373,7 @@ class CctaDisplay(QGraphicsView):
             return z, y, self.cursor_x
 
     def _paint_at_scene(self, scene_row: float, scene_col: float) -> None:
-        """Paint a brush disc at (scene_row, scene_col) into the 3-D mask."""
+        """Paint a brush disc at (scene_row, scene_col) into the 3D mask."""
         if self._mask is None or self._brush_geometry is None:
             return
         assert self.volume is not None and self.voxel_spacing is not None

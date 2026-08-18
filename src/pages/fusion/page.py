@@ -87,7 +87,7 @@ class FusionPage(QWidget):
             self,
             'Clear All Data',
             'Discard every loaded/computed fusion result (centerlines, vessel tree, '
-            'alignment, scaling, stitched mesh) and clear the 3-D viewer?',
+            'alignment, scaling, stitched mesh) and clear the 3D viewer?',
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )

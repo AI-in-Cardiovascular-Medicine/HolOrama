@@ -203,7 +203,7 @@ CCTA module
    * - :kbd:`Esc`
      - Return to a neutral state (leave brush and line-drawing modes)
    * - :kbd:`Ctrl+Z`
-     - Undo the last mask edit (brush stroke or 3-D lasso erase)
+     - Undo the last mask edit (brush stroke or 3D lasso erase)
 
 Mouse, slice views:
 
@@ -222,7 +222,7 @@ Mouse, slice views:
    * - Mouse wheel
      - Scroll through slices
 
-Mouse, 3-D views (Segmentation, Cut Geometry and Fusion):
+Mouse, 3D views (Segmentation, Cut Geometry and Fusion):
 
 .. list-table::
    :header-rows: 1

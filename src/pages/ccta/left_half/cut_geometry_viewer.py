@@ -1,4 +1,4 @@
-"""Dedicated 3-D view for the post-cut geometry (Build Cut Geometry / Smooth /
+"""Dedicated 3D view for the post-cut geometry (Build Cut Geometry / Smooth /
 Calculate Centerlines / RCA-LCA outlet points), in its own tab next to the main
 segmentation view (see CctaViewer3D in display_3d.py). Split out from that class so
 this layer isn't a "ghost" sharing space (and the label picking ray-march) with the

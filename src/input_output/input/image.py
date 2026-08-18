@@ -88,7 +88,7 @@ def read_image(main_window) -> None:
             if is_oct and pixel_array.ndim == 4 and pixel_array.shape[-1] == 3:
                 # 4-D RGB NIfTI — use colour channels directly (same guard as DICOM path)
                 main_window.runtime_data.images_rgb = pixel_array.clip(0, 255).astype(np.uint8)
-            # 3-D grayscale OCT: images_rgb stays None → _convert_gray_to_oct runs below
+            # 3D grayscale OCT: images_rgb stays None → _convert_gray_to_oct runs below
         else:
             try:
                 pixel_array, metadata_df = _read_dicom(file_name)

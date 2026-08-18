@@ -2,7 +2,7 @@ from enum import Enum
 
 
 class FusionScene(Enum):
-    """The scenes shown in the fusion page's shared 3-D viewer (one VTK renderer,
+    """The scenes shown in the fusion page's shared 3D viewer (one VTK renderer,
     actors grouped per scene and swapped on tab change)."""
 
     CCTA_GEOMETRY = 'ccta_geometry'

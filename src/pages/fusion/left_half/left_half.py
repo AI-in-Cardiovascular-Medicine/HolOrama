@@ -13,7 +13,7 @@ from pages.intravascular.utils.helpers import SplitterPane
 
 
 class LeftHalf:
-    """Tabbed 3-D scene: one tab per FusionScene, each showing that scene's toolbar
+    """Tabbed 3D scene: one tab per FusionScene, each showing that scene's toolbar
     above the shared FusionViewer3D. Switching tabs swaps which actor group is visible
     in the viewer — see FusionViewer3D.set_scene()."""
 

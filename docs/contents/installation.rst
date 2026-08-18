@@ -22,7 +22,7 @@ There are two ways to get HolOrama:
      - Not included
      - Included (optional extra)
 
-Everything else — contouring, gating, breathing correction, CCTA segmentation, the 3-D
+Everything else — contouring, gating, breathing correction, CCTA segmentation, the 3D
 tools and the whole fusion pipeline — is identical in both.
 
 .. _install-binary:

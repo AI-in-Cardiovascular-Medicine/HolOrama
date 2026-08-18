@@ -22,7 +22,7 @@ def _separator() -> QFrame:
 
 class StlExtractionPanel(QWidget):
     """Panel for extracting and exporting the aortic root with coronaries and LVOT,
-    building the same cut geometry as an in-memory 3-D layer, and marking RCA/LCA
+    building the same cut geometry as an in-memory 3D layer, and marking RCA/LCA
     outlet points on it for centerline computation."""
 
     line_draw_requested = pyqtSignal(int)  # 0 = axial LVOT, 1 = coronal LVOT, 2 = coronal aorta-top
@@ -82,13 +82,13 @@ class StlExtractionPanel(QWidget):
 
         self._build_geometry_btn = QPushButton('Build Cut Geometry')
         self._build_geometry_btn.setEnabled(False)
-        self._build_geometry_btn.setToolTip('Build the cut surface as a 3-D layer with inlet/outlet markers')
+        self._build_geometry_btn.setToolTip('Build the cut surface as a 3D layer with inlet/outlet markers')
         self._build_geometry_btn.clicked.connect(self._on_build_cut_geometry)
         root.addWidget(self._build_geometry_btn)
 
         root.addWidget(_separator())
 
-        # Outlet points (RCA / LCA), placed on the cut geometry in the 3-D view —
+        # Outlet points (RCA / LCA), placed on the cut geometry in the 3D view —
         # used as centerline targets by Calculate Centerlines.
         root.addWidget(QLabel('Outlet points:'))
         self._rca_btn, self._rca_count_lbl = self._outlet_row(root, 'Add RCA Outlet', 'rca')

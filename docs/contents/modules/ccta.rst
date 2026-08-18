@@ -4,14 +4,9 @@ CCTA
 ====
 
 The CCTA module works on a coronary CT angiography volume: correct or create a multi-label
-segmentation, clean it up in 3-D, and cut out the aortic root together with the coronaries
+segmentation, clean it up in 3D, and cut out the aortic root together with the coronaries
 as a single model — the geometry the :doc:`fusion` module later merges with an
 intravascular pullback.
-
-.. image:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/CCTA_demo.gif
-   :alt: Segmenting and cleaning a CCTA volume in HolOrama
-   :align: center
-   :width: 760px
 
 The layout
 ----------
@@ -20,12 +15,12 @@ The module has two tabs on the left and one control column on the right.
 
 .. rubric:: Tab "Segmentation"
 
-A 2×2 grid: **Axial**, **Sagittal**, **Coronal** slice views and a **3-D** view. The slice
+A 2×2 grid: **Axial**, **Sagittal**, **Coronal** slice views and a **3D** view. The slice
 views share one cursor, so clicking in one moves the other two to the same voxel.
 
 .. rubric:: Tab "Cut Geometry"
 
-A dedicated 3-D view for the cut model, with its own render window and picking. Toolbar
+A dedicated 3D view for the cut model, with its own render window and picking. Toolbar
 along the bottom: **Smooth** (+ Taubin lambda), **Reduce Mesh** (+ target reduction),
 **Opacity**, **Calculate Centerlines**.
 
@@ -64,7 +59,7 @@ blank multi-label mask, ready to paint.
 - Drag :kbd:`RMB` for windowing (:kbd:`R` resets), drag :kbd:`LMB` to zoom (:kbd:`F`
   resets).
 - :kbd:`Esc` returns to a neutral state (leaves brush/line-drawing modes).
-- :kbd:`Ctrl+Z` undoes the last mask edit — brush strokes and 3-D lasso erases alike.
+- :kbd:`Ctrl+Z` undoes the last mask edit — brush strokes and 3D lasso erases alike.
 
 3. Organise the labels
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -72,7 +67,7 @@ blank multi-label mask, ready to paint.
 In the **Labels** list you can hide or show each label, rename it, and toggle all at once.
 The **Cardiac CCTA** presets fill in standard anatomic **Names** and **Colors** in one
 click. Names and colours propagate everywhere immediately — the slice overlays, the brush
-selector, the 3-D render and the cut-geometry dropdowns.
+selector, the 3D render and the cut-geometry dropdowns.
 
 Use the **Mask opacity** slider to check a border against the underlying CT.
 
@@ -90,10 +85,10 @@ radius. Then paint in any of the three slice views.
 This is the tool for local corrections: closing a gap in a vessel, trimming a leak into an
 adjacent structure, or painting a label from scratch on a blank mask.
 
-5. Render in 3-D and remove structures with the lasso
+5. Render in 3D and remove structures with the lasso
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Click **Render 3D** in the 3-D view. A surface is extracted for every *visible* label, so
+Click **Render 3D** in the 3D view. A surface is extracted for every *visible* label, so
 hiding labels first is the quickest way to isolate what you want to look at. Rotate with
 :kbd:`LMB`, zoom with the wheel.
 
