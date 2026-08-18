@@ -285,6 +285,7 @@ Major refactor ensuring seperation of concerns and identifying several bugs like
 
 ### Changed
 - Complete structure from:
+```
 .
 ├───gating
 ├───gui
@@ -295,8 +296,9 @@ Major refactor ensuring seperation of concerns and identifying several bugs like
 ├───input_output
 ├───report
 └───segmentation
-
+```
 to: 
+```
 .
 ├───domain
 ├───gating
@@ -310,6 +312,7 @@ to:
 │   └───output
 ├───segmentation
 └───tools
+```
 With domain now including all the data structures used by the program and report integrated into output.
 
 ### Fixed
@@ -427,6 +430,7 @@ Now runs on PyQt6
 [0.4.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v1.8.0...v0.1.0 
 [1.8.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.6.3...v1.7.0
 [1.6.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.5.0...v1.6.0
