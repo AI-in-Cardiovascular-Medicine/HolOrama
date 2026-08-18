@@ -1,4 +1,5 @@
 import os
+import sys
 from types import SimpleNamespace
 
 from loguru import logger
@@ -64,7 +65,11 @@ class Master(QMainWindow):
             setattr(self, metadata_name, data_type)
 
         self.setWindowTitle('HolOrama Software')
-        icon_path = os.path.join(os.path.dirname(__file__), '..', '..', 'media', 'desktop_img.ico')
+        if "__compiled__" in globals():
+            base_dir = os.path.dirname(sys.executable)
+        else:
+            base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        icon_path = os.path.join(base_dir, 'media', 'desktop_img.ico')
         self.setWindowIcon(QIcon(icon_path))
 
         self.menu_bar = QMenuBar(self)
