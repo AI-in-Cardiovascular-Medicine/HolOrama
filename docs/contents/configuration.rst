@@ -36,7 +36,8 @@ analysis outputs are unaffected and are still written next to the file you opene
    * - Key
      - Meaning
    * - ``image_size``
-     - Side length in pixels of the square box showing the IVUS/OCT image. Default 800.
+     - Initial side length in pixels of the square box showing the IVUS/OCT image.
+       Default 800. Window size adjustable with :kbd:`LMB` drag.
    * - ``gating_display_stretch``
      - Stretch factor of the gating plot within the right-hand pane.
    * - ``lview_display_stretch``
@@ -68,7 +69,7 @@ analysis outputs are unaffected and are still written next to the file you opene
 ``gating``
 ----------
 
-Parameters of the image-based gating and breathing algorithms — see
+Parameters of the image-based gating and breathing algorithms. See
 :doc:`modules/gating` and :doc:`modules/breathing` for what they do.
 
 .. list-table::
@@ -82,7 +83,7 @@ Parameters of the image-based gating and breathing algorithms — see
        signal into non-overlapping windows of that length and z-scores each separately.
    * - ``f_cardiac_min`` / ``f_cardiac_max``
      - Heart-rate search range in Hz for cardiac-frequency detection. The defaults
-       (0.75–3.33 Hz) cover roughly 45–200 bpm, i.e. rest through stress.
+       (0.75-3.33 Hz) cover roughly 45-200 bpm, i.e. rest through stress.
    * - ``bandpass_lo_frac``
      - Lower bandpass cutoff as a fraction of the detected cardiac frequency; removes the
        slow pullback trend (sub-cardiac drift).
@@ -105,7 +106,7 @@ Parameters of the image-based gating and breathing algorithms — see
    * - ``plot``
      - Show a plot of the gated-frame results after generating a report.
    * - ``save_as_csv``
-     - Also write contour coordinates as CSV files. **Required by the Fusion module** —
+     - Also write contour coordinates as CSV files. **Required by the Fusion module**,
        these CSVs are its intravascular input.
 
 ``save``
@@ -134,7 +135,7 @@ Parameters of the image-based gating and breathing algorithms — see
 --------
 
 Only used by **Calculate Centerlines** in the CCTA module. vmtk is installed separately by
-you — see :ref:`install-vmtk`.
+you (see :ref:`install-vmtk`).
 
 .. list-table::
    :header-rows: 1

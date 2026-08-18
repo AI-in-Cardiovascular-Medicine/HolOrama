@@ -34,11 +34,27 @@ The layout
   :kbd:`S` traverse, and **Compare Frames**.
 - **Frame tagging** (OCT): *Tagged Frame*, **Tagged Frames**, and the five quality buttons
   *Very Bad* → *Very Good*.
-- **Gating plot** (IVUS only, top) — see :doc:`gating`.
+- **Gating plot** (IVUS only, top) (see :doc:`gating`).
 - **Longitudinal view** (bottom) with a **Raw** / **Filtered** selector and *Hide*
   checkboxes for the dia/sys marker lines, the breathing curve and the area dots.
 - **Automatic Segmentation** and **Extract Diastolic and Systolic Frames** (IVUS) or
   **Tag Frames by Distance** (OCT) along the bottom.
+
+.. figure:: ../media/overview_intravascular.png
+   :name: fig-overview-intravascular
+   :alt: Overview Intravascular Module
+   :align: center
+   :width: 900px
+
+   Overview of the intravascular page layout. The tabs on the left are used to switch between
+   pages (e.g. intravscaluar to ccta). The top row tabs, include functionalities over all tabs,
+   such as highlighted in yellow, opening of different data types or saving different data types.
+   Everyting is shortcut driven so files can either be opened via the tab or with :kbd:`Ctrl+O`.
+   The intravascular page is split into the left half with all the image manipulation methods as
+   already described above and the right side is dependent on IVUS or OCT images loaded. For
+   IVUS the tools for motion correction are loaded (i.e. gating, and breathing motion correction),
+   for OCT a clinical layout is loaded showing an idealized vessel shape with highlighting of
+   calcification and lipid.
 
 Tutorial
 --------
@@ -74,11 +90,11 @@ Sensitivity of both windowing and zoom is configurable — see :doc:`../configur
 - :kbd:`J` jiggles around the current frame — a quick way to judge a border by motion.
 - The play button under the image runs through the pullback.
 
-4. Optional — pre-segment the lumen
+4. Optional: pre-segment the lumen
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 **Automatic Segmentation** runs the configured deep-learning model over every frame and
-produces lumen contours you can then correct by hand — usually much faster than drawing
+produces lumen contours you can then correct by hand, usually much faster than drawing
 from scratch.
 
 .. note::

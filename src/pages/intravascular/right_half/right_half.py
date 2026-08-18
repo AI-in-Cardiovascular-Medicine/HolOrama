@@ -91,12 +91,12 @@ class RightHalf:
         self.raw_btn = QPushButton('Raw')
         self.raw_btn.setCheckable(True)
         self.raw_btn.setChecked(True)
-        self.raw_btn.setFixedWidth(70)
+        self.raw_btn.setFixedWidth(80)
         self.raw_btn.setToolTip('Show frames in acquisition (pullback) order')
 
         self.filtered_btn = QPushButton('Filtered')
         self.filtered_btn.setCheckable(True)
-        self.filtered_btn.setFixedWidth(70)
+        self.filtered_btn.setFixedWidth(80)
         self.filtered_btn.setToolTip('Reorder gated frames into breathing-corrected order (en bloc per cardiac cycle)')
 
         group = QButtonGroup(pane)

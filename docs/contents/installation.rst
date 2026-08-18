@@ -13,14 +13,14 @@ There are two ways to get HolOrama:
      - :ref:`Pre-built installer <install-binary>`
      - :ref:`From source <install-source>`
    * - Who it is for
-     - Anyone who just wants to use the application
+     - Anyone who just wants to use the application (no coding experience needed)
      - Developers, and anyone who needs automatic segmentation
    * - Requirements
-     - Windows, no Python
+     - Windows, no Python, ~1 GB disk space
      - Python toolchain, ~10 GB disk for the GPU stack
    * - Automatic AI segmentation
      - Not included
-     - Included (optional extra)
+     - Included
 
 Everything else — contouring, gating, breathing correction, CCTA segmentation, the 3D
 tools and the whole fusion pipeline — is identical in both.
@@ -34,7 +34,7 @@ Download the latest ``HolOrama-Setup-<version>.exe`` from the `Releases
 <https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/releases/latest>`_ page and run
 it.
 
-- Installs **per-user** — no administrator rights, no UAC prompt.
+- Installs **per-user**, no administrator rights, no UAC prompt (should work on hospital systems).
 - Adds Start-Menu and Desktop shortcuts.
 - Logs and ``config.yaml`` live in ``%LOCALAPPDATA%\HolOrama``; your analysis outputs are
   written next to the files you open.
@@ -56,7 +56,7 @@ The project uses `uv <https://docs.astral.sh/uv/>`_ for dependency management. T
 provided install scripts handle every platform-specific step; use them first and fall back
 to the :ref:`step-by-step instructions <install-manual>` only if a script fails.
 
-Windows — script
+Windows script
 ~~~~~~~~~~~~~~~~
 
 #. Install the `Visual C++ Redistributable 2022 (x64)
@@ -92,7 +92,7 @@ fixes automatically (the missing OpenMP DLL and the ``optree`` version pin — s
 
 With ``-Dev`` the script also installs the ``pre-commit`` git hooks.
 
-Linux / macOS — script
+Linux / macOS script
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
@@ -241,7 +241,7 @@ Optional: vmtk, for CCTA centerlines
 
 **Calculate Centerlines** in the :doc:`CCTA module <modules/ccta>` drives `vmtk
 <https://vmtk.github.io>`_, the Vascular Modelling Toolkit. vmtk is **not** bundled with
-HolOrama — its build is too involved to ship inside a binary — so installing it is left to
+HolOrama. Its build is too involved to ship inside a binary, so installing it is left to
 you. Everything else in the CCTA module works without it; only centerline computation is
 disabled.
 

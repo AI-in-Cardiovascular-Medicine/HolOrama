@@ -66,6 +66,11 @@ Frame-by-frame contouring of a pullback.
   :doc:`installation`).
 - Export: report (metrics per frame), contour CSVs, and image/mask **NIfTI** volumes.
 
+.. image:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/OCT_demo.gif
+   :alt: Contouring an OCT pullback in HolOrama
+   :align: center
+   :width: 760px
+
 IVUS pullbacks additionally get two signal-processing tools:
 
 - :doc:`Image-based gating <modules/gating>` — identifies diastolic and systolic frames
@@ -76,11 +81,6 @@ IVUS pullbacks additionally get two signal-processing tools:
 
 .. image:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/IVUS_demo.gif
    :alt: Contouring an IVUS pullback in HolOrama
-   :align: center
-   :width: 760px
-
-.. image:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/OCT_demo.gif
-   :alt: Contouring an OCT pullback in HolOrama
    :align: center
    :width: 760px
 
@@ -172,16 +172,16 @@ Supported input data
 A first run
 -----------
 
-#. Install HolOrama — see :doc:`installation`. The Windows installer is the fastest route.
+#. Install HolOrama (see :doc:`installation`). With the windows installer no coding knowledge needed.
 #. Launch the application. It opens maximised on the **Intravascular** module.
-#. Check :doc:`configuration` once — display sizes, colours, auto-save interval and the
-   optional vmtk paths all live in ``config.yaml``.
+#. Optionally check :doc:`configuration` and adjust display sizes, colours, auto-save interval and the
+   optional vmtk paths.
 #. Open a case and follow the tutorial for your module:
    :doc:`modules/intravascular`, :doc:`modules/ccta` or :doc:`modules/fusion`.
 
-An example IVUS case ships with the repository under ``test_cases/patient_example`` so you
-can follow the intravascular tutorial without your own data.
+An example IVUS, OCT and CCTA case are attached to the latest release on Github, so you can follow along.
 
 .. tip::
-   Auto-save is on by default (every 10 s, configurable). Contours and tags are written
+   Auto-save is on by default (every 10 s, configurable). Saving is additionally performed with every
+   contour changing action and can also be triggered with :kbd:`Ctrl+S`. Contours and tags are written
    next to the file you opened, so re-opening a case restores your work.
