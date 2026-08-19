@@ -38,6 +38,12 @@ html_theme_options = {
     'navigation_with_keys': True,
 }
 
+# The tutorial video is embedded through a raw:: html block, which Sphinx's asset
+# collector cannot see, so the file has to be copied into the output explicitly.
+# It lands at the output root, hence the ../../tutorial_video.mp4 src in
+# contents/modules/intravascular.rst.
+html_extra_path = [os.path.join(_here, 'media', 'tutorial_video.mp4')]
+
 autodoc_default_options = {
     'members': True,
     'undoc-members': True,

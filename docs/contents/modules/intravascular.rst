@@ -148,7 +148,16 @@ models as demonstrated in :ref:`fig-tagging`
 Pick the structure in the contour dropdown (or press its shortcut), pick a drawing tool,
 then click in the image to place points.
 
+.. figure:: ../../media/overview_contour_tools.png
+  :name: fig-contour-tools
+  :alt: Different contour tools
+  :align: center
+  :width: 900px
 
+  Everything can either be selected manually via the buttons, as displayed in this figure.
+  Yellow, contour selection from the drop down menu and with ``new_contour`` button. Orange,
+  the different tools to draw this contour and lastly the buttons to add
+  additional contours. Everything can also be triggered with key combinations (see also below).
 
 .. list-table::
    :header-rows: 1
@@ -330,7 +339,7 @@ An example of OCT segmentation workflow.
 
    <div style="text-align: center; margin: 1.5em 0;">
      <video width="900" controls>
-       <source src="../../media/tutorial_video.mp4" type="video/mp4">
+       <source src="../../tutorial_video.mp4" type="video/mp4">
        Your browser does not support the video tag.
      </video>
    </div>
