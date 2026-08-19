@@ -325,6 +325,7 @@ get one file per frame, a single 3D volume, or both.
 Example Video
 -------------
 An example of OCT segmentation workflow.
+
 .. raw:: html
 
    <div style="text-align: center; margin: 1.5em 0;">
