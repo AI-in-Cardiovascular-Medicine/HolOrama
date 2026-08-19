@@ -40,7 +40,7 @@ The layout
 - **Automatic Segmentation** and **Extract Diastolic and Systolic Frames** (IVUS) or
   **Tag Frames by Distance** (OCT) along the bottom.
 
-.. figure:: ../media/overview_intravascular.png
+.. figure:: ../../media/overview_intravascular.png
    :name: fig-overview-intravascular
    :alt: Overview Intravascular Module
    :align: center
@@ -62,14 +62,15 @@ Tutorial
 1. Open a pullback
 ~~~~~~~~~~~~~~~~~~
 
-**File → Open Intravascular File** (:kbd:`Ctrl+O`) and pick a DICOM or NIfTI file. The
-example case ``test_cases/patient_example`` works for following along.
+**File → Open Intravascular File** (or :kbd:`Ctrl+O`) and pick a DICOM or NIfTI file. Test cases
+for IVUS and OCT can be downloaded from github to follow along.
 
 The modality is detected from the data, and the right half rebuilds itself accordingly
-(gating for IVUS, tagging and quality rating for OCT). **Metadata → Show Metadata** lists
+(see :ref:`fig-overview-intravascular` gating for IVUS, tagging and quality rating for OCT). **Metadata → Show Metadata** lists
 the DICOM tags.
 
-If you already have a segmentation mask, load it with **File → Open Intravascular Mask**.
+If you already have a segmentation mask, load it with **File → Open Intravascular Mask**, this works for any nifti mask which is
+then turned into contours.
 
 2. Set the window and zoom
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -81,32 +82,73 @@ If you already have a segmentation mask, load it with **File → Open Intravascu
 
 Sensitivity of both windowing and zoom is configurable — see :doc:`../configuration`.
 
-3. Navigate frames
+3. Tagging / Gating Images
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The first step should be to only analyze frames of interest. This can either be done by
+tagging images in OCT or gating in IVUS.
+In IVUS gating requires a bit more effort, and is covered under :doc:`gating`.
+For OCT either a distance in mm or a distance in frames between tagged frame, which
+automatically labels these frames. If a region should be excluded from analysis, after
+running tagging / gating use :kbd:`Alt+Del` and provide a range that should be exlucded.
+This tagging / gating is important because this allows to only export tagged / gated
+frames as nifti for training.
+
+.. figure:: ../../media/overview_tagging.png
+   :name: fig-tagging
+   :alt: Overview Intravascular Module
+   :align: center
+   :width: 900px
+
+   Example with a case after loading presegmented nifti mask.
+   Bottom right to open tagging pop up window. Then either select mm distance or frame
+   distance to tag frames. Frames can also be manually tagged, and additionally a quality can
+   be assigned to them (default very good).
+
+4. Navigate frames
 ~~~~~~~~~~~~~~~~~~
 
 - :kbd:`A` / :kbd:`D` (or :kbd:`←` / :kbd:`→`, or the mouse wheel) step one frame.
-- :kbd:`W` / :kbd:`S` jump to the next/previous **gated** frame, in whichever phase the
-  **Diastolic Frames** / **Systolic Frames** toggle currently selects.
-- :kbd:`J` jiggles around the current frame — a quick way to judge a border by motion.
+- :kbd:`W` / :kbd:`S` jump to the next/previous **gated** / **tagged** frame, in whichever phase the
+  **Diastolic Frames** / **Systolic Frames** / **Tagged** toggle currently selects. If no frames are
+  gated or tagged just defaults to the next lower or higher frame.
+- :kbd:`J` jiggles around the current frame, which is a quick way to judge a border by motion.
 - The play button under the image runs through the pullback.
+- Scrolling the :kbd:`MWB` also lets you run through frames.
+- The scrollbar on the bottom can additionally be used to scim through frames either automatically
+  by pressing the play button or by moving the postion marker
 
-4. Optional: pre-segment the lumen
+5. Optional: pre-segment the lumen
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**Automatic Segmentation** runs the configured deep-learning model over every frame and
+For IVUS **Automatic Segmentation** runs the configured deep-learning model over every frame and
 produces lumen contours you can then correct by hand, usually much faster than drawing
-from scratch.
+from scratch. These contours are also necessary for the gating algorithm, which is the reason
+why we provided them. However, it is possible to load results from external deep learning segmentation
+models as demonstrated in :ref:`fig-tagging`
 
 .. note::
    Only available in a source installation, and currently trained for the **IVUS lumen**
-   only. The model path and inference settings are in the ``segmentation`` section of
-   ``config.yaml``. The packaged Windows binary does not include inference.
+   only. Training set consisted of coronary artery anomalies. The model path and 
+   inference settings are in the ``segmentation`` section of ``config.yaml``. 
+   The packaged Windows binary does not include inference.
 
-5. Draw contours
+6. Draw contours
 ~~~~~~~~~~~~~~~~
+
+.. important::
+  Understanding the available tools for segmentation well, can result in the most relevant
+  speed up of your segmentations and Human-in-the-Loop models. The key skill here is to 
+  master all the shortcuts.
+  To my fellow physicians, I know that most medical software is centered around click-based
+  approaches, however this shortcut-based approach takes some getting used to, but made
+  me significantly faster in my segmentation work. As everything in HolOrama, the software
+  was adjusted to real world tasks, and therefore reflects also my own learnings over time.
 
 Pick the structure in the contour dropdown (or press its shortcut), pick a drawing tool,
 then click in the image to place points.
+
+
 
 .. list-table::
    :header-rows: 1
@@ -119,27 +161,31 @@ then click in the image to place points.
    * - Lumen
      - :kbd:`E`
      - —
-     - closed spline, brush
+     - ⭕closed spline, 🖌️ brush
    * - EEM
      - :kbd:`Q`
      - —
-     - closed spline, brush
+     - ⭕closed spline, 🖌️ brush
    * - Calcium
      - :kbd:`7`
      - :kbd:`Ctrl+7`
-     - open spline, closed spline, brush
+     - ➰open spline, ⭕closed spline, 🖌️ brush
    * - Side branch
      - :kbd:`8`
      - :kbd:`Ctrl+8`
-     - closed spline, brush
+     - ⭕closed spline, 🖌️ brush
    * - Lipid
      - :kbd:`9`
      - :kbd:`Ctrl+9`
-     - open spline, closed spline, brush
+     - ➰open spline, ⭕closed spline, 🖌️ brush
    * - Macrophage
      - :kbd:`0`
      - :kbd:`Ctrl+0`
-     - open spline, closed spline, brush
+     - ➰open spline, ⭕closed spline, 🖌️ brush
+   * - Wire
+     - :kbd:`3`
+     - :kbd:`Ctrl+3`
+     - —
 
 Drawing rules:
 
@@ -168,12 +214,12 @@ Two shortcuts save a lot of clicking:
 
 .. _iv-uncertainty:
 
-6. Express uncertainty
+7. Express uncertainty
 ~~~~~~~~~~~~~~~~~~~~~~
 
 Borders are not equally visible all the way around a vessel. Rather than forcing you to
-guess, HolOrama lets the annotation itself carry that information — which is what makes the
-exported masks honest training data.
+guess, HolOrama lets the annotation itself carry that information, by creating a seperate mask
+for solid lines, which is what makes the exported masks honest training data.
 
 There are three ways to record it:
 
@@ -201,7 +247,7 @@ Colours of the start/end markers are configurable (``color_start_point``,
    Be consistent about *why* you mark a region uncertain across a study — that consistency
    is what a model can actually learn from.
 
-7. Measurements and markers
+8. Measurements and markers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - 📏 **Measurement 1** (:kbd:`1`) and **Measurement 2** (:kbd:`2`) each measure a distance
@@ -220,7 +266,7 @@ Colours of the start/end markers are configurable (``color_start_point``,
 Lumen area, EEM area, elliptic ratio and the other per-frame metrics are computed
 automatically as you draw.
 
-8. Tag frames
+9. Tag frames
 ~~~~~~~~~~~~~
 
 **IVUS.** Mark the current frame with the *Diastolic Frame* / *Systolic Frame* checkboxes,
@@ -233,8 +279,8 @@ diastole over a range.
 at regular distance intervals within a frame range. Rate each frame with the quality
 buttons (*Very Bad* … *Very Good*) — the rating travels with the frame into the report.
 
-9. Review in the longitudinal view
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+10. Review in the longitudinal view
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The longitudinal view under the gating plot shows the pullback cut along its axis,
 overlaid with the lumen-area dots, the diastolic/systolic marker lines and the breathing
@@ -244,7 +290,7 @@ order (see :doc:`breathing`).
 
 This is the fastest way to spot a contour that is out of line with its neighbours.
 
-10. Export
+11. Export
 ~~~~~~~~~~
 
 .. list-table::
@@ -275,6 +321,18 @@ contours using a fixed layering ruleset, so overlapping structures resolve the s
 every time. Choose **All Frames** for a dense dataset, or **Contoured Frames** to export
 only what you actually annotated. ``save.save_2d`` and ``save.save_3d`` control whether you
 get one file per frame, a single 3D volume, or both.
+
+Example Video
+-------------
+An example of OCT segmentation workflow.
+.. raw:: html
+
+   <div style="text-align: center; margin: 1.5em 0;">
+     <video width="900" controls>
+       <source src="../../media/tutorial_video.mp4" type="video/mp4">
+       Your browser does not support the video tag.
+     </video>
+   </div>
 
 Next steps
 ----------

@@ -114,7 +114,7 @@ def init_menu(main_window, ccta_page):
     save_contours.setShortcut('Ctrl+S')
     nifti_menu = file_menu.addMenu('Save NIfTis')
     nifti_menu.addAction('Contoured Frames', partial(save_as_nifti, main_window, mode='contoured'))
-    nifti_menu.addAction('Gated Frames', partial(save_as_nifti, main_window, mode='gated'))
+    nifti_menu.addAction('Gated/Tagged Frames', partial(save_as_nifti, main_window, mode='gated'))
     nifti_menu.addAction('All Frames', partial(save_as_nifti, main_window, mode='all'))
     save_report = file_menu.addAction('Save Report', partial(report, main_window))
     save_report.setShortcut('Ctrl+R')

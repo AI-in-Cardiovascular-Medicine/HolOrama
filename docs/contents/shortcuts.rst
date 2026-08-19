@@ -20,7 +20,8 @@ Application-wide
 
 .. list-table::
    :header-rows: 1
-   :widths: 24 76
+   :width: 100%
+   :widths: 30 70
 
    * - Shortcut
      - Action
@@ -29,11 +30,11 @@ Application-wide
    * - :kbd:`Ctrl+Shift+O`
      - Open a CCTA DICOM folder or NIfTI file
    * - :kbd:`Ctrl+S`
-     - Save — contours and tags on the Intravascular module, the mask on the CCTA module
+     - Save either contours and tags on the Intravascular module, or the mask on the CCTA module
    * - :kbd:`Ctrl+R`
      - Generate and save the report
    * - :kbd:`Ctrl+Q`
-     - Close the application
+     - Close the application, saves contours before closing
 
 Intravascular module
 --------------------
@@ -43,7 +44,8 @@ Navigation
 
 .. list-table::
    :header-rows: 1
-   :widths: 24 76
+   :width: 100%
+   :widths: 30 70
 
    * - Shortcut
      - Action
@@ -60,15 +62,23 @@ Navigation
    * - :kbd:`J`
      - Jiggle around the current frame
 
-Which phase :kbd:`W` and :kbd:`S` traverse is set by the **Diastolic Frames** /
-**Systolic Frames** toggle (blue = diastole, red = systole).
+.. note::
+  Which phase :kbd:`W` and :kbd:`S` traverse is set by the **Diastolic Frames** /
+  **Systolic Frames** toggle (blue = diastole, red = systole).
+
+.. figure:: ../media/toggle_diastole.png
+  :name: fig-diastole-toggle
+  :alt: Toggle Button Diastole
+  :align: center
+  :width: 450px
 
 Drawing
 ~~~~~~~
 
 .. list-table::
    :header-rows: 1
-   :widths: 24 76
+   :width: 100%
+   :widths: 30 70
 
    * - Shortcut
      - Action
@@ -105,7 +115,8 @@ Copying contours between frames
 
 .. list-table::
    :header-rows: 1
-   :widths: 24 76
+   :width: 100%
+   :widths: 30 70
 
    * - Shortcut
      - Action
@@ -118,14 +129,16 @@ Copying contours between frames
    * - :kbd:`Shift+W`
      - Copy the active contour from the next gated/tagged frame
 
-The gated/tagged variants only work when the current frame is itself gated or tagged.
+.. note::
+  The gated/tagged variants only work when the current frame is itself gated or tagged.
 
 Gating and phases
 ~~~~~~~~~~~~~~~~~
 
 .. list-table::
    :header-rows: 1
-   :widths: 24 76
+   :width: 100%
+   :widths: 30 70
 
    * - Shortcut
      - Action
@@ -142,7 +155,8 @@ View
 
 .. list-table::
    :header-rows: 1
-   :widths: 24 76
+   :width: 100%
+   :widths: 30 70
 
    * - Shortcut
      - Action
@@ -162,6 +176,7 @@ Mouse
 
 .. list-table::
    :header-rows: 1
+   :width: 100%
    :widths: 30 70
 
    * - Action
@@ -171,7 +186,7 @@ Mouse
    * - :kbd:`LMB` drag on a knot point
      - Move that point
    * - :kbd:`LMB` click on a contour line
-     - Insert a new knot point there
+     - First click — switch to the clicked contour type. Second click — Insert a new knot point there
    * - :kbd:`RMB` on a knot point
      - Remove that point
    * - :kbd:`RMB` drag
@@ -179,9 +194,9 @@ Mouse
    * - :kbd:`LMB` drag (empty area)
      - Zoom around the cursor; :kbd:`F` resets
    * - :kbd:`Ctrl` + :kbd:`LMB` drag
-     - Pan the image inside its widget
+     - Move the whole image
    * - :kbd:`Ctrl` + mouse wheel
-     - Shrink or expand the active contour — every knot point moves 1 px per tick toward
+     - Shrink or expand the active contour. Every knot point moves 1 px per tick toward
        or away from the centroid
    * - Double-click while drawing
      - Place the start and end point of an uncertain region (see
@@ -192,7 +207,8 @@ CCTA module
 
 .. list-table::
    :header-rows: 1
-   :widths: 24 76
+   :width: 100%
+   :widths: 30 70
 
    * - Shortcut
      - Action
@@ -209,6 +225,7 @@ Mouse, slice views:
 
 .. list-table::
    :header-rows: 1
+   :width: 100%
    :widths: 30 70
 
    * - Action
@@ -226,6 +243,7 @@ Mouse, 3D views (Segmentation, Cut Geometry and Fusion):
 
 .. list-table::
    :header-rows: 1
+   :width: 100%
    :widths: 30 70
 
    * - Action

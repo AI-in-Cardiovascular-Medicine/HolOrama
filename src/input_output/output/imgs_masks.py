@@ -32,7 +32,7 @@ def save_as_nifti(main_window, mode=None):
             for frame in range(main_window.runtime_data.metadata['num_frames'])
             if main_window.runtime_data.frame_data_dct.get(frame)
             and main_window.runtime_data.frame_data_dct[frame].lumen.contours
-            and main_window.runtime_data.frame_data_dct[frame].phase in ['D', 'S']
+            and main_window.runtime_data.frame_data_dct[frame].phase in ['D', 'S', 'T']
         ]
     elif mode == 'all':
         frames_to_save = list(range(main_window.runtime_data.metadata['num_frames']))
