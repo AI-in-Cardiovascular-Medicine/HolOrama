@@ -46,15 +46,7 @@ The layout
    :align: center
    :width: 900px
 
-   Overview of the intravascular page layout. The tabs on the left are used to switch between
-   pages (e.g. intravscaluar to ccta). The top row tabs, include functionalities over all tabs,
-   such as highlighted in yellow, opening of different data types or saving different data types.
-   Everyting is shortcut driven so files can either be opened via the tab or with :kbd:`Ctrl+O`.
-   The intravascular page is split into the left half with all the image manipulation methods as
-   already described above and the right side is dependent on IVUS or OCT images loaded. For
-   IVUS the tools for motion correction are loaded (i.e. gating, and breathing motion correction),
-   for OCT a clinical layout is loaded showing an idealized vessel shape with highlighting of
-   calcification and lipid.
+   Overview of the intravascular page layout.
 
 Tutorial
 --------
@@ -66,7 +58,7 @@ Tutorial
 for IVUS and OCT can be downloaded from github to follow along.
 
 The modality is detected from the data, and the right half rebuilds itself accordingly
-(see :ref:`fig-overview-intravascular` gating for IVUS, tagging and quality rating for OCT). **Metadata → Show Metadata** lists
+(see :ref:`fig-overview-intravascular`). **Metadata → Show Metadata** lists
 the DICOM tags.
 
 If you already have a segmentation mask, load it with **File → Open Intravascular Mask**, this works for any nifti mask which is
@@ -86,13 +78,21 @@ Sensitivity of both windowing and zoom is configurable — see :doc:`../configur
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The first step should be to only analyze frames of interest. This can either be done by
-tagging images in OCT or gating in IVUS.
-In IVUS gating requires a bit more effort, and is covered under :doc:`gating`.
-For OCT either a distance in mm or a distance in frames between tagged frame, which
-automatically labels these frames. If a region should be excluded from analysis, after
-running tagging / gating use :kbd:`Alt+Del` and provide a range that should be exlucded.
-This tagging / gating is important because this allows to only export tagged / gated
-frames as nifti for training.
+tagging images in OCT or gating in IVUS; both matter because they let you export only the
+tagged / gated frames as nifti for training.
+
+**IVUS.** Mark the current frame with the *Diastolic Frame* / *Systolic Frame* checkboxes,
+or let :doc:`gating` find them for you. Gating requires a bit more effort and is covered
+in detail there. Marked frames appear as lines in the longitudinal view (blue = diastole,
+red = systole) and are traversable with :kbd:`W` / :kbd:`S`. Use :kbd:`Alt+S` to swap
+systole and diastole over a range.
+
+**OCT.** Mark frames with *Tagged Frame*, or use **Tag Frames by Distance** to tag frames
+at regular distance intervals within a frame range. Rate each frame with the quality
+buttons (*Very Bad* … *Very Good*). The rating travels with the frame into the report.
+
+If a region should be excluded from analysis, after running tagging / gating use
+:kbd:`Alt+Delete` and provide a range to exclude.
 
 .. figure:: ../../media/overview_tagging.png
    :name: fig-tagging
@@ -100,10 +100,7 @@ frames as nifti for training.
    :align: center
    :width: 900px
 
-   Example with a case after loading presegmented nifti mask.
-   Bottom right to open tagging pop up window. Then either select mm distance or frame
-   distance to tag frames. Frames can also be manually tagged, and additionally a quality can
-   be assigned to them (default very good).
+   Tagging a pullback after loading a presegmented mask.
 
 4. Navigate frames
 ~~~~~~~~~~~~~~~~~~
@@ -196,23 +193,27 @@ then click in the image to place points.
      - :kbd:`Ctrl+3`
      - —
 
+.. note::
+  To return to a neutral state (no tool, Lumen as active contour), 
+  press :kbd:`Esc`.
+
 Drawing rules:
 
-- **Closed spline** — left-click to place knot points, then click the first point again to
+- **Closed spline**: left-click to place knot points, then click the first point again to
   close the contour.
-- **Open spline** — left-click to place points; the contour stays open. For calcium, the
+- **Open spline**: left-click to place points; the contour stays open. For calcium, the
   angle from the lumen centre to the start and end point is computed automatically.
-- **Brush** — paint the structure directly. Requires *Mask mode* to be enabled; hover the
-  🖌️ button to get the radius popup.
-- Drag an existing knot point to move it; click on the contour line to insert a new point;
+- **Brush**: paint the structure directly. Requires *Mask mode* to be enabled; **hover the
+  🖌️ button to get the radius popup**.
+- Drag an existing knot point. To move it, click on the contour line to insert a new point.
   :kbd:`RMB` on a knot point removes it.
-- :kbd:`Ctrl`\ +\ mouse wheel shrinks or expands the active contour — every knot point
+- :kbd:`Ctrl`\ +\ mouse wheel shrinks or expands the active contour. Every knot point
   moves one pixel per tick toward or away from the centroid.
 - Clicking any drawn contour makes it the active one.
 - :kbd:`Esc` leaves drawing mode; :kbd:`Ctrl+Z` undoes the last contour edit (draw, delete,
   drag, brush, scale or copy — the last five edits are kept).
 
-Two shortcuts save a lot of clicking:
+Several shortcuts save a lot of clicking, but don't have a button representation:
 
 - :kbd:`Shift+Q` spawns an EEM contour from the existing lumen contour on the current
   frame, by expanding its knot points radially from the lumen centroid. It does nothing if
@@ -220,6 +221,8 @@ Two shortcuts save a lot of clicking:
 - :kbd:`Shift+A` / :kbd:`Shift+D` copy the active contour from the previous/next frame;
   :kbd:`Shift+S` / :kbd:`Shift+W` copy it from the previous/next gated or tagged frame
   (only when the current frame is itself gated/tagged).
+
+See this example for applying these tools to effectively draw new contours:
 
 .. _iv-uncertainty:
 
@@ -249,6 +252,18 @@ There are three ways to record it:
        macrophages)
      - Draw an **open spline**. Nothing is claimed about the part you cannot see.
 
+Example for when part of the border is not interpretable and for a case where only an
+open spline is drawn because part of the structure is not visible at all:
+
+.. figure:: ../../media/uncertainty_contours.png
+   :name: fig-uncertainty
+   :alt: Uncertainty in contouring
+   :align: center
+   :width: 900px
+
+   Left: Raw image without contours. Middle: contours with open start and end points
+   on the EEM contour and an open spline for the lipid. Right: The corresponding mask.
+
 Colours of the start/end markers are configurable (``color_start_point``,
 ``color_end_point``).
 
@@ -275,21 +290,13 @@ Colours of the start/end markers are configurable (``color_start_point``,
 Lumen area, EEM area, elliptic ratio and the other per-frame metrics are computed
 automatically as you draw.
 
-9. Tag frames
-~~~~~~~~~~~~~
+The ``Measurement 1`` and ``Measurement 2`` are especially important in the preparation of
+coronary artery anomalies for fusion with CCTA. Also the reference points should specifically,
+set either at the ostium or at bifurcation points. A detailed description of how the input format
+for the fusion module is expected is given in :doc:`fusion`.
 
-**IVUS.** Mark the current frame with the *Diastolic Frame* / *Systolic Frame* checkboxes,
-or let :doc:`gating` find them for you. Marked frames appear as lines in the longitudinal
-view (blue = diastole, red = systole) and are traversable with :kbd:`W` / :kbd:`S`. Use
-:kbd:`Alt+Delete` to clear gating over a frame range and :kbd:`Alt+S` to swap systole and
-diastole over a range.
-
-**OCT.** Mark frames with *Tagged Frame*, or use **Tag Frames by Distance** to tag frames
-at regular distance intervals within a frame range. Rate each frame with the quality
-buttons (*Very Bad* … *Very Good*) — the rating travels with the frame into the report.
-
-10. Review in the longitudinal view
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+9. Review in the longitudinal view
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The longitudinal view under the gating plot shows the pullback cut along its axis,
 overlaid with the lumen-area dots, the diastolic/systolic marker lines and the breathing
@@ -299,7 +306,12 @@ order (see :doc:`breathing`).
 
 This is the fastest way to spot a contour that is out of line with its neighbours.
 
-11. Export
+Additionally, the OCT module provides an overview of the longitudinal view, showing lumen diameter,
+EEM diameter, calcification distribution on top and lipid distribution on the bottom.
+This is a quick way to spot regions of interest, which can then be inspected in the 
+image view and annotated with the contouring tools.
+
+10. Export
 ~~~~~~~~~~
 
 .. list-table::
