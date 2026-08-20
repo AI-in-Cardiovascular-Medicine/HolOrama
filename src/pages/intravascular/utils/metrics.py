@@ -3,7 +3,7 @@ from typing import Any, Sequence, Tuple
 from loguru import logger
 from PyQt6.QtCore import QLineF, Qt
 from PyQt6.QtGui import QColor, QFont
-from PyQt6.QtWidgets import QApplication, QGraphicsTextItem
+from PyQt6.QtWidgets import QGraphicsTextItem
 from shapely.geometry import Polygon
 
 from domain.io_types import FrameData, Measurements
@@ -16,13 +16,15 @@ from input_output.output.reports import (
 # Internal imports based on your file structure
 from tools.geometry import get_qt_pen
 
+# Bundled and registered in main.py; hardcoded here (rather than read from the app-wide
+# font) because only this overlay uses it - the rest of the UI stays on the default font.
+_OVERLAY_FONT_FAMILY = 'JetBrains Mono'
+
 
 def _overlay_font(point_size: int, bold: bool = False) -> QFont:
-    """Font for the text overlaid on the intravascular display. Takes its family from the
-    application font (JetBrains Mono, set in main.py) rather than hardcoding one, so these
-    items match the rest of the UI. The size stays caller-controlled because it scales with
-    the image, not with the UI."""
-    font = QFont(QApplication.font().family(), point_size)
+    """Font for the text overlaid on the intravascular display. The size stays
+    caller-controlled because it scales with the image, not with the UI."""
+    font = QFont(_OVERLAY_FONT_FAMILY, point_size)
     if bold:
         font.setWeight(QFont.Weight.Bold)
     return font
