@@ -322,14 +322,14 @@ image view and annotated with the contouring tools.
      - Result
    * - **File → Save** (:kbd:`Ctrl+S`)
      - Writes the contour/tag JSON next to the opened file. Auto-save does this every
-       10 s by default.
+       10 s by default and when changing any contour.
    * - **File → Save Report** (:kbd:`Ctrl+R`)
      - Per-frame metrics report, plus the contour CSVs when ``report.save_as_csv`` is on.
        **These CSVs are the Fusion module's intravascular input.**
    * - **File → Save NIfTis → Contoured / Gated / All Frames**
      - Image and mask NIfTI files for the chosen frame selection.
    * - **File → Save Gated Images**
-     - The gated (or tagged) frames as image arrays.
+     - The gated (or tagged) frames as numpy arrays (.npy).
    * - **File → Save Video Pullback**
      - The pullback as a video file.
 
@@ -350,7 +350,7 @@ An example of OCT segmentation workflow.
 .. raw:: html
 
    <div style="text-align: center; margin: 1.5em 0;">
-     <video width="900" controls>
+     <video width="900" style="max-width: 100%; height: auto;" controls>
        <source src="../../tutorial_video.mp4" type="video/mp4">
        Your browser does not support the video tag.
      </video>

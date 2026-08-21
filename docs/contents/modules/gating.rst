@@ -3,14 +3,36 @@
 Gating (IVUS)
 =============
 
-*Part of the* :doc:`intravascular` *module — IVUS only.*
+*Part of the* :doc:`intravascular` *module (IVUS only).*
 
 An IVUS pullback is acquired continuously while the heart beats, so consecutive frames
 alternate between a relaxed (diastolic) and a compressed (systolic) vessel. Comparing
-measurements only makes sense within one phase. HolOrama identifies the phases **from the
-images themselves** — no ECG signal is needed — using the algorithm published as
-*AIVUS-CAA* (:ref:`Stark et al. 2025 <gating-citation>`), extended with a second
-contour-derived signal.
+measurements only makes sense within one phase. This is especially important when trying
+to compare phases between each other. This is apparent by the relative motion of reference
+points (e.g., the ostium) during every heartbeat, as we have already published before:
+
+.. figure:: ../../media/JACCCaseReport.png
+   :name: fig-casereport
+   :alt: Jacc Case Report Figure
+   :align: center
+   :width: 900px
+
+   Stark, A. W., Bigler, M. R., Räber, L., & Gräni, C. (2025). 
+   True pulsatile lumen visualization in coronary artery anomalies using controlled 
+   transducer pullback and automated IVUS segmentation. Case Reports, 30(22), 104741.
+
+This shift which we described can be contributed to the fact that with every heartbeat,
+the vessel moves relative to the catheter. Which I also demonstrate in this idealized example:
+
+.. figure:: ../../media/vessel_movement_heartbeat.gif
+   :name: fig-casereport
+   :alt: Vessel motion during heartbeat
+   :align: center
+   :width: 900px
+
+HolOrama identifies the phases **from the images themselves** (image-based gating) and 
+additionally **from the contours** (contour-based gating), using the algorithm published as
+*AIVUS-CAA* (:ref:`Stark et al. 2025 <gating-citation>`), however optimized since then.
 
 How it works
 ------------
