@@ -17,9 +17,7 @@ points (e.g., the ostium) during every heartbeat, as we have already published b
    :align: center
    :width: 900px
 
-   Stark, A. W., Bigler, M. R., Räber, L., & Gräni, C. (2025). 
-   True pulsatile lumen visualization in coronary artery anomalies using controlled 
-   transducer pullback and automated IVUS segmentation. Case Reports, 30(22), 104741.
+   :ref:`Stark et al. 2025 <gating-citation-1>`
 
 This shift which we described can be contributed to the fact that with every heartbeat,
 the vessel moves relative to the catheter. Which I also demonstrate in this idealized example:
@@ -28,11 +26,11 @@ the vessel moves relative to the catheter. Which I also demonstrate in this idea
    :name: fig-vessel-movement
    :alt: Vessel motion during heartbeat
    :align: center
-   :width: 900px
+   :width: 450px
 
 HolOrama identifies the phases **from the images themselves** (image-based gating) and 
 additionally **from the contours** (contour-based gating), using the algorithm published as
-*AIVUS-CAA* (:ref:`Stark et al. 2025 <gating-citation>`), however optimized since then.
+*AIVUS-CAA* (:ref:`Stark et al. 2025 <gating-citation-2>`), however optimized since then.
 
 How it works
 ------------
@@ -47,10 +45,10 @@ detected heart rate.
    * - Signal
      - Definition
    * - **Image** (green)
-     - ``s[n] = 1 − NCC(frame_n, frame_n+1)`` — one minus the normalised cross-correlation
+     - ``s[n] = 1 − NCC(frame_n, frame_n+1)``: one minus the normalised cross-correlation
        of consecutive frames, computed on a central crop so that the burnt-in frame number
        does not contribute. Always available, even before a single contour is drawn. Its
-       peaks are the **maximum-motion** frames — timing landmarks rather than stable phase
+       peaks are the **maximum-motion** frames, timing landmarks rather than stable phase
        points.
    * - **Contour** (yellow)
      - The lumen area per frame, in mm², taken from the report data. Requires contours on
@@ -67,7 +65,7 @@ grid search.
 .. rubric:: Filtering
 
 Both signals are bandpass-filtered (Butterworth, zero-phase) at
-``[bandpass_lo_frac, bandpass_hi_frac] × f_heart`` — by default 0.7 to 2.2 × the heart
+``[bandpass_lo_frac, bandpass_hi_frac] × f_heart``, by default 0.7 to 2.2 × the heart
 rate. The lower cutoff removes the slow pullback trend, the upper one removes speckle
 noise while keeping the second harmonic.
 
@@ -103,7 +101,7 @@ Click **Extract Diastolic and Systolic Frames** (bottom right), or use
 **Run → Extract Diastolic and Systolic Frames**.
 
 A dialog asks for the **lower** and **upper frame limit**. Restrict this to the part of the
-pullback you actually want to analyse — excluding the run-in and any segment where the
+pullback you actually want to analyse: excluding the run-in and any segment where the
 catheter is not moving cleanly gives a better heart-rate estimate.
 
 2. Read the plot
@@ -111,10 +109,10 @@ catheter is not moving cleanly gives a better heart-rate estimate.
 
 The gating plot appears in the top right of the window:
 
-- **Solid green** — the filtered image signal.
-- **Solid yellow** — the filtered contour (lumen-area) signal.
-- **Dashed** curves below them — the same signals unfiltered, for reference.
-- **Vertical lines** — the gated frames. Blue = diastole, red = systole, grey = untyped.
+- **Solid green**: the filtered image signal.
+- **Solid yellow**: the filtered contour (lumen-area) signal.
+- **Dashed** curves below them: the same signals unfiltered, for reference.
+- **Vertical lines**: the gated frames. Blue = diastole, red = systole, grey = untyped.
 
 If no gated frames exist yet, an automatic estimate is placed for you as soon as the plot
 opens. If gating results already exist, they are drawn instead and left untouched.
@@ -132,21 +130,21 @@ The plot is interactive:
 - Use the matplotlib toolbar above the plot to zoom and pan. While a toolbar tool is
   active, clicking does not create markers.
 - **Compare Frames** opens a small second display showing the nearest frame of the selected
-  phase — the quickest way to confirm that two frames really are in the same phase.
+  phase, the quickest way to confirm that two frames really are in the same phase.
 
 Two diagnostic views sit in the bottom-left corner of the plot:
 
-- **Freq. sweep** — a heat map of the image signal low-pass filtered at increasing BPM
+- **Freq. sweep**: a heat map of the image signal low-pass filtered at increasing BPM
   cutoffs. The yellow line marks the active cutoff (starting at 2 × the detected heart
   rate); click a row to apply that cutoff to the main plot. Use it when the automatic heart
   rate looks wrong.
-- **Breathing sweep** — the same idea for the breathing frequency, see :doc:`breathing`.
+- **Breathing sweep**: the same idea for the breathing frequency, see :doc:`breathing`.
 
 4. Fix phases in bulk
 ~~~~~~~~~~~~~~~~~~~~~
 
-- :kbd:`Alt+Delete` — choose a frame range and remove all gating within it.
-- :kbd:`Alt+S` — choose a frame range and swap systole and diastole within it. Useful when
+- :kbd:`Alt+Delete`: choose a frame range and remove all gating within it.
+- :kbd:`Alt+S`: choose a frame range and swap systole and diastole within it. Useful when
   the automatic assignment is systematically inverted over one segment.
 - **Edit → Reset Phases** clears everything and starts over.
 
@@ -159,7 +157,7 @@ checkboxes.
 - The **Diastolic Frames** / **Systolic Frames** toggle decides which phase :kbd:`W` and
   :kbd:`S` traverse.
 - :kbd:`Shift+W` / :kbd:`Shift+S` copy the active contour from the next/previous gated
-  frame — contouring a gated series is mostly copy-and-adjust.
+  frame; contouring a gated series is mostly copy-and-adjust.
 - :kbd:`Alt+P` plots the results for the gated frames (area difference between systole and
   diastole over the pullback distance).
 - **File → Save NIfTis → Gated Frames** exports only the gated frames.
@@ -189,13 +187,20 @@ Troubleshooting
      - Re-run the gating with a frame range restricted to the clean segment, or correct the
        lines by hand.
 
-.. _gating-citation:
+References
+----------
 
-Reference
----------
+.. _gating-citation-1:
 
-Stark, A. W., Kazaj, P. M., Balzer, S., Ilic, M., Bergamin, M., Kakizaki, R.,
-Giannopoulos, A., Haeberlin, A., Räber, L., Gräni, C. (2025). *Automated intravascular
-ultrasound image processing and quantification of coronary artery anomalies: the HolOrama
-software.* Computer Methods and Programs in Biomedicine, 109065.
-`doi:10.1016/j.cmpb.2025.109065 <https://doi.org/10.1016/j.cmpb.2025.109065>`_
+1. Stark, A. W., Bigler, M. R., Räber, L., Gräni, C. (2025). *True pulsatile lumen
+   visualization in coronary artery anomalies using controlled transducer pullback and
+   automated IVUS segmentation.* JACC: Case Reports, 30(22), 104741.
+   `doi:10.1016/j.jaccas.2025.104741 <https://doi.org/10.1016/j.jaccas.2025.104741>`_
+
+.. _gating-citation-2:
+
+2. Stark, A. W., Kazaj, P. M., Balzer, S., Ilic, M., Bergamin, M., Kakizaki, R.,
+   Giannopoulos, A., Haeberlin, A., Räber, L., Gräni, C. (2025). *Automated intravascular
+   ultrasound image processing and quantification of coronary artery anomalies: the HolOrama
+   software.* Computer Methods and Programs in Biomedicine, 109065.
+   `doi:10.1016/j.cmpb.2025.109065 <https://doi.org/10.1016/j.cmpb.2025.109065>`_
