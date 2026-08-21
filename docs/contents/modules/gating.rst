@@ -11,7 +11,7 @@ measurements only makes sense within one phase. This is especially important whe
 to compare phases between each other. This is apparent by the relative motion of reference
 points (e.g., the ostium) during every heartbeat, as we have already published before:
 
-.. figure:: ../../media/JACCCaseReport.png
+.. figure:: ../../media/JACCCaseReport.jpg
    :name: fig-casereport
    :alt: Jacc Case Report Figure
    :align: center
@@ -25,7 +25,7 @@ This shift which we described can be contributed to the fact that with every hea
 the vessel moves relative to the catheter. Which I also demonstrate in this idealized example:
 
 .. figure:: ../../media/vessel_movement_heartbeat.gif
-   :name: fig-casereport
+   :name: fig-vessel-movement
    :alt: Vessel motion during heartbeat
    :align: center
    :width: 900px
