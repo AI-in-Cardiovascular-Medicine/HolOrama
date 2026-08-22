@@ -7,9 +7,10 @@ Gating (IVUS)
 
 An IVUS pullback is acquired continuously while the heart beats, so consecutive frames
 alternate between a relaxed (diastolic) and a compressed (systolic) vessel. Comparing
-measurements only makes sense within one phase. This is especially important when trying
-to compare phases between each other. This is apparent by the relative motion of reference
-points (e.g., the ostium) during every heartbeat, as we have already published before:
+measurements only makes sense within one phase, which matters most when comparing
+measurements between different phases: apparent differences can simply reflect the
+relative motion of reference points (e.g., the ostium) during the heartbeat, as we have
+previously shown:
 
 .. figure:: ../../media/JACCCaseReport.jpg
    :name: fig-casereport
@@ -19,8 +20,9 @@ points (e.g., the ostium) during every heartbeat, as we have already published b
 
    :ref:`Stark et al. 2025 <gating-citation-1>`
 
-This shift which we described can be contributed to the fact that with every heartbeat,
-the vessel moves relative to the catheter. Which I also demonstrate in this idealized example:
+This shift, which we described previously, can be attributed to the fact that the vessel
+moves relative to the catheter with every heartbeat. This is also demonstrated in the
+idealized example below:
 
 .. figure:: ../../media/vessel_movement_heartbeat.gif
    :name: fig-vessel-movement
@@ -30,7 +32,8 @@ the vessel moves relative to the catheter. Which I also demonstrate in this idea
 
 HolOrama identifies the phases **from the images themselves** (image-based gating) and 
 additionally **from the contours** (contour-based gating), using the algorithm published as
-*AIVUS-CAA* (:ref:`Stark et al. 2025 <gating-citation-2>`), however optimized since then.
+*AIVUS-CAA* (:ref:`Stark et al. 2025 <gating-citation-2>`), though improved and optimised
+since then.
 
 How it works
 ------------
@@ -53,14 +56,19 @@ detected heart rate.
    * - **Contour** (yellow)
      - The lumen area per frame, in mm², taken from the report data. Requires contours on
        at least 50 % of the frames. Its **peaks are diastole** (large, relaxed lumen) and
-       its **troughs are systole** (small, compressed lumen).
+       its **troughs are systole** (small, compressed lumen), although in cases of
+       pronounced vessel motion, such as near the ostium in coronary anomalies or where
+       plaque is present in coronary artery disease, the signal instead reflects geometric
+       changes in lumen area, which can likewise be used to identify the phases.
 
 .. rubric:: Heart-rate detection
 
 The cardiac frequency is estimated as the FFT spectral peak of the correlation signal
 inside the configured search range (``gating.f_cardiac_min`` / ``f_cardiac_max``, default
 0.75–3.33 Hz ≈ 45–200 bpm). This covers resting and stress acquisitions without any
-grid search.
+grid search. The range is intentionally left wide because measurements under maximal
+stress are often required for coronary artery anomalies; see the :ref:`gating-tutorial`
+section below for how to filter the signal.
 
 .. rubric:: Filtering
 
@@ -83,6 +91,8 @@ diastole and systole.
    clean correlation signal. The centroid vector in particular is dominated by catheter
    rotation (SNR 0.04, versus 1.54 for lumen area).
 
+.. _gating-tutorial:
+
 Tutorial
 --------
 
@@ -93,6 +103,23 @@ Prerequisites
 - Optional but strongly recommended: lumen contours on at least half the frames (draw them
   or run **Automatic Segmentation**). Without them only the image signal is available, and
   the phase assignment is less reliable.
+
+See overview of the gating module in the GUI representation below:
+
+.. figure:: ../../media/gating_layout.png
+   :name: fig-gating-gui
+   :alt: Gating GUI representation
+   :align: center
+   :width: 900px
+
+   Bottom right: the ``Extract Diastolic and Systolic Frames`` button. Top: the calculated
+   image and contour signals (filtered above, unfiltered below) and the detected gated
+   frames (blue = diastole, red = systole, grey = untyped). Below the plot: the
+   frequency-sweep and breathing-sweep diagnostic views. Frequency sweep: a heat map of the
+   image signal low-pass filtered at increasing BPM cutoffs; the yellow line marks the
+   active cutoff based on the automatically detected heart rate (starting at 2 × the
+   detected heart rate), and clicking a row applies that cutoff to the main plot. Always
+   double-check the automatic estimate. For actual signal interpretation, see below.
 
 1. Run the gating
 ~~~~~~~~~~~~~~~~~
@@ -116,6 +143,20 @@ The gating plot appears in the top right of the window:
 
 If no gated frames exist yet, an automatic estimate is placed for you as soon as the plot
 opens. If gating results already exist, they are drawn instead and left untouched.
+
+.. figure:: ../../media/gating_signals.png
+   :name: fig-gating-signals
+   :alt: Gating Signals
+   :align: center
+   :width: 900px
+
+   Zoomed in on the filtered curves. Green is the image signal, and yellow is the contour signal.
+   This illustrates the alternating valleys for diastole and systole in the image signal: the
+   diastolic valley is lower, reflecting the minimal motion of the vessel, while the systolic
+   valley is shallower, as this effect is less pronounced. The contour signal, on the other
+   hand, shows alternating peaks and troughs; here, in a coronary artery anomaly during stress,
+   this pattern is more representative of the large vessel shifts inside and outside of the
+   intramural course.
 
 3. Correct the result
 ~~~~~~~~~~~~~~~~~~~~~
