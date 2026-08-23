@@ -5,7 +5,7 @@ CCTA
 
 The CCTA module works on a coronary CT angiography volume: correct or create a multi-label
 segmentation, clean it up in 3D, and cut out the aortic root together with the coronaries
-as a single model — the geometry the :doc:`fusion` module later merges with an
+as a single model: the geometry the :doc:`fusion` module later merges with an
 intravascular pullback.
 
 The layout
@@ -27,11 +27,11 @@ along the bottom: **Smooth** (+ Taubin lambda), **Reduce Mesh** (+ target reduct
 .. rubric:: Right column
 
 - **Mask opacity** slider.
-- **Labels** — one row per label with a visibility checkbox, a colour swatch, an editable
+- **Labels**: one row per label with a visibility checkbox, a colour swatch, an editable
   name and the numeric label value, plus an *All* toggle and the *Cardiac CCTA*
   **Names** / **Colors** preset buttons.
 - **Brush** controls: *Enable brush*, label selector, *Add* / *Erase*, radius.
-- **Aortic Root with Coronaries** — mask selectors, cut-plane buttons,
+- **Aortic Root with Coronaries**: mask selectors, cut-plane buttons,
   **Build Cut Geometry**, outlet points, export format and **Extract && Export**.
 
 Tutorial
@@ -45,7 +45,7 @@ Tutorial
 
 HolOrama then looks for a previously saved mask for this case
 (``<case>_ccta_seg_*.nii.gz``) and loads the most recent one automatically, along with any
-saved cut state — cut lines, label choices, outlet points and label names — rebuilding the
+saved cut state (cut lines, label choices, outlet points and label names), rebuilding the
 cut geometry from them. Re-opening a case picks up where you left off.
 
 If no mask is found for a NIfTI volume, you are asked whether you want to load one. You can
@@ -59,14 +59,14 @@ blank multi-label mask, ready to paint.
 - Drag :kbd:`RMB` for windowing (:kbd:`R` resets), drag :kbd:`LMB` to zoom (:kbd:`F`
   resets).
 - :kbd:`Esc` returns to a neutral state (leaves brush/line-drawing modes).
-- :kbd:`Ctrl+Z` undoes the last mask edit — brush strokes and 3D lasso erases alike.
+- :kbd:`Ctrl+Z` undoes the last mask edit, brush strokes and 3D lasso erases alike.
 
 3. Organise the labels
 ~~~~~~~~~~~~~~~~~~~~~~
 
 In the **Labels** list you can hide or show each label, rename it, and toggle all at once.
 The **Cardiac CCTA** presets fill in standard anatomic **Names** and **Colors** in one
-click. Names and colours propagate everywhere immediately — the slice overlays, the brush
+click. Names and colours propagate everywhere immediately: the slice overlays, the brush
 selector, the 3D render and the cut-geometry dropdowns.
 
 Use the **Mask opacity** slider to check a border against the underlying CT.
@@ -99,7 +99,7 @@ To delete a structure:
 #. **Right-click** to close and apply it.
 #. If more than one label is visible, choose which one to erase from inside the lasso.
 
-Every voxel of that label whose projection falls inside the polygon is removed — the fast
+Every voxel of that label whose projection falls inside the polygon is removed: the fast
 way to strip veins, ribs, noise or a mis-segmented neighbour that would otherwise have to be
 erased slice by slice. The erase respects the current camera, so rotate to a view where the
 unwanted structure does not overlap what you want to keep. :kbd:`Ctrl+Z` undoes it.
@@ -120,11 +120,11 @@ draw each line by clicking its button and drawing in the named view:
    * - Button
      - Draw in
    * - **LVOT cut line (axial)**
-     - the axial view — where the left ventricular outflow tract is cut off
+     - the axial view, where the left ventricular outflow tract is cut off
    * - **LVOT cut line (coronal)**
-     - the coronal view — the second line defining the same LVOT plane
+     - the coronal view, the second line defining the same LVOT plane
    * - **Aorta top cut (coronal)**
-     - the coronal view — where the ascending aorta is truncated
+     - the coronal view, where the ascending aorta is truncated
 
 The status circle next to each button turns green once that line is drawn. All three are
 required: the aorta-top plane is where the outlet centroid is measured, so without it there
@@ -139,16 +139,16 @@ The view switches to the **Cut Geometry** tab showing the result.
 
 In that tab:
 
-- **Smooth** — Taubin smoothing at the given lambda (default 0.6), after which the inlet
+- **Smooth**: Taubin smoothing at the given lambda (default 0.6), after which the inlet
   and outlet are re-located. Run it more than once for a stronger effect.
-- **Reduce Mesh** — decimate to the given target reduction (default 50 %). Fewer faces make
+- **Reduce Mesh**: decimate to the given target reduction (default 50 %). Fewer faces make
   centerline computation dramatically faster at some cost in detail.
-- **Opacity** — fade the surface to see the markers inside it.
+- **Opacity**: fade the surface to see the markers inside it.
 
-8. Optional — compute centerlines
+8. Optional: compute centerlines
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Centerlines are computed with `vmtk <https://vmtk.github.io>`_, which you install yourself —
+Centerlines are computed with `vmtk <https://vmtk.github.io>`_, which you install yourself;
 see :ref:`install-vmtk`. Everything up to this point works without it.
 
 #. Place the outlet points. Click **Add RCA Outlet**, then click on the cut geometry at the
@@ -157,7 +157,7 @@ see :ref:`install-vmtk`. Everything up to this point works without it.
    many you have placed, and **Clear** removes them. The two modes are mutually exclusive.
 #. Click **Calculate Centerlines**. A dialog asks for the smoothing parameters, separately
    for the **Aorta** (default 300 iterations, factor 0.1) and the **RCA / LCA** (default
-   100 iterations, factor 0.1) — the aorta usually needs considerably heavier smoothing
+   100 iterations, factor 0.1); the aorta usually needs considerably heavier smoothing
    than the finer coronary branches.
 #. vmtk then runs, per vessel, ``vmtkcenterlines`` → ``vmtkcenterlinesmoothing`` →
    ``vmtksurfacewriter``. This takes minutes; the Voronoi-diagram step is slow and often
@@ -168,9 +168,9 @@ see :ref:`install-vmtk`. Everything up to this point works without it.
 
 Output, written next to the case file:
 
-- ``<case>_root_smooth.stl`` — the exact mesh that was fed to vmtk
-- ``ao_cl.vtp``, ``rca_cl.vtp``, ``lca_cl.vtp`` — the three centerlines
-- ``ao.csv``, ``rca.csv``, ``lca.csv`` — the source/target points that were used
+- ``<case>_root_smooth.stl``: the exact mesh that was fed to vmtk
+- ``ao_cl.vtp``, ``rca_cl.vtp``, ``lca_cl.vtp``: the three centerlines
+- ``ao.csv``, ``rca.csv``, ``lca.csv``: the source/target points that were used
 
 Those ``.vtp`` files and the STL are exactly what the :doc:`fusion` module asks for.
 
@@ -186,7 +186,7 @@ Choose **NIfTI** or **STL** under *Export as*, then click **Extract && Export**.
 
 - **NIfTI** always re-derives the combined voxel mask from the current labels and cut
   planes.
-- **STL** exports the mesh currently in the Cut Geometry tab if one has been built — so
+- **STL** exports the mesh currently in the Cut Geometry tab if one has been built, so
   smoothing and decimation are preserved. Smoothing never touches the voxel mask, so it
   cannot be represented in the NIfTI export.
 

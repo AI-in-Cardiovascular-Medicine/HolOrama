@@ -3,7 +3,7 @@
 Configuration
 =============
 
-All settings live in one YAML file. It is worth a look once before your first real case —
+All settings live in one YAML file. It is worth a look once before your first real case:
 display sizes, contour colours, the auto-save interval and the optional vmtk paths are all
 set here.
 

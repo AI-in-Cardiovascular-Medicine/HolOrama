@@ -3,7 +3,7 @@
 Output files
 ============
 
-HolOrama writes everything **next to the file you opened** — the case directory is the
+HolOrama writes everything **next to the file you opened**: the case directory is the
 project directory. Only logs and ``config.yaml`` live elsewhere (see
 :doc:`configuration`).
 
@@ -40,7 +40,7 @@ Contents of ``<case>_csv_files/``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 All CSVs are **tab-delimited**. One group of files is written per phase family that has
-frames — ``diastolic`` and ``systolic`` for gated IVUS, ``tagged`` for OCT.
+frames: ``diastolic`` and ``systolic`` for gated IVUS, ``tagged`` for OCT.
 
 .. list-table::
    :header-rows: 1
@@ -53,11 +53,11 @@ frames — ``diastolic`` and ``systolic`` for gated IVUS, ``tagged`` for OCT.
    * - ``<group>_reference_points.csv``
      - The reference point per frame, defining the rotational reference
    * - ``eem_<group>_contours.csv``
-     - EEM contours, same layout — only when EEM contours exist
+     - EEM contours, same layout; only when EEM contours exist
    * - ``calcium_<group>_contours.csv``
-     - Calcium contours — only when they exist
+     - Calcium contours; only when they exist
    * - ``branch_<group>_contours.csv``
-     - Side-branch contours — only when they exist
+     - Side-branch contours; only when they exist
    * - ``combined_sorted_manual.csv``
      - Always written with the report: the gated diastolic frames followed by the systolic
        ones (IVUS) or the tagged frames (OCT), in acquisition order, carrying any manual
@@ -77,13 +77,13 @@ case directory named after the mode: ``contoured_frames/``, ``gated_frames/`` or
    * - File
      - Written when
    * - ``<case>_img.nii.gz``
-     - ``save.save_3d: True`` — the whole selected stack as one 3D image volume
+     - ``save.save_3d: True``: the whole selected stack as one 3D image volume
    * - ``<case>_seg.nii.gz``
-     - ``save.save_3d: True`` — the matching 3D mask volume
+     - ``save.save_3d: True``: the matching 3D mask volume
    * - ``<case>_frame_<n>_img.nii.gz``
-     - ``save.save_2d: True`` — one image file per frame
+     - ``save.save_2d: True``: one image file per frame
    * - ``<case>_frame_<n>_seg.nii.gz``
-     - ``save.save_2d: True`` — one mask file per contoured frame
+     - ``save.save_2d: True``: one mask file per contoured frame
 
 Masks are rasterised from the contours through a B-spline interpolation of the knot points
 identical to the on-screen spline, with a fixed layering ruleset so overlapping structures

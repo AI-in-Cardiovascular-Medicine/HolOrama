@@ -5,7 +5,7 @@ Intravascular (IVUS / OCT)
 
 The intravascular module is where a pullback is annotated: you step through frames, draw
 contours with the tool that matches the structure, mark where you are uncertain, and export
-the result — as a metrics report, as contour CSVs, or as image/mask NIfTI pairs ready to
+the result, as a metrics report, as contour CSVs, or as image/mask NIfTI pairs ready to
 train a segmentation model.
 
 Both modalities share the same contouring tools. IVUS pullbacks additionally get
@@ -15,7 +15,7 @@ per-frame image-quality rating.
 The layout
 ----------
 
-.. rubric:: Left half — the image
+.. rubric:: Left half: the image
 
 - **Row 1, drawing tools:** ⭕ **Closed Spline**, ➰ **Open Spline**, 🖌️ **Brush**,
   🟡 **Reference**, 📏 **Measurement 1**, 📏 **Measurement 2**, 📐 **Angle Wire**,
@@ -27,7 +27,7 @@ The layout
 - **The image**, with a frame slider, a play button and a frame counter underneath.
 - **Checkboxes:** *Hide Contours*, *Hide Metrics*, *Mask mode*.
 
-.. rubric:: Right half — the signals
+.. rubric:: Right half: the signals
 
 - **Frame tagging** (IVUS): *Diastolic Frame* / *Systolic Frame* checkboxes, the
   **Diastolic Frames** / **Systolic Frames** toggle that decides which phase :kbd:`W` and
@@ -72,7 +72,7 @@ then turned into contours.
 - Drag :kbd:`Ctrl`\ +\ :kbd:`LMB` to pan the image inside its widget.
 - :kbd:`C` toggles the colour map.
 
-Sensitivity of both windowing and zoom is configurable — see :doc:`../configuration`.
+Sensitivity of both windowing and zoom is configurable; see :doc:`../configuration`.
 
 3. Tagging / Gating Images
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -113,7 +113,7 @@ If a region should be excluded from analysis, after running tagging / gating use
 - The play button under the image runs through the pullback.
 - Scrolling the :kbd:`MWB` also lets you run through frames.
 - The scrollbar on the bottom can additionally be used to scim through frames either automatically
-  by pressing the play button or by moving the postion marker
+  by pressing the play button or by moving the position marker
 
 5. Optional: pre-segment the lumen
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -211,7 +211,7 @@ Drawing rules:
   moves one pixel per tick toward or away from the centroid.
 - Clicking any drawn contour makes it the active one.
 - :kbd:`Esc` leaves drawing mode; :kbd:`Ctrl+Z` undoes the last contour edit (draw, delete,
-  drag, brush, scale or copy — the last five edits are kept).
+  drag, brush, scale or copy; the last five edits are kept).
 
 Several shortcuts save a lot of clicking, but don't have a button representation:
 
@@ -230,7 +230,7 @@ See this example for applying these tools to effectively draw new contours:
 ~~~~~~~~~~~~~~~~~~~~~~
 
 Borders are not equally visible all the way around a vessel. Rather than forcing you to
-guess, HolOrama lets the annotation itself carry that information, by creating a seperate mask
+guess, HolOrama lets the annotation itself carry that information, by creating a separate mask
 for solid lines, which is what makes the exported masks honest training data.
 
 There are three ways to record it:
@@ -268,7 +268,7 @@ Colours of the start/end markers are configurable (``color_start_point``,
 ``color_end_point``).
 
 .. tip::
-   Be consistent about *why* you mark a region uncertain across a study — that consistency
+   Be consistent about *why* you mark a region uncertain across a study; that consistency
    is what a model can actually learn from.
 
 8. Measurements and markers
@@ -279,7 +279,7 @@ Colours of the start/end markers are configurable (``color_start_point``,
 - 📐 **Angle Wire** (:kbd:`3`) marks the guide-wire shadow as an angular sector: click two
   points and the sector between the two radial lines through them becomes the shadow.
   ➕📐 **Add Wire** (:kbd:`Ctrl+3`) marks another wire on the same frame, keeping the ones
-  already there — some pullbacks show more than one wire. Drawing with **Angle Wire**
+  already there; some pullbacks show more than one wire. Drawing with **Angle Wire**
   instead replaces every wire on the frame. Wires behave like the other multi-instance
   contours (calcification, lipid, …): each is stored separately, all of them are exported
   to the mask (label 9), and :kbd:`Ctrl+Z` undoes the last one.

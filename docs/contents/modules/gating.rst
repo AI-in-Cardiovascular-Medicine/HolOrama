@@ -207,6 +207,20 @@ The gated frames are also what the :doc:`fusion` module consumes: the report wri
 ``diastolic_contours.csv`` and ``systolic_contours.csv``, which become the diastolic and
 systolic geometries there.
 
+6. Keyboard shortcuts
+~~~~~~~~~~~~~~~~~~~~~
+
+- :kbd:`W` / :kbd:`S`: jump to the next/previous gated frame, in whichever phase the
+  **Diastolic Frames** / **Systolic Frames** toggle currently selects.
+- :kbd:`Shift+W` / :kbd:`Shift+S`: copy the active contour from the next/previous gated
+  frame.
+- :kbd:`Alt+P`: plot the results for the gated frames (area difference between systole and
+  diastole over the pullback distance).
+- :kbd:`Alt+Delete`: choose a frame range and remove all gating within it.
+- :kbd:`Alt+S`: choose a frame range and swap systole and diastole within it.
+
+See :doc:`../shortcuts` for the full keyboard and mouse reference.
+
 Troubleshooting
 ---------------
 

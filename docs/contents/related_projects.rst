@@ -11,7 +11,7 @@ Related projects
      - Relation to HolOrama
    * - `multimodars <https://pypi.org/project/multimodars>`_
      - The fusion engine. HolOrama's :doc:`modules/fusion` module is a graphical front end
-       for it — use the package directly if you want to script the same pipeline.
+       for it; use the package directly if you want to script the same pipeline.
    * - `nnUZoo <https://github.com/AI-in-Cardiovascular-Medicine/nnUZoo>`_
      - Segmentation model zoo behind the **Automatic Segmentation** button. Installed
        separately, see :doc:`installation`.

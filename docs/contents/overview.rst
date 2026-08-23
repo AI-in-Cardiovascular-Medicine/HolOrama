@@ -15,8 +15,8 @@ models on real data.
 
 The next need had no tool at all: turning intravascular images into 3D models and merging
 them with coronary computed tomography angiography (CCTA) into one geometry. That brings in
-engineering concepts most physicians never meet — gating, breathing correction, alignment,
-fusion — so the challenge became hiding all of it behind an interface any clinician can 
+engineering concepts most physicians never meet: gating, breathing correction, alignment,
+fusion. So the challenge became hiding all of it behind an interface any clinician can
 intuitively use.
 
 Hence the two promises of HolOrama: intuitive even where the topic is complex, and flexible
@@ -24,8 +24,8 @@ enough to fit your own workflow.
 
 Specifically HolOrama spans the following functionalities:
 
-- **Intravascular segmentation.** Draw contours on IVUS/OCT frames — lumen, EEM, calcium,
-  side branches and more — with tools designed to record *how certain* you are about a
+- **Intravascular segmentation.** Draw contours on IVUS/OCT frames (lumen, EEM, calcium,
+  side branches and more) with tools designed to record *how certain* you are about a
   border rather than forcing a single crisp line. On a source install, lumen contours can
   be pre-segmented automatically and then corrected by hand.
 - **Motion correction.** IVUS pullbacks carry substantial motion artefacts, from the
@@ -42,7 +42,7 @@ Specifically HolOrama spans the following functionalities:
   coronaries, and compute centerlines with `vmtk <https://vmtk.github.io>`_.
 - **Fusion.** A complete GUI wrapper around
   `multimodars <https://pypi.org/project/multimodars>`_ that fuses the CCTA geometry with
-  an intravascular pullback into a single mesh — for example as input to a computational
+  an intravascular pullback into a single mesh, for example as input to a computational
   fluid dynamics study.
 
 The three modules
@@ -57,7 +57,7 @@ data, so you can move back and forth without reloading.
 Frame-by-frame contouring of a pullback.
 
 - Contour types: ``lumen``, ``EEM``, ``calcium``, ``side branch``, ``lipid``,
-  ``macrophage``, ``wire`` (as a shadow angle, several per frame) — plus distance
+  ``macrophage``, ``wire`` (as a shadow angle, several per frame), plus distance
   measurements and a reference point.
 - Every contour is a **closed spline**, an **open spline**, or a closed spline carrying an
   **uncertain region** delimited by a start and end point. Uncertainty is part of the
@@ -73,9 +73,9 @@ Frame-by-frame contouring of a pullback.
 
 IVUS pullbacks additionally get two signal-processing tools:
 
-- :doc:`Image-based gating <modules/gating>` — identifies diastolic and systolic frames
+- :doc:`Image-based gating <modules/gating>`: identifies diastolic and systolic frames
   from the images themselves, no ECG required (the method published as *AIVUS-CAA*).
-- :doc:`Breathing-motion detection <modules/breathing>` — extracts the breathing component
+- :doc:`Breathing-motion detection <modules/breathing>`: extracts the breathing component
   from the lumen-area signal and can reorder the gated frames into a breathing-corrected
   pullback.
 
@@ -91,11 +91,11 @@ Multi-label segmentation and 3D model building on a CT volume.
 - Synchronised axial / coronal / sagittal views of a DICOM folder or NIfTI file.
 - **Brush** to add to or erase from any label, on any of the three views.
 - **3D volume rendering** of the visible labels, with a **lasso** tool to delete
-  everything of one label inside a drawn region — the fast way to remove noise and
+  everything of one label inside a drawn region: the fast way to remove noise and
   structures the segmentation picked up by mistake.
 - Draw **cut planes** (LVOT and aorta top) and extract the aortic root together with the
-  coronaries as one combined NIfTI mask or STL mesh, then **smooth**, **reduce** and — if
-  you have `vmtk <https://vmtk.github.io>`_ installed — compute **centerlines**.
+  coronaries as one combined NIfTI mask or STL mesh, then **smooth**, **reduce** and, if
+  you have `vmtk <https://vmtk.github.io>`_ installed, compute **centerlines**.
 
 .. image:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/CCTA_demo.gif
    :alt: Segmenting and cleaning a CCTA volume in HolOrama
@@ -172,14 +172,14 @@ Supported input data
 A first run
 -----------
 
-#. Install HolOrama (see :doc:`installation`). With the windows installer no coding knowledge needed.
+#. Install HolOrama (see :doc:`installation`). With the Windows installer, no coding knowledge is needed.
 #. Launch the application. It opens maximised on the **Intravascular** module.
 #. Optionally check :doc:`configuration` and adjust display sizes, colours, auto-save interval and the
    optional vmtk paths.
 #. Open a case and follow the tutorial for your module:
    :doc:`modules/intravascular`, :doc:`modules/ccta` or :doc:`modules/fusion`.
 
-An example IVUS, OCT and CCTA case are attached to the latest release on Github, so you can follow along.
+Example IVUS, OCT and CCTA cases are attached to the latest release on Github, so you can follow along.
 
 .. tip::
    Auto-save is on by default (every 10 s, configurable). Saving is additionally performed with every

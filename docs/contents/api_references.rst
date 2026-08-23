@@ -13,22 +13,22 @@ All application code lives under ``src/``::
 
     src/
     ├── config.yaml          user-editable settings (see the Configuration page)
-    ├── main.py              entry point — creates the QApplication and the Master window
+    ├── main.py              entry point: creates the QApplication and the Master window
     ├── version.py           __version__ and the contour-file version tag
-    ├── domain/              data classes — RuntimeData, FrameData, CctaRuntimeData,
+    ├── domain/              data classes: RuntimeData, FrameData, CctaRuntimeData,
     │                        FusionRuntimeData, contour/tool enums, undo stack
-    ├── gating/              cardiac gating and breathing analysis — signal preparation,
+    ├── gating/              cardiac gating and breathing analysis: signal preparation,
     │                        automatic gating, the interactive gating plot
-    ├── gui/                 app-level wiring — Master window, page switching, menu bar,
+    ├── gui/                 app-level wiring: Master window, page switching, menu bar,
     │                        keyboard shortcuts
     ├── input_output/
-    │   ├── input/           readers — DICOM series, NIfTI (IVUS/OCT/CCTA), metadata
-    │   └── output/          writers — report, contour CSV/JSON, NIfTI, STL, video
+    │   ├── input/           readers: DICOM series, NIfTI (IVUS/OCT/CCTA), metadata
+    │   └── output/          writers: report, contour CSV/JSON, NIfTI, STL, video
     ├── pages/
     │   ├── intravascular/
     │   │   ├── left_half/       image display, spline contour editor, drawing tools
     │   │   ├── right_half/      gating plot, longitudinal view, phase controls
-    │   │   ├── popup_windows/   dialogs — frame range, breathing sort viewer, settings
+    │   │   ├── popup_windows/   dialogs: frame range, breathing sort viewer, settings
     │   │   └── utils/           helpers shared across the intravascular page
     │   ├── ccta/
     │   │   ├── left_half/       tri-plane viewer, VTK 3D renderer, cut-geometry viewer
@@ -39,8 +39,8 @@ All application code lives under ``src/``::
     │       ├── left_half/       shared 3D viewer and per-scene toolbars
     │       ├── right_half/      the three pipeline columns
     │       └── pipeline.py      thin wrappers around the multimodars calls
-    ├── segmentation/        automatic segmentation — nnUZoo wrapper, mask→contour
-    └── tools/               Qt-independent helpers — geometry, painting, lasso
+    ├── segmentation/        automatic segmentation: nnUZoo wrapper, mask→contour
+    └── tools/               Qt-independent helpers: geometry, painting, lasso
 
 Design principles
 -----------------
@@ -52,7 +52,7 @@ Design principles
   ``CctaPage``, ``FusionPage``) is a self-contained ``QWidget`` instantiated by ``Master``;
   tearing a page down and reinstantiating it (``reload_intravascular`` / ``reload_ccta``)
   is the reset strategy.
-- ``tools/`` holds logic reusable across pages with no Qt widget dependency — pure geometry
+- ``tools/`` holds logic reusable across pages with no Qt widget dependency: pure geometry
   and pixmap helpers.
 - ``input_output/`` has no GUI imports, so it can be exercised headlessly in tests or CLI
   scripts.
@@ -79,7 +79,7 @@ Building these docs
     cd docs && make html
 
 The build is configured in ``docs/conf.py``. Read the Docs builds with
-``fail_on_warning: true``, so a Sphinx warning fails the build — every page must be
+``fail_on_warning: true``, so a Sphinx warning fails the build: every page must be
 reachable from a toctree and every cross-reference must resolve.
 
 Per-module API documentation can be generated with ``sphinx.ext.autodoc``, which is already

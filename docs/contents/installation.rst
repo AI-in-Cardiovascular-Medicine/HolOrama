@@ -22,8 +22,8 @@ There are two ways to get HolOrama:
      - Not included
      - Included
 
-Everything else — contouring, gating, breathing correction, CCTA segmentation, the 3D
-tools and the whole fusion pipeline — is identical in both.
+Everything else (contouring, gating, breathing correction, CCTA segmentation, the 3D
+tools and the whole fusion pipeline) is identical in both.
 
 .. _install-binary:
 
@@ -71,7 +71,7 @@ Windows script
       .\install.ps1
 
 The script creates a ``.venv``, installs all dependencies and applies both Windows-specific
-fixes automatically (the missing OpenMP DLL and the ``optree`` version pin — see
+fixes automatically (the missing OpenMP DLL and the ``optree`` version pin, see
 :ref:`install-manual`). The default install is GPU-ready (CUDA 11.8).
 
 .. list-table::
@@ -171,7 +171,7 @@ pip wheel. Run this once after installation:
    print('Done:', dest)
 
 .. note::
-   This file is lost whenever torch is reinstalled — re-run the snippet afterwards.
+   This file is lost whenever torch is reinstalled; re-run the snippet afterwards.
 
 **4. Fix the** ``optree`` **version incompatibility**
 
@@ -286,7 +286,7 @@ Verifying the installation
 - The window title reads **HolOrama Software** and three buttons (Intravascular, CCTA,
   Fusion) are visible on the left edge.
 - **Help → Documentation** opens this site; **Help → GitHub Page** opens the repository.
-- Open ``test_cases/patient_example`` with :kbd:`Ctrl+O` — the first frame of the example
+- Open ``test_cases/patient_example`` with :kbd:`Ctrl+O`: the first frame of the example
   pullback should appear.
 - Source installs log to ``./logs``; the packaged application logs to
   ``%LOCALAPPDATA%\HolOrama``. Attach the log when reporting a problem.

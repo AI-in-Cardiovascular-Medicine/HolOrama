@@ -3,7 +3,7 @@
 Keyboard & mouse reference
 ==========================
 
-Shortcuts cannot currently be remapped from the interface — changing them requires editing
+Shortcuts cannot currently be remapped from the interface; changing them requires editing
 ``src/gui/shortcuts.py``.
 
 .. figure:: ../media/keyboard.png
@@ -106,7 +106,7 @@ Drawing
    * - :kbd:`Delete`
      - Delete the active contour
    * - :kbd:`Ctrl+Z`
-     - Undo the last contour edit — draw, delete, drag, brush, scale or copy (last 5 kept)
+     - Undo the last contour edit (draw, delete, drag, brush, scale or copy; last 5 kept)
    * - :kbd:`Esc`
      - Leave drawing mode, return to a neutral state
 
@@ -186,7 +186,7 @@ Mouse
    * - :kbd:`LMB` drag on a knot point
      - Move that point
    * - :kbd:`LMB` click on a contour line
-     - First click — switch to the clicked contour type. Second click — Insert a new knot point there
+     - First click: switch to the clicked contour type. Second click: insert a new knot point there
    * - :kbd:`RMB` on a knot point
      - Remove that point
    * - :kbd:`RMB` drag
@@ -257,5 +257,5 @@ Mouse, 3D views (Segmentation, Cut Geometry and Fusion):
    * - :kbd:`RMB` (lasso mode)
      - Close the lasso and apply it
    * - :kbd:`LMB` click (pick mode)
-     - Pick a point — an outlet point, a split point or a reference marker, depending on
+     - Pick a point: an outlet point, a split point or a reference marker, depending on
        the view
