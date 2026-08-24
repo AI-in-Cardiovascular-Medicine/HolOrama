@@ -11,6 +11,9 @@ It is a graphical front end for the `multimodars <https://pypi.org/project/multi
 package; every button corresponds to a step of that pipeline, with the intermediate result
 rendered in 3D so you can check it before continuing.
 
+If you want to understand in detail how ``multimodars`` works, I would highly recommend you
+to additionally checkout it's `documentation <https://multimoda-rs.readthedocs.io/en/latest/>`_.  
+
 The layout
 ----------
 

@@ -34,6 +34,19 @@ along the bottom: **Smooth** (+ Taubin lambda), **Reduce Mesh** (+ target reduct
 - **Aortic Root with Coronaries**: mask selectors, cut-plane buttons,
   **Build Cut Geometry**, outlet points, export format and **Extract && Export**.
 
+.. figure:: ../../media/overview_ccta.png
+   :name: fig-overview-ccta
+   :alt: Overview CCTA view
+   :align: center
+   :width: 900px
+
+   Overview over the CCTA module with
+   the 2x2 grid and a marker that is synchronized between 2d and 3D view (clickable in all).
+   The 3D tools are directly available below the 3D view. The other tools and functionalities
+   can be found in the column on the right side. They can be roughly split into labeling, and
+   appearance on top, 2D segmentation tools and on the bottom the specific 3D geometry
+   preparation, which is needed by the fusion module.
+
 Tutorial
 --------
 
@@ -130,6 +143,16 @@ The status circle next to each button turns green once that line is drawn. All t
 required: the aorta-top plane is where the outlet centroid is measured, so without it there
 is no outlet for the model or for the centerline computation.
 
+.. figure:: ../../media/define_cutplanes.png
+   :name: fig-cut-planes
+   :alt: Define cutplanes
+   :align: center
+   :width: 900px
+
+   Example on how to set the different cutting planes. First check that the correct contours
+   are used. Then define a line perpendicular to the LVOT for the axial view and one for the
+   coronal view. Optionaly also the ascending aorta can be cut in the same way.
+
 7. Build the cut geometry
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -189,6 +212,19 @@ Choose **NIfTI** or **STL** under *Export as*, then click **Extract && Export**.
 - **STL** exports the mesh currently in the Cut Geometry tab if one has been built, so
   smoothing and decimation are preserved. Smoothing never touches the voxel mask, so it
   cannot be represented in the NIfTI export.
+
+.. figure:: ../../media/prepare_geometry.png
+   :name: fig-prepare-geometry
+   :alt: Overview geometry preparation
+   :align: center
+   :width: 900px
+
+   Demonstration of the full workflow after creating the cut geometry. Inlet and outlet
+   of the aorta are automatically caculated based on the cut plane, double check that 
+   they look reasonable otherwise adjust the planes. Then smooth and/or reduce the 
+   geometry, and label every outlet of the RCA and the LCA. If vmtk was installed, a centerline
+   can be calculated, smoothing factor and iterations can be set seperately for aorta and coronaries
+   since the aorta centerline otherwise tends to bend at the height of either LCA or RCA ostium.
 
 Saving and auto-save
 --------------------

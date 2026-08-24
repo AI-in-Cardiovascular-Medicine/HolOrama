@@ -157,11 +157,25 @@ what the manual swap is for.
 
 At the bottom of the viewer, choose the phase (**Diastole** / **Systole**), enter the two
 indices to exchange, and click **Apply move**. The swap is stored immediately.
+This sorting can of course also be performed when no breathing artefact is present, but the
+patient maybe moved, or other influences resulted in a shift in frames.
 
 Click **Raw** to go back to acquisition order at any time. The sort (peaks, valleys,
 ordered indices, per-bin shifts and every manual move) is cached with the case and written
 into the contour JSON, so it survives closing and reopening. When the gated frame set
 changes, membership is reconciled rather than recomputed from scratch.
+
+.. figure:: ../../media/overview_sorting_view.png
+   :name: fig-sorting-view
+   :alt: Overview sorting view
+   :align: center
+   :width: 900px
+
+   Example when opening the filtered view. On the left side are all diastolic frames,
+   the frames are sorted top to bottom, with the more proximal ones being at the bottom.
+   The slider below shows the diastolic and systolic frames registered by the most proximal
+   frame (here the ostium). Below frames can be switched by index, the current index is
+   always corresponding to the currently displayed frame.
 
 6. Export
 ~~~~~~~~~

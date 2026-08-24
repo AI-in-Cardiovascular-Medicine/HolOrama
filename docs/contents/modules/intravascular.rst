@@ -224,6 +224,14 @@ Several shortcuts save a lot of clicking, but don't have a button representation
 
 See this example for applying these tools to effectively draw new contours:
 
+.. figure:: ../../media/contour_spawning.gif
+   :name: fig-contour-spawn
+   :alt: Keyboard shortcut spawning
+   :align: center
+   :width: 900px
+
+   Example for a workflow utilizing the different contour spawning shortcuts.
+
 .. _iv-uncertainty:
 
 7. Express uncertainty
