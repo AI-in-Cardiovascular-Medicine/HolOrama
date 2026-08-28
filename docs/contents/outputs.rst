@@ -113,7 +113,7 @@ CCTA module
    * - ``ao.csv``, ``rca.csv``, ``lca.csv``
      - The source and target points handed to vmtk, for reproducibility.
    * - chosen path (``.nii.gz`` / ``.stl``)
-     - **Extract && Export** result. NIfTI re-derives the combined voxel mask; STL exports
+     - **Extract & Export** result. NIfTI re-derives the combined voxel mask; STL exports
        the built mesh including any smoothing and decimation.
 
 For a DICOM folder, ``<case>`` is the folder path plus the folder's own name; for a NIfTI
@@ -139,7 +139,7 @@ To go from raw data to a fused geometry:
      - Produced by
      - File(s)
    * - CCTA Mesh
-     - CCTA → **Build Cut Geometry** → **Extract && Export** (STL)
+     - CCTA → **Build Cut Geometry** → **Extract & Export** (STL)
      - your chosen ``.stl``, or ``<case>_root_smooth.stl``
    * - Centerlines
      - CCTA → **Calculate Centerlines**

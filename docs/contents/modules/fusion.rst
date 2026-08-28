@@ -14,6 +14,28 @@ rendered in 3D so you can check it before continuing.
 If you want to understand in detail how ``multimodars`` works, I would highly recommend you
 to additionally checkout it's `documentation <https://multimoda-rs.readthedocs.io/en/latest/>`_.  
 
+.. note::
+
+   Many of the functionalities are generally harder for coronary artery anomalies, hence
+   a big focuse was lied on solving the problem for these anomalies. If there are generally
+   different workflows for coronary artery disease or other pathologies, it will be highlighted
+   with a note field. For example data need to be prepared differently regarding the reference
+   points:
+
+   .. figure:: ../../media/dataprep.jpg
+    :name: fig-fusion-dataprep
+    :alt: Data preparation for fusion
+    :align: center
+    :width: 900px
+
+    For coronary artery anomalies, typically the most reliable landmark for reference points, 
+    is the section between the coronary and the aortic wall right at the ostium. Set on point for
+    systole and diastole to register them towards each other.
+    For coronary artery disease, the pullback doesn't necessarly span the ostium, hence find
+    a sidebranch which is visible in the pullback.
+    This is necessary because the fusion module automatically detects reference points at the 
+    ostium and for every sidebranch, so pullbacks can easily be aligned to the CCTA geometry.
+
 The layout
 ----------
 
@@ -46,7 +68,7 @@ and **Clear All Data**.
 
 Read left to right; each column is one stage of the pipeline.
 
-#. **CCTA Geometry && Centerlines**: load and prepare the CCTA inputs.
+#. **CCTA Geometry & Centerlines**: load and prepare the CCTA inputs.
 #. **Intravascular Alignment**: load the pullback and align it onto a coronary.
 #. **Fusion**: scale, stitch, remesh, export.
 
@@ -60,7 +82,7 @@ What you need before starting
    * - Input
      - Where it comes from
    * - CCTA mesh (``.stl``, ``.obj``, ``.ply``)
-     - :doc:`ccta` → **Build Cut Geometry** → **Extract && Export** as STL, or
+     - :doc:`ccta` → **Build Cut Geometry** → **Extract & Export** as STL, or
        ``<case>_root_smooth.stl``
    * - Three centerlines (``.vtp``): aorta, RCA, LCA
      - :doc:`ccta` → **Calculate Centerlines** (``ao_cl.vtp``, ``rca_cl.vtp``,
@@ -147,6 +169,31 @@ every split or merge.
 closed lasso around the offending points, and choose which region they come from and which
 they should become. This moves points between regions, for example from ``rca_points`` to
 ``aorta_points``, without touching the mesh.
+
+.. note::
+
+   This is the first major difference between coronary artery anomalies and other pathologies.
+   In the case of coronary artery anomalies, the rolling sphere algorithm for labelling the 
+   geometry leads to mislabelling of points since coronary and aorta are so close togehter:
+
+   .. figure:: ../../media/rolling_sphere.jpg
+    :name: fig-fusion-rolling-sphere
+    :alt: Rolling sphere mislabelling
+    :align: center
+    :width: 900px
+  
+    The programm automatically tries to clean this up by ray casting between the aortic centerline
+    and the coronary centerline. The logic here is if a ray touches three surfaces the first one
+    must be the aortic wall:
+
+   .. figure:: ../../media/ray_casting.jpg
+    :name: fig-fusion-ray-casting
+    :alt: Ray casting reassignment of mislabelled points
+    :align: center
+    :width: 900px
+
+    However depending on the geometry, still needs some manual adjustments.
+
 
 **5. Discretise the vessel tree.** Click **Discretize Vessel Tree**. The labelled surface is
 converted into stacked contours along each vessel, giving the reference points used for
@@ -244,7 +291,7 @@ into one surface.
 
 The stitched mesh is shown on its own in *CCTA Geometry*.
 
-**13. Remesh and smooth.** Click **Fix && Remesh**: target edge length (default 0.5 mm)
+**13. Remesh and smooth.** Click **Fix & Remesh**: target edge length (default 0.5 mm)
 and iterations (default 10). This repairs the seam and produces an even triangulation; it
 runs in the background with live progress output. Then **Smooth** applies Taubin smoothing
 at the chosen lambda (default 0.6). Both can be repeated.
@@ -287,4 +334,4 @@ Troubleshooting
      - Switch *Proximal start mode* between ``highest_z`` and ``nearest_iv``, and confirm
        the right regions were removed in step 11.
    * - Nothing to export
-     - Export uses the final mesh, which only exists after **Fix && Remesh**.
+     - Export uses the final mesh, which only exists after **Fix & Remesh**.

@@ -32,7 +32,7 @@ along the bottom: **Smooth** (+ Taubin lambda), **Reduce Mesh** (+ target reduct
   **Names** / **Colors** preset buttons.
 - **Brush** controls: *Enable brush*, label selector, *Add* / *Erase*, radius.
 - **Aortic Root with Coronaries**: mask selectors, cut-plane buttons,
-  **Build Cut Geometry**, outlet points, export format and **Extract && Export**.
+  **Build Cut Geometry**, outlet points, export format and **Extract & Export**.
 
 .. figure:: ../../media/overview_ccta.png
    :name: fig-overview-ccta
@@ -205,7 +205,7 @@ Those ``.vtp`` files and the STL are exactly what the :doc:`fusion` module asks 
 9. Export
 ~~~~~~~~~
 
-Choose **NIfTI** or **STL** under *Export as*, then click **Extract && Export**.
+Choose **NIfTI** or **STL** under *Export as*, then click **Extract & Export**.
 
 - **NIfTI** always re-derives the combined voxel mask from the current labels and cut
   planes.
@@ -246,7 +246,7 @@ Troubleshooting
 
    * - Symptom
      - What to try
-   * - **Build Cut Geometry** and **Extract && Export** stay greyed out
+   * - **Build Cut Geometry** and **Extract & Export** stay greyed out
      - All three cut lines must be drawn and all three mask selectors must have a label.
    * - The lasso removes more than intended
      - The erase is a projection along the current view direction. Rotate so the unwanted
