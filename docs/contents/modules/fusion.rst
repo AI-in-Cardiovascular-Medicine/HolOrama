@@ -9,7 +9,9 @@ the true lumen cross-section, and the result carries both.
 
 It is a graphical front end for the `multimodars <https://pypi.org/project/multimodars>`_
 package; every button corresponds to a step of that pipeline, with the intermediate result
-rendered in 3D so you can check it before continuing.
+rendered in 3D so you can check it before continuing. So if you like the functionality of
+this module please also consider leaving a star on the 
+`multimodars GitHub <https://github.com/yungselm/multimoda-rs>`_ 👉👈.
 
 If you want to understand in detail how ``multimodars`` works, I would highly recommend you
 to additionally checkout it's `documentation <https://multimoda-rs.readthedocs.io/en/latest/>`_.  
@@ -26,7 +28,7 @@ to additionally checkout it's `documentation <https://multimoda-rs.readthedocs.i
     :name: fig-fusion-dataprep
     :alt: Data preparation for fusion
     :align: center
-    :width: 900px
+    :width: 600px
 
     For coronary artery anomalies, typically the most reliable landmark for reference points, 
     is the section between the coronary and the aortic wall right at the ostium. Set on point for
@@ -180,7 +182,7 @@ they should become. This moves points between regions, for example from ``rca_po
     :name: fig-fusion-rolling-sphere
     :alt: Rolling sphere mislabelling
     :align: center
-    :width: 900px
+    :width: 450px
   
     The programm automatically tries to clean this up by ray casting between the aortic centerline
     and the coronary centerline. The logic here is if a ray touches three surfaces the first one
@@ -190,7 +192,7 @@ they should become. This moves points between regions, for example from ``rca_po
     :name: fig-fusion-ray-casting
     :alt: Ray casting reassignment of mislabelled points
     :align: center
-    :width: 900px
+    :width: 450px
 
     However depending on the geometry, still needs some manual adjustments.
 
