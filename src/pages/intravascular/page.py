@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 )
 
 from domain.all_types import OCT_QUALITY_LABELS
+from domain.colors import DIASTOLE_COLOR, SYSTOLE_COLOR
 from domain.runtime_types import RuntimeData
 from gating.gating_plot import GatingPlot
 from input_output.output.contours import write_contours
@@ -52,9 +53,9 @@ class IntravascularPage(QSplitter):
         self.hide_special_points: bool = False
         self.colormap_enabled: bool = False
         self.runtime_data: RuntimeData = RuntimeData()
-        self.diastole_color: tuple[int, int, int] = (39, 69, 219)
+        self.diastole_color: tuple[int, int, int] = DIASTOLE_COLOR
         self.diastole_color_plt: tuple[float, ...] = tuple(x / 255 for x in self.diastole_color)
-        self.systole_color: tuple[int, int, int] = (209, 55, 38)
+        self.systole_color: tuple[int, int, int] = SYSTOLE_COLOR
         self.systole_color_plt: tuple[float, ...] = tuple(x / 255 for x in self.systole_color)
         self.waiting_status: str = 'Waiting for user input...'
         self.small_display = None

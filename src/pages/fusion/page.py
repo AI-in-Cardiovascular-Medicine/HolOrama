@@ -15,9 +15,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from domain import fusion_display_types as colors
 from domain.fusion_types import FusionScene
 from domain.runtime_types import FusionRuntimeData
-from pages.fusion import colors, pipeline
+from pages.fusion import pipeline
 from pages.fusion.left_half.left_half import LeftHalf
 from pages.fusion.progress_worker import StdoutCapturingWorker
 from pages.fusion.right_half.right_half import RightHalf
