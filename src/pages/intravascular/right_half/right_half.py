@@ -64,8 +64,8 @@ class RightHalf:
         splitter.addWidget(self._build_longitudinal_pane())
         gating_size = mw.gating_display.sizeHint().height()
         splitter.setSizes([gating_size, gating_size])
-        splitter.setStretchFactor(0, mw.config.display.gating_display_stretch)
-        splitter.setStretchFactor(1, mw.config.display.lview_display_stretch)
+        splitter.setStretchFactor(0, mw.config.intravascular.gating_display_stretch)
+        splitter.setStretchFactor(1, mw.config.intravascular.lview_display_stretch)
         vbox.addWidget(splitter)
 
         vbox.addLayout(self._build_lower_buttons())
@@ -161,8 +161,8 @@ class RightHalf:
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.addWidget(mw.oct_plot)  # the IVUS gating plot's slot: OCT has no gating to show
         splitter.addWidget(mw.longitudinal_view)
-        splitter.setStretchFactor(0, mw.config.display.gating_display_stretch)
-        splitter.setStretchFactor(1, mw.config.display.lview_display_stretch)
+        splitter.setStretchFactor(0, mw.config.intravascular.gating_display_stretch)
+        splitter.setStretchFactor(1, mw.config.intravascular.lview_display_stretch)
         vbox.addWidget(splitter)
 
         vbox.addLayout(self._build_lower_buttons(oct=True))

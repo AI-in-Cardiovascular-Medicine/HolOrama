@@ -29,9 +29,10 @@ class BrushPanel(QWidget):
     brush_enabled_changed = pyqtSignal(bool)
     geometry_changed = pyqtSignal(object)  # BrushGeometry
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, label_colors: tuple[tuple[int, int, int], ...] = LABEL_COLORS, parent=None) -> None:
         super().__init__(parent)
         self._labels: list[int] = []
+        self._label_colors: tuple[tuple[int, int, int], ...] = label_colors
         self._custom_colors: list[tuple[int, int, int]] | None = None
 
         root = QVBoxLayout(self)
@@ -114,6 +115,14 @@ class BrushPanel(QWidget):
         if self._enable_cb.isChecked():
             self._emit()
 
+    def set_base_label_colors(self, colors: tuple[tuple[int, int, int], ...]) -> None:
+        """Update the default (non-anatomic-preset) label palette — e.g. from Settings."""
+        self._label_colors = tuple(colors) if colors else LABEL_COLORS
+        if self._custom_colors is None:
+            self._update_swatch()
+            if self._enable_cb.isChecked():
+                self._emit()
+
     def update_label_name(self, label: int, name: str) -> None:
         """Update the combo box text for a label when its name changes in the mask panel."""
         for i in range(self._combo.count()):
@@ -133,7 +142,7 @@ class BrushPanel(QWidget):
         if self._custom_colors and idx < len(self._custom_colors):
             color = self._custom_colors[idx]
         else:
-            color = LABEL_COLORS[idx % len(LABEL_COLORS)]
+            color = self._label_colors[idx % len(self._label_colors)]
         return BrushGeometry(label=label, color=color, radius_px=radius)
 
     def set_enabled(self, enabled: bool) -> None:
@@ -158,7 +167,7 @@ class BrushPanel(QWidget):
             if self._custom_colors and idx < len(self._custom_colors):
                 r, g, b = self._custom_colors[idx]
             else:
-                r, g, b = LABEL_COLORS[idx % len(LABEL_COLORS)]
+                r, g, b = self._label_colors[idx % len(self._label_colors)]
             self._swatch.setStyleSheet(
                 f'background-color: rgb({r},{g},{b}); border: 1px solid #666; border-radius: 2px;'
             )

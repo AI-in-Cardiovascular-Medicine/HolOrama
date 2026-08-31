@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Any, Callable
 
 from PyQt6.QtCore import Qt
@@ -18,6 +17,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from gui import settings_io
+
 DEFAULT_DISPLAY_SETTINGS: dict[str, Any] = {
     'windowing_sensitivity': 0.03,
     'zoom_sensitivity': 0.005,
@@ -34,6 +35,13 @@ DEFAULT_DISPLAY_SETTINGS: dict[str, Any] = {
     'color_start_point': 'yellow',
     'color_end_point': 'red',
     'color_angle': '#ffa500',
+}
+
+# windowing/zoom sensitivity are shared across pages (config.common); everything else
+# here is intravascular-only (config.intravascular). See gui/settings_io.py.
+_KEY_SECTIONS: dict[str, str] = {
+    key: 'common' if key in ('windowing_sensitivity', 'zoom_sensitivity') else 'intravascular'
+    for key in DEFAULT_DISPLAY_SETTINGS
 }
 
 _COLOR_LABELS = {
@@ -89,8 +97,7 @@ class DisplaySettingsDialog(QDialog):
         self.main_window = main_window
         self.setWindowTitle('Display Settings')
 
-        cfg = main_window.config.display
-        current = {k: getattr(cfg, k, v) for k, v in DEFAULT_DISPLAY_SETTINGS.items()}
+        current = settings_io.current_values(main_window.config, _KEY_SECTIONS, DEFAULT_DISPLAY_SETTINGS)
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -196,30 +203,9 @@ class DisplaySettingsDialog(QDialog):
         return values
 
 
-def save_display_settings(config_path: Path, values: dict) -> None:
-    """Round-trip config.yaml via ruamel.yaml, updating only display.<key> for each key
-    in `values` while preserving comments/formatting elsewhere in the file."""
-    from ruamel.yaml import YAML
-
-    yaml = YAML(typ='rt')
-    yaml.preserve_quotes = True
-    yaml.boolean_representation = ['False', 'True']  # type: ignore[attr-defined]  # config.yaml uses capitalized booleans
-    with open(config_path, encoding='utf-8') as f:
-        data = yaml.load(f)
-
-    display_map = data['display']
-    for key, value in values.items():
-        display_map[key] = value
-
-    with open(config_path, 'w', encoding='utf-8') as f:
-        yaml.dump(data, f)
-
-
 def apply_and_save(main_window, values: dict) -> None:
     """Mutate the shared config, apply live to open display-related objects, then persist."""
-    display_cfg = main_window.config.display
-    for key, value in values.items():
-        setattr(display_cfg, key, value)
+    settings_io.apply_values(main_window.config, _KEY_SECTIONS, values)
 
     main_window.display.apply_display_settings(values)
 
@@ -240,7 +226,5 @@ def apply_and_save(main_window, values: dict) -> None:
         breathing_sort_viewer.n_points_contour = values['n_points_contour']
         breathing_sort_viewer.contour_color = values['color_contour']
 
-    config_path = getattr(main_window.config, '_config_path', None)
-    if config_path is None:
-        config_path = Path(__file__).resolve().parent.parent.parent.parent / 'config.yaml'
-    save_display_settings(config_path, values)
+    config_path = settings_io.resolve_config_path(main_window.config)
+    settings_io.save_values(config_path, _KEY_SECTIONS, values)

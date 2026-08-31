@@ -73,7 +73,7 @@ class BreathingSortViewer(QMainWindow):
         super().__init__(main_window)
         self.setWindowFlags(Qt.WindowType.Window)
         self.main_window = main_window
-        cfg = main_window.config.display
+        cfg = main_window.config.intravascular
         self.image_size = cfg.image_size
         self.n_points_contour = cfg.n_points_contour
         self.contour_color = getattr(cfg, 'color_contour', 'green')

@@ -50,26 +50,26 @@ class Display(QGraphicsView, MetricsMixin):
         self.main_window = main_window
         config = main_window.config
 
-        self.n_interactive_points: int = config.display.n_interactive_points
-        self.n_points_contour: int = config.display.n_points_contour
-        self.image_size: int = config.display.image_size  # image display in pixel (square)
-        self.windowing_sensitivity: float = config.display.windowing_sensitivity
-        self.zoom_sensitivity: float = config.display.zoom_sensitivity
-        self.contour_thickness: int = config.display.contour_thickness
-        self.point_thickness: int = config.display.point_thickness
-        self.point_radius: int = config.display.point_radius
-        self.start_color: str = config.display.color_start_point
-        self.end_color: str = config.display.color_end_point
-        self.color_angle: str = config.display.color_angle
+        self.n_interactive_points: int = config.intravascular.n_interactive_points
+        self.n_points_contour: int = config.intravascular.n_points_contour
+        self.image_size: int = config.intravascular.image_size  # image display in pixel (square)
+        self.windowing_sensitivity: float = config.common.windowing_sensitivity
+        self.zoom_sensitivity: float = config.common.zoom_sensitivity
+        self.contour_thickness: int = config.intravascular.contour_thickness
+        self.point_thickness: int = config.intravascular.point_thickness
+        self.point_radius: int = config.intravascular.point_radius
+        self.start_color: str = config.intravascular.color_start_point
+        self.end_color: str = config.intravascular.color_end_point
+        self.color_angle: str = config.intravascular.color_angle
 
-        self.color_contour = getattr(config.display, "color_contour", (255, 255, 255))
-        self.alpha_contour = getattr(config.display, "alpha_contour", 255)  # config uses 0..255
-        self.color_eem: str = getattr(config.display, "color_eem", "red")
-        self.color_calcium: str = getattr(config.display, "color_calcium", "white")
-        self.color_branch: str = getattr(config.display, "color_branch", "green")
-        self.color_lipid: str = getattr(config.display, "color_lipid", "yellow")
-        self.color_macrophage: str = getattr(config.display, "color_macrophage", "blue")
-        self.color_reference: str = getattr(config.display, "color_reference", "yellow")
+        self.color_contour = getattr(config.intravascular, "color_contour", (255, 255, 255))
+        self.alpha_contour = getattr(config.intravascular, "alpha_contour", 255)  # config uses 0..255
+        self.color_eem: str = getattr(config.intravascular, "color_eem", "red")
+        self.color_calcium: str = getattr(config.intravascular, "color_calcium", "white")
+        self.color_branch: str = getattr(config.intravascular, "color_branch", "green")
+        self.color_lipid: str = getattr(config.intravascular, "color_lipid", "yellow")
+        self.color_macrophage: str = getattr(config.intravascular, "color_macrophage", "blue")
+        self.color_reference: str = getattr(config.intravascular, "color_reference", "yellow")
 
         self.contour_configs = self._build_contour_configs()
 

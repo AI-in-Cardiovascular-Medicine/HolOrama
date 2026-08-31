@@ -57,7 +57,7 @@ from PyQt6.QtWidgets import QSizePolicy, QWidget
 from input_output.output.imgs_masks import frame_region_areas
 from tools.geometry import SplineGeometry
 
-CATHETER_DIAMETER_MM = 0.9  # 2.7 F imaging catheter; overridden by config.display.catheter_diameter
+CATHETER_DIAMETER_MM = 0.9  # 2.7 F imaging catheter; overridden by config.intravascular.catheter_diameter
 
 BACKGROUND = QColor('#0c0e11')
 LUMEN_FILL = QColor('#1d0f12')  # the "hole" down the middle: blood, near black but not the background
@@ -320,7 +320,7 @@ class OCTPlot(QWidget):
     # ------------------------------------------------------------------
 
     def _catheter_radius(self) -> float:
-        diameter = getattr(self.main_window.config.display, 'catheter_diameter', CATHETER_DIAMETER_MM)
+        diameter = getattr(self.main_window.config.intravascular, 'catheter_diameter', CATHETER_DIAMETER_MM)
         return float(diameter) / 2.0
 
     def _frame_metrics(self, frame: int, frame_data, image_shape, resolution: float) -> _FrameMetrics | None:
@@ -687,10 +687,10 @@ class OCTPlot(QWidget):
         painter.drawText(QPointF(x0, baseline), '   '.join(parts))
 
     def _lumen_color(self) -> QColor:
-        return QColor(getattr(self.main_window.config.display, 'color_contour', 'green'))
+        return QColor(getattr(self.main_window.config.intravascular, 'color_contour', 'green'))
 
     def _eem_color(self) -> QColor:
-        return QColor(getattr(self.main_window.config.display, 'color_eem', '#03b1fc'))
+        return QColor(getattr(self.main_window.config.intravascular, 'color_eem', '#03b1fc'))
 
     # ------------------------------------------------------------------
     # Interaction

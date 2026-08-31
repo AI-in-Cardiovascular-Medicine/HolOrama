@@ -46,7 +46,7 @@ class LongitudinalView(QGraphicsView):
         self.oct_mode = False
         self.num_frames = 0
         self.image_height = 0
-        self.color = getattr(main_window.config.display, "color_contour", "green")
+        self.color = getattr(main_window.config.intravascular, "color_contour", "green")
 
         self._peak_btn = QPushButton('Peak', self)
         self._peak_btn.setCheckable(True)

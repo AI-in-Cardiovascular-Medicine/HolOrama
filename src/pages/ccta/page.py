@@ -45,6 +45,7 @@ from pages.ccta.left_half.display_3d import CctaViewer3D
 from pages.ccta.right_half.brush_panel import BrushPanel
 from pages.ccta.right_half.mask_panel import MaskPanel
 from pages.ccta.right_half.stl_extraction_panel import StlExtractionPanel
+from pages.ccta.settings_dialog import resolve_label_colors
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from version import version_file_str
 
@@ -87,9 +88,21 @@ class CctaPage(QWidget):
         self._cut_labels: tuple[int, int, int] | None = None  # (cor, aorta, lv) from the last Build Cut Geometry
         self._centerlines_worker: StdoutCapturingWorker | None = None
 
-        self._axial = CctaDisplay('axial')
-        self._coronal = CctaDisplay('coronal')
-        self._sagittal = CctaDisplay('sagittal')
+        common_cfg = config.common
+        windowing_sensitivity = common_cfg.windowing_sensitivity
+        zoom_sensitivity = common_cfg.zoom_sensitivity
+        mask_alpha = common_cfg.default_mask_alpha
+        label_colors = resolve_label_colors(config)
+        display_kwargs = {
+            'label_colors': label_colors,
+            'mask_alpha': mask_alpha,
+            'windowing_sensitivity': windowing_sensitivity,
+            'zoom_sensitivity': zoom_sensitivity,
+        }
+
+        self._axial = CctaDisplay('axial', **display_kwargs)
+        self._coronal = CctaDisplay('coronal', **display_kwargs)
+        self._sagittal = CctaDisplay('sagittal', **display_kwargs)
 
         self._axial_label = QLabel('Axial')
         self._coronal_label = QLabel('Coronal')
@@ -104,7 +117,7 @@ class CctaPage(QWidget):
         grid.addWidget(self._panel(self._axial, self._axial_label), 0, 0)
         grid.addWidget(self._panel(self._sagittal, self._sagittal_label), 0, 1)
         grid.addWidget(self._panel(self._coronal, self._coronal_label), 1, 0)
-        self._3d_viewer = CctaViewer3D()
+        self._3d_viewer = CctaViewer3D(label_colors=label_colors)
         grid.addWidget(self._3d_viewer, 1, 1)
         grid.setRowStretch(0, 1)
         grid.setRowStretch(1, 1)
@@ -121,14 +134,14 @@ class CctaPage(QWidget):
         self._tabs.addTab(self._cut_viewer, 'Cut Geometry')
 
         # Right panel: Mask labels (top, stretches) + Brush controls (bottom, fixed)
-        self._mask_tab = MaskPanel()
+        self._mask_tab = MaskPanel(label_colors=label_colors, initial_alpha=mask_alpha)
         self._mask_tab.alpha_changed.connect(self._on_mask_alpha_changed)
         self._mask_tab.label_visibility_changed.connect(self._on_label_visibility_changed)
         self._mask_tab.label_colors_changed.connect(self._on_label_colors_changed)
         self._mask_tab.label_name_changed.connect(self._on_label_name_changed)
         self._mask_tab.label_name_changed.connect(self._3d_viewer.update_label_name)
 
-        self._brush_panel = BrushPanel()
+        self._brush_panel = BrushPanel(label_colors=label_colors)
         self._brush_panel.brush_enabled_changed.connect(self._on_brush_enabled_changed)
         self._brush_panel.geometry_changed.connect(self._on_brush_geometry_changed)
         self._mask_tab.label_name_changed.connect(self._brush_panel.update_label_name)
@@ -552,6 +565,24 @@ class CctaPage(QWidget):
     def _on_mask_alpha_changed(self, alpha: float) -> None:
         for display in (self._axial, self._coronal, self._sagittal):
             display.set_mask_alpha(alpha)
+
+    def apply_ccta_settings(self, values: dict) -> None:
+        """Push updated sensitivity/mask-alpha/label-colors settings live into every
+        child display — called by settings_dialog.apply_and_save after the config has
+        already been updated."""
+        for display in (self._axial, self._coronal, self._sagittal):
+            display.set_sensitivity(values['windowing_sensitivity'], values['zoom_sensitivity'])
+
+        label_colors = tuple(tuple(c) for c in values['label_colors'])
+        for display in (self._axial, self._coronal, self._sagittal):
+            display.set_base_label_colors(label_colors)
+        self._3d_viewer.set_base_label_colors(label_colors)
+        self._brush_panel.set_base_label_colors(label_colors)
+        self._mask_tab.set_base_label_colors(label_colors)
+
+        # Triggers the mask panel's existing alpha_changed -> _on_mask_alpha_changed
+        # wiring, which pushes the new alpha into all three displays live.
+        self._mask_tab.set_default_alpha(values['default_mask_alpha'])
 
     def _on_label_visibility_changed(self, label: int, visible: bool) -> None:
         for display in (self._axial, self._coronal, self._sagittal):

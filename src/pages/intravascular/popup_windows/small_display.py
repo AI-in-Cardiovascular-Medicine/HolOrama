@@ -19,11 +19,11 @@ class SmallDisplay(QMainWindow):
     def __init__(self, main_window):
         super().__init__(main_window)
         self.main_window = main_window
-        self.image_size = main_window.config.display.image_size
-        self.n_points_contour = main_window.config.display.n_points_contour
-        self.contour_thickness = main_window.config.display.contour_thickness
-        self.point_thickness = main_window.config.display.point_thickness
-        self.point_radius = main_window.config.display.point_radius
+        self.image_size = main_window.config.intravascular.image_size
+        self.n_points_contour = main_window.config.intravascular.n_points_contour
+        self.contour_thickness = main_window.config.intravascular.contour_thickness
+        self.point_thickness = main_window.config.intravascular.point_thickness
+        self.point_radius = main_window.config.intravascular.point_radius
         self.scaling_factor = self.image_size / self.main_window.runtime_data.images[0].shape[0]
         self.window_to_image_ratio = 1.5
         self.window_size = int(self.image_size / self.window_to_image_ratio)
