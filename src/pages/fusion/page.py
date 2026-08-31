@@ -31,11 +31,6 @@ class FusionPage(QWidget):
         self.status_bar = status_bar
         self.data = FusionRuntimeData()
         self._remesh_worker: StdoutCapturingWorker | None = None
-        # Every point of the RCA/LCA centerlines currently drawn in the Centerline Branches
-        # scene — pickable for Split, not just the numbered sharp-angle markers, which are
-        # only a visual hint — and which one (if any) was last clicked. Rebuilt from scratch
-        # by _refresh_branch_scene on every prepare/split/merge, since branch IDs get
-        # reassigned after each edit.
         self._branch_markers: list[dict] = []
         self._selected_branch_marker: dict | None = None
 
@@ -1231,7 +1226,7 @@ class FusionPage(QWidget):
 
     def _on_run_smooth(self) -> None:
         fc = self.right_half.fusion_column
-        if not self._require(self.data.final_mesh is not None, 'Fix && remesh first.'):
+        if not self._require(self.data.final_mesh is not None, 'Fix and remesh first.'):
             return
         mesh = self._run(
             'Smoothing…', 'Smoothed.', pipeline.run_taubin_smooth, self.data.final_mesh, lamb=fc.taubin_lamb()

@@ -36,7 +36,7 @@ class GeometryColumn(QWidget):
         root.setContentsMargins(8, 6, 8, 8)
         root.setSpacing(6)
 
-        title = QLabel('CCTA Geometry && Centerlines')
+        title = QLabel('CCTA Geometry and Centerlines')
         title.setStyleSheet('font-weight: bold;')
         root.addWidget(title)
 

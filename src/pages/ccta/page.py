@@ -662,7 +662,7 @@ class CctaPage(QWidget):
         to cut it (callers that need both — Build Cut Geometry — would otherwise have
         to call _compute_cut_planes() a second time to get what this already computed
         internally). Shows an ErrorMessage and returns None on any failure — shared by
-        Extract && Export and Build Cut Geometry so both always cut identically."""
+        Extract and Export and Build Cut Geometry so both always cut identically."""
         if self.data.mask is None or self.data.voxel_spacing is None:
             ErrorMessage(self, 'No mask or volume loaded.')
             return None
