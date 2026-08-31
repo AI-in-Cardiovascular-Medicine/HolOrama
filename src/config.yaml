@@ -42,7 +42,6 @@ ccta:
     - [180, 255, 0]
     - [255, 180, 100]
     - [140, 140, 255]
-
 fusion: {}  # no fusion-specific settings yet; placeholder so config stays organized by module
 
 gating:

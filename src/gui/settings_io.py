@@ -26,19 +26,46 @@ def apply_values(config, key_sections: dict[str, str], values: dict[str, Any]) -
         setattr(section, key, value)
 
 
+def _to_yaml_value(value: Any):
+    """A list of (r, g, b)-style rows (e.g. label_colors) round-trips through ruamel as
+    an exploded block sequence of block sequences unless each row is explicitly marked
+    flow-style — this rebuilds any list-of-lists/tuples value that way so it dumps as
+    '- [r, g, b]' rather than '- - r\\n  - g\\n  - b'. Any other value passes through as-is."""
+    from ruamel.yaml.comments import CommentedSeq
+
+    if isinstance(value, list) and value and all(isinstance(row, (list, tuple)) for row in value):
+        rows = CommentedSeq()
+        for row in value:
+            seq_row = CommentedSeq(row)
+            seq_row.fa.set_flow_style()
+            rows.append(seq_row)
+        return rows
+    return value
+
+
 def save_values(config_path: Path, key_sections: dict[str, str], values: dict[str, Any]) -> None:
     """Round-trip config.yaml via ruamel.yaml, updating only the given keys (each routed
     to its own top-level section) while preserving comments/formatting elsewhere."""
     from ruamel.yaml import YAML
+    from ruamel.yaml.comments import CommentedSeq
 
     yaml = YAML(typ='rt')
     yaml.preserve_quotes = True
     yaml.boolean_representation = ['False', 'True']  # type: ignore[attr-defined]  # config.yaml uses capitalized booleans
+    yaml.indent(mapping=2, sequence=4, offset=2)  # matches this file's hand-written list style
     with open(config_path, encoding='utf-8') as f:
         data = yaml.load(f)
 
     for key, value in values.items():
-        data[key_sections[key]][key] = value
+        section = data[key_sections[key]]
+        new_value = _to_yaml_value(value)
+        existing = section.get(key)
+        if isinstance(existing, CommentedSeq) and isinstance(new_value, CommentedSeq):
+            # Mutate the existing sequence node in place rather than replacing it outright,
+            # so any comments/blank lines ruamel attached to that node survive the save.
+            existing[:] = new_value
+        else:
+            section[key] = new_value
 
     with open(config_path, 'w', encoding='utf-8') as f:
         yaml.dump(data, f)
