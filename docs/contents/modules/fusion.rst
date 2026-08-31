@@ -19,7 +19,7 @@ to additionally checkout it's `documentation <https://multimoda-rs.readthedocs.i
 .. note::
 
    Many of the functionalities are generally harder for coronary artery anomalies, hence
-   a big focuse was lied on solving the problem for these anomalies. If there are generally
+   a big focus is directed toward solving the problem for these anomalies. If there are generally
    different workflows for coronary artery disease or other pathologies, it will be highlighted
    with a note field. For example data need to be prepared differently regarding the reference
    points:
@@ -73,6 +73,15 @@ Read left to right; each column is one stage of the pipeline.
 #. **CCTA Geometry & Centerlines**: load and prepare the CCTA inputs.
 #. **Intravascular Alignment**: load the pullback and align it onto a coronary.
 #. **Fusion**: scale, stitch, remesh, export.
+
+.. image:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/Fusion_demo.gif
+   :alt: Fusing CCTA and intravascular data in HolOrama
+   :align: center
+   :width: 760px
+
+   Demonstration of the fusion module, and how a workflow is performed from the top of the left column all the way to
+   the bottom of the right column. Here, the workflow is performed for a coronary artery anomaly, however the same
+   thing applies for coronary artery disease or any other pathology.
 
 What you need before starting
 -----------------------------
@@ -176,7 +185,7 @@ they should become. This moves points between regions, for example from ``rca_po
 
    This is the first major difference between coronary artery anomalies and other pathologies.
    In the case of coronary artery anomalies, the rolling sphere algorithm for labelling the 
-   geometry leads to mislabelling of points since coronary and aorta are so close togehter:
+   geometry leads to mislabelling of points since coronary and aorta are so close together:
 
    .. figure:: ../../media/rolling_sphere.jpg
     :name: fig-fusion-rolling-sphere
@@ -210,6 +219,10 @@ list the ostium and each side branch; selecting one highlights its triplet of re
 points in the scene. You can also click a marker directly. The same list appears in
 column 2; the two stay in sync.
 
+.. warning::
+
+   This module is currently under construction in multimodars.
+
 Stage 2: intravascular alignment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -232,6 +245,11 @@ Three parameters control how the frames are aligned *to each other* inside the p
 Click **Load Pullback**. The lofted lumen and wall meshes appear in *Intravascular Loaded*,
 diastole and systole in different colours. Check them here: if the final result later looks
 wrong, this tab tells you whether it was already wrong before centerline alignment.
+
+.. note:: 
+  For more details on how the algorithm uses the input parameters to align the frames,
+  checkout `multimodars Intrvascular Tutorial <https://multimoda-rs.readthedocs.io/en/latest/tutorial_intravascular.html>`_.
+  However, leaving the default settings should work for almost all cases.
 
 **7. Choose the reference.** In *Reference Points (from Vessel Tree)* pick the
 **Centerline** (RCA or LCA) the pullback belongs to, then the **Reference**: the ostium or
@@ -256,6 +274,8 @@ around a single reference point instead. The field is pre-filled with whatever a
 last alignment produced, so you can nudge from there. *Ref. point offset* walks along the
 centerline: 0 is the point closest to the selected reference, negative walks toward the
 ostium (index 0), positive away from it, clamped at both ends.
+This is also the preferred technique when the discretization tree (which is based on the
+CCTA) cut-off one frame to much from the ostium.
 
 **9. Label the overlap region.** Click **Label Overlap Region**. The coronary the pullback
 was aligned onto is partitioned into proximal, overlap and distal sub-regions: the
@@ -277,7 +297,7 @@ Click **Apply Scaling to Mesh**. The distal, aortic, proximal and, if non-zero,
 opposite-vessel regions are morphed along their centerlines in that order.
 
 **11. Remove the overlapping points.** In *Remove Labeled Points*, tick which regions to
-drop (``anomalous_points`` and ``proximal_points`` by default) and click **Remove**. These
+drop (``overlap_points`` and ``proximal_points`` by default) and click **Remove**. These
 are the CCTA points the intravascular geometry replaces; leaving them in would put two
 surfaces in the same place.
 
@@ -308,6 +328,8 @@ Practical notes
   through the columns left to right satisfies them in order.
 - **Check every stage in the viewer.** The tabs exist so a bad result can be traced to the
   step that produced it, rather than only being noticed at the end.
+  This means that you can also explore the module by using trial and error with the visual
+  feedback to get the desired results.
 - **Clear All Data** (in any scene toolbar) discards every loaded and computed result and
   empties the viewer. It asks for confirmation.
 - Failures are reported in a dialog and written to the log; the status bar shows the

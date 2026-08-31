@@ -14,7 +14,7 @@ REGION_COLORS: dict[str, tuple[int, int, int]] = {
     'lca_removed_points': (255, 0, 0),  # red — upstream uses the same key/color for both
     'proximal_points': (0, 255, 255),  # cyan
     'distal_points': (255, 0, 255),  # magenta
-    'anomalous_points': (255, 165, 0),  # orange
+    'overlap_points': (255, 165, 0),  # orange
 }
 
 # Centerline overlay colors, from plot_results_key()'s cl_rca/cl_lca/cl_aorta.

@@ -99,7 +99,7 @@ class FusionColumn(QWidget):
     def _build_cleanup_group(self) -> QGroupBox:
         box = QGroupBox('Remove Labeled Points')
         layout = QVBoxLayout(box)
-        self._remove_anomalous = QCheckBox('anomalous_points')
+        self._remove_anomalous = QCheckBox('overlap_points')
         self._remove_anomalous.setChecked(True)
         self._remove_proximal = QCheckBox('proximal_points')
         self._remove_proximal.setChecked(True)
@@ -208,7 +208,7 @@ class FusionColumn(QWidget):
     def remove_point_keys(self) -> list[str]:
         keys = []
         if self._remove_anomalous.isChecked():
-            keys.append('anomalous_points')
+            keys.append('overlap_points')
         if self._remove_proximal.isChecked():
             keys.append('proximal_points')
         return keys

@@ -1054,7 +1054,7 @@ class FusionPage(QWidget):
         )
         if results is not None:
             self.data.results = results
-            self._refresh_geometry_scene()  # proximal/distal/anomalous_points now exist
+            self._refresh_geometry_scene()  # proximal/distal/overlap_points now exist
 
     def _on_run_compute_scaling(self) -> None:
         frames = self._aligned_frames()
