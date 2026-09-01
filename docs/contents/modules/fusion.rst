@@ -8,7 +8,7 @@ the CCTA supplies the course of the vessel through space, the IVUS/OCT pullback 
 the true lumen cross-section, and the result carries both.
 
 It is a graphical front end for the `multimodars <https://pypi.org/project/multimodars>`_
-package; every button corresponds to a step of that pipeline, with the intermediate result
+package :ref:`Stark et al. 2026 <fusion-citation-1>`; every button corresponds to a step of that pipeline, with the intermediate result
 rendered in 3D so you can check it before continuing. So if you like the functionality of
 this module please also consider leaving a star on the 
 `multimodars GitHub <https://github.com/yungselm/multimoda-rs>`_ 👉👈.
@@ -83,6 +83,17 @@ Read left to right; each column is one stage of the pipeline.
    the bottom of the right column. Here, the workflow is performed for a coronary artery anomaly, however the same
    thing applies for coronary artery disease or any other pathology.
 
+.. figure:: ../../media/overview_fusion.png
+   :name: fig-overview-fusion
+   :alt: Overview Fusion Module
+   :align: center
+   :width: 900px
+
+   Overview over the Fusion module with the different view tabs highlighted in green. The viewer is
+   then coupled to the tab, not all calculated elements are displayed in the same scene. The logic
+   is split in three columns which represent CCTA preparation, IVUS/OCT preparation and final the fusion.
+   The detailed functionalities can be found below.
+
 What you need before starting
 -----------------------------
 
@@ -93,6 +104,7 @@ What you need before starting
    * - Input
      - Where it comes from
    * - CCTA mesh (``.stl``, ``.obj``, ``.ply``)
+
      - :doc:`ccta` → **Build Cut Geometry** → **Extract & Export** as STL, or
        ``<case>_root_smooth.stl``
    * - Three centerlines (``.vtp``): aorta, RCA, LCA
@@ -112,7 +124,7 @@ Stage 1: CCTA geometry and centerlines
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 **1. Load the files.** Browse for the **CCTA Mesh** and for the **Aorta**, **LCA** and
-**RCA** centerlines. Both appear immediately in the *CCTA Geometry* tab as a raw preview,
+**RCA** centerlines. Everything appears immediately in the *CCTA Geometry* tab as a raw preview,
 before anything has been computed: a quick check that you picked the right files and that
 they share a coordinate system.
 
@@ -128,10 +140,11 @@ they share a coordinate system.
      - Resample all three centerlines to a uniform point spacing (default 0.5 mm).
    * - *Branch spacing tolerance (mm)*
      - How far apart consecutive points may be before a new branch is started
-       (default 2.0).
+       (default 2.0). Duplicated points are removed in any case.
    * - *Remove start, RCA/LCA (mm)*
      - Trim this much off the coronary inlet (default 5.0). Never applied to the aorta,
-       which has no such inlet.
+       which has no such inlet, this is needed for the rolling sphere algorithm, so
+       the sphere doesn't intersect with the aorta.
    * - *Smoothing sigma*
      - Gaussian smoothing of the centerline path (default 1.5).
 
@@ -148,13 +161,29 @@ sharp bends are marked with numbered dots, hints for where a split probably belo
   markers are shown; the status bar reports the count, since a threshold nudge can be
   invisible in the colours.
 - **Merge:** choose the *Centerline*, *Branch A* and *Branch B*, then **Merge**.
+  Branches can be identified by their color which is displayed, next to the hide buttons.
 
 Branch ids are reassigned after every edit (by descending length), so the scene is rebuilt
 each time; your layer visibility is preserved.
 
+.. figure:: ../../media/split_merge_cycle.png
+   :name: fig-split-merge
+   :alt: Split Merge Cycle
+   :align: center
+   :width: 900px
+
+   Use ``Pick Point`` and then click on the centerline you want to split. You can then merge
+   any two new branches, here the original two split branches, which will always result in 
+   deterministic branch ids, since they are based on length.
+
 **4. Label the geometry.** Click **Run Label Geometry**. Each surface point of the mesh is
 assigned to a region (aorta, RCA, LCA, branches), and the result is drawn as one coloured
 point cloud per region.
+
+.. note::
+  This is the first time where the inherent challenges of anomalous coronary arteries are
+  uncovered. Therefore several functionalities are mainly developed to overcome the complications
+  of anomalies. 
 
 .. list-table::
    :header-rows: 1
@@ -205,7 +234,6 @@ they should become. This moves points between regions, for example from ``rca_po
 
     However depending on the geometry, still needs some manual adjustments.
 
-
 **5. Discretise the vessel tree.** Click **Discretize Vessel Tree**. The labelled surface is
 converted into stacked contours along each vessel, giving the reference points used for
 alignment.
@@ -219,9 +247,12 @@ list the ostium and each side branch; selecting one highlights its triplet of re
 points in the scene. You can also click a marker directly. The same list appears in
 column 2; the two stay in sync.
 
-.. warning::
 
-   This module is currently under construction in multimodars.
+.. warning::
+  This will be overworked in the future, so don't be alarmed if results seems chaotic. The
+  only thing required from here is a rough triplet for the region of interest. If discretized
+  vessel tree does not have a high quality and the triplet is suboptimal, the fixing can still
+  be done by doing finetuning with the manual alignment.
 
 Stage 2: intravascular alignment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -358,4 +389,13 @@ Troubleshooting
      - Switch *Proximal start mode* between ``highest_z`` and ``nearest_iv``, and confirm
        the right regions were removed in step 11.
    * - Nothing to export
-     - Export uses the final mesh, which only exists after **Fix & Remesh**.
+     - Export uses the final mesh, which only exists after **Fix and Remesh**.
+
+References
+----------
+
+.. _fusion-citation-1:
+
+1. Stark, A. W., Ilic, M., ..., Shiri, I. (2026). *multimodars: A Rust-powered toolkit for multi-modality cardiac
+   image fusion and registration.* Journal of Open Source Software, 11(121), 10131.
+   `doi.org/10.21105/joss.10131 <https://doi.org/10.21105/joss.10131>`_

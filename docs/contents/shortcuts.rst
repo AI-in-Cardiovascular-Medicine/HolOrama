@@ -66,11 +66,11 @@ Navigation
   Which phase :kbd:`W` and :kbd:`S` traverse is set by the **Diastolic Frames** /
   **Systolic Frames** toggle (blue = diastole, red = systole).
 
-.. figure:: ../media/toggle_diastole.png
-  :name: fig-diastole-toggle
-  :alt: Toggle Button Diastole
-  :align: center
-  :width: 450px
+  .. figure:: ../media/toggle_diastole.png
+    :name: fig-diastole-toggle
+    :alt: Toggle Button Diastole
+    :align: center
+    :width: 450px
 
 Drawing
 ~~~~~~~

@@ -68,8 +68,6 @@ Open a [feature request issue](https://github.com/AI-in-Cardiovascular-Medicine/
 
 ## Your First Code Contribution
 
-- We currently need help improving the documentation and writing tests for the existing functionality.
-- If you feel up for a challenge, we want to implement the possibility of additional contours for e.g. EEM.
 - Pick an open issue labelled `good first issue` or `help wanted`, comment on it, and open a pull request referencing the issue number.
 
 ## Pull Request Process
