@@ -1,33 +1,32 @@
 common:
-  # Shared across intravascular/ccta — editable from either page's Settings dialog.
-  windowing_sensitivity: 0.03  # 1 for default, below 1 for slower, above 1 for faster (intravascular's native 0-255 scale; CCTA applies its own HU-range scale factor on top, see pages/ccta/left_half/display.py)
-  zoom_sensitivity: 0.005  # fraction of zoom per pixel dragged; below 0.005 for slower, above for faster
-  default_mask_alpha: 0.45  # default segmentation/mask overlay opacity (0 = transparent, 1 = opaque)
+  # Shared by intravascular and ccta; editable from either page's Settings dialog.
+  windowing_sensitivity: 0.03  # lower = slower. Raw 0-255 scale here; ccta rescales by its HU range
+  zoom_sensitivity: 0.005  # fraction of zoom per pixel dragged
+  default_mask_alpha: 0.45  # segmentation overlay opacity (0 = transparent, 1 = opaque)
 
 intravascular:
   image_size: 800
   gating_display_stretch: 1
   lview_display_stretch: 1
-  n_interactive_points: 20 # for lumen, calcium, lipid, macrophage, branch default to half of this
-  n_points_contour: 200  # ideally choose a multiple of 100 (for calculation of closest points)
+  n_interactive_points: 20  # lumen and eem use this; calcium, lipid, macrophage, branch use half
+  n_points_contour: 200  # ideally a multiple of 100 (closest-point maths)
   contour_thickness: 2
   point_thickness: 1
   point_radius: 10
-  snap_radius_px: 10  # how close a click must land to a point to grab/close a contour
-  color_contour: 'green' # 20 predefined colors in PyQt6 (https://doc.qt.io/qt-6/qcolor.html)
+  snap_radius_px: 10  # how close a click must land to grab a point or close a contour
+  color_contour: 'green'  # PyQt6 color name or hex (https://doc.qt.io/qt-6/qcolor.html)
   color_eem: '#03b1fc'
   color_calcium: 'white'
   color_branch: '#146450'
   color_start_point: 'yellow'
   color_end_point: 'red'
   color_angle: '#ffa500'
-  alpha_contour: 100 # 0-255
-  catheter_diameter: 0.9  # mm, drawn in the OCT vessel schematic (0.9 = 2.7 F imaging catheter)
+  alpha_contour: 100  # 0-255
+  catheter_diameter: 0.9  # mm, drawn in the OCT vessel schematic (0.9 = 2.7 F)
 
 ccta:
-  # Base palette used for mask labels before any per-case "Colors" anatomic preset is
-  # applied (see pages/ccta/right_half/mask_panel.py) — defaults to CATEGORICAL_PALETTE
-  # (domain/colors.py) when absent; override any subset of positions here.
+  # Base mask-label palette, before any per-case "Colors" preset (right_half/mask_panel.py).
+  # Falls back to CATEGORICAL_PALETTE (domain/colors.py); override any subset of positions.
   label_colors:
     - [255, 60, 60]
     - [60, 220, 60]
@@ -43,16 +42,17 @@ ccta:
     - [180, 255, 0]
     - [255, 180, 100]
     - [140, 140, 255]
-fusion: {}  # no fusion-specific settings yet; placeholder so config stays organized by module
+
+fusion: {}  # no fusion settings yet; placeholder so config stays organized by module
 
 gating:
   normalize_step: 100
-  # Heart rate search range [Hz] — covers rest (~60 BPM) to stress (~210 BPM)
-  f_cardiac_min: 0.75         # lower bound (~45 BPM)
-  f_cardiac_max: 3.3333         # upper bound (~200 BPM)
-  # Bandpass filter fractions relative to detected f_heart
-  bandpass_lo_frac: 0.7      # lower cut: removes slow pullback trend (sub-cardiac drift)
-  bandpass_hi_frac: 2.2      # upper cut: passes 2nd harmonic, removes speckle noise
+  # Heart rate search range [Hz], covering rest to stress
+  f_cardiac_min: 0.75         # ~45 BPM
+  f_cardiac_max: 3.3333       # ~200 BPM
+  # Bandpass cuts, as fractions of the detected f_heart
+  bandpass_lo_frac: 0.7      # drops the slow pullback trend
+  bandpass_hi_frac: 2.2      # keeps the 2nd harmonic, drops speckle noise
   breathing_bins: 5          # bins per breathing half-cycle for the Filtered sort
 
 report:
@@ -60,28 +60,26 @@ report:
   save_as_csv: True
 
 save:
-  autosave_interval: 10000  # in ms
+  autosave_interval: 15000  # in ms
   nifti_dir: './models/app_niftis'
-  save_niftis: 'none'  # 'contoured', 'all', 'none' (which frames to save as NIfTi)
+  save_niftis: 'none'  # which frames to save as NIfTi: 'contoured', 'all', 'none'
   save_2d: False
   save_3d: True
 
 vmtk:
-  # vmtk here is a WSL-native Linux build (not runnable directly from Windows) — both
-  # are activated via `source` inside WSL before every vmtk call, same as the original
-  # bash pipeline did. Required for Calculate Centerlines.
+  # A WSL-native Linux build, not runnable from Windows: both paths are `source`d inside
+  # WSL before every call, as the original bash pipeline did. Needed for Calculate Centerlines.
   venv_path: 'D:\00_coding\vmtk-env'  # the plain Python venv (bin/activate)
-  build_path: 'D:\00_coding\vmtk\vmtk-build\Install'  # the vmtk build itself (vmtk_env.sh, bin/vmtkcenterlines etc.)
-  # Which WSL distro actually has vmtk's runtime deps (this machine has several
-  # side by side; the default one — Ubuntu-22.04 — is missing GLIBCXX_3.4.32, but
-  # the plain "Ubuntu" (24.04) distro has it). Empty = whatever `wsl.exe` defaults to.
+  build_path: 'D:\00_coding\vmtk\vmtk-build\Install'  # the build itself (vmtk_env.sh, bin/vmtkcenterlines)
+  # Which WSL distro has vmtk's runtime deps. The default Ubuntu-22.04 on this machine
+  # lacks GLIBCXX_3.4.32; plain "Ubuntu" (24.04) has it. Empty = whatever `wsl.exe` picks.
   wsl_distro: 'Ubuntu'
 
 segmentation:
   # model_file: './models/old/u2net_2d_MINMAX_512_best.h5'
   model_file: './models/nnUNetTrainerU2NetP__nnUNetResEncUNetLPlans__2d'
   model_fold: 0
-  normalize: False # When working with tensorflow models set this to True
-  input_dir: /home/sebalzer/Documents/Projects/AAOCASeg/IVUSimages  # only needed for segment_files.py
+  normalize: False  # True for tensorflow models
+  input_dir: /home/sebalzer/Documents/Projects/AAOCASeg/IVUSimages  # only for segment_files.py
   batch_size: 16
-  conserve_memory: True  # set to True for devices with less than 32 GB RAM (increases inference times)
+  conserve_memory: True  # True for devices with less than 32 GB RAM (slower inference)

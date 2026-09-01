@@ -4,14 +4,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from gating.automatic_gating import AutomaticGating, walk_extrema
-from gating.gating_pipeline import (
+from signal_processing.automatic_gating import AutomaticGating, walk_extrema
+from signal_processing.gating_pipeline import (
     bandpass_filter,
     compute_correlation_signal,
     compute_frequency_sweep,
 )
-from gating.gating_pipeline import compute_lumen_signal as compute_lumen_area_signal
-from gating.gating_pipeline import (
+from signal_processing.gating_pipeline import compute_lumen_signal as compute_lumen_area_signal
+from signal_processing.gating_pipeline import (
     detect_heart_rate,
     filter_by_period,
     lowpass_filter,

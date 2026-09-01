@@ -272,7 +272,7 @@ class LongitudinalView(QGraphicsView):
         frames_arr = np.array(sorted(areas.keys()), dtype=float)
         areas_arr = np.array([areas[int(f)] for f in frames_arr])
 
-        from gating.breathing_pipeline import (
+        from signal_processing.breathing_pipeline import (
             compute_breathing_phases,
             compute_breathing_signal,
         )

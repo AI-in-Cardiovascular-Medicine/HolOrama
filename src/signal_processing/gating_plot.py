@@ -9,8 +9,8 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.widgets import Button
 from PyQt6.QtWidgets import QMainWindow, QVBoxLayout, QWidget
 
-import gating.gating_pipeline as pipeline
-from gating.automatic_gating import AutomaticGating
+import signal_processing.gating_pipeline as pipeline
+from signal_processing.automatic_gating import AutomaticGating
 from input_output.output.reports import report
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage

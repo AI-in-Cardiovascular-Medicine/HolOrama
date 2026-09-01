@@ -1,8 +1,8 @@
 import numpy as np
 from loguru import logger
 
-from gating.automatic_gating import walk_extrema
-from gating.gating_pipeline import (
+from signal_processing.automatic_gating import walk_extrema
+from signal_processing.gating_pipeline import (
     adjust_for_elliptic_deformation,
     fft_peak_freq,
     lowpass_filter,

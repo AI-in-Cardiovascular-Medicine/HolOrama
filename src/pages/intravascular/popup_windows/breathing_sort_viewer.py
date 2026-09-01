@@ -38,7 +38,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from gating.breathing_pipeline import (
+from signal_processing.breathing_pipeline import (
     adjusted_areas_by_frame,
     assign_breathing_bins,
     compute_breathing_phases,
