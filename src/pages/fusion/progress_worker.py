@@ -3,7 +3,7 @@
 Every other pipeline step in this page is either fast enough not to need live progress,
 or reports it through multimodars' own return values. fix_and_remesh_stitched_mesh is the
 one exception (pure Python, no Rust, several seconds, and its verbose=True output goes to
-print() rather than a callback) — this lets the "Fix && Remesh" progress dialog show that
+print() rather than a callback) — this lets the "Fix and Remesh" progress dialog show that
 output live instead of a static "please wait" message.
 """
 

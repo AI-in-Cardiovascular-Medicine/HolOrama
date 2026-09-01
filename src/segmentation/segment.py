@@ -59,7 +59,7 @@ def mask_to_contours(main_window, masks, lower_limit, upper_limit, config=None):
         logger.error('mask_to_contours: no config available')
         return None
 
-    num_points = config.display.n_interactive_points
+    num_points = config.intravascular.n_interactive_points
     image_shape = masks.shape[1:3]
     counter = 0
 

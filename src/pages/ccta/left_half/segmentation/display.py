@@ -14,7 +14,12 @@ from tools.painting import BrushCursor, BrushGeometry
 
 _CROSSHAIR_COLOR = QColor(255, 255, 0)
 _CUT_LINE_COLOR = QColor(180, 180, 180)
-_ZOOM_SENSITIVITY = 0.01
+
+# CCTA's window level/width live on an HU scale (typically ~1000 wide) rather than
+# intravascular's 0-255 pixel-intensity scale that the shared common.windowing_sensitivity
+# default (0.03) was tuned against — this scale factor converts the shared multiplier so
+# that default reproduces CCTA's original fixed 1:1-pixel-per-HU drag feel (1 / 0.03).
+_CCTA_WINDOWING_HU_SCALE = 1.0 / 0.03
 
 
 class CctaDisplay(QGraphicsView):
@@ -43,7 +48,16 @@ class CctaDisplay(QGraphicsView):
     mask_about_to_change = pyqtSignal()  # emitted once, before a brush stroke starts painting
     line_drawn = pyqtSignal(object, object)  # (p1_zyx, p2_zyx) voxel tuples
 
-    def __init__(self, orientation: str, parent=None) -> None:
+    def __init__(
+        self,
+        orientation: str,
+        *,
+        label_colors: tuple[tuple[int, int, int], ...] = LABEL_COLORS,
+        mask_alpha: float = DEFAULT_MASK_ALPHA,
+        windowing_sensitivity: float = 0.03,
+        zoom_sensitivity: float = 0.005,
+        parent=None,
+    ) -> None:
         super().__init__(parent)
         assert orientation in ('axial', 'coronal', 'sagittal')
         self.orientation = orientation
@@ -60,12 +74,15 @@ class CctaDisplay(QGraphicsView):
         self._is_dragging: bool = False
         self._user_zoomed: bool = False
         self._render_buf: np.ndarray | None = None  # kept alive for QImage
+        self.windowing_sensitivity: float = windowing_sensitivity
+        self.zoom_sensitivity: float = zoom_sensitivity
 
         self._mask: np.ndarray | None = None  # (Z, Y, X) uint8 label values
         self._mask_lut: np.ndarray | None = None  # (256, 3) uint8; row = 0 → invisible
         self._mask_labels: list[int] = []
         self._hidden_labels: set[int] = set()
-        self._mask_alpha: float = DEFAULT_MASK_ALPHA
+        self._mask_alpha: float = mask_alpha
+        self._label_colors: tuple[tuple[int, int, int], ...] = label_colors
         self._custom_colors: list[tuple[int, int, int]] | None = None
 
         self._brush_mode: bool = False
@@ -120,6 +137,18 @@ class CctaDisplay(QGraphicsView):
         if self._mask is not None:
             self._rebuild_lut()
             self._render()
+
+    def set_base_label_colors(self, colors: tuple[tuple[int, int, int], ...]) -> None:
+        """Update the default (non-anatomic-preset) label palette — e.g. from Settings.
+        Applies immediately unless a custom preset (set_label_colors) is currently active."""
+        self._label_colors = tuple(colors)
+        if self._custom_colors is None and self._mask is not None:
+            self._rebuild_lut()
+            self._render()
+
+    def set_sensitivity(self, windowing_sensitivity: float, zoom_sensitivity: float) -> None:
+        self.windowing_sensitivity = windowing_sensitivity
+        self.zoom_sensitivity = zoom_sensitivity
 
     def clear_mask(self) -> None:
         self._mask = None
@@ -224,7 +253,7 @@ class CctaDisplay(QGraphicsView):
                 if self._custom_colors and i < len(self._custom_colors):
                     lut[label] = self._custom_colors[i]
                 else:
-                    lut[label] = LABEL_COLORS[i % len(LABEL_COLORS)]
+                    lut[label] = self._label_colors[i % len(self._label_colors)]
         self._mask_lut = lut
 
     def _get_slice(self) -> np.ndarray:
@@ -459,10 +488,7 @@ class CctaDisplay(QGraphicsView):
                 dy_px = event.position().y() - self._mouse_y
                 self._mouse_x = event.position().x()
                 self._mouse_y = event.position().y()
-                self.window_level = int(self.window_level + dx)
-                self.window_width = max(1, int(self.window_width + dy_px))
-                self._render()
-                self.windowing_changed.emit(self.window_level, self.window_width)
+                self._apply_windowing_drag(dx, dy_px)
             return
 
         if event.buttons() == Qt.MouseButton.LeftButton:
@@ -472,7 +498,7 @@ class CctaDisplay(QGraphicsView):
             if drag_dist > 5:
                 self._is_dragging = True
             if self._is_dragging:
-                zoom_factor = 1.0 + delta_y * _ZOOM_SENSITIVITY
+                zoom_factor = 1.0 + delta_y * self.zoom_sensitivity
                 if zoom_factor > 0:
                     self._user_zoomed = True
                     self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
@@ -483,11 +509,15 @@ class CctaDisplay(QGraphicsView):
             dy_px = event.position().y() - self._mouse_y
             self._mouse_x = event.position().x()
             self._mouse_y = event.position().y()
-            self.window_level = int(self.window_level + dx)
-            self.window_width = max(1, int(self.window_width + dy_px))
-            self._render()
-            self.windowing_changed.emit(self.window_level, self.window_width)
+            self._apply_windowing_drag(dx, dy_px)
         super().mouseMoveEvent(event)
+
+    def _apply_windowing_drag(self, dx: float, dy_px: float) -> None:
+        scale = self.windowing_sensitivity * _CCTA_WINDOWING_HU_SCALE
+        self.window_level = int(self.window_level + dx * scale)
+        self.window_width = max(1, int(self.window_width + dy_px * scale))
+        self._render()
+        self.windowing_changed.emit(self.window_level, self.window_width)
 
     def mouseReleaseEvent(self, event) -> None:
         if self._brush_mode and event.button() == Qt.MouseButton.LeftButton:

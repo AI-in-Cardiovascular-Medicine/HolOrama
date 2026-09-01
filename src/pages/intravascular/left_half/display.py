@@ -37,8 +37,6 @@ from tools.geometry import (
 )
 from tools.painting import BrushCursor
 
-SENSITIVITY = 10  # pixels for closure detection
-
 
 class Display(QGraphicsView, MetricsMixin):
     """
@@ -50,26 +48,27 @@ class Display(QGraphicsView, MetricsMixin):
         self.main_window = main_window
         config = main_window.config
 
-        self.n_interactive_points: int = config.display.n_interactive_points
-        self.n_points_contour: int = config.display.n_points_contour
-        self.image_size: int = config.display.image_size  # image display in pixel (square)
-        self.windowing_sensitivity: float = config.display.windowing_sensitivity
-        self.zoom_sensitivity: float = config.display.zoom_sensitivity
-        self.contour_thickness: int = config.display.contour_thickness
-        self.point_thickness: int = config.display.point_thickness
-        self.point_radius: int = config.display.point_radius
-        self.start_color: str = config.display.color_start_point
-        self.end_color: str = config.display.color_end_point
-        self.color_angle: str = config.display.color_angle
+        self.n_interactive_points: int = config.intravascular.n_interactive_points
+        self.n_points_contour: int = config.intravascular.n_points_contour
+        self.image_size: int = config.intravascular.image_size  # image display in pixel (square)
+        self.windowing_sensitivity: float = config.common.windowing_sensitivity
+        self.zoom_sensitivity: float = config.common.zoom_sensitivity
+        self.contour_thickness: int = config.intravascular.contour_thickness
+        self.point_thickness: int = config.intravascular.point_thickness
+        self.point_radius: int = config.intravascular.point_radius
+        self.start_color: str = config.intravascular.color_start_point
+        self.end_color: str = config.intravascular.color_end_point
+        self.color_angle: str = config.intravascular.color_angle
+        self.snap_radius_px: int = config.intravascular.snap_radius_px
 
-        self.color_contour = getattr(config.display, "color_contour", (255, 255, 255))
-        self.alpha_contour = getattr(config.display, "alpha_contour", 255)  # config uses 0..255
-        self.color_eem: str = getattr(config.display, "color_eem", "red")
-        self.color_calcium: str = getattr(config.display, "color_calcium", "white")
-        self.color_branch: str = getattr(config.display, "color_branch", "green")
-        self.color_lipid: str = getattr(config.display, "color_lipid", "yellow")
-        self.color_macrophage: str = getattr(config.display, "color_macrophage", "blue")
-        self.color_reference: str = getattr(config.display, "color_reference", "yellow")
+        self.color_contour = getattr(config.intravascular, "color_contour", (255, 255, 255))
+        self.alpha_contour = getattr(config.intravascular, "alpha_contour", 255)  # config uses 0..255
+        self.color_eem: str = getattr(config.intravascular, "color_eem", "red")
+        self.color_calcium: str = getattr(config.intravascular, "color_calcium", "white")
+        self.color_branch: str = getattr(config.intravascular, "color_branch", "green")
+        self.color_lipid: str = getattr(config.intravascular, "color_lipid", "yellow")
+        self.color_macrophage: str = getattr(config.intravascular, "color_macrophage", "blue")
+        self.color_reference: str = getattr(config.intravascular, "color_reference", "yellow")
 
         self.contour_configs = self._build_contour_configs()
 
@@ -172,6 +171,7 @@ class Display(QGraphicsView, MetricsMixin):
         self.contour_thickness = values['contour_thickness']
         self.point_thickness = values['point_thickness']
         self.point_radius = values['point_radius']
+        self.snap_radius_px = values['snap_radius_px']
         self.color_contour = values['color_contour']
         self.color_eem = values['color_eem']
         self.color_calcium = values['color_calcium']
@@ -220,7 +220,6 @@ class Display(QGraphicsView, MetricsMixin):
         self._base_mask_cache_frame = -1
         self.setCursor(Qt.CursorShape.ArrowCursor)
 
-    # initialize data from main_window data
     def set_data(self, images):
         """Initialize display data from main_window.runtime_data.frame_data_dct (Dict[int, FrameData])."""
         self.images = images
@@ -236,7 +235,6 @@ class Display(QGraphicsView, MetricsMixin):
         self.display_image(update_image=True, update_contours=True, update_phase=True)
 
     def _draw_contours_frame(self):
-        # other contours
         closed_contour_types = {
             ct for ct in ContourType if SegmentationTool.CLOSED_SPLINE in ALLOWED_TOOLS.get(ct, set())
         }
@@ -339,21 +337,24 @@ class Display(QGraphicsView, MetricsMixin):
                 brush = False
                 if is_closed:
                     for sc in start_coords_list:
-                        if math.hypot(curr_x - sc[0], curr_y - sc[1]) < SENSITIVITY:
+                        if math.hypot(curr_x - sc[0], curr_y - sc[1]) < self.snap_radius_px:
                             knot_color = self.start_color
                             brush = True
                             break
                     if not brush:
                         for ec in end_coords_list:
-                            if math.hypot(curr_x - ec[0], curr_y - ec[1]) < SENSITIVITY:
+                            if math.hypot(curr_x - ec[0], curr_y - ec[1]) < self.snap_radius_px:
                                 knot_color = self.end_color
                                 brush = True
                                 break
                 else:
-                    if start_coords and math.hypot(curr_x - start_coords[0], curr_y - start_coords[1]) < SENSITIVITY:
+                    if (
+                        start_coords
+                        and math.hypot(curr_x - start_coords[0], curr_y - start_coords[1]) < self.snap_radius_px
+                    ):
                         knot_color = self.start_color
                         brush = True
-                    if end_coords and math.hypot(curr_x - end_coords[0], curr_y - end_coords[1]) < SENSITIVITY:
+                    if end_coords and math.hypot(curr_x - end_coords[0], curr_y - end_coords[1]) < self.snap_radius_px:
                         knot_color = self.end_color
                         brush = True
 
@@ -1053,7 +1054,7 @@ class Display(QGraphicsView, MetricsMixin):
 
         start_x, start_y = self.points_to_draw[0].get_coords()
         dist = math.hypot(current_pos.x() - start_x, current_pos.y() - start_y)
-        return dist < SENSITIVITY
+        return dist < self.snap_radius_px
 
     def _close_current_spline(self):
         """Close the current contour and save it."""
@@ -1578,7 +1579,7 @@ class Display(QGraphicsView, MetricsMixin):
                         nearest_ct = ct
                         nearest_index = i
 
-        if nearest_ct and min_dist < SENSITIVITY:
+        if nearest_ct and min_dist < self.snap_radius_px:
             if nearest_ct != self.active_contour_type or nearest_index != self.active_contour_index:
                 self.active_contour_type = nearest_ct
                 self.active_contour_index = nearest_index
@@ -1695,8 +1696,8 @@ class Display(QGraphicsView, MetricsMixin):
         starts = contour_obj.start_coords[ci] if ci < len(contour_obj.start_coords) else []
         ends = contour_obj.end_coords[ci] if ci < len(contour_obj.end_coords) else []
 
-        is_start = any(math.hypot(kx - sx, ky - sy) < SENSITIVITY for sx, sy in starts)
-        is_end = any(math.hypot(kx - ex, ky - ey) < SENSITIVITY for ex, ey in ends)
+        is_start = any(math.hypot(kx - sx, ky - sy) < self.snap_radius_px for sx, sy in starts)
+        is_end = any(math.hypot(kx - ex, ky - ey) < self.snap_radius_px for ex, ey in ends)
 
         menu = QMenu(self)
         start_action = menu.addAction("Mark as Start")
@@ -1725,11 +1726,11 @@ class Display(QGraphicsView, MetricsMixin):
         elif action == neutral_action:
             if is_start and ci < len(contour_obj.start_coords):
                 contour_obj.start_coords[ci] = [
-                    s for s in contour_obj.start_coords[ci] if math.hypot(kx - s[0], ky - s[1]) >= SENSITIVITY
+                    s for s in contour_obj.start_coords[ci] if math.hypot(kx - s[0], ky - s[1]) >= self.snap_radius_px
                 ]
             if is_end and ci < len(contour_obj.end_coords):
                 contour_obj.end_coords[ci] = [
-                    e for e in contour_obj.end_coords[ci] if math.hypot(kx - e[0], ky - e[1]) >= SENSITIVITY
+                    e for e in contour_obj.end_coords[ci] if math.hypot(kx - e[0], ky - e[1]) >= self.snap_radius_px
                 ]
 
         if action is not None:
@@ -1759,11 +1760,13 @@ class Display(QGraphicsView, MetricsMixin):
                 py = point_item.y / self.scaling_factor  # type: ignore[operator]
                 if point_item.color == self.start_color and ci < len(contour_obj.start_coords):
                     contour_obj.start_coords[ci] = [
-                        s for s in contour_obj.start_coords[ci] if math.hypot(px - s[0], py - s[1]) >= SENSITIVITY
+                        s
+                        for s in contour_obj.start_coords[ci]
+                        if math.hypot(px - s[0], py - s[1]) >= self.snap_radius_px
                     ]
                 if point_item.color == self.end_color and ci < len(contour_obj.end_coords):
                     contour_obj.end_coords[ci] = [
-                        e for e in contour_obj.end_coords[ci] if math.hypot(px - e[0], py - e[1]) >= SENSITIVITY
+                        e for e in contour_obj.end_coords[ci] if math.hypot(px - e[0], py - e[1]) >= self.snap_radius_px
                     ]
 
         self.display_image(update_contours=True)

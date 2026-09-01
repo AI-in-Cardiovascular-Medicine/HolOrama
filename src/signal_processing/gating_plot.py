@@ -9,12 +9,12 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.widgets import Button
 from PyQt6.QtWidgets import QMainWindow, QVBoxLayout, QWidget
 
-import gating.gating_pipeline as pipeline
-from gating.automatic_gating import AutomaticGating
+import signal_processing.gating_pipeline as pipeline
+from signal_processing.automatic_gating import AutomaticGating
 from input_output.output.reports import report
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
-from pages.intravascular.right_half.right_half import (
+from pages.intravascular.right_half.right_half_ivus import (
     toggle_diastolic_frame,
     toggle_systolic_frame,
 )
@@ -47,8 +47,7 @@ class GatingPlot:
         return hasattr(self, 'ax') and hasattr(self, 'fig')
 
     def _toolbar_active(self) -> bool:
-        toolbar = getattr(self.main_window.gating_display, 'toolbar', None)
-        return toolbar is not None and bool(toolbar.mode)
+        return bool(self.main_window.gating_display.toolbar.mode)
 
     def __call__(self):
         self.main_window.status_bar.showMessage('Gating…')

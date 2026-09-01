@@ -6,8 +6,9 @@ from typing import Callable
 import numpy as np
 
 from domain.all_types import ContourType
+from domain.colors import DEFAULT_MASK_ALPHA
 
-MASK_ALPHA = 0.45  # overlay opacity (0 = transparent, 1 = opaque)
+MASK_ALPHA = DEFAULT_MASK_ALPHA  # overlay opacity (0 = transparent, 1 = opaque)
 
 
 @dataclass(frozen=True)

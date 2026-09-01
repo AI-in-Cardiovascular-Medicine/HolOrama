@@ -5,6 +5,8 @@ from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtWidgets import QGraphicsScene, QGraphicsView, QMainWindow
 from scipy.ndimage import gaussian_filter1d
 
+from domain.colors import DIASTOLE_COLOR, SYSTOLE_COLOR
+
 pd.options.mode.chained_assignment = None  # default='warn'
 
 
@@ -54,8 +56,9 @@ class ResultsPlot(QMainWindow):
                 min_lumen_area_distance = group.loc[group['lumen_area'].idxmin(), 'distance']
                 min_lumen_area_frame = group.loc[group['lumen_area'].idxmin(), 'frame']
 
-            # Define colors based on phase
-            ostial_color = '#008b8b' if phase == 'Diastole' else '#ff6f00'
+            # Define colors based on phase — the app's canonical diastole/systole colors,
+            # normalized to matplotlib's 0-1 float range.
+            ostial_color = tuple(c / 255 for c in (DIASTOLE_COLOR if phase == 'Diastole' else SYSTOLE_COLOR))
             min_area_color = '#0055ff'
 
             # Highlight the lumen_area at distance 0 for ostial area

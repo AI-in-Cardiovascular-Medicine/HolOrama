@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Any, Callable
 
 from PyQt6.QtCore import Qt
@@ -18,6 +17,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from gui import settings_io
+
 DEFAULT_DISPLAY_SETTINGS: dict[str, Any] = {
     'windowing_sensitivity': 0.03,
     'zoom_sensitivity': 0.005,
@@ -27,6 +28,7 @@ DEFAULT_DISPLAY_SETTINGS: dict[str, Any] = {
     'contour_thickness': 2,
     'point_thickness': 1,
     'point_radius': 10,
+    'snap_radius_px': 10,
     'color_contour': 'green',
     'color_eem': '#03b1fc',
     'color_calcium': 'white',
@@ -34,6 +36,13 @@ DEFAULT_DISPLAY_SETTINGS: dict[str, Any] = {
     'color_start_point': 'yellow',
     'color_end_point': 'red',
     'color_angle': '#ffa500',
+}
+
+# windowing/zoom sensitivity are shared across pages (config.common); everything else
+# here is intravascular-only (config.intravascular). See gui/settings_io.py.
+_KEY_SECTIONS: dict[str, str] = {
+    key: 'common' if key in ('windowing_sensitivity', 'zoom_sensitivity') else 'intravascular'
+    for key in DEFAULT_DISPLAY_SETTINGS
 }
 
 _COLOR_LABELS = {
@@ -89,8 +98,7 @@ class DisplaySettingsDialog(QDialog):
         self.main_window = main_window
         self.setWindowTitle('Display Settings')
 
-        cfg = main_window.config.display
-        current = {k: getattr(cfg, k, v) for k, v in DEFAULT_DISPLAY_SETTINGS.items()}
+        current = settings_io.current_values(main_window.config, _KEY_SECTIONS, DEFAULT_DISPLAY_SETTINGS)
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -123,6 +131,16 @@ class DisplaySettingsDialog(QDialog):
         self._point_radius_box.setRange(1, 50)
         self._point_radius_box.setValue(int(current['point_radius']))
         form.addRow('Point Radius', self._point_radius_box)
+
+        self._snap_radius_box = QSpinBox()
+        self._snap_radius_box.setRange(1, 100)
+        self._snap_radius_box.setSuffix(' px')
+        self._snap_radius_box.setToolTip(
+            'How close a click must land to an existing point to grab it, or to the first '
+            'point to close a contour. Larger = easier to hit, harder to place points nearby.'
+        )
+        self._snap_radius_box.setValue(int(current['snap_radius_px']))
+        form.addRow('Snap Radius', self._snap_radius_box)
 
         self._color_values: dict[str, str] = {k: current[k] for k in _COLOR_LABELS}
         self._color_swatches: dict[str, QPushButton] = {}
@@ -178,6 +196,7 @@ class DisplaySettingsDialog(QDialog):
         self._contour_thickness_box.setValue(DEFAULT_DISPLAY_SETTINGS['contour_thickness'])
         self._point_thickness_box.setValue(DEFAULT_DISPLAY_SETTINGS['point_thickness'])
         self._point_radius_box.setValue(DEFAULT_DISPLAY_SETTINGS['point_radius'])
+        self._snap_radius_box.setValue(DEFAULT_DISPLAY_SETTINGS['snap_radius_px'])
         for key, swatch in self._color_swatches.items():
             default = DEFAULT_DISPLAY_SETTINGS[key]
             self._color_values[key] = default
@@ -192,34 +211,14 @@ class DisplaySettingsDialog(QDialog):
         values['contour_thickness'] = self._contour_thickness_box.value()
         values['point_thickness'] = self._point_thickness_box.value()
         values['point_radius'] = self._point_radius_box.value()
+        values['snap_radius_px'] = self._snap_radius_box.value()
         values.update(self._color_values)
         return values
 
 
-def save_display_settings(config_path: Path, values: dict) -> None:
-    """Round-trip config.yaml via ruamel.yaml, updating only display.<key> for each key
-    in `values` while preserving comments/formatting elsewhere in the file."""
-    from ruamel.yaml import YAML
-
-    yaml = YAML(typ='rt')
-    yaml.preserve_quotes = True
-    yaml.boolean_representation = ['False', 'True']  # type: ignore[attr-defined]  # config.yaml uses capitalized booleans
-    with open(config_path, encoding='utf-8') as f:
-        data = yaml.load(f)
-
-    display_map = data['display']
-    for key, value in values.items():
-        display_map[key] = value
-
-    with open(config_path, 'w', encoding='utf-8') as f:
-        yaml.dump(data, f)
-
-
 def apply_and_save(main_window, values: dict) -> None:
     """Mutate the shared config, apply live to open display-related objects, then persist."""
-    display_cfg = main_window.config.display
-    for key, value in values.items():
-        setattr(display_cfg, key, value)
+    settings_io.apply_values(main_window.config, _KEY_SECTIONS, values)
 
     main_window.display.apply_display_settings(values)
 
@@ -240,7 +239,5 @@ def apply_and_save(main_window, values: dict) -> None:
         breathing_sort_viewer.n_points_contour = values['n_points_contour']
         breathing_sort_viewer.contour_color = values['color_contour']
 
-    config_path = getattr(main_window.config, '_config_path', None)
-    if config_path is None:
-        config_path = Path(__file__).resolve().parent.parent.parent.parent / 'config.yaml'
-    save_display_settings(config_path, values)
+    config_path = settings_io.resolve_config_path(main_window.config)
+    settings_io.save_values(config_path, _KEY_SECTIONS, values)

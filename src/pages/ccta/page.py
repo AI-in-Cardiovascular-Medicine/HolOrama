@@ -18,12 +18,9 @@ from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
     QFileDialog,
-    QGridLayout,
-    QLabel,
     QMessageBox,
     QProgressDialog,
     QSplitter,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -36,15 +33,13 @@ from input_output.input.ccta_io import (
     read_nifti_volume,
 )
 from input_output.output.stl_export import export_nifti, export_stl
-from pages.ccta import cut_geometry, cut_state_io, vmtk_runner
-from pages.ccta.centerline_smoothing_dialog import CenterlineSmoothingDialog
-from pages.ccta.progress_worker import StdoutCapturingWorker
-from pages.ccta.left_half.cut_geometry_viewer import CutGeometryViewer3D
-from pages.ccta.left_half.display import CctaDisplay
-from pages.ccta.left_half.display_3d import CctaViewer3D
-from pages.ccta.right_half.brush_panel import BrushPanel
-from pages.ccta.right_half.mask_panel import MaskPanel
-from pages.ccta.right_half.stl_extraction_panel import StlExtractionPanel
+from pages.ccta.left_half.cut_geometry import geometry as cut_geometry, vmtk
+from pages.ccta.left_half.cut_geometry import state_io as cut_state_io
+from pages.ccta.left_half.cut_geometry.dialogs.centerline_smoothing_dialog import CenterlineSmoothingDialog
+from pages.ccta.utils.progress_worker import StdoutCapturingWorker
+from pages.ccta.left_half.left_half import LeftHalf
+from pages.ccta.right_half.right_half import RightHalf
+from pages.ccta.popup_windows.settings_dialog import resolve_label_colors
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from version import version_file_str
 
@@ -87,79 +82,56 @@ class CctaPage(QWidget):
         self._cut_labels: tuple[int, int, int] | None = None  # (cor, aorta, lv) from the last Build Cut Geometry
         self._centerlines_worker: StdoutCapturingWorker | None = None
 
-        self._axial = CctaDisplay('axial')
-        self._coronal = CctaDisplay('coronal')
-        self._sagittal = CctaDisplay('sagittal')
+        common_cfg = config.common
+        windowing_sensitivity = common_cfg.windowing_sensitivity
+        zoom_sensitivity = common_cfg.zoom_sensitivity
+        mask_alpha = common_cfg.default_mask_alpha
+        label_colors = resolve_label_colors(config)
 
-        self._axial_label = QLabel('Axial')
-        self._coronal_label = QLabel('Coronal')
-        self._sagittal_label = QLabel('Sagittal')
-        for lbl in (self._axial_label, self._coronal_label, self._sagittal_label):
-            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Create left and right halves
+        self._left_half = LeftHalf(label_colors, mask_alpha, windowing_sensitivity, zoom_sensitivity)
+        self._right_half = RightHalf(label_colors, mask_alpha)
 
-        views = QWidget()
-        grid = QGridLayout(views)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setSpacing(2)
-        grid.addWidget(self._panel(self._axial, self._axial_label), 0, 0)
-        grid.addWidget(self._panel(self._sagittal, self._sagittal_label), 0, 1)
-        grid.addWidget(self._panel(self._coronal, self._coronal_label), 1, 0)
-        self._3d_viewer = CctaViewer3D()
-        grid.addWidget(self._3d_viewer, 1, 1)
-        grid.setRowStretch(0, 1)
-        grid.setRowStretch(1, 1)
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
+        # Extract references for signal connections
+        self._axial = self._left_half.axial
+        self._coronal = self._left_half.coronal
+        self._sagittal = self._left_half.sagittal
+        self._3d_viewer = self._left_half.segmentation_viewer_3d
+        self._cut_viewer = self._left_half.cut_geometry_viewer
+        self._mask_tab = self._right_half.mask_panel
+        self._brush_panel = self._right_half.brush_panel
+        self._stl_panel = self._right_half.stl_extraction_panel
 
-        # Cut geometry gets its own tab (own VTK render window) rather than sharing
-        # the segmentation 3D view — it has its own mask/picking, unrelated to the
-        # per-label segmentation actors shown in "Segmentation".
-        self._cut_viewer = CutGeometryViewer3D()
+        self._cut_line_0: tuple | None = None  # (p1_zyx, p2_zyx) from axial view   (LVOT)
+        self._cut_line_1: tuple | None = None  # (p1_zyx, p2_zyx) from coronal view (LVOT)
+        self._aorta_cut_line: tuple | None = None  # (p1_zyx, p2_zyx) from coronal view (aorta top, required)
 
-        self._tabs = QTabWidget()
-        self._tabs.addTab(views, 'Segmentation')
-        self._tabs.addTab(self._cut_viewer, 'Cut Geometry')
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.addWidget(self._left_half())
+        splitter.addWidget(self._right_half())
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 0)
+        splitter.setSizes([10000, 220])
 
-        # Right panel: Mask labels (top, stretches) + Brush controls (bottom, fixed)
-        self._mask_tab = MaskPanel()
+        QVBoxLayout(self).addWidget(splitter)
+
+        # Wire up mask panel signals
         self._mask_tab.alpha_changed.connect(self._on_mask_alpha_changed)
         self._mask_tab.label_visibility_changed.connect(self._on_label_visibility_changed)
         self._mask_tab.label_colors_changed.connect(self._on_label_colors_changed)
         self._mask_tab.label_name_changed.connect(self._on_label_name_changed)
         self._mask_tab.label_name_changed.connect(self._3d_viewer.update_label_name)
 
-        self._brush_panel = BrushPanel()
+        # Wire up brush panel signals
         self._brush_panel.brush_enabled_changed.connect(self._on_brush_enabled_changed)
         self._brush_panel.geometry_changed.connect(self._on_brush_geometry_changed)
-        self._mask_tab.label_name_changed.connect(self._brush_panel.update_label_name)
-        self._mask_tab.set_brush_panel(self._brush_panel)
 
-        self._stl_panel = StlExtractionPanel()
+        # Wire up STL panel signals
         self._stl_panel.line_draw_requested.connect(self._on_line_draw_requested)
         self._stl_panel.extract_requested.connect(self._on_extract_requested)
         self._stl_panel.build_cut_geometry_requested.connect(self._on_build_cut_geometry)
         self._stl_panel.outlet_point_mode_requested.connect(self._on_outlet_point_mode_requested)
         self._stl_panel.clear_outlet_points_requested.connect(self._cut_viewer.clear_points)
-        self._mask_tab.label_name_changed.connect(self._stl_panel.update_label_name)
-        self._cut_line_0: tuple | None = None  # (p1_zyx, p2_zyx) from axial view   (LVOT)
-        self._cut_line_1: tuple | None = None  # (p1_zyx, p2_zyx) from coronal view (LVOT)
-        self._aorta_cut_line: tuple | None = None  # (p1_zyx, p2_zyx) from coronal view (aorta top, required)
-
-        right_col = QWidget()
-        right_vbox = QVBoxLayout(right_col)
-        right_vbox.setContentsMargins(0, 0, 0, 0)
-        right_vbox.setSpacing(0)
-        right_vbox.addWidget(self._mask_tab, 1)
-        right_vbox.addWidget(self._stl_panel, 0)
-
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(self._tabs)
-        splitter.addWidget(right_col)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 0)
-        splitter.setSizes([10000, 220])
-
-        QVBoxLayout(self).addWidget(splitter)
 
         for display in (self._axial, self._coronal, self._sagittal):
             display.cursor_moved.connect(self._on_cursor_moved)
@@ -553,6 +525,24 @@ class CctaPage(QWidget):
         for display in (self._axial, self._coronal, self._sagittal):
             display.set_mask_alpha(alpha)
 
+    def apply_ccta_settings(self, values: dict) -> None:
+        """Push updated sensitivity/mask-alpha/label-colors settings live into every
+        child display — called by settings_dialog.apply_and_save after the config has
+        already been updated."""
+        for display in (self._axial, self._coronal, self._sagittal):
+            display.set_sensitivity(values['windowing_sensitivity'], values['zoom_sensitivity'])
+
+        label_colors = tuple(tuple(c) for c in values['label_colors'])
+        for display in (self._axial, self._coronal, self._sagittal):
+            display.set_base_label_colors(label_colors)
+        self._3d_viewer.set_base_label_colors(label_colors)
+        self._brush_panel.set_base_label_colors(label_colors)
+        self._mask_tab.set_base_label_colors(label_colors)
+
+        # Triggers the mask panel's existing alpha_changed -> _on_mask_alpha_changed
+        # wiring, which pushes the new alpha into all three displays live.
+        self._mask_tab.set_default_alpha(values['default_mask_alpha'])
+
     def _on_label_visibility_changed(self, label: int, visible: bool) -> None:
         for display in (self._axial, self._coronal, self._sagittal):
             display.set_label_visible(label, visible)
@@ -585,9 +575,7 @@ class CctaPage(QWidget):
             display.reset_windowing()
 
     def _update_labels(self, z: int, y: int, x: int, Z: int, Y: int, X: int) -> None:
-        self._axial_label.setText(f'Axial  Z: {z + 1} / {Z}')
-        self._sagittal_label.setText(f'Sagittal  X: {x + 1} / {X}')
-        self._coronal_label.setText(f'Coronal  Y: {y + 1} / {Y}')
+        self._left_half.segmentation_views.update_cursor_labels(z, y, x, Z, Y, X)
 
     def _on_line_draw_requested(self, index: int) -> None:
         # index 0: axial (LVOT), index 1: coronal (LVOT), index 2: coronal (aorta top)
@@ -662,7 +650,7 @@ class CctaPage(QWidget):
         to cut it (callers that need both — Build Cut Geometry — would otherwise have
         to call _compute_cut_planes() a second time to get what this already computed
         internally). Shows an ErrorMessage and returns None on any failure — shared by
-        Extract && Export and Build Cut Geometry so both always cut identically."""
+        Extract and Export and Build Cut Geometry so both always cut identically."""
         if self.data.mask is None or self.data.voxel_spacing is None:
             ErrorMessage(self, 'No mask or volume loaded.')
             return None
@@ -791,7 +779,7 @@ class CctaPage(QWidget):
         self._cut_state_dirty = True
         self._cut_viewer.set_cut_mesh(mesh, inlet, outlet, combined, self.data.voxel_spacing)
         if switch_tab:
-            self._tabs.setCurrentWidget(self._cut_viewer)  # jump straight to the result
+            self._left_half.widget.setCurrentWidget(self._cut_viewer)  # jump straight to the result
         self.status_bar.showMessage('Cut geometry built.')
 
     def _on_outlet_points_changed(self, _category: str, _count: int) -> None:
@@ -903,7 +891,7 @@ class CctaPage(QWidget):
         venv_path = self.config.vmtk.venv_path
         build_path = self.config.vmtk.build_path
         distro = self.config.vmtk.wsl_distro
-        ok, reason = vmtk_runner.check_vmtk_available(venv_path, build_path, distro)
+        ok, reason = vmtk.check_vmtk_available(venv_path, build_path, distro)
         if not ok:
             ErrorMessage(self, f'vmtk not found. {reason}')
             return None
@@ -924,8 +912,8 @@ class CctaPage(QWidget):
     def _start_centerline_worker(
         self,
         prereqs: _CenterlinePrereqs,
-        ao_smoothing: vmtk_runner.SmoothingParams,
-        coronary_smoothing: vmtk_runner.SmoothingParams,
+        ao_smoothing: vmtk.SmoothingParams,
+        coronary_smoothing: vmtk.SmoothingParams,
     ) -> None:
         """Runs vmtk in a background QThread. This can take minutes — vmtkcenterlines'
         Voronoi-diagram step is slow and often silent — so running it on the main
@@ -946,11 +934,11 @@ class CctaPage(QWidget):
 
         def _do_work() -> tuple[str, dict[str, str]]:
             prereqs.cut_mesh.export(stl_path)
-            vmtk_runner.write_point_csv(ao_csv, [prereqs.cut_mesh_inlet, prereqs.cut_mesh_outlet])
-            vmtk_runner.write_point_csv(rca_csv, prereqs.rca_points)
-            vmtk_runner.write_point_csv(lca_csv, prereqs.lca_points)
+            vmtk.write_point_csv(ao_csv, [prereqs.cut_mesh_inlet, prereqs.cut_mesh_outlet])
+            vmtk.write_point_csv(rca_csv, prereqs.rca_points)
+            vmtk.write_point_csv(lca_csv, prereqs.lca_points)
 
-            paths = vmtk_runner.run_centerlines(
+            paths = vmtk.run_centerlines(
                 stl_path,
                 prereqs.out_dir,
                 ao_source=prereqs.cut_mesh_inlet,
@@ -996,13 +984,3 @@ class CctaPage(QWidget):
         self._centerlines_worker = None
         logger.error(f'Centerline calculation failed: {message}')
         ErrorMessage(self, f'Centerline calculation failed: {message}')
-
-    @staticmethod
-    def _panel(display: CctaDisplay, label: QLabel) -> QWidget:
-        w = QWidget()
-        layout = QVBoxLayout(w)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.addWidget(display, 1)
-        layout.addWidget(label)
-        return w

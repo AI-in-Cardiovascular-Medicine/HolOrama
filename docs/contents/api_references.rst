@@ -17,8 +17,6 @@ All application code lives under ``src/``::
     ├── version.py           __version__ and the contour-file version tag
     ├── domain/              data classes: RuntimeData, FrameData, CctaRuntimeData,
     │                        FusionRuntimeData, contour/tool enums, undo stack
-    ├── gating/              cardiac gating and breathing analysis: signal preparation,
-    │                        automatic gating, the interactive gating plot
     ├── gui/                 app-level wiring: Master window, page switching, menu bar,
     │                        keyboard shortcuts
     ├── input_output/
@@ -40,6 +38,8 @@ All application code lives under ``src/``::
     │       ├── right_half/      the three pipeline columns
     │       └── pipeline.py      thin wrappers around the multimodars calls
     ├── segmentation/        automatic segmentation: nnUZoo wrapper, mask→contour
+    ├── signal_processing/   cardiac gating and breathing analysis: signal preparation,
+    │                        automatic gating, the interactive gating plot
     └── tools/               Qt-independent helpers: geometry, painting, lasso
 
 Design principles

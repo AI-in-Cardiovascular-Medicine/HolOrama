@@ -96,7 +96,7 @@ class StlExtractionPanel(QWidget):
 
         root.addWidget(_separator())
 
-        # Export format + Extract && Export — kept at the very bottom of the panel.
+        # Export format + Extract and Export — kept at the very bottom of the panel.
         fmt_row = QHBoxLayout()
         fmt_row.addWidget(QLabel('Export as:'))
         self._fmt_group = QButtonGroup(self)
@@ -109,7 +109,7 @@ class StlExtractionPanel(QWidget):
         fmt_row.addStretch()
         root.addLayout(fmt_row)
 
-        self._extract_btn = QPushButton('Extract && Export')
+        self._extract_btn = QPushButton('Extract and Export')
         self._extract_btn.setEnabled(False)
         self._extract_btn.setToolTip('Exports the smoothed cut geometry if Build Cut Geometry + Smooth were used (STL)')
         self._extract_btn.clicked.connect(self._on_extract)

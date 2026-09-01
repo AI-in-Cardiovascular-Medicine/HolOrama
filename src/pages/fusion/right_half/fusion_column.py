@@ -139,7 +139,7 @@ class FusionColumn(QWidget):
         return box
 
     def _build_remesh_group(self) -> QGroupBox:
-        box = QGroupBox('Remesh && Smooth')
+        box = QGroupBox('Remesh and Smooth')
         layout = QVBoxLayout(box)
 
         self._target_edge_length = QDoubleSpinBox()
@@ -157,7 +157,7 @@ class FusionColumn(QWidget):
         self._remesh_verbose.setChecked(True)
         layout.addWidget(self._remesh_verbose)
 
-        remesh_btn = QPushButton('Fix && Remesh')
+        remesh_btn = QPushButton('Fix and Remesh')
         remesh_btn.clicked.connect(self.run_remesh_requested.emit)
         layout.addWidget(remesh_btn)
 

@@ -1,4 +1,4 @@
-"""Tests for the retained respiratory-signal helpers in gating.gating_pipeline.
+"""Tests for the retained respiratory-signal helpers in signal_processing.gating_pipeline.
 
 The breathing-sort/en-bloc reordering was removed; these cover what remains and
 feeds the (future) sorting: the detrend + respiratory extraction and the
@@ -10,7 +10,7 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 
-from gating.breathing_pipeline import (
+from signal_processing.breathing_pipeline import (
     assign_breathing_bins,
     compute_breathing_phases,
     compute_breathing_signal,

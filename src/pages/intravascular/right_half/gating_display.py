@@ -12,7 +12,7 @@ class GatingDisplay(FigureCanvasQTAgg):
     def __init__(self, main_window, parent=None, width: int | None = None, height: int | None = None, dpi: int = 100):
         plt.style.use('dark_background')
 
-        w: int = main_window.config.display.image_size if width is None else width
+        w: int = main_window.config.intravascular.image_size if width is None else width
         h: int = (w // 2) if height is None else height
         width_in: float = w / dpi  # convert pixels to inches
         height_in: float = h / dpi
@@ -20,4 +20,6 @@ class GatingDisplay(FigureCanvasQTAgg):
         super().__init__(self.fig)
 
         self.setParent(parent)
-        self.toolbar = NavigationToolbar2QT(self, parent)
+        # Narrower than FigureCanvasBase.toolbar (NavigationToolbar2 | None): the Qt
+        # toolbar is a QWidget, which is how callers lay it out.
+        self.toolbar: NavigationToolbar2QT = NavigationToolbar2QT(self, parent)

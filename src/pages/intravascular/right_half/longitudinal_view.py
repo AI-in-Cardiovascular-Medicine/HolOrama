@@ -46,7 +46,7 @@ class LongitudinalView(QGraphicsView):
         self.oct_mode = False
         self.num_frames = 0
         self.image_height = 0
-        self.color = getattr(main_window.config.display, "color_contour", "green")
+        self.color = getattr(main_window.config.intravascular, "color_contour", "green")
 
         self._peak_btn = QPushButton('Peak', self)
         self._peak_btn.setCheckable(True)
@@ -193,9 +193,7 @@ class LongitudinalView(QGraphicsView):
         # below, so deleting the last contour clears it as well. Its per-frame cache keeps
         # a refresh with nothing changed cheap.
         if self.oct_mode:
-            oct_plot = getattr(self.main_window, 'oct_plot', None)
-            if oct_plot is not None:
-                oct_plot.refresh()
+            self.main_window.oct_plot.refresh()
 
         if not self.main_window.runtime_data.frame_data_dct or self.image_height == 0:
             return
@@ -274,7 +272,7 @@ class LongitudinalView(QGraphicsView):
         frames_arr = np.array(sorted(areas.keys()), dtype=float)
         areas_arr = np.array([areas[int(f)] for f in frames_arr])
 
-        from gating.breathing_pipeline import (
+        from signal_processing.breathing_pipeline import (
             compute_breathing_phases,
             compute_breathing_signal,
         )

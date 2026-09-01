@@ -3,6 +3,25 @@ plots (multimodars/ccta/debug_plots.py) so our VTK scenes read the same way the
 package's own (now-disabled) matplotlib/trimesh plots would have.
 """
 
+from domain.colors import CATEGORICAL_PALETTE, DIASTOLE_COLOR, SYSTOLE_COLOR, branch_ramp_color
+
+__all__ = [
+    'REGION_COLORS',
+    'CENTERLINE_COLORS',
+    'TREE_AORTA_COLOR',
+    'TREE_RCA_MAIN_COLOR',
+    'TREE_LCA_MAIN_COLOR',
+    'TREE_CENTROID_COLOR',
+    'TREE_REF_COLORS',
+    'BRANCH_COLORS_RCA',
+    'BRANCH_COLORS_LCA',
+    'SHARP_ANGLE_COLOR',
+    'SHARP_ANGLE_LABEL_COLOR',
+    'branch_ramp_color',
+    'DIASTOLE_COLOR',
+    'SYSTOLE_COLOR',
+]
+
 # results dict point-cloud keys -> RGB, from plot_results_key(). Region keys not listed
 # here (rca_points_main/side_N, boundary_points, prox/dist_boundary_points) aren't part
 # of the documented legend and aren't visualized yet.
@@ -42,39 +61,11 @@ TREE_REF_COLORS: tuple[tuple[int, int, int], ...] = (
 
 
 # Centerline Branches scene, from plot_centerline_branches()/plot_centerline_edges().
-BRANCH_COLORS_RCA: tuple[tuple[int, int, int], ...] = (
-    (31, 119, 180),
-    (23, 190, 207),
-    (148, 103, 189),
-    (44, 160, 44),
-    (127, 127, 127),
-)
-BRANCH_COLORS_LCA: tuple[tuple[int, int, int], ...] = (
-    (214, 39, 40),
-    (255, 127, 14),
-    (227, 119, 194),
-    (188, 189, 34),
-    (140, 86, 75),
-)
+# Drawn from the app's shared categorical palette (interleaved so RCA/LCA — both shown
+# in the same scene — never land on the same color) rather than two separately hand-picked
+# 5-color sets, which also gives each vessel more distinct branch colors before any ramp
+# shading has to repeat.
+BRANCH_COLORS_RCA: tuple[tuple[int, int, int], ...] = CATEGORICAL_PALETTE[0::2]
+BRANCH_COLORS_LCA: tuple[tuple[int, int, int], ...] = CATEGORICAL_PALETTE[1::2]
 SHARP_ANGLE_COLOR: tuple[int, int, int] = (255, 0, 0)
 SHARP_ANGLE_LABEL_COLOR: tuple[int, int, int] = (255, 255, 255)
-
-
-def branch_ramp_color(base: tuple[int, int, int], index: int, count: int) -> tuple[int, int, int]:
-    """Shade base color progressively lighter for branch index `index` of `count`
-    (mirrors the 4-shade ramps plot_vessel_tree uses for side branches)."""
-    if count <= 1:
-        return base
-    t = index / max(count - 1, 1)
-    r, g, b = base
-    return (
-        int(r + (255 - r) * 0.5 * t),
-        int(g + (255 - g) * 0.5 * t),
-        int(b + (255 - b) * 0.5 * t),
-    )
-
-
-# Reuse the app's existing diastole/systole palette (see IntravascularPage) so the
-# aligned intravascular geometry in the fusion viewer matches the rest of the app.
-DIASTOLE_COLOR = (39, 69, 219)
-SYSTOLE_COLOR = (209, 55, 38)

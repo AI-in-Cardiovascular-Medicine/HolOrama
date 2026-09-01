@@ -8,7 +8,7 @@ Brief motivation and context. Link the issue this addresses: fixes #<issue-numbe
 
 ### Which module(s) does this touch?
 
-- [ ] Intravascular (`src/pages/intravascular/`, `src/gating/`)
+- [ ] Intravascular (`src/pages/intravascular/`, `src/signal_processing/`)
 - [ ] CCTA (`src/pages/ccta/`)
 - [ ] Fusion (`src/pages/fusion/`)
 - [ ] Shared (`src/domain/`, `src/gui/`, `src/input_output/`, `src/tools/`)

@@ -53,8 +53,9 @@ class CctaViewer3D(QWidget):
     mask_erased = pyqtSignal()  # 3D lasso erase modified the mask
     mask_about_to_change = pyqtSignal()  # emitted before a lasso erase mutates the mask
 
-    def __init__(self, parent=None):
+    def __init__(self, label_colors: tuple[tuple[int, int, int], ...] = LABEL_COLORS, parent=None):
         super().__init__(parent)
+        self._label_colors: tuple[tuple[int, int, int], ...] = label_colors
 
         self._vtk_widget = QVTKRenderWindowInteractor(self)
 
@@ -145,6 +146,21 @@ class CctaViewer3D(QWidget):
         for i, label in enumerate(self._labels):
             if i < len(colors) and label in self._actors:
                 r, g, b = colors[i]
+                self._actors[label].GetProperty().SetColor(r / 255.0, g / 255.0, b / 255.0)
+                changed = True
+        if changed:
+            self._vtk_widget.GetRenderWindow().Render()
+
+    def set_base_label_colors(self, colors: tuple[tuple[int, int, int], ...]) -> None:
+        """Update the default (non-anatomic-preset) label palette — e.g. from Settings.
+        Applies immediately unless a custom preset (set_label_colors) is currently active."""
+        self._label_colors = tuple(colors) if colors else LABEL_COLORS
+        if self._custom_colors is not None:
+            return
+        changed = False
+        for i, label in enumerate(self._labels):
+            if label in self._actors:
+                r, g, b = self._label_colors[i % len(self._label_colors)]
                 self._actors[label].GetProperty().SetColor(r / 255.0, g / 255.0, b / 255.0)
                 changed = True
         if changed:
@@ -539,7 +555,7 @@ class CctaViewer3D(QWidget):
         if self._custom_colors and color_index < len(self._custom_colors):
             r, g, b = self._custom_colors[color_index]
         else:
-            r, g, b = LABEL_COLORS[color_index % len(LABEL_COLORS)]
+            r, g, b = self._label_colors[color_index % len(self._label_colors)]
         actor.GetProperty().SetColor(r / 255.0, g / 255.0, b / 255.0)
         actor.GetProperty().SetOpacity(1.0)
         actor.GetProperty().SetInterpolationToFlat()

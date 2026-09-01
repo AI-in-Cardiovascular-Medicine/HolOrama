@@ -252,7 +252,7 @@ class TestPageSaveTriggers:
 
     def test_oct_quality_edit_triggers_a_save(self, page):
         """A non-contour, OCT-only edit — and one that refreshes nothing on screen."""
-        from pages.intravascular.right_half.right_half import set_oct_quality
+        from pages.intravascular.right_half.right_half_oct import set_oct_quality
 
         page.display_slider.setMaximum(3)
         page.display_slider.blockSignals(True)

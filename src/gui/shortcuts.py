@@ -16,6 +16,8 @@ from input_output.output.contours import write_contours
 from input_output.output.imgs_masks import save_as_nifti
 from input_output.output.other_fmt import save_gated_images
 from input_output.output.reports import report
+from pages.ccta.popup_windows.settings_dialog import CctaSettingsDialog
+from pages.ccta.popup_windows.settings_dialog import apply_and_save as apply_and_save_ccta
 from pages.intravascular.popup_windows.display_settings_dialog import DisplaySettingsDialog, apply_and_save
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
@@ -209,6 +211,7 @@ def init_menu(main_window, ccta_page):
 
     settings_menu = main_window.menu_bar.addMenu('Settings')
     settings_menu.addAction('Display Settings...', partial(open_display_settings, main_window))
+    settings_menu.addAction('CCTA Settings...', partial(open_ccta_settings, ccta_page))
 
     help_menu = main_window.menu_bar.addMenu('Help')
     help_menu.addAction('GitHub Page', partial(open_url, main_window, description='github'))
@@ -642,6 +645,12 @@ def open_display_settings(main_window):
     dialog = DisplaySettingsDialog(main_window)
     if dialog.exec():
         apply_and_save(main_window, dialog.get_values())
+
+
+def open_ccta_settings(ccta_page):
+    dialog = CctaSettingsDialog(ccta_page)
+    if dialog.exec():
+        apply_and_save_ccta(ccta_page, dialog.get_values())
 
 
 def plot_results(main_window):

@@ -83,9 +83,15 @@ class MaskPanel(QWidget):
     label_name_changed = pyqtSignal(int, str)  # label_value, name
     label_colors_changed = pyqtSignal(list)  # list[tuple[int,int,int]] ordered by label position
 
-    def __init__(self, parent=None) -> None:
+    def __init__(
+        self,
+        label_colors: tuple[tuple[int, int, int], ...] = LABEL_COLORS,
+        initial_alpha: float = DEFAULT_MASK_ALPHA,
+        parent=None,
+    ) -> None:
         super().__init__(parent)
         self.setMinimumWidth(210)
+        self._label_colors: tuple[tuple[int, int, int], ...] = label_colors
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
@@ -95,8 +101,8 @@ class MaskPanel(QWidget):
         alpha_row = QHBoxLayout()
         self._alpha_slider = QSlider(Qt.Orientation.Horizontal)
         self._alpha_slider.setRange(0, 100)
-        self._alpha_slider.setValue(round(DEFAULT_MASK_ALPHA * 100))
-        self._alpha_value_lbl = QLabel(f'{round(DEFAULT_MASK_ALPHA * 100)}%')
+        self._alpha_slider.setValue(round(initial_alpha * 100))
+        self._alpha_value_lbl = QLabel(f'{round(initial_alpha * 100)}%')
         self._alpha_value_lbl.setFixedWidth(34)
         self._alpha_value_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._alpha_slider.valueChanged.connect(self._on_alpha_changed)
@@ -146,10 +152,11 @@ class MaskPanel(QWidget):
         self._rows: dict[int, _LabelRow] = {}
 
     def set_labels(self, labels: list[int]) -> None:
-        """Populate the label list. Colors are assigned by position in LABEL_COLORS."""
+        """Populate the label list. Colors are assigned by position in the base palette
+        (see set_base_label_colors)."""
         self._clear_rows()
         for i, label in enumerate(labels):
-            color = LABEL_COLORS[i % len(LABEL_COLORS)]
+            color = self._label_colors[i % len(self._label_colors)]
             row = _LabelRow(label, color)
             row.visibility_changed.connect(lambda visible, lbl=label: self.label_visibility_changed.emit(lbl, visible))
             row.name_changed.connect(lambda name, lbl=label: self.label_name_changed.emit(lbl, name))
@@ -189,6 +196,11 @@ class MaskPanel(QWidget):
         root.addWidget(panel)
         root.addStretch(1)  # remaining space below the brush panel
 
+    def set_default_alpha(self, alpha: float) -> None:
+        """Push a new default mask alpha (e.g. from Settings) into the slider — the
+        existing valueChanged -> alpha_changed wiring propagates it live."""
+        self._alpha_slider.setValue(round(alpha * 100))
+
     def _on_alpha_changed(self, value: int) -> None:
         self._alpha_value_lbl.setText(f'{value}%')
         self.alpha_changed.emit(value / 100.0)
@@ -213,10 +225,24 @@ class MaskPanel(QWidget):
             if checked and i < len(LABEL_COLORS_ANATOMIC):
                 color = LABEL_COLORS_ANATOMIC[i]
             else:
-                color = LABEL_COLORS[i % len(LABEL_COLORS)]
+                color = self._label_colors[i % len(self._label_colors)]
             row.set_color(color)
             colors.append(color)
         self.label_colors_changed.emit(colors)
+
+    def set_base_label_colors(self, colors: tuple[tuple[int, int, int], ...]) -> None:
+        """Update the base (non-anatomic-preset) palette — e.g. from Settings — and
+        immediately recolor any rows currently showing it."""
+        self._label_colors = tuple(colors) if colors else LABEL_COLORS
+        if self._btn_colors.isChecked():
+            return  # anatomic preset is active; base palette applies once it's toggled off
+        row_colors: list[tuple[int, int, int]] = []
+        for i, (_label, row) in enumerate(self._rows.items()):
+            color = self._label_colors[i % len(self._label_colors)]
+            row.set_color(color)
+            row_colors.append(color)
+        if row_colors:
+            self.label_colors_changed.emit(row_colors)
 
     def _clear_rows(self) -> None:
         for row in self._rows.values():
