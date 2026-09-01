@@ -220,7 +220,6 @@ class Display(QGraphicsView, MetricsMixin):
         self._base_mask_cache_frame = -1
         self.setCursor(Qt.CursorShape.ArrowCursor)
 
-    # initialize data from main_window data
     def set_data(self, images):
         """Initialize display data from main_window.runtime_data.frame_data_dct (Dict[int, FrameData])."""
         self.images = images
@@ -236,7 +235,6 @@ class Display(QGraphicsView, MetricsMixin):
         self.display_image(update_image=True, update_contours=True, update_phase=True)
 
     def _draw_contours_frame(self):
-        # other contours
         closed_contour_types = {
             ct for ct in ContourType if SegmentationTool.CLOSED_SPLINE in ALLOWED_TOOLS.get(ct, set())
         }

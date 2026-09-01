@@ -20,4 +20,6 @@ class GatingDisplay(FigureCanvasQTAgg):
         super().__init__(self.fig)
 
         self.setParent(parent)
-        self.toolbar = NavigationToolbar2QT(self, parent)
+        # Narrower than FigureCanvasBase.toolbar (NavigationToolbar2 | None): the Qt
+        # toolbar is a QWidget, which is how callers lay it out.
+        self.toolbar: NavigationToolbar2QT = NavigationToolbar2QT(self, parent)

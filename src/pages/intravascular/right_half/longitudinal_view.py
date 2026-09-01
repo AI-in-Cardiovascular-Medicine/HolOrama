@@ -193,9 +193,7 @@ class LongitudinalView(QGraphicsView):
         # below, so deleting the last contour clears it as well. Its per-frame cache keeps
         # a refresh with nothing changed cheap.
         if self.oct_mode:
-            oct_plot = getattr(self.main_window, 'oct_plot', None)
-            if oct_plot is not None:
-                oct_plot.refresh()
+            self.main_window.oct_plot.refresh()
 
         if not self.main_window.runtime_data.frame_data_dct or self.image_height == 0:
             return
