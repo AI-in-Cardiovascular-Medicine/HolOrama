@@ -62,7 +62,7 @@ def plot(qt_app):
         full = {i: FrameData() for i in range(n_frames)}
         full.update(frames)
         main_window = SimpleNamespace(
-            config=SimpleNamespace(display=SimpleNamespace(catheter_diameter=0.9)),
+            config=SimpleNamespace(intravascular=SimpleNamespace(catheter_diameter=0.9)),
             runtime_data=SimpleNamespace(
                 frame_data_dct=full,
                 metadata={'num_frames': n_frames, 'resolution': RESOLUTION, 'modality': 'OCT'},

@@ -9,7 +9,7 @@ the wall is made of.
 What is drawn, from the centre outwards:
 
 * the imaging catheter, as two grey lines at +/- its radius (config
-  `display.catheter_diameter`, default 0.9 mm = a 2.7 F OCT catheter),
+  `intravascular.catheter_diameter`, default 0.9 mm = a 2.7 F OCT catheter),
 * the lumen, as two lines at +/- half the lumen's *shortest distance* (the
   narrowest diameter, `lumen.measurements.minor_axis`),
 * the EEM, as two lines at +/- the radius of a circle of the same area as the EEM

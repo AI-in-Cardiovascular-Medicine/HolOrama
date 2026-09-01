@@ -73,7 +73,7 @@ class RightHalfOct(QWidget):
         self.lview_slot = LongitudinalSlot()
 
         self.splitter = QSplitter(Qt.Orientation.Vertical)
-        self.splitter.addWidget(self.oct_plot)  # the IVUS gating plot's slot: OCT has no gating to show
+        self.splitter.addWidget(self.oct_plot)
         self.splitter.addWidget(self.lview_slot)
         self.splitter.setStretchFactor(0, mw.config.intravascular.gating_display_stretch)
         self.splitter.setStretchFactor(1, mw.config.intravascular.lview_display_stretch)
