@@ -74,7 +74,8 @@ Read left to right; each column is one stage of the pipeline.
 #. **Intravascular Alignment**: load the pullback and align it onto a coronary.
 #. **Fusion**: scale, stitch, remesh, export.
 
-.. image:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/Fusion_demo.gif
+.. figure:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/Fusion_demo.gif
+   :name: fig-fusion-demo
    :alt: Fusing CCTA and intravascular data in HolOrama
    :align: center
    :width: 760px
@@ -247,7 +248,6 @@ list the ostium and each side branch; selecting one highlights its triplet of re
 points in the scene. You can also click a marker directly. The same list appears in
 column 2; the two stay in sync.
 
-
 .. warning::
   This will be overworked in the future, so don't be alarmed if results seems chaotic. The
   only thing required from here is a rough triplet for the region of interest. If discretized
@@ -389,7 +389,7 @@ Troubleshooting
      - Switch *Proximal start mode* between ``highest_z`` and ``nearest_iv``, and confirm
        the right regions were removed in step 11.
    * - Nothing to export
-     - Export uses the final mesh, which only exists after **Fix and Remesh**.
+     - Export uses the final mesh, which only exists after **Fix & Remesh**.
 
 References
 ----------
