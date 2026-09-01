@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from pages.ccta.vmtk_runner import SmoothingParams
+from pages.ccta.left_half.cut_geometry.vmtk import SmoothingParams
 
 
 class CenterlineSmoothingDialog(QDialog):

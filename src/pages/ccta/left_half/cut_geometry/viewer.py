@@ -42,7 +42,7 @@ from domain.ccta_display_types import (
     OUTLET_COLOR,
     RCA_POINT_COLOR,
 )
-from pages.ccta.cut_geometry import mesh_to_vtk_polydata
+from pages.ccta.left_half.cut_geometry.geometry import mesh_to_vtk_polydata
 
 
 def _points_to_polydata(points: np.ndarray) -> vtkPolyData:

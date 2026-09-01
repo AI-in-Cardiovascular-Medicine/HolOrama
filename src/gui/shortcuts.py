@@ -16,8 +16,8 @@ from input_output.output.contours import write_contours
 from input_output.output.imgs_masks import save_as_nifti
 from input_output.output.other_fmt import save_gated_images
 from input_output.output.reports import report
-from pages.ccta.settings_dialog import CctaSettingsDialog
-from pages.ccta.settings_dialog import apply_and_save as apply_and_save_ccta
+from pages.ccta.popup_windows.settings_dialog import CctaSettingsDialog
+from pages.ccta.popup_windows.settings_dialog import apply_and_save as apply_and_save_ccta
 from pages.intravascular.popup_windows.display_settings_dialog import DisplaySettingsDialog, apply_and_save
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
