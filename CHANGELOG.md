@@ -6,6 +6,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [0.10.0] - 2026-08-17
 
 ### Added
+- **Settings → CCTA Settings...**, a dialog for the CCTA label palette, mask opacity and windowing/zoom sensitivity, alongside the existing **Display Settings...**. Both write back to `config.yaml`.
+- Contour snap radius is now configurable (`intravascular.snap_radius_px`, default 10 px) and exposed as **Snap Radius** in Display Settings — how close a click must land to grab a point or close a contour.
 - OCT pullbacks show a vessel schematic where IVUS shows the interactive gating plot: an idealized longitudinal view of the whole pullback with the imaging catheter as two grey lines (`display.catheter_diameter`, default 0.9 mm), the lumen at ± half its shortest distance, the EEM at ± its equal-area radius, plaque filled in between, and a calcium (top) / lipid (bottom) strip coloured by each frame's mask area as a fraction of the plaque area. Uncontoured stretches are interpolated and drawn dotted; clicking jumps to a frame.
 
 ### Fixed
@@ -14,6 +16,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - Lumen measurements (and with them the longitudinal view's area dots and the OCT schematic) did not follow every contour change. A frame was measured from the contour that was already on screen rather than the one just stored, so replacing a contour wholesale (copy from a neighbour (`Shift+A/D/W/S`), brush commit, undo, `Ctrl+wheel` scaling) kept the previous numbers or produced none at all; batch changes (automatic segmentation, NIfTI mask import) measured nothing until each frame was visited; and deleting contours left the plots showing frames that no longer had one.
 
 ### Changed
+- `config.yaml` is now grouped by module (`common`, `intravascular`, `ccta`, `fusion`, `gating`, `report`, `save`, `vmtk`, `segmentation`) instead of one flat list; settings shared across pages live under `common`.
+- The categorical colour palette moved to `domain/colors.py` so CCTA, Fusion and the intravascular plots draw from one shared definition.
 - Wire shadows are now a multi-instance contour type like calcium or lipid: a frame can carry several wires instead of one. ➕📐 **Add Wire** (`Ctrl+3`) adds another wire, 📐 **Angle Wire** (`3`) still replaces all of them. Every wire is exported into the mask (label 9), `Ctrl+Z` undoes the last one, and **Remove Contours** clears them over a frame range. `FrameData.wire` changed from a single point tuple to a `Contour` holding one entry per wire; contour files written with the old shape are migrated on load.
 
 ## [0.9.0] - 2026-08-14 Release Initial Compiled Binary
