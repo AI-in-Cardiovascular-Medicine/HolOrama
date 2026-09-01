@@ -13,6 +13,7 @@ intravascular:
   contour_thickness: 2
   point_thickness: 1
   point_radius: 10
+  snap_radius_px: 10  # how close a click must land to a point to grab/close a contour
   color_contour: 'green' # 20 predefined colors in PyQt6 (https://doc.qt.io/qt-6/qcolor.html)
   color_eem: '#03b1fc'
   color_calcium: 'white'

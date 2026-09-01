@@ -28,6 +28,7 @@ DEFAULT_DISPLAY_SETTINGS: dict[str, Any] = {
     'contour_thickness': 2,
     'point_thickness': 1,
     'point_radius': 10,
+    'snap_radius_px': 10,
     'color_contour': 'green',
     'color_eem': '#03b1fc',
     'color_calcium': 'white',
@@ -131,6 +132,16 @@ class DisplaySettingsDialog(QDialog):
         self._point_radius_box.setValue(int(current['point_radius']))
         form.addRow('Point Radius', self._point_radius_box)
 
+        self._snap_radius_box = QSpinBox()
+        self._snap_radius_box.setRange(1, 100)
+        self._snap_radius_box.setSuffix(' px')
+        self._snap_radius_box.setToolTip(
+            'How close a click must land to an existing point to grab it, or to the first '
+            'point to close a contour. Larger = easier to hit, harder to place points nearby.'
+        )
+        self._snap_radius_box.setValue(int(current['snap_radius_px']))
+        form.addRow('Snap Radius', self._snap_radius_box)
+
         self._color_values: dict[str, str] = {k: current[k] for k in _COLOR_LABELS}
         self._color_swatches: dict[str, QPushButton] = {}
         for key, label in _COLOR_LABELS.items():
@@ -185,6 +196,7 @@ class DisplaySettingsDialog(QDialog):
         self._contour_thickness_box.setValue(DEFAULT_DISPLAY_SETTINGS['contour_thickness'])
         self._point_thickness_box.setValue(DEFAULT_DISPLAY_SETTINGS['point_thickness'])
         self._point_radius_box.setValue(DEFAULT_DISPLAY_SETTINGS['point_radius'])
+        self._snap_radius_box.setValue(DEFAULT_DISPLAY_SETTINGS['snap_radius_px'])
         for key, swatch in self._color_swatches.items():
             default = DEFAULT_DISPLAY_SETTINGS[key]
             self._color_values[key] = default
@@ -199,6 +211,7 @@ class DisplaySettingsDialog(QDialog):
         values['contour_thickness'] = self._contour_thickness_box.value()
         values['point_thickness'] = self._point_thickness_box.value()
         values['point_radius'] = self._point_radius_box.value()
+        values['snap_radius_px'] = self._snap_radius_box.value()
         values.update(self._color_values)
         return values
 
