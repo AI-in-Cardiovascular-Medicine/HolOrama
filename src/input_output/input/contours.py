@@ -102,12 +102,12 @@ def _build_frame_data_legacy(raw: dict, num_frames: int, scaling_factor: float =
         ml1, ml2 = measure_lengths[i] if i < len(measure_lengths) else (None, None)
         ml1 = None if ml1 is None or (isinstance(ml1, float) and math.isnan(ml1)) else ml1
         ml2 = None if ml2 is None or (isinstance(ml2, float) and math.isnan(ml2)) else ml2
-        eem = _build_contour_legacy(raw, 'eem', i)
         frames[i] = FrameData(
             phase=phases[i] if i < len(phases) else '-',
-            unlabeled=not _has_points(eem),  # no EEM: the frame was most likely never analyzed
+            # This format has no quality field at all, so no frame carries an assigned
+            # label to keep and every one of them loads unlabeled (the FrameData default).
             lumen=_build_contour_legacy(raw, 'lumen', i),
-            eem=eem,
+            eem=_build_contour_legacy(raw, 'eem', i),
             calcium=_build_contour_legacy(raw, 'calcium', i),
             branch=_build_contour_legacy(raw, 'branch', i),
             lipid=_build_contour_legacy(raw, 'lipid', i),
@@ -122,6 +122,20 @@ def _build_frame_data_legacy(raw: dict, num_frames: int, scaling_factor: float =
 def _has_points(contour: Contour) -> bool:
     """True if `contour` holds at least one drawn point — asdict persists empty entries too."""
     return any(x and y for x, y in contour.contours)
+
+
+def _is_unlabeled(frame_raw: dict, quality: str, guiding_catheter: bool, unanalyzable: bool) -> bool:
+    """Whether the frame loads with its Unlabeled flag set.
+
+    A rating and the flags are the only labels a frame can carry, so one holding none of
+    them is unlabeled by definition, whatever the file happens to say. Without this a
+    pre-0.11.0 frame that has an EEM but no usable quality — the rating is '' or the key
+    is missing altogether — would come back with no rating and no flag either, showing up
+    as an unreviewed frame with nothing ticked at all.
+    """
+    if quality or guiding_catheter or unanalyzable:
+        return frame_raw.get('unlabeled', False)
+    return True
 
 
 def _build_frame_data(raw: dict, pre_flags: bool = True) -> Dict[int, FrameData]:
@@ -140,12 +154,15 @@ def _build_frame_data(raw: dict, pre_flags: bool = True) -> Dict[int, FrameData]
         i = int(key)
         eem = _build_contour(frame_raw.get('eem'))
         analyzed = not pre_flags or _has_points(eem)
+        quality = frame_raw.get('quality', '') if analyzed else ''
+        guiding_catheter = frame_raw.get('guiding_catheter', False)
+        unanalyzable = frame_raw.get('unanalyzable', False)
         frames[i] = FrameData(
             phase=frame_raw.get('phase', '-'),
-            quality=frame_raw.get('quality', '') if analyzed else '',
-            guiding_catheter=frame_raw.get('guiding_catheter', False),
-            unanalyzable=frame_raw.get('unanalyzable', False),
-            unlabeled=frame_raw.get('unlabeled', not analyzed),
+            quality=quality,
+            guiding_catheter=guiding_catheter,
+            unanalyzable=unanalyzable,
+            unlabeled=_is_unlabeled(frame_raw, quality, guiding_catheter, unanalyzable),
             lumen=_build_contour(frame_raw.get('lumen')),
             eem=eem,
             calcium=_build_contour(frame_raw.get('calcium')),

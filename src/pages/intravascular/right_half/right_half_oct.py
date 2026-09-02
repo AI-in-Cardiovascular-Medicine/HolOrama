@@ -179,6 +179,14 @@ class RightHalfOct(QWidget):
         if checked:
             self._show_quality('')
             set_oct_quality(self.main_window, '')
+        elif not self._checked_quality() and not any(b.isChecked() for b in self.frame_flag_buttons.values()):
+            # Clearing the last thing on a frame leaves no label at all, so it is unlabeled again.
+            self.frame_flag_buttons['unlabeled'].setChecked(True)
+
+    def _checked_quality(self) -> str:
+        """The rating currently shown, or '' when the frame is unrated."""
+        button = self.oct_quality_button_group.checkedButton()
+        return button.text() if button is not None else ''
 
 
 # ---------------------------------------------------------------------------
