@@ -28,8 +28,9 @@ from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialo
 from pages.intravascular.right_half.common import LongitudinalSlot, build_lower_buttons
 from pages.intravascular.utils.oct_plot import OCTPlot
 
-# Per-frame flags shown next to the tagging controls: FrameData attribute -> checkbox text.
-# All of them are mutually exclusive with the quality rating (see RightHalfOct._on_flag_toggled).
+# Per-frame flags shown next to the tagging controls: FrameData attribute -> button text.
+# They and the quality ratings are one exclusive choice split over two rows — a frame carries
+# exactly one label, so picking any button here clears whatever else the frame had.
 OCT_FRAME_FLAGS = (
     ('guiding_catheter', 'Guiding Catheter'),
     ('unanalyzable', 'Unanalyzable'),
@@ -57,41 +58,49 @@ class RightHalfOct(QWidget):
         self.use_tagged_button.setStyleSheet('background-color: yellow')
         self.use_tagged_button.clicked.connect(partial(use_tagged, mw))
 
-        self.frame_flag_buttons: dict[str, QCheckBox] = {}
-        for attr, text in OCT_FRAME_FLAGS:
-            box = QCheckBox(text)
-            box.toggled.connect(partial(self._on_flag_toggled, attr))
-            self.frame_flag_buttons[attr] = box
+        self.catheter_range_button = QPushButton('Catheter Range')  # an action, not a label
+        self.catheter_range_button.setStyleSheet('background-color: orange')
+        self.catheter_range_button.setToolTip('Flag this frame and every frame after it as guiding catheter')
+        self.catheter_range_button.clicked.connect(self._on_catheter_range)
 
-        # Exclusive group, but nothing is checked until the user rates a frame; the way back
-        # to 'no rating' is checking a flag, not clicking the checked button again.
+        # One group across both rows: the flags and the quality ratings are the same choice,
+        # so Qt keeps exactly one of the eight checked and unchecks the rest for us.
+        self.frame_label_group = QButtonGroup(self)
+        self.frame_label_group.setExclusive(True)
+
+        self.frame_flag_buttons: dict[str, QPushButton] = {}
+        for attr, text in OCT_FRAME_FLAGS:
+            btn = QPushButton(text)
+            btn.setCheckable(True)
+            btn.clicked.connect(partial(self._on_flag_clicked, attr))
+            self.frame_flag_buttons[attr] = btn
+            self.frame_label_group.addButton(btn)
+
         self.oct_quality_buttons: dict[str, QPushButton] = {}
-        self.oct_quality_button_group = QButtonGroup(self)
-        self.oct_quality_button_group.setExclusive(True)
         for label in OCT_QUALITY_LABELS:
             btn = QPushButton(label)
             btn.setCheckable(True)
             btn.clicked.connect(partial(self._on_quality_clicked, label))
             self.oct_quality_buttons[label] = btn
-            self.oct_quality_button_group.addButton(btn)
+            self.frame_label_group.addButton(btn)
 
         self.oct_plot = OCTPlot(mw)  # OCT counterpart of the gating plot
 
         vbox = QVBoxLayout(self)
 
         # Both rows live in one grid so they line up: the separators share column 2, and the
-        # area right of them is split into lcm(3, 5) = 15 equal columns, so the three flags
-        # and the five quality buttons spread across exactly the same width.
+        # label area right of them is split into lcm(3, 5) = 15 equal columns, so the three
+        # frame labels and the five quality ratings spread across exactly the same width.
+        # Catheter Range sits past a full-height divider at the end of the label area — it
+        # acts on a whole range of frames rather than labelling the one on screen.
         controls = QGridLayout()
         columns = lcm(len(OCT_FRAME_FLAGS), len(OCT_QUALITY_LABELS))
         flag_span = columns // len(OCT_FRAME_FLAGS)
         quality_span = columns // len(OCT_QUALITY_LABELS)
+        divider_column = 3 + columns
 
         controls.addWidget(self.tagged_frame_button, 0, 0)
         controls.addWidget(self.use_tagged_button, 0, 1)
-        # compare_btn = QPushButton('Compare Frames')
-        # compare_btn.setToolTip('Open a small display to compare two frames')
-        # compare_btn.clicked.connect(partial(open_small_display, mw))
         controls.addWidget(_separator(), 0, 2)
         for i, (attr, _) in enumerate(OCT_FRAME_FLAGS):
             controls.addWidget(self.frame_flag_buttons[attr], 0, 3 + i * flag_span, 1, flag_span)
@@ -101,7 +110,12 @@ class RightHalfOct(QWidget):
         for i, label in enumerate(OCT_QUALITY_LABELS):
             controls.addWidget(self.oct_quality_buttons[label], 1, 3 + i * quality_span, 1, quality_span)
 
-        for column in range(3, 3 + columns):  # the leading columns stay at their content width
+        controls.addWidget(_separator(), 0, divider_column, 2, 1)
+        controls.addWidget(self.catheter_range_button, 0, divider_column + 1)
+
+        # Only the label area takes the slack; the leading and action columns keep their
+        # content width, so both rows stay the same width and stay aligned with each other.
+        for column in range(3, divider_column):
             controls.setColumnStretch(column, 1)
         vbox.addLayout(controls)
 
@@ -144,11 +158,7 @@ class RightHalfOct(QWidget):
         self.tagged_frame_button.blockSignals(False)
         frame_data = (mw.runtime_data.frame_data_dct or {}).get(frame)
         if frame_data is not None:
-            for attr, box in self.frame_flag_buttons.items():
-                box.blockSignals(True)
-                box.setChecked(getattr(frame_data, attr))
-                box.blockSignals(False)
-            self._show_quality(frame_data.quality)
+            self._show_label(frame_data)
         self.oct_plot.set_frame(frame)
 
     def deactivate(self):
@@ -156,37 +166,37 @@ class RightHalfOct(QWidget):
         self.oct_plot.reset()  # drops the old pullback and stops its background measuring
 
     # ------------------------------------------------------------------
-    # Quality / flag interlock
+    # Frame label — one exclusive choice across both rows
     # ------------------------------------------------------------------
 
-    def _show_quality(self, quality):
-        """Reflect `quality` ('' = unrated) in the button row without firing any handler."""
-        group = self.oct_quality_button_group
+    def _label_button(self, frame_data):
+        """The one button standing for this frame's label, or None when it has none."""
+        if frame_data.quality:
+            return self.oct_quality_buttons.get(frame_data.quality)
+        for attr, _ in OCT_FRAME_FLAGS:
+            if getattr(frame_data, attr):
+                return self.frame_flag_buttons[attr]
+        return None
+
+    def _show_label(self, frame_data):
+        """Check the button this frame's label calls for, and nothing else."""
+        target = self._label_button(frame_data)
+        group = self.frame_label_group
         group.setExclusive(False)  # an exclusive group refuses to leave every button unchecked
-        for label, btn in self.oct_quality_buttons.items():
-            btn.setChecked(label == quality)
+        for button in group.buttons():
+            button.setChecked(button is target)
         group.setExclusive(True)
 
     def _on_quality_clicked(self, label):
-        """A rating and the flags are mutually exclusive: rating a frame clears every flag."""
-        set_oct_quality(self.main_window, label)
-        for box in self.frame_flag_buttons.values():
-            box.setChecked(False)  # each writes through _on_flag_toggled
+        set_oct_label(self.main_window, quality=label)
 
-    def _on_flag_toggled(self, attr, checked):
-        """...and the other way round: any flag drops the rating, the only way back to unrated."""
-        set_oct_flag(self.main_window, attr, checked)
-        if checked:
-            self._show_quality('')
-            set_oct_quality(self.main_window, '')
-        elif not self._checked_quality() and not any(b.isChecked() for b in self.frame_flag_buttons.values()):
-            # Clearing the last thing on a frame leaves no label at all, so it is unlabeled again.
-            self.frame_flag_buttons['unlabeled'].setChecked(True)
+    def _on_flag_clicked(self, attr):
+        set_oct_label(self.main_window, flag=attr)
 
-    def _checked_quality(self) -> str:
-        """The rating currently shown, or '' when the frame is unrated."""
-        button = self.oct_quality_button_group.checkedButton()
-        return button.text() if button is not None else ''
+    def _on_catheter_range(self):
+        """Flag this frame and everything after it, then show the result on the current frame."""
+        set_catheter_range(self.main_window)
+        self._on_frame_changed(self.main_window.display_slider.value())
 
 
 # ---------------------------------------------------------------------------
@@ -255,16 +265,33 @@ def use_tagged(main_window):
         main_window.runtime_data.gated_frames = main_window.runtime_data.tagged_frames
 
 
-def set_oct_quality(main_window, label):
+def apply_oct_label(frame_data, quality: str = '', flag: str = '') -> None:
+    """Make `quality` or `flag` the frame's one label, clearing whatever else it carried."""
+    frame_data.quality = quality
+    for attr, _ in OCT_FRAME_FLAGS:
+        setattr(frame_data, attr, attr == flag)
+
+
+def set_oct_label(main_window, quality: str = '', flag: str = '') -> None:
+    """Label the current frame with one quality rating or one flag, never both."""
     if main_window.image_displayed:
         frame = main_window.display_slider.value()
-        main_window.runtime_data.frame_data_dct[frame].quality = label
+        apply_oct_label(main_window.runtime_data.frame_data_dct[frame], quality, flag)
         main_window.save_contours_soon()
 
 
-def set_oct_flag(main_window, attr, checked):
-    """Write one of the OCT_FRAME_FLAGS booleans onto the current frame."""
-    if main_window.image_displayed:
-        frame = main_window.display_slider.value()
-        setattr(main_window.runtime_data.frame_data_dct[frame], attr, bool(checked))
-        main_window.save_contours_soon()
+def set_catheter_range(main_window):
+    """Flag the current frame and every frame after it as guiding catheter.
+
+    The catheter occupies the whole tail of a pullback once it is reached, so those frames
+    are labelled in one go rather than one at a time. Each one is relabelled exactly as a
+    click would: guiding catheter replaces whatever label the frame had.
+    """
+    if not main_window.image_displayed:
+        return
+    frame_data_dct = main_window.runtime_data.frame_data_dct
+    for frame in range(main_window.display_slider.value(), main_window.display_slider.maximum() + 1):
+        frame_data = frame_data_dct.get(frame)
+        if frame_data is not None:
+            apply_oct_label(frame_data, flag='guiding_catheter')
+    main_window.save_contours_soon()

@@ -124,18 +124,21 @@ def _has_points(contour: Contour) -> bool:
     return any(x and y for x, y in contour.contours)
 
 
-def _is_unlabeled(frame_raw: dict, quality: str, guiding_catheter: bool, unanalyzable: bool) -> bool:
-    """Whether the frame loads with its Unlabeled flag set.
+def _frame_label(frame_raw: dict, quality: str) -> Tuple[str, bool, bool, bool]:
+    """The frame's single label, as (quality, guiding_catheter, unanalyzable, unlabeled).
 
-    A rating and the flags are the only labels a frame can carry, so one holding none of
-    them is unlabeled by definition, whatever the file happens to say. Without this a
-    pre-0.11.0 frame that has an EEM but no usable quality — the rating is '' or the key
-    is missing altogether — would come back with no rating and no flag either, showing up
-    as an unreviewed frame with nothing ticked at all.
+    A rating and the flags are one exclusive choice, so exactly one of the four is set no
+    matter what combination the file holds: a frame carrying none of them is unlabeled by
+    definition. That covers a pre-0.11.0 frame with an EEM but no usable rating (the value
+    is '' or the key is missing), which would otherwise load with nothing set at all.
     """
-    if quality or guiding_catheter or unanalyzable:
-        return frame_raw.get('unlabeled', False)
-    return True
+    if quality:
+        return quality, False, False, False
+    if frame_raw.get('guiding_catheter', False):
+        return '', True, False, False
+    if frame_raw.get('unanalyzable', False):
+        return '', False, True, False
+    return '', False, False, True
 
 
 def _build_frame_data(raw: dict, pre_flags: bool = True) -> Dict[int, FrameData]:
@@ -154,15 +157,15 @@ def _build_frame_data(raw: dict, pre_flags: bool = True) -> Dict[int, FrameData]
         i = int(key)
         eem = _build_contour(frame_raw.get('eem'))
         analyzed = not pre_flags or _has_points(eem)
-        quality = frame_raw.get('quality', '') if analyzed else ''
-        guiding_catheter = frame_raw.get('guiding_catheter', False)
-        unanalyzable = frame_raw.get('unanalyzable', False)
+        quality, guiding_catheter, unanalyzable, unlabeled = _frame_label(
+            frame_raw, frame_raw.get('quality', '') if analyzed else ''
+        )
         frames[i] = FrameData(
             phase=frame_raw.get('phase', '-'),
             quality=quality,
             guiding_catheter=guiding_catheter,
             unanalyzable=unanalyzable,
-            unlabeled=_is_unlabeled(frame_raw, quality, guiding_catheter, unanalyzable),
+            unlabeled=unlabeled,
             lumen=_build_contour(frame_raw.get('lumen')),
             eem=eem,
             calcium=_build_contour(frame_raw.get('calcium')),
