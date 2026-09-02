@@ -157,6 +157,7 @@ class LeftHalf:
         self.delete_all_btn = QPushButton('🗑️ Delete All On Frame')
         self.delete_all_btn.clicked.connect(self._on_delete_all)
         self.delete_all_btn.setStyleSheet('background: darkred')
+        self.delete_all_btn.setToolTip("Deletes all currently displayed contours on the image")
 
         contour_row_hbox.addWidget(self.contour_type_combo)
         contour_row_hbox.addWidget(self.new_contour_btn)

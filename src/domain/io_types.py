@@ -156,16 +156,6 @@ class MetaDataCCTA:
     ...
 
 
-# Orientation every CCTA volume and mask is held in once loaded. The 2-D displays index
-# the volume as (z, y, x) and flip axes by hand — axial puts row Y-1 at the top,
-# coronal/sagittal put slice Z-1 at the top (see
-# pages/ccta/left_half/segmentation/display.py::_get_slice). Those flips only produce a
-# radiologically correct image (anterior up, patient-right on the left, superior up) when
-# the array runs z -> Superior, y -> Anterior, x -> Left, which is ITK orientation code
-# 'LAS' — "RPI" in the axis-comes-from notation ITK-Snap and dcm2niix print. Files arrive
-# in any orientation (plain axial CT and most TotalSegmentator output are LPS, i.e. "RAI",
-# which displays flipped front-to-back), so every reader canonicalizes to this and every
-# writer reverses it.
 CANONICAL_ORIENTATION = 'LAS'
 
 # Direction cosines of CANONICAL_ORIENTATION, in SimpleITK's row-major order.
