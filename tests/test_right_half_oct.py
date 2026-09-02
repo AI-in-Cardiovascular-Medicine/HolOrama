@@ -212,6 +212,12 @@ class TestCatheterRange:
         assert _label_of(dct[0]) == ('Bad', False, False, False)
         assert _label_of(dct[1]) == ('', False, True, False)
 
+    def test_clear_starts_disabled_before_a_pullback_is_loaded(self, oct_half, monkeypatch):
+        monkeypatch.setattr(right_half_oct, 'OCTPlot', _StubPlot)
+        monkeypatch.setattr(right_half_oct, 'build_lower_buttons', lambda main_window, button: QVBoxLayout())
+        fresh = RightHalfOct(oct_half.main_window)  # constructed, never activated
+        assert not fresh.clear_catheter_range_button.isEnabled()
+
     def test_clear_is_disabled_while_no_frame_carries_the_label(self, oct_half):
         assert not oct_half.clear_catheter_range_button.isEnabled()
         oct_half.main_window.display_slider.setValue(6)
@@ -247,7 +253,21 @@ class TestLayout:
         finally:
             oct_half.hide()
 
-    def test_clear_sits_under_the_schematic_in_the_splitter_s_top_pane(self, oct_half):
-        pane = oct_half.splitter.widget(0)
-        assert oct_half.oct_plot.parent() is pane
-        assert oct_half.clear_catheter_range_button.parent() is pane
+    def test_clear_sits_directly_below_the_button_it_reverts(self, oct_half):
+        oct_half.resize(1000, 600)
+        oct_half.show()
+        try:
+            oct_half.layout().activate()
+            catheter, clear = oct_half.catheter_range_button, oct_half.clear_catheter_range_button
+            assert catheter.x() == clear.x() and catheter.width() == clear.width()
+            assert catheter.y() + catheter.height() <= clear.y()
+            # ...and both sit right of the divider, past every label button
+            rightmost_label = max(
+                (b.x() + b.width() for b in oct_half.frame_label_group.buttons()),
+            )
+            assert catheter.x() > rightmost_label
+        finally:
+            oct_half.hide()
+
+    def test_the_schematic_has_the_splitter_pane_to_itself(self, oct_half):
+        assert oct_half.splitter.widget(0) is oct_half.oct_plot

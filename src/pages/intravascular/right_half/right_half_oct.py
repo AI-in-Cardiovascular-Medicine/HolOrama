@@ -16,7 +16,6 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QFrame,
     QGridLayout,
-    QHBoxLayout,
     QLabel,
     QPushButton,
     QSplitter,
@@ -65,8 +64,9 @@ class RightHalfOct(QWidget):
         self.catheter_range_button.clicked.connect(self._on_catheter_range)
 
         self.clear_catheter_range_button = QPushButton('Clear Catheter Range')
-        self.clear_catheter_range_button.setToolTip('Drop the guiding catheter label from every frame that carries it')
+        self.clear_catheter_range_button.setToolTip('Set every frame labelled as guiding catheter back to unlabeled')
         self.clear_catheter_range_button.clicked.connect(self._on_clear_catheter_range)
+        self.clear_catheter_range_button.setEnabled(False)  # nothing to revert until a pullback is loaded
 
         # One group across both rows: the flags and the quality ratings are the same choice,
         # so Qt keeps exactly one of the eight checked and unchecks the rest for us.
@@ -96,8 +96,9 @@ class RightHalfOct(QWidget):
         # Both rows live in one grid so they line up: the separators share column 2, and the
         # label area right of them is split into lcm(3, 5) = 15 equal columns, so the three
         # frame labels and the five quality ratings spread across exactly the same width.
-        # Catheter Range sits past a full-height divider at the end of the label area — it
-        # acts on a whole range of frames rather than labelling the one on screen.
+        # Catheter Range and the button that reverts it share an action column past a
+        # full-height divider at the end of the label area: they act on a whole range of
+        # frames rather than labelling the one on screen.
         controls = QGridLayout()
         columns = lcm(len(OCT_FRAME_FLAGS), len(OCT_QUALITY_LABELS))
         flag_span = columns // len(OCT_FRAME_FLAGS)
@@ -117,6 +118,7 @@ class RightHalfOct(QWidget):
 
         controls.addWidget(_separator(), 0, divider_column, 2, 1)
         controls.addWidget(self.catheter_range_button, 0, divider_column + 1)
+        controls.addWidget(self.clear_catheter_range_button, 1, divider_column + 1)
 
         # Only the label area takes the slack; the leading and action columns keep their
         # content width, so both rows stay the same width and stay aligned with each other.
@@ -126,19 +128,8 @@ class RightHalfOct(QWidget):
 
         self.lview_slot = LongitudinalSlot()
 
-        # The plot and the button that undoes what it veils share the splitter's top pane,
-        # so the button sits directly under the greyed-out stretch it clears.
-        plot_pane = QWidget()
-        plot_pane_layout = QVBoxLayout(plot_pane)
-        plot_pane_layout.setContentsMargins(0, 0, 0, 0)
-        plot_pane_layout.addWidget(self.oct_plot)
-        clear_row = QHBoxLayout()
-        clear_row.addStretch()
-        clear_row.addWidget(self.clear_catheter_range_button)
-        plot_pane_layout.addLayout(clear_row)
-
         self.splitter = QSplitter(Qt.Orientation.Vertical)
-        self.splitter.addWidget(plot_pane)
+        self.splitter.addWidget(self.oct_plot)
         self.splitter.addWidget(self.lview_slot)
         self.splitter.setStretchFactor(0, mw.config.intravascular.gating_display_stretch)
         self.splitter.setStretchFactor(1, mw.config.intravascular.lview_display_stretch)
