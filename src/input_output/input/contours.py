@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Tuple
 
 from loguru import logger
 
-from domain.io_types import Contour, FrameData, Measure, Measurements, set_wire_points
+from domain.io_types import Contour, FrameData, Measure, Measurements, set_sector_points
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from version import version_file_str
 
@@ -175,7 +175,8 @@ def _build_frame_data(raw: dict, pre_flags: bool = True) -> Dict[int, FrameData]
             measurement_1=_build_measure(frame_raw.get('measurement_1')),
             measurement_2=_build_measure(frame_raw.get('measurement_2')),
             reference=frame_raw.get('reference'),
-            wire=_build_wire(frame_raw.get('wire')),
+            wire=_build_sector_contour(frame_raw.get('wire')),
+            blood=_build_sector_contour(frame_raw.get('blood')),
             centroid=frame_raw.get('centroid'),
             closest_points=frame_raw.get('closest_points'),
             farthest_points=frame_raw.get('farthest_points'),
@@ -251,17 +252,23 @@ def _build_contour(raw: Optional[dict]) -> Contour:
     )
 
 
-def _build_wire(raw) -> Contour:
-    """Reconstruct the frame's wires from either persisted shape.
+def _build_sector_contour(raw) -> Contour:
+    """Reconstruct one frame's angular sectors (wire shadows, blood) from either
+    persisted shape.
 
-    Current format is a Contour dict with one entry per wire (several wires per
-    frame are allowed). Files written before that stored a single wire directly as
-    [[x1, y1], [x2, y2]] — migrate it into the first (and only) wire entry.
+    Current format is a Contour dict with one entry per sector (several per frame are
+    allowed). Files written before that stored a single wire directly as
+    [[x1, y1], [x2, y2]] — migrate it into the first (and only) sector entry.
+
+    Sector points are kept exactly as written, unlike _build_contour's spline points: a
+    sector's coordinates are read as directions from the image centre (see tools.angle),
+    so neither the duplicate-closing-point rule nor the number of points per entry means
+    what it does for a spline.
     """
     if not raw:
         return Contour()
     if isinstance(raw, dict):
-        wire = Contour(
+        contour = Contour(
             contours=[],
             measurements=Measurements(**raw.get('measurements', {})),
             closed=raw.get('closed', []),
@@ -271,15 +278,15 @@ def _build_wire(raw) -> Contour:
         for entry in raw.get('contours', []):
             x = list(entry[0]) if entry else []
             y = list(entry[1]) if len(entry) > 1 else []
-            wire.contours.append((x, y))
-        return wire
+            contour.contours.append((x, y))
+        return contour
 
     points = _normalize_coord_entry(raw)
     if not points:
         return Contour()
-    wire = Contour()
-    set_wire_points(wire, 0, points)
-    return wire
+    contour = Contour()
+    set_sector_points(contour, 0, points)
+    return contour
 
 
 def _normalize_coord_entry(item) -> List[Tuple[float, float]]:

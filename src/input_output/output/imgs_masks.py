@@ -6,9 +6,10 @@ from PyQt6.QtWidgets import QApplication, QProgressDialog
 from scipy.interpolate import splev, splprep
 from skimage.draw import polygon2mask
 
-from domain.all_types import ContourType
-from domain.io_types import iter_wires
+from domain.all_types import ANGLE_TYPES, ContourType
+from domain.io_types import iter_sectors
 from domain.mask_types import MASK_SPECS
+from tools.angle import contains_angle, sector_from_points
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
 
@@ -211,41 +212,33 @@ def _region_mean_distance(mask: np.ndarray, cx: float, cy: float) -> float | Non
     return float(np.hypot(xs - cx, ys - cy).mean())
 
 
-def _wire_shadow_mask(wire, image_shape, center_y, center_x):
+def _angle_sector_mask(contour, image_shape, center_y, center_x):
     """
-    Boolean mask for the guide-wire angular shadow(s): per wire, the smaller
-    sector between its two radial lines, unioned over every wire on the frame.
+    Boolean mask for one contour type's angular sectors (the guide-wire shadow, the
+    blood artefact): the wedge each one covers, unioned over every sector on the frame.
 
-    wire: Contour holding one entry of 1-2 (x, y) points per wire, in original
-    image pixel coords. Wires with fewer than two points are still being drawn
-    and contribute no shadow.
+    contour: Contour holding one entry of 1-3 (x, y) points per sector, in original
+    image pixel coords — see tools.angle for how those points describe the wedge,
+    including the sectors wider than 180 degrees that a stored interior marker allows.
+    Sectors with fewer than two points are still being drawn and cover nothing.
     """
-    shadow = np.zeros(image_shape, dtype=bool)
-    wires = [pts for pts in iter_wires(wire) if len(pts) >= 2]
-    if not wires:
-        return shadow
+    covered = np.zeros(image_shape, dtype=bool)
+    sectors = [pts for pts in iter_sectors(contour) if len(pts) >= 2]
+    if not sectors:
+        return covered
 
     H, W = image_shape
     yy, xx = np.mgrid[0:H, 0:W]
     pixel_angles = np.arctan2(yy.astype(float) - center_y, xx.astype(float) - center_x)
+    centre = (float(center_x), float(center_y))
 
-    for pts in wires:
-        (p1x, p1y), (p2x, p2y) = pts[0], pts[1]
+    for pts in sectors:
+        geometry = sector_from_points(pts, centre)
+        if geometry is None:
+            continue
+        covered |= contains_angle(pixel_angles, *geometry)
 
-        a1 = np.arctan2(p1y - center_y, p1x - center_x)
-        a2 = np.arctan2(p2y - center_y, p2x - center_x)
-
-        # CCW arc from a1 → a2; pick the smaller of the two arcs
-        ccw_size = (a2 - a1) % (2 * np.pi)
-        if ccw_size <= np.pi:
-            # CCW a1→a2 is the smaller sector
-            shadow |= ((pixel_angles - a1) % (2 * np.pi)) <= ccw_size
-        else:
-            # CCW a2→a1 is the smaller sector
-            cw_size = (a1 - a2) % (2 * np.pi)
-            shadow |= ((pixel_angles - a2) % (2 * np.pi)) <= cw_size
-
-    return shadow
+    return covered
 
 
 # ---------------------------------------------------------------------------
@@ -345,11 +338,12 @@ def contours_to_mask(images, contoured_frames, data):
     5  macrophage  - within EEM (open or closed spline)
     7  branch      - side-branch lumen (closed spline, not EEM-clipped)
     9  wire shadow - guide-wire angular shadow
+    10 blood       - blood artefact angular sector
 
     Where structures overlap, priority follows an "onion" rule: the structure
     whose pixels sit farther (on average) from the lumen centroid displaces
-    the one closer to it. Three exceptions override that rule: the wire shadow
-    is always the bottom-most layer, the EEM wall is always painted right on
+    the one closer to it. Three exceptions override that rule: the angular
+    sectors are always the bottom-most layers, the EEM wall is always painted right on
     top of it (a backdrop that never hides lumen/branch/plaques — since a
     plaque's pixels are a subset of the EEM annulus, its mean distance can
     lose to the annulus average even though it must stay visible), and the
@@ -372,7 +366,7 @@ def contours_to_mask(images, contoured_frames, data):
     _eem = MASK_SPECS[ContourType.EEM]
     _lumen = MASK_SPECS[ContourType.LUMEN]
     _branch = MASK_SPECS[ContourType.BRANCH]
-    _wire = MASK_SPECS[ContourType.WIRE]
+    _sectors = [MASK_SPECS[contour_type] for contour_type in ANGLE_TYPES]
     _plaques = [
         MASK_SPECS[ContourType.CALCIUM],
         MASK_SPECS[ContourType.LIPID],
@@ -392,12 +386,13 @@ def contours_to_mask(images, contoured_frames, data):
 
         fm = np.zeros(image_shape, dtype=np.uint8)
 
-        # Wire is always the bottom-most layer — painted first so every other
-        # structure sits on top of it, regardless of the onion order below.
-        wire_shadow = _wire_shadow_mask(fd.wire, image_shape, center_y, center_x)
-        fm[wire_shadow] = _wire.label
+        # The angular sectors are always the bottom-most layers — painted first so every
+        # other structure sits on top of them, regardless of the onion order below.
+        for sector_spec in _sectors:
+            sector = _angle_sector_mask(getattr(fd, sector_spec.contour_type.value), image_shape, center_y, center_x)
+            fm[sector] = sector_spec.label
 
-        # EEM is always the backdrop, painted right on top of the wire and below
+        # EEM is always the backdrop, painted right on top of them and below
         # everything else: it must never hide the lumen, a side branch, or a
         # plaque, even a small one whose own mean distance loses to the wall
         # annulus's average (a plaque's pixels are always a subset of this

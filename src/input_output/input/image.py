@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
 )
 from skimage import measure as sk_measure
 
-from domain.all_types import ContourType, SupportedType
+from domain.all_types import ANGLE_TYPES, ContourType, SupportedType
 from domain.io_types import FrameData
 from domain.mask_types import MASK_SPECS
 from domain.oct_display_types import OCT_LUT
@@ -189,9 +189,9 @@ def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) 
         ErrorMessage(main_window, 'Load an image before importing a mask')
         return
 
-    # Wires are not spline contours (each entry holds two angle points, see FrameData.wire),
-    # so a traced mask boundary cannot be imported into them.
-    if contour_type not in MASK_SPECS or contour_type is ContourType.WIRE:
+    # Angular sectors are not spline contours (each entry holds the angles bounding it,
+    # see FrameData.wire), so a traced mask boundary cannot be imported into them.
+    if contour_type not in MASK_SPECS or contour_type in ANGLE_TYPES:
         return
     spec = MASK_SPECS[contour_type]
 

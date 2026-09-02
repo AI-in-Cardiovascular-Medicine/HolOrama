@@ -184,6 +184,12 @@ def init_menu(main_window, ccta_page):
         'Add Angle Wire Shadow', partial(new_angle, main_window, ContourType.WIRE, True)
     )
     add_angle_wire.setShortcut('Ctrl+3')
+    angle_blood = edit_menu.addAction('Angle Blood Sector', partial(new_angle, main_window, ContourType.BLOOD))
+    angle_blood.setShortcut('B')
+    add_angle_blood = edit_menu.addAction(
+        'Add Angle Blood Sector', partial(new_angle, main_window, ContourType.BLOOD, True)
+    )
+    add_angle_blood.setShortcut('Ctrl+B')
     closed_spline = edit_menu.addAction('Closed Spline', partial(set_tool, main_window, SegmentationTool.CLOSED_SPLINE))
     closed_spline.setShortcut('4')
     open_spline = edit_menu.addAction('Open Spline', partial(set_tool, main_window, SegmentationTool.OPEN_SPLINE))

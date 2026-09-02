@@ -1,11 +1,11 @@
 import pytest
 
-from domain.io_types import Contour, iter_wires, set_wire_points, wire_points
+from domain.io_types import Contour, iter_sectors, sector_points, set_sector_points
 from input_output.input.contours import (
     _build_contour,
     _build_frame_data,
     _build_measure,
-    _build_wire,
+    _build_sector_contour,
     _contour_file_sort_key,
     _normalize_coord_entry,
 )
@@ -80,16 +80,16 @@ class TestBuildContour:
         assert c.end_coords == [[(2.0, 4.0)]]
 
 
-class TestBuildWire:
-    def test_none_returns_empty_wire(self):
-        assert iter_wires(_build_wire(None)) == []
+class TestBuildSectorContour:
+    def test_none_returns_empty_sector(self):
+        assert iter_sectors(_build_sector_contour(None)) == []
 
     def test_legacy_single_wire_becomes_first_entry(self):
         # Files written before multi-wire support stored one wire as [[x1, y1], [x2, y2]].
-        w = _build_wire([[316.0, 318.0], [372.0, 298.0]])
-        assert iter_wires(w) == [[(316.0, 318.0), (372.0, 298.0)]]
+        w = _build_sector_contour([[316.0, 318.0], [372.0, 298.0]])
+        assert iter_sectors(w) == [[(316.0, 318.0), (372.0, 298.0)]]
 
-    def test_current_format_keeps_every_wire(self):
+    def test_current_format_keeps_every_sector(self):
         raw = {
             'contours': [([1.0, 2.0], [3.0, 4.0]), ([5.0, 6.0], [7.0, 8.0])],
             'closed': [False, False],
@@ -97,34 +97,40 @@ class TestBuildWire:
             'end_coords': [],
             'measurements': {},
         }
-        assert iter_wires(_build_wire(raw)) == [[(1.0, 3.0), (2.0, 4.0)], [(5.0, 7.0), (6.0, 8.0)]]
+        assert iter_sectors(_build_sector_contour(raw)) == [[(1.0, 3.0), (2.0, 4.0)], [(5.0, 7.0), (6.0, 8.0)]]
 
     def test_does_not_strip_two_identical_points(self):
-        # _build_contour's duplicate-closing-point rule must not apply to wires.
+        # _build_contour's duplicate-closing-point rule must not apply to sectors.
         raw = {'contours': [([1.0, 1.0], [2.0, 2.0])]}
-        assert iter_wires(_build_wire(raw)) == [[(1.0, 2.0), (1.0, 2.0)]]
+        assert iter_sectors(_build_sector_contour(raw)) == [[(1.0, 2.0), (1.0, 2.0)]]
+
+    def test_keeps_the_interior_marker(self):
+        # The third point is what makes an opening past 180 degrees unambiguous, so it
+        # has to come back off disk like any other.
+        raw = {'contours': [([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])]}
+        assert iter_sectors(_build_sector_contour(raw)) == [[(1.0, 4.0), (2.0, 5.0), (3.0, 6.0)]]
 
 
-class TestWireHelpers:
-    def test_set_wire_points_grows_aligned_lists(self):
+class TestSectorHelpers:
+    def test_set_sector_points_grows_aligned_lists(self):
         w = Contour()
-        set_wire_points(w, 1, [(1.0, 2.0), (3.0, 4.0)])
+        set_sector_points(w, 1, [(1.0, 2.0), (3.0, 4.0)])
         assert len(w.contours) == 2
         assert w.closed == [False, False]
         assert w.start_coords == [[], []]
         assert w.end_coords == [[], []]
-        assert wire_points(w, 1) == [(1.0, 2.0), (3.0, 4.0)]
+        assert sector_points(w, 1) == [(1.0, 2.0), (3.0, 4.0)]
 
-    def test_wire_points_out_of_range(self):
-        assert wire_points(Contour(), 0) == []
+    def test_sector_points_out_of_range(self):
+        assert sector_points(Contour(), 0) == []
 
-    def test_iter_wires_skips_empty_entries(self):
+    def test_iter_sectors_skips_empty_entries(self):
         w = Contour()
-        set_wire_points(w, 1, [(1.0, 2.0), (3.0, 4.0)])
-        assert iter_wires(w) == [[(1.0, 2.0), (3.0, 4.0)]]
+        set_sector_points(w, 1, [(1.0, 2.0), (3.0, 4.0)])
+        assert iter_sectors(w) == [[(1.0, 2.0), (3.0, 4.0)]]
 
-    def test_iter_wires_accepts_pre_migration_tuple(self):
-        assert iter_wires(((1.0, 2.0), (3.0, 4.0))) == [[(1.0, 2.0), (3.0, 4.0)]]
+    def test_iter_sectors_accepts_pre_migration_tuple(self):
+        assert iter_sectors(((1.0, 2.0), (3.0, 4.0))) == [[(1.0, 2.0), (3.0, 4.0)]]
 
 
 class TestBuildMeasure:

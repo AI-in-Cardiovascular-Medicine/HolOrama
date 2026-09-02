@@ -102,7 +102,9 @@ Drawing
    * - :kbd:`1` / :kbd:`2`
      - Draw measurement 1 / measurement 2
    * - :kbd:`3` / :kbd:`Ctrl+3`
-     - Draw a new / additional wire-shadow angle (a frame may carry several wires)
+     - Draw a new / additional wire-shadow sector (a frame may carry several wires)
+   * - :kbd:`B` / :kbd:`Ctrl+B`
+     - Draw a new / additional blood sector (same tool, in dark red)
    * - :kbd:`Delete`
      - Delete the active contour
    * - :kbd:`Ctrl+Z`

@@ -18,8 +18,9 @@ The layout
 .. rubric:: Left half: the image
 
 - **Row 1, drawing tools:** ⭕ **Closed Spline**, ➰ **Open Spline**, 🖌️ **Brush**,
-  🟡 **Reference**, 📏 **Measurement 1**, 📏 **Measurement 2**, 📐 **Angle Wire**,
-  ➕📐 **Add Wire**.
+  🟡 **Reference**, 📏 **Measurement 1**, 📏 **Measurement 2**, the 📐 **Angle** dropdown
+  (Angle Wire / Angle Blood) and ➕📐 **Add Wire** / ➕📐 **Add Blood**, which follows
+  whichever the dropdown shows.
   Exactly one is active at a time; which ones are enabled depends on the selected contour
   type.
 - **Row 2, contour selector:** a dropdown (Lumen / EEM / Calcium / Branch / Lipid /
@@ -191,7 +192,11 @@ then click in the image to place points.
    * - Wire
      - :kbd:`3`
      - :kbd:`Ctrl+3`
-     - —
+     - 📐 angular sector
+   * - Blood
+     - :kbd:`B`
+     - :kbd:`Ctrl+B`
+     - 📐 angular sector
 
 .. note::
   To return to a neutral state (no tool, Lumen as active contour), 
@@ -284,13 +289,24 @@ Colours of the start/end markers are configurable (``color_start_point``,
 
 - 📏 **Measurement 1** (:kbd:`1`) and **Measurement 2** (:kbd:`2`) each measure a distance
   between two clicked points. Both are stored per frame and end up in the report.
-- 📐 **Angle Wire** (:kbd:`3`) marks the guide-wire shadow as an angular sector: click two
-  points and the sector between the two radial lines through them becomes the shadow.
-  ➕📐 **Add Wire** (:kbd:`Ctrl+3`) marks another wire on the same frame, keeping the ones
-  already there; some pullbacks show more than one wire. Drawing with **Angle Wire**
-  instead replaces every wire on the frame. Wires behave like the other multi-instance
-  contours (calcification, lipid, …): each is stored separately, all of them are exported
-  to the mask (label 9), and :kbd:`Ctrl+Z` undoes the last one.
+- 📐 **Angle Wire** (:kbd:`3`) marks the guide-wire shadow as an angular sector. Click
+  once to set the boundary it opens from: two handles and an arc appear on a circle
+  ``angle_handle_radius_mm`` (5 mm by default) out from the image centre, and the sector
+  then **opens as you move the pointer**, its second boundary dotted and the opening shown
+  in degrees. Click again to fix it, and the dotted boundary turns solid. Because the
+  opening is tracked as you turn rather than derived from the two clicks, a sector can be
+  opened **past 180 degrees** — keep turning the same way — and turning back through the
+  first boundary opens it the other way instead. Either handle can be **dragged**
+  afterwards to re-aim that boundary; the other one stays put.
+- 📐 **Angle Blood** marks a blood artefact the same way, in dark red (:kbd:`B`, and
+  :kbd:`Ctrl+B` to add). It is the same tool and the same shape — pick it from the 📐
+  dropdown, which also points ➕📐 **Add** at it.
+- ➕📐 **Add Wire** (:kbd:`Ctrl+3`) marks another sector of the selected type on the same
+  frame, keeping the ones already there; some pullbacks show more than one wire. Drawing
+  with **Angle Wire** instead replaces every wire on the frame. Sectors behave like the
+  other multi-instance contours (calcification, lipid, …): each is stored separately, all
+  of them are exported to the mask (wire label 9, blood label 10), and :kbd:`Ctrl+Z`
+  undoes the last edit — placing one, or dragging a boundary.
 - 🟡 **Reference** places a reference point on the frame. This point defines the rotational
   reference used when the pullback is later aligned in the :doc:`fusion` module.
 - :kbd:`G` hides the measurement overlays, :kbd:`H` hides all contours.

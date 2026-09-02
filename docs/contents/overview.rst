@@ -57,8 +57,8 @@ data, so you can move back and forth without reloading.
 Frame-by-frame contouring of a pullback.
 
 - Contour types: ``lumen``, ``EEM``, ``calcium``, ``side branch``, ``lipid``,
-  ``macrophage``, ``wire`` (as a shadow angle, several per frame), plus distance
-  measurements and a reference point.
+  ``macrophage``, plus the two angular sectors ``wire`` (its shadow) and ``blood``
+  (several of each per frame), distance measurements and a reference point.
 - Every contour is a **closed spline**, an **open spline**, or a closed spline carrying an
   **uncertain region** delimited by a start and end point. Uncertainty is part of the
   annotation, not a comment in a spreadsheet.

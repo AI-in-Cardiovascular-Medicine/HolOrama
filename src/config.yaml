@@ -13,7 +13,7 @@ intravascular:
   contour_thickness: 2
   point_thickness: 1
   point_radius: 10
-  snap_radius_px: 10  # how close a click must land to grab a point or close a contour
+  snap_radius_px: 5   # how close a click must land to grab a point or close a contour
   color_contour: 'green'  # PyQt6 color name or hex (https://doc.qt.io/qt-6/qcolor.html)
   color_eem: '#03b1fc'
   color_calcium: 'white'
@@ -21,6 +21,8 @@ intravascular:
   color_start_point: 'yellow'
   color_end_point: 'red'
   color_angle: '#ffa500'
+  color_blood: '#8b0000'
+  angle_handle_radius_mm: 5.0  # how far from the image centre a wire/blood sector's handles and arc sit
   alpha_contour: 100  # 0-255
   catheter_diameter: 0.9  # mm, drawn in the OCT vessel schematic (0.9 = 2.7 F)
 

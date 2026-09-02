@@ -15,7 +15,9 @@ MASK_ALPHA = DEFAULT_MASK_ALPHA  # overlay opacity (0 = transparent, 1 = opaque)
 class MaskSpec:
     label: int
     contour_type: ContourType
-    paint_order: int  # blend-loop order for the overlay only; mask *priority* is decided dynamically, see contours_to_mask
+    paint_order: (
+        int  # blend-loop order for the overlay only; mask *priority* is decided dynamically, see contours_to_mask
+    )
     read_predicate: Callable[[np.ndarray], np.ndarray] | None = None
 
     def matches(self, mask_array: np.ndarray) -> np.ndarray:
@@ -26,9 +28,19 @@ class MaskSpec:
 
 
 MASK_SPECS: dict[ContourType, MaskSpec] = {
+    # Both angular sectors are bottom-most layers of the overlay and of the exported
+    # mask (see contours_to_mask): they mark image regions nothing can be read from,
+    # so anything drawn anyway belongs on top. Where two of them overlap the later one
+    # wins, which is why their relative paint_order does not matter — neither is a
+    # tissue label, so no measurement depends on which of the two shows through.
     ContourType.WIRE: MaskSpec(
         label=9,
         contour_type=ContourType.WIRE,
+        paint_order=0,
+    ),
+    ContourType.BLOOD: MaskSpec(
+        label=10,
+        contour_type=ContourType.BLOOD,
         paint_order=0,
     ),
     ContourType.EEM: MaskSpec(

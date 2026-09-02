@@ -61,8 +61,13 @@ analysis outputs are unaffected and are still written next to the file you opene
        code (see `Qt colors <https://doc.qt.io/qt-6/qcolor.html>`_).
    * - ``color_start_point`` / ``color_end_point``
      - Colours of the two markers delimiting an uncertain region (default yellow and red).
-   * - ``color_angle``
-     - Colour of the wire-shadow angle marker.
+   * - ``color_angle`` / ``color_blood``
+     - Colours of the two angular sectors: the wire shadow and the blood artefact.
+   * - ``angle_handle_radius_mm``
+     - How far from the image centre an angular sector's two handles and its arc are
+       drawn (default 5 mm). Only the *direction* of a sector's points means anything,
+       so this is purely where they are shown; it is pulled inside the image for
+       pullbacks whose field of view does not reach that far.
    * - ``alpha_contour``
      - Contour fill transparency, 0–255 (higher is more opaque).
 
