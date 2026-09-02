@@ -156,6 +156,47 @@ class MetaDataCCTA:
     ...
 
 
+# Orientation every CCTA volume and mask is held in once loaded. The 2-D displays index
+# the volume as (z, y, x) and flip axes by hand — axial puts row Y-1 at the top,
+# coronal/sagittal put slice Z-1 at the top (see
+# pages/ccta/left_half/segmentation/display.py::_get_slice). Those flips only produce a
+# radiologically correct image (anterior up, patient-right on the left, superior up) when
+# the array runs z -> Superior, y -> Anterior, x -> Left, which is ITK orientation code
+# 'LAS' — "RPI" in the axis-comes-from notation ITK-Snap and dcm2niix print. Files arrive
+# in any orientation (plain axial CT and most TotalSegmentator output are LPS, i.e. "RAI",
+# which displays flipped front-to-back), so every reader canonicalizes to this and every
+# writer reverses it.
+CANONICAL_ORIENTATION = 'LAS'
+
+# Direction cosines of CANONICAL_ORIENTATION, in SimpleITK's row-major order.
+CANONICAL_DIRECTION: Tuple[float, ...] = (1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0)
+
+
+@dataclass(frozen=True)
+class VolumeGeometry:
+    """Voxel-grid geometry of a loaded CCTA volume.
+
+    ``origin`` / ``spacing`` / ``direction`` describe the canonicalized grid the app works
+    in, so they can be attached to any array shaped like the loaded volume.
+    ``source_orientation`` is the orientation code the file was stored in, kept so a mask
+    drawn here can be written back the way the source image was laid out.
+    """
+
+    origin: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+    spacing: Tuple[float, float, float] = (1.0, 1.0, 1.0)  # sitk order: (x, y, z)
+    direction: Tuple[float, ...] = CANONICAL_DIRECTION
+    source_orientation: str = CANONICAL_ORIENTATION
+
+
+def geometry_from_spacing(voxel_spacing: Tuple[float, float, float]) -> VolumeGeometry:
+    """A canonical-orientation geometry carrying just `voxel_spacing` (dz, dy, dx).
+
+    Fallback for writing a mask when the source image's geometry is not at hand.
+    """
+    dz, dy, dx = voxel_spacing
+    return VolumeGeometry(spacing=(dx, dy, dz))
+
+
 @dataclass
 class MetaDataFusion:
     modality: str = 'Fusion'

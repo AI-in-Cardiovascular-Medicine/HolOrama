@@ -10,7 +10,6 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
-import SimpleITK as sitk
 import trimesh
 from loguru import logger
 from PyQt6.QtCore import Qt, QTimer
@@ -25,6 +24,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from domain.io_types import VolumeGeometry, geometry_from_spacing
 from domain.runtime_types import CctaRuntimeData
 from gui.active_page import ActivePage
 from input_output.input.ccta_io import (
@@ -253,6 +253,7 @@ class CctaPage(QWidget):
         dy, dx = metadata['pixel_spacing']
         self.data.volume = volume
         self.data.voxel_spacing = (dz, dy, dx)
+        self.data.geometry = metadata.get('geometry')
 
         ccta_meta = metadata.get('ccta_metadata')
         if ccta_meta is not None:
@@ -301,7 +302,7 @@ class CctaPage(QWidget):
             return False
         mask_path = max(matches, key=os.path.getmtime)
         try:
-            mask, _ = read_mask_volume(mask_path)
+            mask, _ = read_mask_volume(mask_path, self.data.geometry)
         except ValueError:
             return False
         self._apply_mask(mask, clear_undo=True)
@@ -386,7 +387,7 @@ class CctaPage(QWidget):
             return
 
         try:
-            mask, _ = read_mask_volume(path)
+            mask, _ = read_mask_volume(path, self.data.geometry)
         except ValueError as e:
             ErrorMessage(self, str(e))
             return
@@ -399,18 +400,17 @@ class CctaPage(QWidget):
             ErrorMessage(self, 'No mask loaded.')
             return
         self._mask_dirty = False
-        spacing = self.data.voxel_spacing if self.data.voxel_spacing else (1.0, 1.0, 1.0)
         out_path = f'{self._source_path}_ccta_seg_{version_file_str}.nii.gz'
-        self._save_mask_snapshot(self.data.mask.copy(), spacing, out_path)
+        self._save_mask_snapshot(self.data.mask.copy(), self._mask_geometry(), out_path)
         self.status_bar.showMessage(f'Mask saved: {os.path.basename(out_path)}')
 
     def _auto_save(self) -> None:
         if self._mask_dirty and self.data.mask is not None and self._source_path is not None:
             self._mask_dirty = False
             snapshot = self.data.mask.copy()
-            spacing = self.data.voxel_spacing if self.data.voxel_spacing else (1.0, 1.0, 1.0)
             out_path = f'{self._source_path}_ccta_seg_{version_file_str}.nii.gz'
-            threading.Thread(target=self._save_mask_snapshot, args=(snapshot, spacing, out_path), daemon=True).start()
+            geometry = self._mask_geometry()
+            threading.Thread(target=self._save_mask_snapshot, args=(snapshot, geometry, out_path), daemon=True).start()
 
         if self._cut_state_dirty and self._source_path is not None:
             self._cut_state_dirty = False
@@ -432,16 +432,20 @@ class CctaPage(QWidget):
             self._mask_tab.label_names(),
         )
 
+    def _mask_geometry(self) -> VolumeGeometry:
+        """The voxel grid to write a mask on: the loaded volume's, or one carrying just
+        the voxel spacing if the volume came from somewhere that reported no geometry."""
+        if self.data.geometry is not None:
+            return self.data.geometry
+        return geometry_from_spacing(self.data.voxel_spacing or (1.0, 1.0, 1.0))
+
     @staticmethod
-    def _save_mask_snapshot(snapshot: np.ndarray, spacing: tuple, out_path: str) -> None:
-        dz, dy, dx = spacing
+    def _save_mask_snapshot(snapshot: np.ndarray, geometry: VolumeGeometry, out_path: str) -> None:
         out_dir = os.path.dirname(out_path) or '.'
         tmp_fd, tmp_path = tempfile.mkstemp(dir=out_dir, suffix='.nii.gz')
         os.close(tmp_fd)
         try:
-            img = sitk.GetImageFromArray(snapshot)  # snapshot is (Z, Y, X); sitk reverses to (X, Y, Z)
-            img.SetSpacing((dx, dy, dz))  # sitk spacing order: (x, y, z)
-            sitk.WriteImage(img, tmp_path)
+            export_nifti(snapshot, geometry, tmp_path)
             shutil.move(tmp_path, out_path)
         except Exception:
             try:
@@ -744,7 +748,7 @@ class CctaPage(QWidget):
             QApplication.processEvents()
 
             if fmt == 'nifti':
-                export_nifti(combined, self.data.voxel_spacing, path)
+                export_nifti(combined, self._mask_geometry(), path)
             else:
                 export_stl(combined, self.data.voxel_spacing, path)
 
