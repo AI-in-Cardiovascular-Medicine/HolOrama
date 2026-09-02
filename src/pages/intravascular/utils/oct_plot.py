@@ -21,7 +21,8 @@ What is drawn, from the centre outwards:
 
 Both radii are idealized: the vessel is drawn as if it were a circular tube, so a
 frame's eccentricity is not visible here (that is what the cross-section on the
-left is for). Because the two radii come from different measurements (shortest
+left is for). Frames labelled as guiding catheter are veiled in translucent grey:
+the catheter fills the image there, so nothing drawn under the veil is vessel. Because the two radii come from different measurements (shortest
 distance vs. equal-area), a very eccentric lumen can compute a larger radius than
 its EEM; the EEM radius is floored at the lumen radius so the wall band never
 turns inside out.
@@ -68,6 +69,7 @@ AXIS_GREY = QColor('#5f656d')
 LABEL_GREY = QColor('#aab0b8')
 MARKER_COLOR = QColor('#ffd24d')
 PILL_BACKDROP = QColor(0, 0, 0, 150)  # behind text that may land on a bright strip
+CATHETER_RANGE_VEIL = QColor(150, 156, 163, 115)  # over frames flagged as guiding catheter
 INTERPOLATED_ALPHA = 150  # plaque fill alpha where the stretch was interpolated
 
 # fraction of plaque area -> strip colour
@@ -478,6 +480,7 @@ class OCTPlot(QWidget):
         self._paint_vessel(painter, profile, x_of, y_of)
         self._paint_catheter(painter, x0, x1, y_of)
         self._paint_strips(painter, profile, x_of, top, bottom)
+        self._paint_catheter_range(painter, profile, x_of, x0, x1, top, bottom)
         self._paint_axes(painter, profile, x_of, y_of, x0, x1, bottom)
         self._paint_marker(painter, profile, x_of, top, bottom)
         self._paint_readout(painter, profile, x0)
@@ -648,6 +651,34 @@ class OCTPlot(QWidget):
                 QPointF(min(max(x - width / 2.0, 0.0), self.width() - width), bottom + 3 + metrics.capHeight() + 2),
                 text,
             )
+
+    def catheter_range_flags(self) -> np.ndarray:
+        """Per-frame guiding-catheter labels, read live so the veil follows every edit."""
+        profile = self._profile
+        n_frames = profile.n_frames if profile is not None else 0
+        flags = np.zeros(n_frames, dtype=bool)
+        frame_data_dct = self.main_window.runtime_data.frame_data_dct or {}
+        for frame in range(n_frames):
+            frame_data = frame_data_dct.get(frame)
+            if frame_data is not None and frame_data.guiding_catheter:
+                flags[frame] = True
+        return flags
+
+    def _paint_catheter_range(
+        self, painter: QPainter, profile: _Profile, x_of, x0: float, x1: float, top: float, bottom: float
+    ) -> None:
+        """Veil the stretches labelled as guiding catheter — nothing under them is vessel."""
+        flags = self.catheter_range_flags()
+        if not flags.any():
+            return
+        half_step = (x_of(1) - x_of(0)) / 2.0  # a frame owns half the gap to each neighbour
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(CATHETER_RANGE_VEIL)
+        for start, end in _runs(flags):
+            left = max(x_of(start) - half_step, x0)
+            right = min(x_of(end) + half_step, x1)
+            painter.drawRect(QRectF(left, top, right - left, bottom - top))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
 
     def _paint_marker(self, painter: QPainter, profile: _Profile, x_of, top: float, bottom: float) -> None:
         pen = QPen(MARKER_COLOR, 1.0, Qt.PenStyle.DashLine)

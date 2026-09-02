@@ -5,6 +5,8 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
+from domain.all_types import ContourType
+
 
 @dataclass
 class Measurements:
@@ -97,6 +99,23 @@ class FrameData:
     centroid: Optional[Tuple[float, float]] = None
     closest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
     farthest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
+
+
+# Everything the user can draw on one image: every contour type (which includes both
+# measurements, the reference point and the wire angles) plus the values derived from
+# the lumen. Not the phase or the OCT label — those describe the frame, not the drawing.
+FRAME_ANNOTATION_FIELDS = tuple(contour_type.value for contour_type in ContourType) + (
+    'centroid',
+    'closest_points',
+    'farthest_points',
+)
+
+
+def clear_frame_annotations(frame_data: FrameData) -> None:
+    """Reset every annotation on `frame_data` to the state of a frame nobody has touched."""
+    blank = FrameData()  # one fresh instance hands out every default, contours included
+    for field_name in FRAME_ANNOTATION_FIELDS:
+        setattr(frame_data, field_name, getattr(blank, field_name))
 
 
 @dataclass

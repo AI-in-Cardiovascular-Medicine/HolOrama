@@ -1,3 +1,5 @@
+import pytest
+
 from domain.io_types import Contour, iter_wires, set_wire_points, wire_points
 from input_output.input.contours import (
     _build_contour,
@@ -173,3 +175,78 @@ class TestBuildFrameData:
         result = _build_frame_data(raw)
         assert len(result[0].lumen.contours) == 1
         assert result[0].lumen.closed == [True]
+
+
+EEM = {
+    'contours': [([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])],
+    'closed': [True],
+    'start_coords': [],
+    'end_coords': [],
+    'measurements': {},
+}
+NO_EEM = {'contours': [], 'closed': [], 'start_coords': [], 'end_coords': [], 'measurements': {}}
+
+
+class TestFrameLabelMigration:
+    """Files older than 0.11.0 gave every frame a 'Very Good' quality whether it had been
+    reviewed or not, so the EEM stands in for 'was this frame ever analyzed'."""
+
+    def test_pre_flags_frame_without_eem_loads_unlabeled(self):
+        raw = {'0': {'quality': 'Very Good', 'eem': NO_EEM}}
+        frame = _build_frame_data(raw, pre_flags=True)[0]
+        assert frame.quality == '' and frame.unlabeled is True
+
+    def test_pre_flags_frame_with_eem_keeps_the_label_from_the_file(self):
+        raw = {'0': {'quality': 'Bad', 'eem': EEM}}
+        frame = _build_frame_data(raw, pre_flags=True)[0]
+        assert frame.quality == 'Bad' and frame.unlabeled is False
+
+    def test_eem_holding_only_empty_entries_does_not_count_as_analyzed(self):
+        raw = {'0': {'quality': 'Ok', 'eem': {'contours': [([], [])], 'measurements': {}}}}
+        frame = _build_frame_data(raw, pre_flags=True)[0]
+        assert frame.quality == '' and frame.unlabeled is True
+
+    def test_analyzed_frame_without_a_usable_quality_still_loads_unlabeled(self):
+        # The reported case: an EEM but no rating to keep, which must not leave the frame
+        # with no rating and no flag either — nothing would be ticked in the UI at all.
+        for raw in ({'0': {'eem': EEM}}, {'0': {'quality': '', 'eem': EEM}}):
+            frame = _build_frame_data(raw, pre_flags=True)[0]
+            assert frame.quality == '' and frame.unlabeled is True
+
+    def test_current_files_skip_the_migration(self):
+        raw = {'0': {'quality': 'Good', 'unlabeled': False, 'eem': NO_EEM}}
+        frame = _build_frame_data(raw, pre_flags=False)[0]
+        assert frame.quality == 'Good' and frame.unlabeled is False
+
+
+class TestFrameLabelExclusivity:
+    """A rating and the three flags are one choice, so exactly one of the four is ever set."""
+
+    @pytest.mark.parametrize(
+        'stored, expected',
+        [
+            (
+                {'quality': 'Good', 'guiding_catheter': True, 'unanalyzable': True, 'unlabeled': True},
+                ('Good', False, False, False),
+            ),
+            (
+                {'quality': '', 'guiding_catheter': True, 'unanalyzable': True, 'unlabeled': True},
+                ('', True, False, False),
+            ),
+            (
+                {'quality': '', 'guiding_catheter': False, 'unanalyzable': True, 'unlabeled': True},
+                ('', False, True, False),
+            ),
+            (
+                {'quality': '', 'guiding_catheter': False, 'unanalyzable': False, 'unlabeled': False},
+                ('', False, False, True),
+            ),
+        ],
+    )
+    def test_contradictory_combinations_are_normalised(self, stored, expected):
+        frame = _build_frame_data({'0': {**stored, 'eem': EEM}}, pre_flags=False)[0]
+        assert (frame.quality, frame.guiding_catheter, frame.unanalyzable, frame.unlabeled) == expected
+
+    def test_a_frame_is_never_loaded_with_no_label_at_all(self):
+        frame = _build_frame_data({'0': {'eem': EEM}}, pre_flags=False)[0]
+        assert sum([bool(frame.quality), frame.guiding_catheter, frame.unanalyzable, frame.unlabeled]) == 1

@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QFrame,
     QGridLayout,
+    QHBoxLayout,
     QLabel,
     QPushButton,
     QSplitter,
@@ -62,6 +63,10 @@ class RightHalfOct(QWidget):
         self.catheter_range_button.setStyleSheet('background-color: orange')
         self.catheter_range_button.setToolTip('Flag this frame and every frame after it as guiding catheter')
         self.catheter_range_button.clicked.connect(self._on_catheter_range)
+
+        self.clear_catheter_range_button = QPushButton('Clear Catheter Range')
+        self.clear_catheter_range_button.setToolTip('Drop the guiding catheter label from every frame that carries it')
+        self.clear_catheter_range_button.clicked.connect(self._on_clear_catheter_range)
 
         # One group across both rows: the flags and the quality ratings are the same choice,
         # so Qt keeps exactly one of the eight checked and unchecks the rest for us.
@@ -121,8 +126,19 @@ class RightHalfOct(QWidget):
 
         self.lview_slot = LongitudinalSlot()
 
+        # The plot and the button that undoes what it veils share the splitter's top pane,
+        # so the button sits directly under the greyed-out stretch it clears.
+        plot_pane = QWidget()
+        plot_pane_layout = QVBoxLayout(plot_pane)
+        plot_pane_layout.setContentsMargins(0, 0, 0, 0)
+        plot_pane_layout.addWidget(self.oct_plot)
+        clear_row = QHBoxLayout()
+        clear_row.addStretch()
+        clear_row.addWidget(self.clear_catheter_range_button)
+        plot_pane_layout.addLayout(clear_row)
+
         self.splitter = QSplitter(Qt.Orientation.Vertical)
-        self.splitter.addWidget(self.oct_plot)
+        self.splitter.addWidget(plot_pane)
         self.splitter.addWidget(self.lview_slot)
         self.splitter.setStretchFactor(0, mw.config.intravascular.gating_display_stretch)
         self.splitter.setStretchFactor(1, mw.config.intravascular.lview_display_stretch)
@@ -159,7 +175,9 @@ class RightHalfOct(QWidget):
         frame_data = (mw.runtime_data.frame_data_dct or {}).get(frame)
         if frame_data is not None:
             self._show_label(frame_data)
+        self.clear_catheter_range_button.setEnabled(bool(self.oct_plot.catheter_range_flags().any()))
         self.oct_plot.set_frame(frame)
+        self.oct_plot.update()  # the veil is read live, so a relabel shows without a rebuild
 
     def deactivate(self):
         self.lview_slot.detach(self.main_window.longitudinal_view)
@@ -196,6 +214,11 @@ class RightHalfOct(QWidget):
     def _on_catheter_range(self):
         """Flag this frame and everything after it, then show the result on the current frame."""
         set_catheter_range(self.main_window)
+        self._on_frame_changed(self.main_window.display_slider.value())
+
+    def _on_clear_catheter_range(self):
+        """Undo the whole range: every guiding catheter frame goes back to unlabeled."""
+        clear_catheter_range(self.main_window)
         self._on_frame_changed(self.main_window.display_slider.value())
 
 
@@ -294,4 +317,18 @@ def set_catheter_range(main_window):
         frame_data = frame_data_dct.get(frame)
         if frame_data is not None:
             apply_oct_label(frame_data, flag='guiding_catheter')
+    main_window.save_contours_soon()
+
+
+def clear_catheter_range(main_window):
+    """Undo set_catheter_range: every guiding catheter frame goes back to unlabeled.
+
+    Not restricted to the frames the last click covered — the label is the range, so
+    whatever carries it anywhere in the pullback is what gets cleared.
+    """
+    if not main_window.image_displayed:
+        return
+    for frame_data in main_window.runtime_data.frame_data_dct.values():
+        if frame_data.guiding_catheter:
+            apply_oct_label(frame_data, flag='unlabeled')
     main_window.save_contours_soon()

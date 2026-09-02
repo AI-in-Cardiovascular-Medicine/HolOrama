@@ -1,5 +1,38 @@
+from loguru import logger
+
 from domain.all_types import ALLOWED_TOOLS, ContourType, SegmentationTool
+from domain.io_types import clear_frame_annotations
+from domain.undo import push_frame_annotation_snapshot
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
+
+
+def delete_all_on_frame(main_window):
+    """Clear every contour, measurement, reference and wire angle on the current frame.
+
+    A single undo entry covers the lot, so Ctrl+Z brings the whole frame back in one press.
+    The frame's phase and its OCT label describe the frame rather than the drawing on it,
+    so they are left alone.
+    """
+    if not main_window.image_displayed:
+        ErrorMessage(main_window, 'Cannot delete contours before reading input file')
+        return
+
+    frame = main_window.display.frame
+    frame_data = main_window.runtime_data.frame_data_dct.get(frame)
+    if frame_data is None:
+        return
+
+    push_frame_annotation_snapshot(main_window.runtime_data, frame)
+    clear_frame_annotations(frame_data)
+
+    main_window.display.working_spline = None
+    main_window.display.active_contour_index = 0
+    main_window.save_contours_soon()
+    main_window.display.update_display()
+    try:  # both pullback overviews read these contours, so they have to follow
+        main_window.longitudinal_view.plot_areas()
+    except Exception as exc:
+        logger.debug(f'Could not refresh the pullback overviews after Delete All: {exc}')
 
 
 def new_contour(main_window, contour_type: ContourType):

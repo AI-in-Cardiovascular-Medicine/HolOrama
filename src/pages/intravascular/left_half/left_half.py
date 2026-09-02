@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from domain.all_types import ALLOWED_TOOLS, ContourType, SegmentationTool
 from pages.intravascular.brush_panel import HoverButton
 from pages.intravascular.utils.contours_gui import (
+    delete_all_on_frame,
     new_angle,
     new_contour,
     new_contour_append,
@@ -130,9 +131,14 @@ class LeftHalf:
         self.add_contour_btn = QPushButton('+ Add Contour')
         self.add_contour_btn.clicked.connect(self._on_add_contour)
 
+        self.delete_all_btn = QPushButton('🗑️ Delete All On Frame')
+        self.delete_all_btn.clicked.connect(self._on_delete_all)
+        self.delete_all_btn.setStyleSheet('background: darkred')
+
         contour_row_hbox.addWidget(self.contour_type_combo)
         contour_row_hbox.addWidget(self.new_contour_btn)
         contour_row_hbox.addWidget(self.add_contour_btn)
+        contour_row_hbox.addWidget(self.delete_all_btn)
         left_vbox.addLayout(contour_row_hbox)
 
         self._on_contour_type_changed(0)  # set initial tooltips and button state
@@ -273,6 +279,9 @@ class LeftHalf:
     def _on_add_contour(self):
         _, contour_type, _, _ = _CONTOUR_TYPE_ITEMS[self.contour_type_combo.currentIndex()]
         new_contour_append(self.main_window, contour_type)
+
+    def _on_delete_all(self):
+        delete_all_on_frame(self.main_window)
 
     def set_active_contour_type_ui(self, contour_type: ContourType):
         for i, (_, ct, _, _) in enumerate(_CONTOUR_TYPE_ITEMS):

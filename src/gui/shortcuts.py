@@ -9,7 +9,7 @@ from PyQt6.QtGui import QDesktopServices, QKeySequence, QShortcut
 from PyQt6.QtWidgets import QApplication, QProgressDialog
 
 from domain.all_types import ContourType, SegmentationTool
-from domain.undo import push_contour_snapshot
+from domain.undo import FrameAnnotationSnapshot, push_contour_snapshot
 from input_output.input.image import read_image, read_nifti_mask
 from input_output.input.metadata import CctaMetadataWindow, MetadataWindow
 from input_output.output.contours import write_contours
@@ -608,12 +608,17 @@ def undo_last_contour_edit(main_window):
     if fd is None:
         return
 
-    setattr(fd, snap.key, snap.contour)
-
     display = main_window.display
+    if isinstance(snap, FrameAnnotationSnapshot):  # a whole frame cleared at once
+        for name, value in snap.fields.items():
+            setattr(fd, name, value)
+        display.working_spline = None
+    else:
+        setattr(fd, snap.key, snap.contour)
+
     if display.frame != snap.frame:
         main_window.display_slider.set_value(snap.frame)
-    if display.contour_key() == snap.key:
+    if not isinstance(snap, FrameAnnotationSnapshot) and display.contour_key() == snap.key:
         display.active_contour_index = snap.active_index
         display.working_spline = None
     display.update_display()
