@@ -271,3 +271,102 @@ class TestLayout:
 
     def test_the_schematic_has_the_splitter_pane_to_itself(self, oct_half):
         assert oct_half.splitter.widget(0) is oct_half.oct_plot
+
+
+class TestFramesAtDistance:
+    """Tag Frames by Distance counts out from the frame on screen, not from the range."""
+
+    def test_the_users_case(self):
+        # 380 frames, sitting on frame 375 (index 374), every 4th frame.
+        frames = right_half_oct._frames_at_distance(374, 4, 0, 380)
+        assert frames[-4:] == [366, 370, 374, 378]  # i.e. frames 367, 371, 375, 379
+        assert 374 in frames
+
+    def test_it_reaches_both_ends_of_the_range(self):
+        frames = right_half_oct._frames_at_distance(10, 5, 0, 26)
+        assert frames == [0, 5, 10, 15, 20, 25]
+
+    def test_the_anchor_is_always_tagged(self):
+        for anchor in (0, 1, 7, 29):
+            assert anchor in right_half_oct._frames_at_distance(anchor, 4, 0, 30)
+
+    def test_nothing_falls_outside_the_range(self):
+        frames = right_half_oct._frames_at_distance(20, 3, 10, 25)
+        assert frames == [11, 14, 17, 20, 23]
+
+    def test_a_step_of_one_tags_the_whole_range(self):
+        assert right_half_oct._frames_at_distance(3, 1, 0, 6) == [0, 1, 2, 3, 4, 5]
+
+    def test_an_anchor_outside_the_range_still_sets_the_spacing(self):
+        # Frames stay where they would be with the anchor in range: 30, 34, 38, ...
+        assert right_half_oct._frames_at_distance(50, 4, 30, 45) == [30, 34, 38, 42]
+
+    def test_a_fractional_step_does_not_drift(self):
+        # 2.5 frames apart, which is what a step in mm comes out as: the gaps alternate
+        # 2 and 3 instead of rounding to 2 every time and losing half a frame per step.
+        frames = right_half_oct._frames_at_distance(10, 2.5, 0, 21)
+        gaps = [b - a for a, b in zip(frames, frames[1:])]
+
+        assert set(gaps) == {2, 3}
+        assert (frames[-1] - frames[0]) / (len(frames) - 1) == pytest.approx(2.5)
+
+    def test_an_empty_range_tags_nothing(self):
+        assert right_half_oct._frames_at_distance(5, 4, 5, 5) == []
+
+
+class TestTagFramesByDistance:
+    """The whole action, with the dialog answered for it."""
+
+    def _run(self, oct_half, monkeypatch, anchor, step_frames, lower=1, upper=N_FRAMES):
+        main_window = oct_half.main_window
+        main_window.display_slider.setValue(anchor)
+
+        class _Dialog:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def setWindowTitle(self, title):
+                pass
+
+            def exec(self):
+                return True
+
+            def getInputs(self):
+                return lower - 1, upper
+
+            def isStepByMm(self):
+                return False
+
+            def getStepFrames(self):
+                return step_frames
+
+        monkeypatch.setattr(right_half_oct, 'FrameRangeDialog', _Dialog)
+        right_half_oct.tag_frames_by_distance(main_window)
+        return main_window
+
+    def test_it_tags_outwards_from_the_frame_on_screen(self, oct_half, monkeypatch):
+        main_window = self._run(oct_half, monkeypatch, anchor=N_FRAMES - 2, step_frames=3)
+
+        # Ten frames, sitting on index 8, every 3rd: upwards runs out of pullback at once,
+        # so the tags are the ones counted back down from it.
+        assert main_window.runtime_data.tagged_frames == [2, 5, 8]
+
+    def test_the_tagged_frames_stay_sorted_and_carry_the_phase(self, oct_half, monkeypatch):
+        main_window = self._run(oct_half, monkeypatch, anchor=4, step_frames=2)
+        tagged = main_window.runtime_data.tagged_frames
+
+        assert tagged == sorted(tagged)
+        assert all(main_window.runtime_data.frame_data_dct[frame].phase == 'T' for frame in tagged)
+
+    def test_it_replaces_a_previous_tagging(self, oct_half, monkeypatch):
+        first = self._run(oct_half, monkeypatch, anchor=0, step_frames=2).runtime_data.tagged_frames[:]
+        main_window = self._run(oct_half, monkeypatch, anchor=1, step_frames=2)
+
+        assert main_window.runtime_data.tagged_frames != first
+        untagged = set(first) - set(main_window.runtime_data.tagged_frames)
+        assert all(main_window.runtime_data.frame_data_dct[frame].phase == '-' for frame in untagged)
+
+    def test_the_gated_frames_alias_still_points_at_the_same_list(self, oct_half, monkeypatch):
+        main_window = self._run(oct_half, monkeypatch, anchor=3, step_frames=4)
+
+        assert main_window.runtime_data.gated_frames is main_window.runtime_data.tagged_frames

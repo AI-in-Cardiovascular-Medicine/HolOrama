@@ -89,7 +89,10 @@ red = systole) and are traversable with :kbd:`W` / :kbd:`S`. Use :kbd:`Alt+S` to
 systole and diastole over a range.
 
 **OCT.** Mark frames with *Tagged Frame*, or use **Tag Frames by Distance** to tag frames
-at regular distance intervals within a frame range. Rate each frame with the quality
+a fixed distance apart (in mm or in frames) within a frame range. The spacing is counted
+out from the **frame on screen**, in both directions — on frame 375 of 380 with a step of
+4 you get 375, 379 and 371, 367, … back down — so the frame being looked at is always one
+of the tagged ones. Rate each frame with the quality
 buttons (*Very Bad* … *Very Good*). The rating travels with the frame into the report.
 
 If a region should be excluded from analysis, after running tagging / gating use

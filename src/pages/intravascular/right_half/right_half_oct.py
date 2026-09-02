@@ -136,7 +136,9 @@ class RightHalfOct(QWidget):
         vbox.addWidget(self.splitter)
 
         tag_button = QPushButton('Tag Frames by Distance')
-        tag_button.setToolTip('Tag frames at regular distance intervals within a frame range')
+        tag_button.setToolTip(
+            'Tag frames a fixed distance apart, counted out from the frame on screen, within a frame range'
+        )
         tag_button.clicked.connect(partial(tag_frames_by_distance, mw))
         vbox.addLayout(build_lower_buttons(mw, tag_button))
 
@@ -218,6 +220,35 @@ class RightHalfOct(QWidget):
 # ---------------------------------------------------------------------------
 
 
+def _frames_at_distance(anchor: int, step_frames: float, lower_limit: int, upper_limit: int) -> list:
+    """The frames `step_frames` apart that fall in [lower_limit, upper_limit), counted out
+    from `anchor` in both directions.
+
+    The frame on screen is the reference rather than the start of the range: sitting on
+    frame 375 of 380 and tagging every 4th frame tags 375, 379 and 371, 367, ... down —
+    not the range's first frame and every 4th one after it, which lands on a different set
+    of frames entirely and usually misses the one being looked at. An anchor outside the
+    range still sets which frames inside it are hit, so narrowing the range afterwards
+    keeps the same frames rather than shifting all of them.
+
+    Each position is `anchor + round(n * step_frames)`, so a fractional step — which is
+    what a step in mm comes out as — spaces the frames evenly instead of drifting the way
+    repeated rounding would.
+    """
+    frames = set()
+    step = 0
+    while (frame := anchor + round(step * step_frames)) < upper_limit:  # the anchor, then upwards
+        if frame >= lower_limit:
+            frames.add(frame)
+        step += 1
+    step = -1
+    while (frame := anchor + round(step * step_frames)) >= lower_limit:  # downwards
+        if frame < upper_limit:
+            frames.add(frame)
+        step -= 1
+    return sorted(frames)
+
+
 def tag_frames_by_distance(main_window):
     if not main_window.image_displayed:
         return
@@ -242,17 +273,13 @@ def tag_frames_by_distance(main_window):
 
     for idx in main_window.runtime_data.tagged_frames:
         main_window.runtime_data.frame_data_dct[idx].phase = '-'
+    # Cleared in place, not reassigned: activate() aliases gated_frames to this same list.
     main_window.runtime_data.tagged_frames.clear()
 
-    i = 0
-    while True:
-        idx = lower_limit + round(i * step_frames)
-        if idx >= upper_limit:
-            break
-        if idx not in main_window.runtime_data.tagged_frames:
-            bisect.insort_left(main_window.runtime_data.tagged_frames, idx)
+    frames = _frames_at_distance(main_window.display_slider.value(), step_frames, lower_limit, upper_limit)
+    main_window.runtime_data.tagged_frames.extend(frames)  # already sorted and unique
+    for idx in frames:
         main_window.runtime_data.frame_data_dct[idx].phase = 'T'
-        i += 1
 
     main_window.display.update_display()
 
