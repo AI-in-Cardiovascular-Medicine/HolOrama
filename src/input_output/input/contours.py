@@ -12,6 +12,9 @@ from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from version import version_file_str
 
 _CONTOUR_FILENAME_RE = re.compile(r'_contours_(ho_)?(\d+)_(\d+)_(\d+)\.json$')
+# The frame flags (guiding catheter / unanalyzable / unlabeled) arrived in 0.11.0;
+# older files are migrated on load, see _build_frame_data.
+_FRAME_FLAGS_VERSION = (0, 11, 0)
 
 
 def read_contours(main_window, file_name=None) -> bool:
@@ -38,12 +41,16 @@ def read_contours(main_window, file_name=None) -> bool:
 
     num_frames = main_window.runtime_data.metadata['num_frames']
 
+    is_holorama, file_version = _contour_file_sort_key(newest)
+    # Pre-rename AIVUS-CAA files carry 1.x.y numbers that nonetheless predate every HolOrama version.
+    pre_flags = not is_holorama or file_version < _FRAME_FLAGS_VERSION
+
     if _is_legacy(raw):
         scaling_factor = main_window.display.image_size / main_window.runtime_data.images.shape[1]
         main_window.runtime_data.frame_data_dct = _build_frame_data_legacy(raw, num_frames, scaling_factor)
         main_window.runtime_data.gating_signal = raw.get('gating_signal', {})
     else:
-        main_window.runtime_data.frame_data_dct = _build_frame_data(raw)
+        main_window.runtime_data.frame_data_dct = _build_frame_data(raw, pre_flags)
         main_window.runtime_data.gating_signal = raw.get('gating_signal', {})
 
     main_window.contours_drawn = True
@@ -95,10 +102,12 @@ def _build_frame_data_legacy(raw: dict, num_frames: int, scaling_factor: float =
         ml1, ml2 = measure_lengths[i] if i < len(measure_lengths) else (None, None)
         ml1 = None if ml1 is None or (isinstance(ml1, float) and math.isnan(ml1)) else ml1
         ml2 = None if ml2 is None or (isinstance(ml2, float) and math.isnan(ml2)) else ml2
+        eem = _build_contour_legacy(raw, 'eem', i)
         frames[i] = FrameData(
             phase=phases[i] if i < len(phases) else '-',
+            unlabeled=not _has_points(eem),  # no EEM: the frame was most likely never analyzed
             lumen=_build_contour_legacy(raw, 'lumen', i),
-            eem=_build_contour_legacy(raw, 'eem', i),
+            eem=eem,
             calcium=_build_contour_legacy(raw, 'calcium', i),
             branch=_build_contour_legacy(raw, 'branch', i),
             lipid=_build_contour_legacy(raw, 'lipid', i),
@@ -110,25 +119,35 @@ def _build_frame_data_legacy(raw: dict, num_frames: int, scaling_factor: float =
     return frames
 
 
-def _build_frame_data(raw: dict) -> Dict[int, FrameData]:
+def _has_points(contour: Contour) -> bool:
+    """True if `contour` holds at least one drawn point — asdict persists empty entries too."""
+    return any(x and y for x, y in contour.contours)
+
+
+def _build_frame_data(raw: dict, pre_flags: bool = True) -> Dict[int, FrameData]:
     """Convert current JSON format (produced by asdict) into Dict[int, FrameData].
-    Top-level non-integer keys (e.g. 'gating_signal') are skipped here."""
+    Top-level non-integer keys (e.g. 'gating_signal') are skipped here.
+
+    `pre_flags` marks a file written before 0.11.0, when the frame flags did not exist and
+    every frame carried a 'Very Good' quality whether it had been reviewed or not. Such a
+    file cannot say which frames were actually analyzed, so the EEM stands in for it: a
+    frame without one loads unrated and unlabeled instead of inheriting that stale default.
+    """
     frames = {}
     for key, frame_raw in raw.items():
         if not key.lstrip('-').isdigit():
             continue
         i = int(key)
-        # Files written before the frame flags existed carry the old 'Very Good' quality
-        # default on every frame, rated or not, so they all load as unlabeled instead.
-        pre_flags = 'unlabeled' not in frame_raw
+        eem = _build_contour(frame_raw.get('eem'))
+        analyzed = not pre_flags or _has_points(eem)
         frames[i] = FrameData(
             phase=frame_raw.get('phase', '-'),
-            quality='' if pre_flags else frame_raw.get('quality', ''),
+            quality=frame_raw.get('quality', '') if analyzed else '',
             guiding_catheter=frame_raw.get('guiding_catheter', False),
             unanalyzable=frame_raw.get('unanalyzable', False),
-            unlabeled=frame_raw.get('unlabeled', True),
+            unlabeled=frame_raw.get('unlabeled', not analyzed),
             lumen=_build_contour(frame_raw.get('lumen')),
-            eem=_build_contour(frame_raw.get('eem')),
+            eem=eem,
             calcium=_build_contour(frame_raw.get('calcium')),
             branch=_build_contour(frame_raw.get('branch')),
             lipid=_build_contour(frame_raw.get('lipid')),

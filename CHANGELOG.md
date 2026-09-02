@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.11.0] - 2026-09-02
+
+### Changed
+- The OCT right half is split into two rows: **Tagged Frame** / **Tagged Frames** now sit next to three new per-frame flags — **Guiding Catheter**, **Unanalyzable** and **Unlabeled** — and the quality rating moved to its own **Frame Quality** row below, both rows sharing one grid so the separators line up and the flags spread across the same width as the five quality buttons. A frame no longer starts out rated *Very Good*: every frame starts **Unlabeled** with no quality box selected. A rating and the flags are mutually exclusive — picking a quality selects exactly one box and clears all three flags, and checking any flag drops the rating again.
+- `FrameData` gains `guiding_catheter`, `unanalyzable` and `unlabeled`, and its `quality` now defaults to `''` (unrated) instead of *Very Good*. All four are written to the contour JSON like any other frame field. Contour files from before 0.11.0 carried that *Very Good* default on every frame, reviewed or not, so they cannot say which frames were analyzed: on load the EEM stands in for it, and every frame without one comes back unrated and **Unlabeled**.
+
 ## [0.10.0] - 2026-08-17
 
 ### Added
@@ -16,7 +22,6 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - Lumen measurements (and with them the longitudinal view's area dots and the OCT schematic) did not follow every contour change. A frame was measured from the contour that was already on screen rather than the one just stored, so replacing a contour wholesale (copy from a neighbour (`Shift+A/D/W/S`), brush commit, undo, `Ctrl+wheel` scaling) kept the previous numbers or produced none at all; batch changes (automatic segmentation, NIfTI mask import) measured nothing until each frame was visited; and deleting contours left the plots showing frames that no longer had one.
 
 ### Changed
-- The OCT right half is split into two rows: **Tagged Frame** / **Tagged Frames** now sit next to three new per-frame flags — **Guiding Catheter**, **Unanalyzable** and **Unlabeled** — and the quality rating moved to its own **Frame Quality** row below, both rows sharing one grid so the separators line up. A frame no longer starts out rated *Very Good*: every frame starts **Unlabeled** with no quality box selected. A rating and the flags are mutually exclusive — picking a quality selects exactly one box and clears all three flags, and checking any flag drops the rating again. `FrameData` gains `guiding_catheter`, `unanalyzable` and `unlabeled`, and its `quality` defaults to `''`; contour files written before the flags existed carried the old *Very Good* default on every frame, rated or not, so they all load as **Unlabeled**.
 - `config.yaml` is now grouped by module (`common`, `intravascular`, `ccta`, `fusion`, `gating`, `report`, `save`, `vmtk`, `segmentation`) instead of one flat list; settings shared across pages live under `common`.
 - The categorical colour palette moved to `domain/colors.py` so CCTA, Fusion and the intravascular plots draw from one shared definition.
 - Wire shadows are now a multi-instance contour type like calcium or lipid: a frame can carry several wires instead of one. ➕📐 **Add Wire** (`Ctrl+3`) adds another wire, 📐 **Angle Wire** (`3`) still replaces all of them. Every wire is exported into the mask (label 9), `Ctrl+Z` undoes the last one, and **Remove Contours** clears them over a frame range. `FrameData.wire` changed from a single point tuple to a `Contour` holding one entry per wire; contour files written with the old shape are migrated on load.
