@@ -208,6 +208,11 @@ Drawing rules:
   close the contour.
 - **Open spline**: left-click to place points; the contour stays open. For calcium, the
   angle from the lumen centre to the start and end point is computed automatically.
+- A plaque contour (calcium, lipid, macrophage) marks the **luminal** side of the plaque,
+  which then fills outwards to the EEM in the mask. An open arc can only mean that; a
+  closed contour drawn in the wall is the plaque itself, filled in. A closed contour drawn
+  right **around the lumen** — a circumferential calcification — is read as a luminal
+  boundary too, so the wall outside it is what gets filled.
 - **Brush**: paint the structure directly. Requires *Mask mode* to be enabled; **hover the
   🖌️ button to get the radius popup**.
 - Drag an existing knot point. To move it, click on the contour line to insert a new point.

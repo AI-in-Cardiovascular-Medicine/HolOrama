@@ -177,6 +177,63 @@ def _open_outer_sector_mask(xs, ys, centroid_x, centroid_y, image_shape):
     return full_sector & ~inner_mask
 
 
+# How much of the lumen may fall outside a closed plaque contour for it to still count
+# as drawn around the lumen. Generous on purpose: a circumferential plaque is drawn along
+# the lumen border by hand and will cut inside it here and there, while a plaque drawn as
+# an arc in the wall overlaps a sliver of the lumen at most.
+_ENCIRCLES_LUMEN_FRACTION = 0.5
+
+
+def _encircles_lumen(polygon_mask, lumen_mask):
+    """Whether a closed contour was drawn around the lumen rather than inside the wall.
+
+    A plaque never contains the lumen, so a contour that swallows most of it cannot be
+    the plaque itself — see _plaque_mask.
+    """
+    lumen_area = lumen_mask.sum()
+    if not lumen_area:
+        return False
+    return (polygon_mask & lumen_mask).sum() / lumen_area >= _ENCIRCLES_LUMEN_FRACTION
+
+
+def _plaque_mask(contour_obj, centroid_x, centroid_y, image_shape, lumen_mask, eem_mask):
+    """
+    Boolean mask of one plaque type (calcium, lipid, macrophage), clipped to the wall:
+    inside the EEM, outside the lumen.
+
+    Every plaque contour marks the *luminal* side of the plaque, which then extends
+    outwards to the EEM. For an open arc that is all it can mean (see
+    _open_outer_sector_mask). A closed contour is normally the whole plaque and is simply
+    filled in — but one drawn right around the lumen, as a circumferential calcification
+    is, cannot be: no plaque contains the lumen. That ring is a luminal boundary too, so
+    the wall *outside* it is filled rather than the disc inside it, which is otherwise
+    read as plaque from the lumen out to the ring — the opposite of what was drawn.
+
+    Without an EEM there is nothing to fill outwards to, so the disc is used either way.
+    """
+    combined = np.zeros(image_shape, dtype=bool)
+    for idx, entry in enumerate(contour_obj.contours):
+        try:
+            xs, ys = entry[0], entry[1]
+            if not xs or not ys:
+                continue
+            is_closed = contour_obj.closed[idx] if idx < len(contour_obj.closed) else True
+            if not is_closed:
+                combined |= _open_outer_sector_mask(xs, ys, centroid_x, centroid_y, image_shape)
+                continue
+            polygon = _closed_polygon_mask(xs, ys, image_shape)
+            if eem_mask is not None and _encircles_lumen(polygon, lumen_mask):
+                combined |= eem_mask & ~polygon
+            else:
+                combined |= polygon
+        except Exception:
+            continue
+
+    if eem_mask is not None:
+        combined &= eem_mask
+    return combined & ~lumen_mask
+
+
 def _contour_obj_to_mask(contour_obj, centroid_x, centroid_y, image_shape):
     """
     Convert a Contour dataclass to a boolean mask.
@@ -276,8 +333,8 @@ def _scaled_frame_view(frame_data, factor: float):
 def frame_region_areas(frame_data, image_shape, resolution: float, downsample: int = 1) -> dict[str, float]:
     """Areas (mm²) of one frame's lumen, wall and plaque regions, rasterized.
 
-    Plaques are clipped to the wall (inside EEM, outside lumen) exactly the way
-    contours_to_mask clips them, so every plaque area is a subset of `wall` and a
+    Plaques are read and clipped to the wall (inside EEM, outside lumen) by the same
+    _plaque_mask as contours_to_mask, so every plaque area is a subset of `wall` and a
     caller's plaque/wall fraction stays in 0..1. Rasterizing rather than taking a
     polygon area is what makes the plaques measurable at all: calcium/lipid are
     usually drawn as open arcs, which only enclose a region once closed against
@@ -315,10 +372,7 @@ def frame_region_areas(frame_data, image_shape, resolution: float, downsample: i
         if not contour_obj.contours:
             areas[contour_type.value] = 0.0
             continue
-        plaque = _contour_obj_to_mask(contour_obj, cx, cy, image_shape)
-        if eem_mask is not None:
-            plaque &= eem_mask
-        plaque &= ~lumen_mask
+        plaque = _plaque_mask(contour_obj, cx, cy, image_shape, lumen_mask, eem_mask)
         areas[contour_type.value] = float(plaque.sum()) * px_area
 
     return areas
@@ -333,9 +387,9 @@ def contours_to_mask(images, contoured_frames, data):
     0  background  - everything not covered by another label
     1  lumen
     2  EEM wall    - inside EEM contour, outside lumen
-    3  calcium     - within EEM (open or closed spline)
-    4  lipid       - within EEM (open or closed spline)
-    5  macrophage  - within EEM (open or closed spline)
+    3  calcium     - within EEM (open or closed spline, see _plaque_mask)
+    4  lipid       - within EEM (open or closed spline, see _plaque_mask)
+    5  macrophage  - within EEM (open or closed spline, see _plaque_mask)
     7  branch      - side-branch lumen (closed spline, not EEM-clipped)
     9  wire shadow - guide-wire angular shadow
     10 blood       - blood artefact angular sector, the bottom-most layer of all
@@ -415,10 +469,7 @@ def contours_to_mask(images, contoured_frames, data):
             contour_obj = getattr(fd, spec.contour_type.value)
             if not contour_obj.contours:
                 continue
-            plaque = _contour_obj_to_mask(contour_obj, cx, cy, image_shape)
-            if fd.eem.contours:
-                plaque &= eem_mask
-            plaque &= ~lumen_mask
+            plaque = _plaque_mask(contour_obj, cx, cy, image_shape, lumen_mask, eem_mask if fd.eem.contours else None)
             regions.append((spec, plaque))
 
         scored: list[tuple] = []

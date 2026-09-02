@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QSlider,
     QVBoxLayout,
     QWidget,
@@ -147,7 +148,12 @@ class MaskPanel(QWidget):
         self._rows_layout.setContentsMargins(0, 0, 0, 0)
         self._rows_layout.setSpacing(0)
         self._rows_layout.addStretch()
-        root.addWidget(self._rows_widget)
+
+        rows_scroll = QScrollArea()
+        rows_scroll.setWidgetResizable(True)
+        rows_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        rows_scroll.setWidget(self._rows_widget)
+        root.addWidget(rows_scroll, 1)
 
         self._rows: dict[int, _LabelRow] = {}
 
