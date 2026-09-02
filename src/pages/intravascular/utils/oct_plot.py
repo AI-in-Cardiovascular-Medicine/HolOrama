@@ -55,7 +55,7 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import QSizePolicy, QWidget
 
-from input_output.output.imgs_masks import frame_region_areas
+from input_output.output.imgs_masks import frame_region_metrics
 from tools.geometry import SplineGeometry
 
 CATHETER_DIAMETER_MM = 0.9  # 2.7 F imaging catheter; overridden by config.intravascular.catheter_diameter
@@ -362,7 +362,7 @@ class OCTPlot(QWidget):
             if frame_data.calcium.contours or frame_data.lipid.contours:
                 if not allow_masks:
                     return _FrameMetrics(lumen_r=lumen_r, eem_r=eem_r, calcium=calcium, lipid=lipid, complete=False)
-                areas = frame_region_areas(frame_data, image_shape, resolution, downsample=_downsample(image_shape))
+                areas = frame_region_metrics(frame_data, image_shape, resolution, downsample=_downsample(image_shape))
                 wall = areas['wall']
                 if wall > 0:
                     calcium = min(areas['calcium'] / wall, 1.0)

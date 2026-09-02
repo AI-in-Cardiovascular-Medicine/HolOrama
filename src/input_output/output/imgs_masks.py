@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import QApplication, QProgressDialog
 from scipy.interpolate import splev, splprep
 from skimage.draw import polygon2mask
 
-from domain.all_types import ANGLE_TYPES, ContourType
+from domain.all_types import ANGLE_TYPES, PLAQUE_TYPES, ContourType
 from domain.io_types import iter_sectors
 from domain.mask_types import MASK_SPECS
 from tools.angle import contains_angle, sector_from_points
@@ -258,6 +258,26 @@ def _contour_obj_to_mask(contour_obj, centroid_x, centroid_y, image_shape):
     return combined
 
 
+_ANGLE_BIN_DEG = 1.0  # resolution of a region's reported angular extent
+
+
+def _angular_extent_deg(mask: np.ndarray, cx: float, cy: float) -> float:
+    """How much of the circle around (cx, cy) `mask` covers, in degrees.
+
+    Measured off the rasterized region rather than its contour, so it holds for any shape
+    and for several contours of the same type at once: two calcifications that overlap
+    angularly count their shared degrees once, and a plaque drawn as an open arc is
+    measured over the wedge it actually fills (see _plaque_mask). Counted in one-degree
+    bins, which is finer than a plaque angle is ever read off an image.
+    """
+    ys, xs = np.nonzero(mask)
+    if len(xs) == 0:
+        return 0.0
+    angles = np.arctan2(ys - cy, xs - cx)
+    bins = np.floor(np.degrees(angles) / _ANGLE_BIN_DEG).astype(int) % int(360 / _ANGLE_BIN_DEG)
+    return float(np.unique(bins).size) * _ANGLE_BIN_DEG
+
+
 def _region_mean_distance(mask: np.ndarray, cx: float, cy: float) -> float | None:
     """Mean distance of mask's True pixels from (cx, cy); None if mask is empty.
 
@@ -330,8 +350,10 @@ def _scaled_frame_view(frame_data, factor: float):
     )
 
 
-def frame_region_areas(frame_data, image_shape, resolution: float, downsample: int = 1) -> dict[str, float]:
-    """Areas (mm²) of one frame's lumen, wall and plaque regions, rasterized.
+def frame_region_metrics(frame_data, image_shape, resolution: float, downsample: int = 1) -> dict[str, float]:
+    """Areas (mm²) of one frame's lumen, wall and plaque regions, rasterized, plus how
+    much of the circle each plaque covers (`<plaque>_angle`, in degrees about the lumen
+    centroid — the angle a calcification or lipid pool is read off an image as).
 
     Plaques are read and clipped to the wall (inside EEM, outside lumen) by the same
     _plaque_mask as contours_to_mask, so every plaque area is a subset of `wall` and a
@@ -367,13 +389,15 @@ def frame_region_areas(frame_data, image_shape, resolution: float, downsample: i
         'eem': float(eem_mask.sum()) * px_area if eem_mask is not None else 0.0,
         'wall': float(wall.sum()) * px_area,
     }
-    for contour_type in (ContourType.CALCIUM, ContourType.LIPID, ContourType.MACROPHAGE):
+    for contour_type in PLAQUE_TYPES:
         contour_obj = getattr(frame_data, contour_type.value)
         if not contour_obj.contours:
             areas[contour_type.value] = 0.0
+            areas[f'{contour_type.value}_angle'] = 0.0
             continue
         plaque = _plaque_mask(contour_obj, cx, cy, image_shape, lumen_mask, eem_mask)
         areas[contour_type.value] = float(plaque.sum()) * px_area
+        areas[f'{contour_type.value}_angle'] = _angular_extent_deg(plaque, cx, cy)
 
     return areas
 
@@ -422,11 +446,7 @@ def contours_to_mask(images, contoured_frames, data):
     _branch = MASK_SPECS[ContourType.BRANCH]
     # Bottom-up, so blood ends up under the wire shadow wherever the two overlap.
     _sectors = sorted((MASK_SPECS[contour_type] for contour_type in ANGLE_TYPES), key=lambda spec: spec.paint_order)
-    _plaques = [
-        MASK_SPECS[ContourType.CALCIUM],
-        MASK_SPECS[ContourType.LIPID],
-        MASK_SPECS[ContourType.MACROPHAGE],
-    ]
+    _plaques = [MASK_SPECS[contour_type] for contour_type in PLAQUE_TYPES]
 
     for i, frame in enumerate(contoured_frames):
         fd = data.get(frame)

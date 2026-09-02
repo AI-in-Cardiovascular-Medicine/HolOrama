@@ -151,6 +151,37 @@ def signed_to_sector(start: float, signed_sweep: float) -> Tuple[float, float]:
     return start + signed_sweep, -signed_sweep
 
 
+def combined_sweep(sectors: Sequence[Sequence[Coord]], centre: Coord) -> float:
+    """How much of the circle a frame's sectors cover in total, in radians.
+
+    Overlap is counted once, so several blood sectors on one frame add up to the part of
+    the image blood obscures rather than to the sum of their openings. Sectors of fewer
+    than two points are still being drawn and cover nothing.
+    """
+    intervals: List[Tuple[float, float]] = []
+    for points in sectors:
+        geometry = sector_from_points(points, centre)
+        if geometry is None:
+            continue
+        start, sweep = geometry
+        start %= TWO_PI
+        end = start + sweep
+        if end <= TWO_PI:
+            intervals.append((start, end))
+        else:  # runs past the wrap point, so it counts as two intervals
+            intervals.append((start, TWO_PI))
+            intervals.append((0.0, end - TWO_PI))
+
+    total = 0.0
+    covered_to = 0.0
+    for start, end in sorted(intervals):
+        start = max(start, covered_to)
+        if end > start:
+            total += end - start
+            covered_to = end
+    return min(total, TWO_PI)
+
+
 def edge_point(centre: Coord, angle: float, half_size: float) -> Coord:
     """Where the ray from `centre` in direction `angle` leaves a square of that half-size.
 

@@ -18,6 +18,7 @@ from tools.angle import (
     accumulate_sweep,
     angle_of,
     clamp_sweep,
+    combined_sweep,
     contains_angle,
     continue_sweep,
     edge_point,
@@ -176,3 +177,42 @@ class TestEdgePoint:
     def test_diagonal_ray_stops_on_the_nearer_side(self):
         x, y = edge_point((400.0, 400.0), math.radians(45), 400.0)
         assert (x, y) == pytest.approx((800.0, 800.0))
+
+
+class TestCombinedSweep:
+    """What the report gives as one frame's blood angle."""
+
+    def _sector(self, start_deg, sweep_deg):
+        return points_for_sector(CENTRE, RADIUS, math.radians(start_deg), math.radians(sweep_deg))
+
+    def test_nothing_covers_nothing(self):
+        assert combined_sweep([], CENTRE) == 0.0
+
+    def test_an_unfinished_sector_covers_nothing(self):
+        assert combined_sweep([[_at(0)]], CENTRE) == 0.0
+
+    def test_one_sector_is_its_own_opening(self):
+        assert combined_sweep([self._sector(10, 120)], CENTRE) == pytest.approx(math.radians(120))
+
+    def test_separate_sectors_add_up(self):
+        sectors = [self._sector(0, 60), self._sector(180, 90)]
+        assert combined_sweep(sectors, CENTRE) == pytest.approx(math.radians(150))
+
+    def test_overlapping_sectors_count_the_overlap_once(self):
+        sectors = [self._sector(0, 90), self._sector(45, 90)]
+        assert combined_sweep(sectors, CENTRE) == pytest.approx(math.radians(135))
+
+    def test_one_sector_inside_another_adds_nothing(self):
+        sectors = [self._sector(0, 200), self._sector(50, 40)]
+        assert combined_sweep(sectors, CENTRE) == pytest.approx(math.radians(200))
+
+    def test_a_sector_across_the_wrap_point_is_counted_whole(self):
+        assert combined_sweep([self._sector(300, 120)], CENTRE) == pytest.approx(math.radians(120))
+
+    def test_two_sectors_meeting_across_the_wrap_point_merge(self):
+        sectors = [self._sector(300, 90), self._sector(30, 60)]
+        assert combined_sweep(sectors, CENTRE) == pytest.approx(math.radians(150))
+
+    def test_it_never_exceeds_a_full_turn(self):
+        sectors = [self._sector(deg, 180) for deg in range(0, 360, 30)]
+        assert combined_sweep(sectors, CENTRE) == pytest.approx(TWO_PI)

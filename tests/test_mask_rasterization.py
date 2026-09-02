@@ -18,7 +18,7 @@ import pytest
 
 from domain.all_types import ContourType
 from domain.io_types import Contour, FrameData
-from input_output.output.imgs_masks import contours_to_mask, frame_region_areas
+from input_output.output.imgs_masks import contours_to_mask, frame_region_metrics
 
 DIM = 240
 CENTRE = DIM / 2
@@ -85,9 +85,9 @@ class TestClosedPlaqueAroundTheLumen:
         mask = _mask(_frame(calcium=_circle(RING_R)))
         assert (mask == LABELS['lumen']).sum() == pytest.approx(math.pi * LUMEN_R**2, rel=0.05)
 
-    def test_frame_region_areas_agrees_with_the_mask(self):
+    def test_frame_region_metrics_agrees_with_the_mask(self):
         frame_data = _frame(calcium=_circle(RING_R))
-        areas = frame_region_areas(frame_data, (DIM, DIM), RESOLUTION)
+        areas = frame_region_metrics(frame_data, (DIM, DIM), RESOLUTION)
         expected = _annulus_px(RING_R, EEM_R) * RESOLUTION**2
         assert areas['calcium'] == pytest.approx(expected, rel=0.05)
         assert areas['calcium'] <= areas['wall']
@@ -154,7 +154,7 @@ class TestWithoutAnEem:
 
     def test_areas_fall_back_the_same_way(self):
         frame_data = _frame(calcium=_circle(RING_R), eem_r=None)
-        areas = frame_region_areas(frame_data, (DIM, DIM), RESOLUTION)
+        areas = frame_region_metrics(frame_data, (DIM, DIM), RESOLUTION)
         assert areas['calcium'] == pytest.approx(_annulus_px(LUMEN_R, RING_R) * RESOLUTION**2, rel=0.05)
 
 
@@ -178,4 +178,42 @@ class TestSeveralContours:
         # The ring alone already covers the wall outside it; the arc adds nothing new
         # there, so the total stays that annulus rather than doubling up.
         assert calcium.sum() == pytest.approx(_annulus_px(RING_R, EEM_R), rel=0.05)
-        assert ContourType.CALCIUM.value in frame_region_areas(frame_data, (DIM, DIM), RESOLUTION)
+        assert ContourType.CALCIUM.value in frame_region_metrics(frame_data, (DIM, DIM), RESOLUTION)
+
+
+class TestPlaqueAngle:
+    """How much of the circle a plaque covers, measured off the same mask as its area."""
+
+    def _angle(self, frame_data):
+        return frame_region_metrics(frame_data, (DIM, DIM), RESOLUTION)['calcium_angle']
+
+    def test_no_plaque_spans_nothing(self):
+        assert self._angle(_frame()) == 0.0
+
+    @pytest.mark.parametrize('opening', [30, 90, 180, 270])
+    def test_an_open_arc_spans_its_own_opening(self, opening):
+        angle = self._angle(_frame(calcium=_arc(RING_R, 0, opening), closed=False))
+        assert angle == pytest.approx(opening, abs=4)
+
+    def test_a_ring_around_the_lumen_spans_the_whole_circle(self):
+        assert self._angle(_frame(calcium=_circle(RING_R))) == pytest.approx(360, abs=2)
+
+    def test_a_wall_blob_spans_only_what_it_covers(self):
+        blob_centre = CENTRE + (LUMEN_R + EEM_R) / 2
+        angles = np.linspace(0, 2 * np.pi, 24, endpoint=False)
+        blob = (
+            [float(blob_centre + 10 * math.cos(a)) for a in angles],
+            [float(CENTRE + 10 * math.sin(a)) for a in angles],
+        )
+        # A 10 px disc centred 47 px out subtends roughly 2*asin(10/47) about the centre.
+        expected = math.degrees(2 * math.asin(10 / (blob_centre - CENTRE)))
+        assert self._angle(_frame(calcium=blob)) == pytest.approx(expected, abs=6)
+
+    def test_two_arcs_count_their_shared_degrees_once(self):
+        frame_data = _frame()
+        frame_data.calcium = Contour(contours=[_arc(RING_R, 0, 90), _arc(RING_R, 45, 135)], closed=[False, False])
+        assert self._angle(frame_data) == pytest.approx(135, abs=5)
+
+    def test_an_arc_across_the_wrap_point_is_not_split(self):
+        angle = self._angle(_frame(calcium=_arc(RING_R, -45, 45), closed=False))
+        assert angle == pytest.approx(90, abs=4)

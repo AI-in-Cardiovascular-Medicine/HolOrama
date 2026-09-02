@@ -82,6 +82,16 @@ ANGLE_TYPES: Tuple[ContourType, ...] = tuple(
     contour_type for contour_type in ContourType if SegmentationTool.ANGLE in ALLOWED_TOOLS.get(contour_type, set())
 )
 
+# The plaque types: whatever they are drawn with, they describe something inside the vessel
+# wall, so the mask clips them to it (inside the EEM, outside the lumen) and their area and
+# angle are measured within it. Stated rather than derived — it is what they mean, not how
+# they are drawn.
+PLAQUE_TYPES: Tuple[ContourType, ...] = (
+    ContourType.CALCIUM,
+    ContourType.LIPID,
+    ContourType.MACROPHAGE,
+)
+
 
 @dataclass
 class ContourConfig:
