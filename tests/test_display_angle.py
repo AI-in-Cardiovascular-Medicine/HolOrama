@@ -399,6 +399,21 @@ class TestSectorsInTheMask:
         assert (mask == 9).mean() == pytest.approx(0.25, abs=0.03)
         assert (mask == 10).mean() == pytest.approx(0.25, abs=0.03)
 
+    def test_blood_sits_under_the_wire_shadow(self, display):
+        from input_output.output.imgs_masks import contours_to_mask
+
+        widget = display.widget
+        widget.set_active_contour_type(ContourType.BLOOD)
+        widget.start_angle()
+        _place(widget, 0, 180)  # blood over half the frame
+        widget.set_active_contour_type(ContourType.WIRE)
+        widget.start_angle()
+        _place(widget, 45, 90)  # a wire wholly inside it
+
+        mask = contours_to_mask(display.runtime.images[:1], [0], display.frames)[0]
+        assert (mask == 9).mean() == pytest.approx(45 / 360, abs=0.02)  # the wire survives in full
+        assert (mask == 10).mean() == pytest.approx((180 - 45) / 360, abs=0.02)  # blood keeps the rest
+
     def test_a_wide_sector_reaches_it_too(self, display):
         from input_output.output.imgs_masks import contours_to_mask
 

@@ -305,7 +305,8 @@ Colours of the start/end markers are configurable (``color_start_point``,
   frame, keeping the ones already there; some pullbacks show more than one wire. Drawing
   with **Angle Wire** instead replaces every wire on the frame. Sectors behave like the
   other multi-instance contours (calcification, lipid, …): each is stored separately, all
-  of them are exported to the mask (wire label 9, blood label 10), and :kbd:`Ctrl+Z`
+  of them are exported to the mask (wire label 9, blood label 10 — blood sits at the
+  very back, so a wire shadow crossing it stays visible), and :kbd:`Ctrl+Z`
   undoes the last edit — placing one, or dragging a boundary.
 - 🟡 **Reference** places a reference point on the frame. This point defines the rotational
   reference used when the pullback is later aligned in the :doc:`fusion` module.

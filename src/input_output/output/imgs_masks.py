@@ -338,7 +338,7 @@ def contours_to_mask(images, contoured_frames, data):
     5  macrophage  - within EEM (open or closed spline)
     7  branch      - side-branch lumen (closed spline, not EEM-clipped)
     9  wire shadow - guide-wire angular shadow
-    10 blood       - blood artefact angular sector
+    10 blood       - blood artefact angular sector, the bottom-most layer of all
 
     Where structures overlap, priority follows an "onion" rule: the structure
     whose pixels sit farther (on average) from the lumen centroid displaces
@@ -366,7 +366,8 @@ def contours_to_mask(images, contoured_frames, data):
     _eem = MASK_SPECS[ContourType.EEM]
     _lumen = MASK_SPECS[ContourType.LUMEN]
     _branch = MASK_SPECS[ContourType.BRANCH]
-    _sectors = [MASK_SPECS[contour_type] for contour_type in ANGLE_TYPES]
+    # Bottom-up, so blood ends up under the wire shadow wherever the two overlap.
+    _sectors = sorted((MASK_SPECS[contour_type] for contour_type in ANGLE_TYPES), key=lambda spec: spec.paint_order)
     _plaques = [
         MASK_SPECS[ContourType.CALCIUM],
         MASK_SPECS[ContourType.LIPID],
@@ -388,6 +389,7 @@ def contours_to_mask(images, contoured_frames, data):
 
         # The angular sectors are always the bottom-most layers — painted first so every
         # other structure sits on top of them, regardless of the onion order below.
+        # Blood goes down first of all, leaving the wire shadow visible where they meet.
         for sector_spec in _sectors:
             sector = _angle_sector_mask(getattr(fd, sector_spec.contour_type.value), image_shape, center_y, center_x)
             fm[sector] = sector_spec.label
