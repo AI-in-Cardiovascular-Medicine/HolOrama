@@ -1903,6 +1903,37 @@ class Display(QGraphicsView, MetricsMixin):
         ci = self.active_contour_index
         return contour_obj.closed[ci] if ci < len(contour_obj.closed) else True
 
+    def _knot_labels(self, contour_obj, ci: int, kx: float, ky: float) -> Tuple[bool, bool]:
+        """Whether the knot at unscaled (kx, ky) is currently labelled start, and end.
+
+        A knot carries one label at most, so at least one of the two is always False;
+        both False means it is unlabelled. A label is matched by position rather than by
+        knot index, because that is how it is stored (see Contour.start_coords).
+        """
+
+        def carries(coord_lists) -> bool:
+            coords = coord_lists[ci] if ci < len(coord_lists) else []
+            return any(math.hypot(kx - x, ky - y) < self.snap_radius_px for x, y in coords)
+
+        return carries(contour_obj.start_coords), carries(contour_obj.end_coords)
+
+    def _label_knot(self, coord_lists: list, ci: int, kx: float, ky: float) -> None:
+        """Record the knot at unscaled (kx, ky) in `coord_lists`, one of the contour's
+        start/end lists, growing it to reach contour `ci`."""
+        while len(coord_lists) <= ci:
+            coord_lists.append([])
+        coord_lists[ci].append((kx, ky))
+
+    def _unlabel_knot(self, contour_obj, ci: int, kx: float, ky: float) -> None:
+        """Drop the knot at unscaled (kx, ky) from both of contour `ci`'s label lists."""
+        for coord_lists in (contour_obj.start_coords, contour_obj.end_coords):
+            if ci < len(coord_lists):
+                coord_lists[ci] = [
+                    coord
+                    for coord in coord_lists[ci]
+                    if math.hypot(kx - coord[0], ky - coord[1]) >= self.snap_radius_px
+                ]
+
     def _show_knot_label_popup(self, knot_item: Point, view_pos):
         """QMenu popup beside a knot point for labelling it as start, end, or neutral."""
         key = self.contour_key(self.active_contour_type)
@@ -1914,11 +1945,7 @@ class Display(QGraphicsView, MetricsMixin):
         kx = knot_item.x / sf  # type: ignore[operator]
         ky = knot_item.y / sf  # type: ignore[operator]
 
-        starts = contour_obj.start_coords[ci] if ci < len(contour_obj.start_coords) else []
-        ends = contour_obj.end_coords[ci] if ci < len(contour_obj.end_coords) else []
-
-        is_start = any(math.hypot(kx - sx, ky - sy) < self.snap_radius_px for sx, sy in starts)
-        is_end = any(math.hypot(kx - ex, ky - ey) < self.snap_radius_px for ex, ey in ends)
+        is_start, is_end = self._knot_labels(contour_obj, ci, kx, ky)
 
         menu = QMenu(self)
         start_action = menu.addAction("Mark as Start")
@@ -1929,33 +1956,25 @@ class Display(QGraphicsView, MetricsMixin):
         assert end_action is not None
         assert neutral_action is not None
 
-        # A point cannot be both start and end; only allow labeling unlabeled points.
-        start_action.setEnabled(not is_start and not is_end)
-        end_action.setEnabled(not is_start and not is_end)
+        # Whatever the knot is not already, it can become: a start switches straight to an
+        # end and back, without removing the label in between. Only the label it already
+        # carries is greyed out, and Remove Label only while it carries one at all.
+        start_action.setEnabled(not is_start)
+        end_action.setEnabled(not is_end)
         neutral_action.setEnabled(is_start or is_end)
 
         action = menu.exec(self.mapToGlobal(view_pos))
+        if action is None:
+            return
 
+        # A knot carries one label at most, so every switch drops the old one first.
+        self._unlabel_knot(contour_obj, ci, kx, ky)
         if action == start_action:
-            while len(contour_obj.start_coords) <= ci:
-                contour_obj.start_coords.append([])
-            contour_obj.start_coords[ci].append((kx, ky))
+            self._label_knot(contour_obj.start_coords, ci, kx, ky)
         elif action == end_action:
-            while len(contour_obj.end_coords) <= ci:
-                contour_obj.end_coords.append([])
-            contour_obj.end_coords[ci].append((kx, ky))
-        elif action == neutral_action:
-            if is_start and ci < len(contour_obj.start_coords):
-                contour_obj.start_coords[ci] = [
-                    s for s in contour_obj.start_coords[ci] if math.hypot(kx - s[0], ky - s[1]) >= self.snap_radius_px
-                ]
-            if is_end and ci < len(contour_obj.end_coords):
-                contour_obj.end_coords[ci] = [
-                    e for e in contour_obj.end_coords[ci] if math.hypot(kx - e[0], ky - e[1]) >= self.snap_radius_px
-                ]
+            self._label_knot(contour_obj.end_coords, ci, kx, ky)
 
-        if action is not None:
-            self.update_display()
+        self.update_display()
 
     def _delete_point(self, point_item: Point):
         """Removes a knot point from the scene and the data model."""
@@ -1977,18 +1996,13 @@ class Display(QGraphicsView, MetricsMixin):
                 if len(contour_obj.contours[ci]) > 1:
                     contour_obj.contours[ci][1].pop(idx)
 
-                px = point_item.x / self.scaling_factor  # type: ignore[operator]
-                py = point_item.y / self.scaling_factor  # type: ignore[operator]
-                if point_item.color == self.start_color and ci < len(contour_obj.start_coords):
-                    contour_obj.start_coords[ci] = [
-                        s
-                        for s in contour_obj.start_coords[ci]
-                        if math.hypot(px - s[0], py - s[1]) >= self.snap_radius_px
-                    ]
-                if point_item.color == self.end_color and ci < len(contour_obj.end_coords):
-                    contour_obj.end_coords[ci] = [
-                        e for e in contour_obj.end_coords[ci] if math.hypot(px - e[0], py - e[1]) >= self.snap_radius_px
-                    ]
+                # The knot is gone, so any start/end label sitting on it goes too.
+                self._unlabel_knot(
+                    contour_obj,
+                    ci,
+                    point_item.x / self.scaling_factor,  # type: ignore[operator]
+                    point_item.y / self.scaling_factor,  # type: ignore[operator]
+                )
 
         self.display_image(update_contours=True)
 
