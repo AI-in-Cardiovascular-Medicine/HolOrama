@@ -5,8 +5,6 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from domain.all_types import OCT_QUALITY_LABELS
-
 
 @dataclass
 class Measurements:
@@ -76,7 +74,12 @@ class Measure:
 @dataclass
 class FrameData:
     phase: str = '-'
-    quality: str = OCT_QUALITY_LABELS[-1]
+    # OCT frame rating: one of OCT_QUALITY_LABELS, or '' while the frame is unrated.
+    quality: str = ''
+    guiding_catheter: bool = False
+    unanalyzable: bool = False
+    # Mutually exclusive with `quality`: a frame is unlabeled until it gets a rating.
+    unlabeled: bool = True
     lumen: Contour = field(default_factory=Contour)
     eem: Contour = field(default_factory=Contour)
     calcium: Contour = field(default_factory=Contour)

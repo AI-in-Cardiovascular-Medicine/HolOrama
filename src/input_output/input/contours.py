@@ -7,7 +7,6 @@ from typing import Dict, List, Optional, Tuple
 
 from loguru import logger
 
-from domain.all_types import OCT_QUALITY_LABELS
 from domain.io_types import Contour, FrameData, Measure, Measurements, set_wire_points
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from version import version_file_str
@@ -119,9 +118,15 @@ def _build_frame_data(raw: dict) -> Dict[int, FrameData]:
         if not key.lstrip('-').isdigit():
             continue
         i = int(key)
+        # Files written before the frame flags existed carry the old 'Very Good' quality
+        # default on every frame, rated or not, so they all load as unlabeled instead.
+        pre_flags = 'unlabeled' not in frame_raw
         frames[i] = FrameData(
             phase=frame_raw.get('phase', '-'),
-            quality=frame_raw.get('quality', OCT_QUALITY_LABELS[-1]),
+            quality='' if pre_flags else frame_raw.get('quality', ''),
+            guiding_catheter=frame_raw.get('guiding_catheter', False),
+            unanalyzable=frame_raw.get('unanalyzable', False),
+            unlabeled=frame_raw.get('unlabeled', True),
             lumen=_build_contour(frame_raw.get('lumen')),
             eem=_build_contour(frame_raw.get('eem')),
             calcium=_build_contour(frame_raw.get('calcium')),
