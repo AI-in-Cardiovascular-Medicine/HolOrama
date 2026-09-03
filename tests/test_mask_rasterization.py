@@ -217,3 +217,60 @@ class TestPlaqueAngle:
     def test_an_arc_across_the_wrap_point_is_not_split(self):
         angle = self._angle(_frame(calcium=_arc(RING_R, -45, 45), closed=False))
         assert angle == pytest.approx(90, abs=4)
+
+
+class TestPolygonFill:
+    """_polygon_mask replaced skimage's polygon2mask, which cost ~95 ms per contour here.
+
+    polygon2mask stays the reference for what a filled contour means — every pixel whose
+    centre is inside it — so these compare against it directly rather than against
+    hand-computed pixel counts.
+    """
+
+    SHAPE = (240, 240)
+
+    def _both(self, polygon_yx):
+        from skimage.draw import polygon2mask
+
+        from input_output.output.imgs_masks import _polygon_mask
+
+        return polygon2mask(self.SHAPE, polygon_yx), _polygon_mask(np.asarray(polygon_yx, dtype=float), self.SHAPE)
+
+    def _poly(self, radius, n=500, centre=(120.0, 120.0), from_deg=0.0, to_deg=360.0):
+        angles = np.linspace(math.radians(from_deg), math.radians(to_deg), n, endpoint=to_deg != 360.0)
+        return np.column_stack([centre[0] + radius * np.sin(angles), centre[1] + radius * np.cos(angles)])
+
+    @pytest.mark.parametrize('radius', [5, 20, 60, 110])
+    def test_it_matches_polygon2mask_for_a_circle(self, radius):
+        reference, mask = self._both(self._poly(radius))
+        assert abs(int(mask.sum()) - int(reference.sum())) <= 2  # boundary tangency only
+        assert np.logical_xor(reference, mask).sum() <= 2
+
+    def test_it_matches_for_a_wedge_closed_against_the_centre(self):
+        arc_points = self._poly(80, from_deg=20, to_deg=200)
+        polygon = np.vstack([[[120.0, 120.0]], arc_points, [[120.0, 120.0]]])
+        reference, mask = self._both(polygon)
+        assert np.logical_xor(reference, mask).sum() <= 2
+
+    def test_it_matches_for_a_lobed_blob(self):
+        angles = np.linspace(0, 2 * np.pi, 500, endpoint=False)
+        radii = 70 + 25 * np.sin(3 * angles) + 8 * np.cos(7 * angles)
+        polygon = np.column_stack([120 + radii * np.sin(angles), 120 + radii * np.cos(angles)])
+        reference, mask = self._both(polygon)
+        assert np.logical_xor(reference, mask).sum() <= 2
+
+    def test_a_contour_running_off_the_frame_is_clipped_the_same_way(self):
+        reference, mask = self._both(self._poly(150, centre=(30.0, 20.0)))
+        assert np.logical_xor(reference, mask).sum() <= 2
+
+    def test_a_polygon_entirely_off_the_frame_fills_nothing(self):
+        from input_output.output.imgs_masks import _polygon_mask
+
+        polygon = np.asarray([[-50.0, -50.0], [-40.0, -50.0], [-45.0, -30.0]])
+        assert not _polygon_mask(polygon, self.SHAPE).any()
+
+    def test_fewer_than_three_points_fills_nothing(self):
+        from input_output.output.imgs_masks import _polygon_mask
+
+        for polygon in (np.zeros((0, 2)), np.asarray([[10.0, 10.0]]), np.asarray([[10.0, 10.0], [20.0, 20.0]])):
+            assert not _polygon_mask(polygon, self.SHAPE).any()

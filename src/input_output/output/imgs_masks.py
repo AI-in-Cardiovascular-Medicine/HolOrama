@@ -1,10 +1,11 @@
+import math
 import os
+from functools import lru_cache
 
 import numpy as np
 import SimpleITK as sitk
 from PyQt6.QtWidgets import QApplication, QProgressDialog
 from scipy.interpolate import splev, splprep
-from skimage.draw import polygon2mask
 
 from domain.all_types import ANGLE_TYPES, PLAQUE_TYPES, ContourType
 from domain.io_types import iter_sectors
@@ -131,10 +132,71 @@ def _smooth_contour(xs, ys, is_closed=True):
         return np.array(xs), np.array(ys)
 
 
+def _polygon_mask(polygon_yx, image_shape):
+    """Rasterize a closed polygon: every pixel whose centre falls inside it, even-odd.
+
+    A scanline fill rather than skimage's polygon2mask, which tests each pixel of the
+    bounding box against every vertex of the polygon — with the ~500-vertex smoothed
+    contours this module builds, one lumen costs ~95 ms and a report rasterizes several
+    contours per frame over hundreds of frames. Walking one row at a time costs what the
+    polygon's height costs instead, some 17x less, and agrees with polygon2mask to a
+    pixel or two of boundary tangency out of tens of thousands (pinned in
+    tests/test_mask_rasterization.py).
+
+    `polygon_yx` is (row, col); the polygon closes from its last point back to its first.
+    """
+    mask = np.zeros(image_shape, dtype=bool)
+    if len(polygon_yx) < 3:
+        return mask
+
+    rows = np.asarray(polygon_yx[:, 0], dtype=float)
+    cols = np.asarray(polygon_yx[:, 1], dtype=float)
+    next_rows = np.roll(rows, -1)
+    next_cols = np.roll(cols, -1)
+
+    height, width = image_shape
+    first_row = max(int(np.ceil(rows.min())), 0)
+    last_row = min(int(np.floor(rows.max())), height - 1)
+
+    for row in range(first_row, last_row + 1):
+        # Half-open in row, so a vertex sitting exactly on this scanline is counted by one
+        # of its two edges rather than by both or neither.
+        straddling = ((rows <= row) & (next_rows > row)) | ((next_rows <= row) & (rows > row))
+        if not straddling.any():
+            continue
+        row_from = rows[straddling]
+        row_to = next_rows[straddling]
+        col_from = cols[straddling]
+        col_to = next_cols[straddling]
+        crossings = np.sort(col_from + (row - row_from) / (row_to - row_from) * (col_to - col_from))
+        for left, right in zip(crossings[0::2], crossings[1::2]):
+            start = max(int(math.ceil(left)), 0)
+            end = min(int(math.floor(right)), width - 1)
+            if end >= start:
+                mask[row, start : end + 1] = True
+    return mask
+
+
+@lru_cache(maxsize=4)
+def _pixel_angles(image_shape, centre_x: float, centre_y: float):
+    """Every pixel's angle about (centre_x, centre_y), for one frame geometry.
+
+    Cached because a frame asks for the same grid once per open contour and once per
+    angular sector, and building it costs a couple of 4 MB float arrays and an arctan2
+    over the whole frame each time. Returned read-only, so a caller cannot poison the
+    cache for the next one.
+    """
+    height, width = image_shape
+    yy, xx = np.mgrid[0:height, 0:width]
+    angles = np.arctan2(yy.astype(float) - centre_y, xx.astype(float) - centre_x)
+    angles.flags.writeable = False
+    return angles
+
+
 def _closed_polygon_mask(xs, ys, image_shape):
-    """polygon2mask for a closed contour. xs/ys in original image pixel coords."""
+    """Rasterize a closed contour. xs/ys in original image pixel coords."""
     xs_s, ys_s = _smooth_contour(xs, ys, is_closed=True)
-    return polygon2mask(image_shape, np.column_stack([ys_s, xs_s]))
+    return _polygon_mask(np.column_stack([ys_s, xs_s]), image_shape)
 
 
 def _open_outer_sector_mask(xs, ys, centroid_x, centroid_y, image_shape):
@@ -146,9 +208,7 @@ def _open_outer_sector_mask(xs, ys, centroid_x, centroid_y, image_shape):
     The caller clips the result to eem_mask & ~lumen_mask.
     """
     xs_s, ys_s = _smooth_contour(xs, ys, is_closed=False)
-    H, W = image_shape
-    yy, xx = np.mgrid[0:H, 0:W]
-    pixel_angles = np.arctan2(yy.astype(float) - centroid_y, xx.astype(float) - centroid_x)
+    pixel_angles = _pixel_angles(tuple(image_shape), float(centroid_x), float(centroid_y))
 
     # Determine which CCW/CW angular direction contains the arc midpoint
     x0, y0 = xs_s[0], ys_s[0]
@@ -172,7 +232,7 @@ def _open_outer_sector_mask(xs, ys, centroid_x, centroid_y, image_shape):
     inner_poly_yx[0] = (centroid_y, centroid_x)
     inner_poly_yx[1:-1] = np.column_stack([ys_s, xs_s])
     inner_poly_yx[-1] = (centroid_y, centroid_x)
-    inner_mask = polygon2mask(image_shape, inner_poly_yx)
+    inner_mask = _polygon_mask(inner_poly_yx, image_shape)
 
     return full_sector & ~inner_mask
 
@@ -304,9 +364,7 @@ def _angle_sector_mask(contour, image_shape, center_y, center_x):
     if not sectors:
         return covered
 
-    H, W = image_shape
-    yy, xx = np.mgrid[0:H, 0:W]
-    pixel_angles = np.arctan2(yy.astype(float) - center_y, xx.astype(float) - center_x)
+    pixel_angles = _pixel_angles(tuple(image_shape), float(center_x), float(center_y))
     centre = (float(center_x), float(center_y))
 
     for pts in sectors:

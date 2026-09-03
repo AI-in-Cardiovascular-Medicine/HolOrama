@@ -67,12 +67,30 @@ def report(main_window, lower_limit=None, upper_limit=None, suppress_messages=Fa
             ErrorMessage(main_window, 'Cannot write report before drawing contours')
         return None
 
-    report_data = compute_all(
-        main_window,
-        contoured_frames,
-        suppress_messages,
-        save_as_csv=main_window.config.report.save_as_csv if write_files else False,
-    )
+    save_as_csv = main_window.config.report.save_as_csv if write_files else False
+    # One dialog for the whole report: the per-frame passes, the contour CSVs and the
+    # write. It used to cover the first pass only, so it hit 100% and then sat there
+    # (with the success box still to come) through everything that actually took time.
+    progress = None
+    if not suppress_messages:
+        # Two passes over the frames, then a step each for the contour CSVs, the report
+        # file and the combined CSV.
+        tail_steps = (1 if save_as_csv else 0) + (2 if write_files else 0)
+        progress = QProgressDialog(
+            'Measuring contours...', 'Cancel', 0, 2 * len(contoured_frames) + tail_steps, main_window
+        )
+        progress.setWindowTitle('Writing report')
+        progress.setMinimumDuration(0)
+        progress.setModal(True)
+        # A QProgressDialog hides itself the moment its value reaches the maximum, which
+        # is half of how the old bar managed to disappear while the report was still being
+        # written. This one closes when report() is done with it and not before.
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.show()
+        QApplication.processEvents()
+
+    report_data = compute_all(main_window, contoured_frames, progress, save_as_csv=save_as_csv)
     if report_data is not None:  # else user cancelled progress bar
         # The pullback's own parameters go last, on every row rather than only the first:
         # one row then carries everything needed to interpret it, which is what a reader
@@ -81,18 +99,38 @@ def report(main_window, lower_limit=None, upper_limit=None, suppress_messages=Fa
             report_data[column] = value
 
         if write_files:
+            _advance(progress, 'Writing the report...')
             report_data.to_csv(
                 main_window.file_name + '_report.csv',  # already extension-free; see write_contours
                 float_format='%.2f',
                 index=False,
                 header=True,
             )
+            _advance(progress)
             save_combined_sorted_manual(main_window, report_data)
 
-        if not suppress_messages:
-            SuccessMessage(main_window, 'Write report')
+    if progress is not None:
+        progress.close()
+        QApplication.processEvents()
+
+    if report_data is not None and not suppress_messages:
+        SuccessMessage(main_window, 'Write report')
 
     return report_data
+
+
+def _advance(progress, label: str | None = None) -> None:
+    """Step the report's progress dialog on one place, if there is one.
+
+    `label` names the phase now starting, so the dialog says what the wait is for rather
+    than only how far along it is.
+    """
+    if progress is None:
+        return
+    if label is not None:
+        progress.setLabelText(label)
+    progress.setValue(progress.value() + 1)
+    QApplication.processEvents()
 
 
 def _metadata_columns(main_window) -> dict:
@@ -120,7 +158,7 @@ def _image_shape(main_window) -> tuple:
     return dimension, dimension
 
 
-def _plaque_and_blood_columns(main_window, contoured_frames) -> dict:
+def _plaque_and_blood_columns(main_window, contoured_frames, progress=None):
     """Per-frame plaque area (mm²) and angle (degrees), plus the combined blood angle.
 
     Both come off the rasterized mask rather than the contour polygons, because a plaque
@@ -132,6 +170,8 @@ def _plaque_and_blood_columns(main_window, contoured_frames) -> dict:
     Blood is reported as one angle per frame, several sectors counted once over any
     overlap. The guide wire is left out: its shadow says where the image cannot be read,
     not what is in the vessel.
+
+    Returns None if the user cancelled partway through.
     """
     columns: dict = {}
     for contour_type in PLAQUE_TYPES:
@@ -145,6 +185,10 @@ def _plaque_and_blood_columns(main_window, contoured_frames) -> dict:
     sector_centre = (image_shape[1] / 2, image_shape[0] / 2)
 
     for frame in contoured_frames:
+        _advance(progress, 'Measuring plaques and blood...' if frame == contoured_frames[0] else None)
+        if progress is not None and progress.wasCanceled():
+            return None
+
         frame_data = main_window.runtime_data.frame_data_dct.get(frame)
         has_plaque = frame_data is not None and any(
             getattr(frame_data, contour_type.value).contours for contour_type in PLAQUE_TYPES
@@ -217,17 +261,8 @@ def _safe_polygon_area(x_coords, y_coords, frame, contour_name, main_window):
         raise
 
 
-def compute_all(main_window, contoured_frames, suppress_messages, save_as_csv=True):
-    """compute all metrics"""
-    if not suppress_messages:
-        progress = QProgressDialog('Writing report...', 'Cancel', 0, len(contoured_frames), main_window)
-        progress.setWindowTitle('Writing report')
-        progress.setMinimumDuration(0)
-        progress.setModal(True)
-        progress.show()
-        QApplication.processEvents()
-        QApplication.processEvents()
-
+def compute_all(main_window, contoured_frames, progress=None, save_as_csv=True):
+    """compute all metrics; `progress` is report()'s dialog, or None when suppressed"""
     (
         longest_distance,
         farthest_x,
@@ -260,13 +295,10 @@ def compute_all(main_window, contoured_frames, suppress_messages, save_as_csv=Tr
     calc_x, calc_y = build_xy_lists(calc_full_list)
     branch_x, branch_y = build_xy_lists(branch_full_list)
 
-    for i, frame in enumerate(contoured_frames):
-        if not suppress_messages:
-            progress.setValue(i + 1)
-            QApplication.processEvents()
-            if progress.wasCanceled():
-                progress.close()
-                return None
+    for frame in contoured_frames:
+        _advance(progress)
+        if progress is not None and progress.wasCanceled():
+            return None  # report() owns the dialog and closes it
 
         # skip frames already computed (defensive check)
         if lumen_area[frame] and elliptic_ratio[frame] is not None and elliptic_ratio[frame] != 0:
@@ -339,7 +371,12 @@ def compute_all(main_window, contoured_frames, suppress_messages, save_as_csv=Tr
     ]
 
     # Each plaque as the area it covers and the angle it spans, then blood as one angle.
-    for column, values in _plaque_and_blood_columns(main_window, contoured_frames).items():
+    # By far the slowest pass — it rasterizes every plaque on every frame — so it reports
+    # its own progress instead of running on after the bar has filled up.
+    plaque_columns = _plaque_and_blood_columns(main_window, contoured_frames, progress)
+    if plaque_columns is None:
+        return None  # cancelled
+    for column, values in plaque_columns.items():
         report_data[column] = values
 
     # The hand measurements come last of the per-frame columns, ahead of the pullback's own
@@ -363,11 +400,8 @@ def compute_all(main_window, contoured_frames, suppress_messages, save_as_csv=Tr
 
     # Save CSVs for lumen and for other contours if present. Uses tagged/dia/sys.
     if save_as_csv:
+        _advance(progress, 'Saving contour CSVs...')
         _save_as_csv(main_window, lumen_x, lumen_y, eem_x, eem_y, calc_x, calc_y, branch_x, branch_y)
-
-    if not suppress_messages:
-        progress.close()
-        QApplication.processEvents()
 
     return report_data
 

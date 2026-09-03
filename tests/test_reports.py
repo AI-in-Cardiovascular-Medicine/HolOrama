@@ -256,3 +256,96 @@ class TestWrittenFile:
         with open(main_window.file_name + '_report.csv', encoding='utf-8') as report_file:
             header = report_file.readline().strip()
         assert header.split(',') == list(data.columns)
+
+
+class _StubProgress:
+    """Stands in for report()'s QProgressDialog, and can be told to cancel partway."""
+
+    def __init__(self, cancel_after=None):
+        self.labels = []
+        self._value = 0
+        self._cancel_after = cancel_after
+        self.closed = False
+
+    def setLabelText(self, label):
+        self.labels.append(label)
+
+    # The rest of what report() sets up on the real dialog.
+    def setWindowTitle(self, title):
+        pass
+
+    def setMinimumDuration(self, ms):
+        pass
+
+    def setModal(self, modal):
+        pass
+
+    def setAutoClose(self, auto):
+        pass
+
+    def setAutoReset(self, auto):
+        pass
+
+    def show(self):
+        pass
+
+    def setValue(self, value):
+        self._value = value
+
+    def value(self):
+        return self._value
+
+    def wasCanceled(self):
+        return self._cancel_after is not None and self._value >= self._cancel_after
+
+    def close(self):
+        self.closed = True
+
+
+class TestProgress:
+    """The dialog has to span every phase: the bar used to fill up during the quick pass
+    and then sit there through the slow one, with the success box arriving long after."""
+
+    def _compute(self, main_window, progress, save_as_csv=False):
+        from input_output.output.reports import compute_all
+
+        frames = sorted(main_window.runtime_data.frame_data_dct)
+        return compute_all(main_window, frames, progress, save_as_csv=save_as_csv)
+
+    def test_it_advances_once_per_frame_in_each_of_the_two_passes(self, main_window):
+        progress = _StubProgress()
+        assert self._compute(main_window, progress) is not None
+
+        assert progress.value() == 2 * N_FRAMES
+
+    def test_it_names_the_slow_pass(self, main_window):
+        progress = _StubProgress()
+        self._compute(main_window, progress)
+
+        assert any('plaque' in label.lower() for label in progress.labels)
+
+    def test_saving_the_contour_csvs_is_its_own_step(self, main_window, tmp_path):
+        progress = _StubProgress()
+        self._compute(main_window, progress, save_as_csv=True)
+
+        assert progress.value() == 2 * N_FRAMES + 1
+        assert any('csv' in label.lower() for label in progress.labels)
+
+    def test_cancelling_the_first_pass_gives_up(self, main_window):
+        assert self._compute(main_window, _StubProgress(cancel_after=2)) is None
+
+    def test_cancelling_the_slow_pass_gives_up(self, main_window):
+        # Past the first pass, so the cancel lands in the plaque measurements.
+        assert self._compute(main_window, _StubProgress(cancel_after=N_FRAMES + 1)) is None
+
+    def test_nothing_is_written_when_cancelled(self, main_window, monkeypatch):
+        import input_output.output.reports as reports
+
+        monkeypatch.setattr(reports, 'QProgressDialog', lambda *args, **kwargs: _StubProgress(cancel_after=1))
+        monkeypatch.setattr(reports, 'SuccessMessage', lambda *args: pytest.fail('reported success after a cancel'))
+
+        assert report(main_window, suppress_messages=False, write_files=True) is None
+        assert not os.path.exists(main_window.file_name + '_report.csv')
+
+    def test_a_suppressed_report_needs_no_dialog_at_all(self, main_window):
+        assert self._compute(main_window, None) is not None
