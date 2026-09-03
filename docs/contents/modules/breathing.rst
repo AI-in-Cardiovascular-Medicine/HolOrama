@@ -10,7 +10,7 @@ aortic root moves relative to the guiding catheter, which results in much larger
 during the cardiac cycle. Pullbacks with large respiratory motion will display wild changes
 within the pullback, as in this example:
 
-.. figure:: ../../media/pullback_breathing_artefact.gif
+.. figure:: ../../media/pullback_breathing_artefact.webp
    :name: fig-breathing-pullback
    :alt: Pullback with respiratory motion artefact
    :align: center
@@ -19,7 +19,7 @@ within the pullback, as in this example:
 On the area plot, the breathing artefact appears as a low-frequency oscillation of lumen area,
 apart from the labeled systolic and diastolic peaks.
 
-.. figure:: ../../media/breathing_area.png
+.. figure:: ../../media/breathing_area.webp
    :name: fig-breathing-longitudinal
    :alt: Breathing artefact in longitudinal view
    :align: center
@@ -165,7 +165,7 @@ ordered indices, per-bin shifts and every manual move) is cached with the case a
 into the contour JSON, so it survives closing and reopening. When the gated frame set
 changes, membership is reconciled rather than recomputed from scratch.
 
-.. figure:: ../../media/overview_sorting_view.png
+.. figure:: ../../media/overview_sorting_view.webp
    :name: fig-sorting-view
    :alt: Overview sorting view
    :align: center

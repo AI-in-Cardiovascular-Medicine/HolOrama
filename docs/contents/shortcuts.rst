@@ -6,7 +6,7 @@ Keyboard & mouse reference
 Shortcuts cannot currently be remapped from the interface; changing them requires editing
 ``src/gui/shortcuts.py``.
 
-.. figure:: ../media/keyboard.png
+.. figure:: ../media/keyboard.webp
    :name: fig-keyboard
    :alt: Keyboard shortcut overview for HolOrama
    :align: center
@@ -66,7 +66,7 @@ Navigation
   Which phase :kbd:`W` and :kbd:`S` traverse is set by the **Diastolic Frames** /
   **Systolic Frames** toggle (blue = diastole, red = systole).
 
-  .. figure:: ../media/toggle_diastole.png
+  .. figure:: ../media/toggle_diastole.webp
     :name: fig-diastole-toggle
     :alt: Toggle Button Diastole
     :align: center

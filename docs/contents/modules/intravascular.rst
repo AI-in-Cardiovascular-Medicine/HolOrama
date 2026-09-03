@@ -41,7 +41,7 @@ The layout
 - **Automatic Segmentation** and **Extract Diastolic and Systolic Frames** (IVUS) or
   **Tag Frames by Distance** (OCT) along the bottom.
 
-.. figure:: ../../media/overview_intravascular.png
+.. figure:: ../../media/overview_intravascular.webp
    :name: fig-overview-intravascular
    :alt: Overview Intravascular Module
    :align: center
@@ -87,7 +87,7 @@ tagged / gated frames as nifti for training.
   If you're analyzing an OCT pullback, and there is guiding catheter visible in the proximal
   vessel, do classification of the catheter first in the following manner:
 
-  .. figure:: ../../media/classifying_guiding_catheter.png
+  .. figure:: ../../media/classifying_guiding_catheter.webp
    :name: fig-guiding-catheter
    :alt: Identification of guiding catheter
    :align: center
@@ -116,7 +116,7 @@ frames taggable again but does not bring the dropped tags back.
 If a region should be excluded from analysis, after running tagging / gating use
 :kbd:`Alt+Delete` and provide a range to exclude.
 
-.. figure:: ../../media/overview_tagging.png
+.. figure:: ../../media/overview_tagging.webp
    :name: fig-tagging
    :alt: Overview Intravascular Module
    :align: center
@@ -211,7 +211,7 @@ report holds what was measured on each frame.
 Pick the structure in the contour dropdown (or press its shortcut), pick a drawing tool,
 then click in the image to place points.
 
-.. figure:: ../../media/overview_contour_tools.png
+.. figure:: ../../media/overview_contour_tools.webp
   :name: fig-contour-tools
   :alt: Different contour tools
   :align: center
@@ -301,7 +301,7 @@ Several shortcuts save a lot of clicking, but don't have a button representation
 
 See this example for applying these tools to effectively draw new contours:
 
-.. figure:: ../../media/contour_spawning.gif
+.. figure:: ../../media/contour_spawning.webp
    :name: fig-contour-spawn
    :alt: Keyboard shortcut spawning
    :align: center
@@ -345,7 +345,7 @@ There are three ways to record it:
 Example for when part of the border is not interpretable and for a case where only an
 open spline is drawn because part of the structure is not visible at all:
 
-.. figure:: ../../media/uncertainty_contours.png
+.. figure:: ../../media/uncertainty_contours.webp
    :name: fig-uncertainty
    :alt: Uncertainty in contouring
    :align: center
@@ -366,7 +366,7 @@ cases, label the frames as *Unanalyzable*. However, if a blood artefact only imp
 and you want the masks to indicate that it caused the impairment, add one or more angles showing
 where the blood impairs the visibility of structures, as in the example below:
 
-.. figure:: ../../media/blood_artefact.png
+.. figure:: ../../media/blood_artefact.webp
    :name: fig-blood-artefact
    :alt: Blood artefact
    :align: center

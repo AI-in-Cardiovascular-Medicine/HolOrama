@@ -24,7 +24,7 @@ to additionally checkout it's `documentation <https://multimoda-rs.readthedocs.i
    with a note field. For example data need to be prepared differently regarding the reference
    points:
 
-   .. figure:: ../../media/dataprep.jpg
+   .. figure:: ../../media/dataprep.webp
     :name: fig-fusion-dataprep
     :alt: Data preparation for fusion
     :align: center
@@ -84,7 +84,7 @@ Read left to right; each column is one stage of the pipeline.
    the bottom of the right column. Here, the workflow is performed for a coronary artery anomaly, however the same
    thing applies for coronary artery disease or any other pathology.
 
-.. figure:: ../../media/overview_fusion.png
+.. figure:: ../../media/overview_fusion.webp
    :name: fig-overview-fusion
    :alt: Overview Fusion Module
    :align: center
@@ -167,7 +167,7 @@ sharp bends are marked with numbered dots, hints for where a split probably belo
 Branch ids are reassigned after every edit (by descending length), so the scene is rebuilt
 each time; your layer visibility is preserved.
 
-.. figure:: ../../media/split_merge_cycle.png
+.. figure:: ../../media/split_merge_cycle.webp
    :name: fig-split-merge
    :alt: Split Merge Cycle
    :align: center
@@ -217,7 +217,7 @@ they should become. This moves points between regions, for example from ``rca_po
    In the case of coronary artery anomalies, the rolling sphere algorithm for labelling the 
    geometry leads to mislabelling of points since coronary and aorta are so close together:
 
-   .. figure:: ../../media/rolling_sphere.jpg
+   .. figure:: ../../media/rolling_sphere.webp
     :name: fig-fusion-rolling-sphere
     :alt: Rolling sphere mislabelling
     :align: center
@@ -227,7 +227,7 @@ they should become. This moves points between regions, for example from ``rca_po
     and the coronary centerline. The logic here is if a ray touches three surfaces the first one
     must be the aortic wall:
 
-   .. figure:: ../../media/ray_casting.jpg
+   .. figure:: ../../media/ray_casting.webp
     :name: fig-fusion-ray-casting
     :alt: Ray casting reassignment of mislabelled points
     :align: center

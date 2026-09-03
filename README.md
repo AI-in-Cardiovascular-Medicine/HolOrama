@@ -285,7 +285,7 @@ For ease-of-use, this application contains several keyboard shortcuts.\
 In the current state, these cannot be changed by the user (at least not without changing the source code):
 
 <p align="left">
-  <img src="docs/media/keyboard.png" alt="Keyboard" width="700"><br>
+  <img src="docs/media/keyboard.webp" alt="Keyboard" width="700"><br>
 </p>
 
 - Press <kbd>Ctrl</kbd> + <kbd>O</kbd> to open a DICOM/NIfTi file
