@@ -12,7 +12,7 @@ measurements between different phases: apparent differences can simply reflect t
 relative motion of reference points (e.g., the ostium) during the heartbeat, as we have
 previously shown:
 
-.. figure:: ../../media/JACCCaseReport.jpg
+.. figure:: ../../media/JACCCaseReport.webp
    :name: fig-casereport
    :alt: Jacc Case Report Figure
    :align: center
@@ -24,7 +24,7 @@ This shift, which we described previously, can be attributed to the fact that th
 moves relative to the catheter with every heartbeat. This is also demonstrated in the
 idealized example below:
 
-.. figure:: ../../media/vessel_movement_heartbeat.gif
+.. figure:: ../../media/vessel_movement_heartbeat.webp
    :name: fig-vessel-movement
    :alt: Vessel motion during heartbeat
    :align: center
@@ -106,7 +106,7 @@ Prerequisites
 
 See overview of the gating module in the GUI representation below:
 
-.. figure:: ../../media/gating_layout.png
+.. figure:: ../../media/gating_layout.webp
    :name: fig-gating-gui
    :alt: Gating GUI representation
    :align: center
@@ -144,7 +144,7 @@ The gating plot appears in the top right of the window:
 If no gated frames exist yet, an automatic estimate is placed for you as soon as the plot
 opens. If gating results already exist, they are drawn instead and left untouched.
 
-.. figure:: ../../media/gating_signals.png
+.. figure:: ../../media/gating_signals.webp
    :name: fig-gating-signals
    :alt: Gating Signals
    :align: center

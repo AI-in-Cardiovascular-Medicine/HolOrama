@@ -6,12 +6,22 @@ import numpy as np
 import SimpleITK as sitk
 from skimage.measure import marching_cubes
 
+from domain.io_types import CANONICAL_ORIENTATION, VolumeGeometry
 
-def export_nifti(mask: np.ndarray, voxel_spacing: tuple[float, float, float], output_path: str) -> None:
-    """Write a binary mask as NIfTI .nii.gz, preserving voxel spacing."""
-    dz, dy, dx = voxel_spacing
-    img = sitk.GetImageFromArray(mask.astype(np.uint8))
-    img.SetSpacing((dx, dy, dz))  # sitk order: (x, y, z)
+
+def export_nifti(mask: np.ndarray, geometry: VolumeGeometry, output_path: str) -> None:
+    """Write a mask drawn on a canonicalized volume as NIfTI (.nii / .nii.gz).
+
+    The mask is put back into `geometry`'s source orientation before writing, so the file
+    lands on the exact voxel grid of the image it was drawn on — and so it overlays that
+    image both here (the readers canonicalize it right back) and in any other viewer.
+    """
+    img = sitk.GetImageFromArray(mask.astype(np.uint8))  # (Z, Y, X) -> sitk (X, Y, Z)
+    img.SetOrigin(geometry.origin)
+    img.SetSpacing(geometry.spacing)
+    img.SetDirection(geometry.direction)
+    if geometry.source_orientation != CANONICAL_ORIENTATION:
+        img = sitk.DICOMOrient(img, geometry.source_orientation)
     sitk.WriteImage(img, output_path)
 
 

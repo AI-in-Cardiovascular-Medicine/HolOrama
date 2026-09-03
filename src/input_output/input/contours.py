@@ -7,12 +7,14 @@ from typing import Dict, List, Optional, Tuple
 
 from loguru import logger
 
-from domain.all_types import OCT_QUALITY_LABELS
-from domain.io_types import Contour, FrameData, Measure, Measurements, set_wire_points
+from domain.io_types import Contour, FrameData, Measure, Measurements, set_sector_points
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from version import version_file_str
 
 _CONTOUR_FILENAME_RE = re.compile(r'_contours_(ho_)?(\d+)_(\d+)_(\d+)\.json$')
+# The frame flags (guiding catheter / unanalyzable / unlabeled) arrived in 0.11.0;
+# older files are migrated on load, see _build_frame_data.
+_FRAME_FLAGS_VERSION = (0, 11, 0)
 
 
 def read_contours(main_window, file_name=None) -> bool:
@@ -39,12 +41,16 @@ def read_contours(main_window, file_name=None) -> bool:
 
     num_frames = main_window.runtime_data.metadata['num_frames']
 
+    is_holorama, file_version = _contour_file_sort_key(newest)
+    # Pre-rename AIVUS-CAA files carry 1.x.y numbers that nonetheless predate every HolOrama version.
+    pre_flags = not is_holorama or file_version < _FRAME_FLAGS_VERSION
+
     if _is_legacy(raw):
         scaling_factor = main_window.display.image_size / main_window.runtime_data.images.shape[1]
         main_window.runtime_data.frame_data_dct = _build_frame_data_legacy(raw, num_frames, scaling_factor)
         main_window.runtime_data.gating_signal = raw.get('gating_signal', {})
     else:
-        main_window.runtime_data.frame_data_dct = _build_frame_data(raw)
+        main_window.runtime_data.frame_data_dct = _build_frame_data(raw, pre_flags)
         main_window.runtime_data.gating_signal = raw.get('gating_signal', {})
 
     main_window.contours_drawn = True
@@ -98,6 +104,8 @@ def _build_frame_data_legacy(raw: dict, num_frames: int, scaling_factor: float =
         ml2 = None if ml2 is None or (isinstance(ml2, float) and math.isnan(ml2)) else ml2
         frames[i] = FrameData(
             phase=phases[i] if i < len(phases) else '-',
+            # This format has no quality field at all, so no frame carries an assigned
+            # label to keep and every one of them loads unlabeled (the FrameData default).
             lumen=_build_contour_legacy(raw, 'lumen', i),
             eem=_build_contour_legacy(raw, 'eem', i),
             calcium=_build_contour_legacy(raw, 'calcium', i),
@@ -111,19 +119,55 @@ def _build_frame_data_legacy(raw: dict, num_frames: int, scaling_factor: float =
     return frames
 
 
-def _build_frame_data(raw: dict) -> Dict[int, FrameData]:
+def _has_points(contour: Contour) -> bool:
+    """True if `contour` holds at least one drawn point — asdict persists empty entries too."""
+    return any(x and y for x, y in contour.contours)
+
+
+def _frame_label(frame_raw: dict, quality: str) -> Tuple[str, bool, bool, bool]:
+    """The frame's single label, as (quality, guiding_catheter, unanalyzable, unlabeled).
+
+    A rating and the flags are one exclusive choice, so exactly one of the four is set no
+    matter what combination the file holds: a frame carrying none of them is unlabeled by
+    definition. That covers a pre-0.11.0 frame with an EEM but no usable rating (the value
+    is '' or the key is missing), which would otherwise load with nothing set at all.
+    """
+    if quality:
+        return quality, False, False, False
+    if frame_raw.get('guiding_catheter', False):
+        return '', True, False, False
+    if frame_raw.get('unanalyzable', False):
+        return '', False, True, False
+    return '', False, False, True
+
+
+def _build_frame_data(raw: dict, pre_flags: bool = True) -> Dict[int, FrameData]:
     """Convert current JSON format (produced by asdict) into Dict[int, FrameData].
-    Top-level non-integer keys (e.g. 'gating_signal') are skipped here."""
+    Top-level non-integer keys (e.g. 'gating_signal') are skipped here.
+
+    `pre_flags` marks a file written before 0.11.0, when the frame flags did not exist and
+    every frame carried a 'Very Good' quality whether it had been reviewed or not. Such a
+    file cannot say which frames were actually analyzed, so the EEM stands in for it: a
+    frame without one loads unrated and unlabeled instead of inheriting that stale default.
+    """
     frames = {}
     for key, frame_raw in raw.items():
         if not key.lstrip('-').isdigit():
             continue
         i = int(key)
+        eem = _build_contour(frame_raw.get('eem'))
+        analyzed = not pre_flags or _has_points(eem)
+        quality, guiding_catheter, unanalyzable, unlabeled = _frame_label(
+            frame_raw, frame_raw.get('quality', '') if analyzed else ''
+        )
         frames[i] = FrameData(
             phase=frame_raw.get('phase', '-'),
-            quality=frame_raw.get('quality', OCT_QUALITY_LABELS[-1]),
+            quality=quality,
+            guiding_catheter=guiding_catheter,
+            unanalyzable=unanalyzable,
+            unlabeled=unlabeled,
             lumen=_build_contour(frame_raw.get('lumen')),
-            eem=_build_contour(frame_raw.get('eem')),
+            eem=eem,
             calcium=_build_contour(frame_raw.get('calcium')),
             branch=_build_contour(frame_raw.get('branch')),
             lipid=_build_contour(frame_raw.get('lipid')),
@@ -131,11 +175,16 @@ def _build_frame_data(raw: dict) -> Dict[int, FrameData]:
             measurement_1=_build_measure(frame_raw.get('measurement_1')),
             measurement_2=_build_measure(frame_raw.get('measurement_2')),
             reference=frame_raw.get('reference'),
-            wire=_build_wire(frame_raw.get('wire')),
+            wire=_build_sector_contour(frame_raw.get('wire')),
+            blood=_build_sector_contour(frame_raw.get('blood')),
             centroid=frame_raw.get('centroid'),
             closest_points=frame_raw.get('closest_points'),
             farthest_points=frame_raw.get('farthest_points'),
         )
+        # A guiding-catheter frame is never also a tagged frame (see right_half_oct), and
+        # a file written before that rule can hold both.
+        if guiding_catheter and frames[i].phase == 'T':
+            frames[i].phase = '-'
     return frames
 
 
@@ -207,17 +256,23 @@ def _build_contour(raw: Optional[dict]) -> Contour:
     )
 
 
-def _build_wire(raw) -> Contour:
-    """Reconstruct the frame's wires from either persisted shape.
+def _build_sector_contour(raw) -> Contour:
+    """Reconstruct one frame's angular sectors (wire shadows, blood) from either
+    persisted shape.
 
-    Current format is a Contour dict with one entry per wire (several wires per
-    frame are allowed). Files written before that stored a single wire directly as
-    [[x1, y1], [x2, y2]] — migrate it into the first (and only) wire entry.
+    Current format is a Contour dict with one entry per sector (several per frame are
+    allowed). Files written before that stored a single wire directly as
+    [[x1, y1], [x2, y2]] — migrate it into the first (and only) sector entry.
+
+    Sector points are kept exactly as written, unlike _build_contour's spline points: a
+    sector's coordinates are read as directions from the image centre (see tools.angle),
+    so neither the duplicate-closing-point rule nor the number of points per entry means
+    what it does for a spline.
     """
     if not raw:
         return Contour()
     if isinstance(raw, dict):
-        wire = Contour(
+        contour = Contour(
             contours=[],
             measurements=Measurements(**raw.get('measurements', {})),
             closed=raw.get('closed', []),
@@ -227,15 +282,15 @@ def _build_wire(raw) -> Contour:
         for entry in raw.get('contours', []):
             x = list(entry[0]) if entry else []
             y = list(entry[1]) if len(entry) > 1 else []
-            wire.contours.append((x, y))
-        return wire
+            contour.contours.append((x, y))
+        return contour
 
     points = _normalize_coord_entry(raw)
     if not points:
         return Contour()
-    wire = Contour()
-    set_wire_points(wire, 0, points)
-    return wire
+    contour = Contour()
+    set_sector_points(contour, 0, points)
+    return contour
 
 
 def _normalize_coord_entry(item) -> List[Tuple[float, float]]:

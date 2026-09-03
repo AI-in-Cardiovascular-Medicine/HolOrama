@@ -1,9 +1,11 @@
-from domain.io_types import Contour, iter_wires, set_wire_points, wire_points
+import pytest
+
+from domain.io_types import Contour, iter_sectors, sector_points, set_sector_points
 from input_output.input.contours import (
     _build_contour,
     _build_frame_data,
     _build_measure,
-    _build_wire,
+    _build_sector_contour,
     _contour_file_sort_key,
     _normalize_coord_entry,
 )
@@ -78,16 +80,27 @@ class TestBuildContour:
         assert c.end_coords == [[(2.0, 4.0)]]
 
 
-class TestBuildWire:
-    def test_none_returns_empty_wire(self):
-        assert iter_wires(_build_wire(None)) == []
+class TestCatheterFramesAreNotTagged:
+    def test_a_file_holding_both_loads_without_the_tag(self):
+        # A guiding-catheter frame carries no tag (see right_half_oct); files written
+        # before that rule could hold both.
+        raw = {'0': {'phase': 'T', 'guiding_catheter': True}, '1': {'phase': 'T'}}
+        frames = _build_frame_data(raw, pre_flags=False)
+
+        assert frames[0].phase == '-'
+        assert frames[1].phase == 'T'  # an ordinary tagged frame is untouched
+
+
+class TestBuildSectorContour:
+    def test_none_returns_empty_sector(self):
+        assert iter_sectors(_build_sector_contour(None)) == []
 
     def test_legacy_single_wire_becomes_first_entry(self):
         # Files written before multi-wire support stored one wire as [[x1, y1], [x2, y2]].
-        w = _build_wire([[316.0, 318.0], [372.0, 298.0]])
-        assert iter_wires(w) == [[(316.0, 318.0), (372.0, 298.0)]]
+        w = _build_sector_contour([[316.0, 318.0], [372.0, 298.0]])
+        assert iter_sectors(w) == [[(316.0, 318.0), (372.0, 298.0)]]
 
-    def test_current_format_keeps_every_wire(self):
+    def test_current_format_keeps_every_sector(self):
         raw = {
             'contours': [([1.0, 2.0], [3.0, 4.0]), ([5.0, 6.0], [7.0, 8.0])],
             'closed': [False, False],
@@ -95,34 +108,40 @@ class TestBuildWire:
             'end_coords': [],
             'measurements': {},
         }
-        assert iter_wires(_build_wire(raw)) == [[(1.0, 3.0), (2.0, 4.0)], [(5.0, 7.0), (6.0, 8.0)]]
+        assert iter_sectors(_build_sector_contour(raw)) == [[(1.0, 3.0), (2.0, 4.0)], [(5.0, 7.0), (6.0, 8.0)]]
 
     def test_does_not_strip_two_identical_points(self):
-        # _build_contour's duplicate-closing-point rule must not apply to wires.
+        # _build_contour's duplicate-closing-point rule must not apply to sectors.
         raw = {'contours': [([1.0, 1.0], [2.0, 2.0])]}
-        assert iter_wires(_build_wire(raw)) == [[(1.0, 2.0), (1.0, 2.0)]]
+        assert iter_sectors(_build_sector_contour(raw)) == [[(1.0, 2.0), (1.0, 2.0)]]
+
+    def test_keeps_the_interior_marker(self):
+        # The third point is what makes an opening past 180 degrees unambiguous, so it
+        # has to come back off disk like any other.
+        raw = {'contours': [([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])]}
+        assert iter_sectors(_build_sector_contour(raw)) == [[(1.0, 4.0), (2.0, 5.0), (3.0, 6.0)]]
 
 
-class TestWireHelpers:
-    def test_set_wire_points_grows_aligned_lists(self):
+class TestSectorHelpers:
+    def test_set_sector_points_grows_aligned_lists(self):
         w = Contour()
-        set_wire_points(w, 1, [(1.0, 2.0), (3.0, 4.0)])
+        set_sector_points(w, 1, [(1.0, 2.0), (3.0, 4.0)])
         assert len(w.contours) == 2
         assert w.closed == [False, False]
         assert w.start_coords == [[], []]
         assert w.end_coords == [[], []]
-        assert wire_points(w, 1) == [(1.0, 2.0), (3.0, 4.0)]
+        assert sector_points(w, 1) == [(1.0, 2.0), (3.0, 4.0)]
 
-    def test_wire_points_out_of_range(self):
-        assert wire_points(Contour(), 0) == []
+    def test_sector_points_out_of_range(self):
+        assert sector_points(Contour(), 0) == []
 
-    def test_iter_wires_skips_empty_entries(self):
+    def test_iter_sectors_skips_empty_entries(self):
         w = Contour()
-        set_wire_points(w, 1, [(1.0, 2.0), (3.0, 4.0)])
-        assert iter_wires(w) == [[(1.0, 2.0), (3.0, 4.0)]]
+        set_sector_points(w, 1, [(1.0, 2.0), (3.0, 4.0)])
+        assert iter_sectors(w) == [[(1.0, 2.0), (3.0, 4.0)]]
 
-    def test_iter_wires_accepts_pre_migration_tuple(self):
-        assert iter_wires(((1.0, 2.0), (3.0, 4.0))) == [[(1.0, 2.0), (3.0, 4.0)]]
+    def test_iter_sectors_accepts_pre_migration_tuple(self):
+        assert iter_sectors(((1.0, 2.0), (3.0, 4.0))) == [[(1.0, 2.0), (3.0, 4.0)]]
 
 
 class TestBuildMeasure:
@@ -173,3 +192,78 @@ class TestBuildFrameData:
         result = _build_frame_data(raw)
         assert len(result[0].lumen.contours) == 1
         assert result[0].lumen.closed == [True]
+
+
+EEM = {
+    'contours': [([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])],
+    'closed': [True],
+    'start_coords': [],
+    'end_coords': [],
+    'measurements': {},
+}
+NO_EEM = {'contours': [], 'closed': [], 'start_coords': [], 'end_coords': [], 'measurements': {}}
+
+
+class TestFrameLabelMigration:
+    """Files older than 0.11.0 gave every frame a 'Very Good' quality whether it had been
+    reviewed or not, so the EEM stands in for 'was this frame ever analyzed'."""
+
+    def test_pre_flags_frame_without_eem_loads_unlabeled(self):
+        raw = {'0': {'quality': 'Very Good', 'eem': NO_EEM}}
+        frame = _build_frame_data(raw, pre_flags=True)[0]
+        assert frame.quality == '' and frame.unlabeled is True
+
+    def test_pre_flags_frame_with_eem_keeps_the_label_from_the_file(self):
+        raw = {'0': {'quality': 'Bad', 'eem': EEM}}
+        frame = _build_frame_data(raw, pre_flags=True)[0]
+        assert frame.quality == 'Bad' and frame.unlabeled is False
+
+    def test_eem_holding_only_empty_entries_does_not_count_as_analyzed(self):
+        raw = {'0': {'quality': 'Ok', 'eem': {'contours': [([], [])], 'measurements': {}}}}
+        frame = _build_frame_data(raw, pre_flags=True)[0]
+        assert frame.quality == '' and frame.unlabeled is True
+
+    def test_analyzed_frame_without_a_usable_quality_still_loads_unlabeled(self):
+        # The reported case: an EEM but no rating to keep, which must not leave the frame
+        # with no rating and no flag either — nothing would be ticked in the UI at all.
+        for raw in ({'0': {'eem': EEM}}, {'0': {'quality': '', 'eem': EEM}}):
+            frame = _build_frame_data(raw, pre_flags=True)[0]
+            assert frame.quality == '' and frame.unlabeled is True
+
+    def test_current_files_skip_the_migration(self):
+        raw = {'0': {'quality': 'Good', 'unlabeled': False, 'eem': NO_EEM}}
+        frame = _build_frame_data(raw, pre_flags=False)[0]
+        assert frame.quality == 'Good' and frame.unlabeled is False
+
+
+class TestFrameLabelExclusivity:
+    """A rating and the three flags are one choice, so exactly one of the four is ever set."""
+
+    @pytest.mark.parametrize(
+        'stored, expected',
+        [
+            (
+                {'quality': 'Good', 'guiding_catheter': True, 'unanalyzable': True, 'unlabeled': True},
+                ('Good', False, False, False),
+            ),
+            (
+                {'quality': '', 'guiding_catheter': True, 'unanalyzable': True, 'unlabeled': True},
+                ('', True, False, False),
+            ),
+            (
+                {'quality': '', 'guiding_catheter': False, 'unanalyzable': True, 'unlabeled': True},
+                ('', False, True, False),
+            ),
+            (
+                {'quality': '', 'guiding_catheter': False, 'unanalyzable': False, 'unlabeled': False},
+                ('', False, False, True),
+            ),
+        ],
+    )
+    def test_contradictory_combinations_are_normalised(self, stored, expected):
+        frame = _build_frame_data({'0': {**stored, 'eem': EEM}}, pre_flags=False)[0]
+        assert (frame.quality, frame.guiding_catheter, frame.unanalyzable, frame.unlabeled) == expected
+
+    def test_a_frame_is_never_loaded_with_no_label_at_all(self):
+        frame = _build_frame_data({'0': {'eem': EEM}}, pre_flags=False)[0]
+        assert sum([bool(frame.quality), frame.guiding_catheter, frame.unanalyzable, frame.unlabeled]) == 1

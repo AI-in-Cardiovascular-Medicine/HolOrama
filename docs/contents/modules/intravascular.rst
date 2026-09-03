@@ -18,8 +18,9 @@ The layout
 .. rubric:: Left half: the image
 
 - **Row 1, drawing tools:** ⭕ **Closed Spline**, ➰ **Open Spline**, 🖌️ **Brush**,
-  🟡 **Reference**, 📏 **Measurement 1**, 📏 **Measurement 2**, 📐 **Angle Wire**,
-  ➕📐 **Add Wire**.
+  🟡 **Reference**, 📏 **Measurement 1**, 📏 **Measurement 2**, the 📐 **Angle** dropdown
+  (Angle Wire / Angle Blood) and ➕📐 **Add Wire** / ➕📐 **Add Blood**, which follows
+  whichever the dropdown shows.
   Exactly one is active at a time; which ones are enabled depends on the selected contour
   type.
 - **Row 2, contour selector:** a dropdown (Lumen / EEM / Calcium / Branch / Lipid /
@@ -40,7 +41,7 @@ The layout
 - **Automatic Segmentation** and **Extract Diastolic and Systolic Frames** (IVUS) or
   **Tag Frames by Distance** (OCT) along the bottom.
 
-.. figure:: ../../media/overview_intravascular.png
+.. figure:: ../../media/overview_intravascular.webp
    :name: fig-overview-intravascular
    :alt: Overview Intravascular Module
    :align: center
@@ -81,6 +82,21 @@ The first step should be to only analyze frames of interest. This can either be 
 tagging images in OCT or gating in IVUS; both matter because they let you export only the
 tagged / gated frames as nifti for training.
 
+.. note::
+
+  If you're analyzing an OCT pullback, and there is guiding catheter visible in the proximal
+  vessel, do classification of the catheter first in the following manner:
+
+  .. figure:: ../../media/classifying_guiding_catheter.webp
+   :name: fig-guiding-catheter
+   :alt: Identification of guiding catheter
+   :align: center
+   :width: 450px
+
+   Find the first proximal frame, where no guiding catheter is visible, click ``Catheter Range``.
+   This will classify all frames to the right (proximal) as *Guiding Catheter* and additionally
+   block tagging.
+
 **IVUS.** Mark the current frame with the *Diastolic Frame* / *Systolic Frame* checkboxes,
 or let :doc:`gating` find them for you. Gating requires a bit more effort and is covered
 in detail there. Marked frames appear as lines in the longitudinal view (blue = diastole,
@@ -88,17 +104,23 @@ red = systole) and are traversable with :kbd:`W` / :kbd:`S`. Use :kbd:`Alt+S` to
 systole and diastole over a range.
 
 **OCT.** Mark frames with *Tagged Frame*, or use **Tag Frames by Distance** to tag frames
-at regular distance intervals within a frame range. Rate each frame with the quality
-buttons (*Very Bad* … *Very Good*). The rating travels with the frame into the report.
+a fixed distance apart (in mm or in frames) within a frame range. The spacing is counted
+out from the **frame on screen**, in both directions — on frame 375 of 380 with a step of
+4 you get 375, 379 and 371, 367, … back down — so the frame being looked at is always one
+of the tagged ones. Rating each frame is a step of its own, covered below.
+A frame labelled **Guiding Catheter** shows the catheter rather than the vessel, so it
+never also carries a tag: labelling one (or a whole **Catheter Range**) drops its tag, and
+both *Tagged Frame* and **Tag Frames by Distance** skip it. Clearing the range makes those
+frames taggable again but does not bring the dropped tags back.
 
 If a region should be excluded from analysis, after running tagging / gating use
 :kbd:`Alt+Delete` and provide a range to exclude.
 
-.. figure:: ../../media/overview_tagging.png
+.. figure:: ../../media/overview_tagging.webp
    :name: fig-tagging
    :alt: Overview Intravascular Module
    :align: center
-   :width: 900px
+   :width: 600px
 
    Tagging a pullback after loading a presegmented mask.
 
@@ -130,7 +152,51 @@ models as demonstrated in :ref:`fig-tagging`
    inference settings are in the ``segmentation`` section of ``config.yaml``. 
    The packaged Windows binary does not include inference.
 
-6. Draw contours
+6. Classify frame
+~~~~~~~~~~~~~~~~~
+
+*OCT only.* IVUS pullbacks carry no frame label; they mark diastole and systole instead
+(step 3).
+
+Every frame carries **exactly one** label, picked from the two rows above the schematic:
+the frame labels **Guiding Catheter**, **Unanalyzable** and **Unlabeled**, and the five
+**Frame Quality** ratings *Very Bad*, *Bad*, *Ok*, *Good* and *Very Good*. All eight are
+one choice, so picking any of them replaces whatever the frame carried before — a rating
+clears a flag, a flag clears a rating. The buttons always show the label of the frame on
+screen, and every frame starts out **Unlabeled**.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Label
+     - What it says about the frame
+   * - *Very Bad* … *Very Good*
+     - You looked at it, and this is how well its borders can be read. Rating a frame is
+       what records that it was reviewed.
+   * - **Unanalyzable**
+     - You looked at it and it cannot be contoured at all. Where only *part* of the border
+       is uninterpretable, contour it and mark that part as uncertain instead (step 8).
+   * - **Guiding Catheter**
+     - The guiding catheter fills the frame, so there is no vessel in it to analyze.
+   * - **Unlabeled**
+     - Not looked at yet. Every frame starts here, and **Unlabeled** is also how a frame is
+       put back to it.
+
+.. note::
+   Label the guiding-catheter stretch with **Catheter Range** rather than frame by frame:
+   one click labels the frame on screen and every frame proximal to it (see
+   :ref:`fig-guiding-catheter`). **Clear Catheter Range** puts every frame carrying the
+   label back to **Unlabeled** and is greyed out while none does. A guiding-catheter frame
+   cannot be tagged — its *Tagged Frame* checkbox is greyed out and an existing tag is
+   dropped — and the vessel schematic veils the whole stretch in grey.
+
+The label describes the frame rather than the drawing on it: it is saved in
+``<case>_contours_ho_<version>.json`` and comes back when the case is reopened, and
+**Delete All On Frame** leaves it untouched. It is not one of the report's columns; the
+report holds what was measured on each frame.
+
+7. Draw contours
 ~~~~~~~~~~~~~~~~
 
 .. important::
@@ -145,7 +211,7 @@ models as demonstrated in :ref:`fig-tagging`
 Pick the structure in the contour dropdown (or press its shortcut), pick a drawing tool,
 then click in the image to place points.
 
-.. figure:: ../../media/overview_contour_tools.png
+.. figure:: ../../media/overview_contour_tools.webp
   :name: fig-contour-tools
   :alt: Different contour tools
   :align: center
@@ -191,11 +257,17 @@ then click in the image to place points.
    * - Wire
      - :kbd:`3`
      - :kbd:`Ctrl+3`
-     - —
+     - 📐 angular sector
+   * - Blood
+     - :kbd:`B`
+     - :kbd:`Ctrl+B`
+     - 📐 angular sector
 
 .. note::
   To return to a neutral state (no tool, Lumen as active contour), 
-  press :kbd:`Esc`.
+  press :kbd:`Esc`. To delete the currently clicked contour (also works for a single contour,
+  when there are several of the same type), press :kbd:`Delete`. To delete all it's faster to
+  click the Button ``🗑️ Delete All On Frame``.
 
 Drawing rules:
 
@@ -203,6 +275,11 @@ Drawing rules:
   close the contour.
 - **Open spline**: left-click to place points; the contour stays open. For calcium, the
   angle from the lumen centre to the start and end point is computed automatically.
+- A plaque contour (calcium, lipid, macrophage) marks the **luminal** side of the plaque,
+  which then fills outwards to the EEM in the mask. An open arc can only mean that; a
+  closed contour drawn in the wall is the plaque itself, filled in. A closed contour drawn
+  right **around the lumen** — a circumferential calcification — is read as a luminal
+  boundary too, so the wall outside it is what gets filled.
 - **Brush**: paint the structure directly. Requires *Mask mode* to be enabled; **hover the
   🖌️ button to get the radius popup**.
 - Drag an existing knot point. To move it, click on the contour line to insert a new point.
@@ -224,17 +301,22 @@ Several shortcuts save a lot of clicking, but don't have a button representation
 
 See this example for applying these tools to effectively draw new contours:
 
-.. figure:: ../../media/contour_spawning.gif
+.. figure:: ../../media/contour_spawning.webp
    :name: fig-contour-spawn
    :alt: Keyboard shortcut spawning
    :align: center
    :width: 900px
 
-   Example for a workflow utilizing the different contour spawning shortcuts.
+   Example for a workflow utilizing the different contour spawning shortcuts. In the .gif
+   first the contour is shrunk with :kbd:`Ctrl+MWB`, then an EEM contour is spawned from
+   the lumen contour using :kbd:`Shift+Q`. Then switched to the neighbouring frame using
+   :kbd:`W`, (here not gated so goes to the next), then with :kbd:`Shift+A` it copies
+   the currently active contour type (here ``EEM``) from the neighbouring frame to the left
+   (more distal).
 
 .. _iv-uncertainty:
 
-7. Express uncertainty
+8. Express uncertainty
 ~~~~~~~~~~~~~~~~~~~~~~
 
 Borders are not equally visible all the way around a vessel. Rather than forcing you to
@@ -263,7 +345,7 @@ There are three ways to record it:
 Example for when part of the border is not interpretable and for a case where only an
 open spline is drawn because part of the structure is not visible at all:
 
-.. figure:: ../../media/uncertainty_contours.png
+.. figure:: ../../media/uncertainty_contours.webp
    :name: fig-uncertainty
    :alt: Uncertainty in contouring
    :align: center
@@ -279,18 +361,45 @@ Colours of the start/end markers are configurable (``color_start_point``,
    Be consistent about *why* you mark a region uncertain across a study; that consistency
    is what a model can actually learn from.
 
-8. Measurements and markers
+Blood artefacts are common in OCT images, particularly in the ostial regions. In the most severe
+cases, label the frames as *Unanalyzable*. However, if a blood artefact only impairs image quality
+and you want the masks to indicate that it caused the impairment, add one or more angles showing
+where the blood impairs the visibility of structures, as in the example below:
+
+.. figure:: ../../media/blood_artefact.webp
+   :name: fig-blood-artefact
+   :alt: Blood artefact
+   :align: center
+   :width: 900px
+
+   Left: Raw image without contours. Right: Contours with open start and end points
+   on the EEM contour, an angle indicating the blood-related impairment in red, and the classification
+   *Ok* for the image.
+
+9. Measurements and markers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - 📏 **Measurement 1** (:kbd:`1`) and **Measurement 2** (:kbd:`2`) each measure a distance
   between two clicked points. Both are stored per frame and end up in the report.
-- 📐 **Angle Wire** (:kbd:`3`) marks the guide-wire shadow as an angular sector: click two
-  points and the sector between the two radial lines through them becomes the shadow.
-  ➕📐 **Add Wire** (:kbd:`Ctrl+3`) marks another wire on the same frame, keeping the ones
-  already there; some pullbacks show more than one wire. Drawing with **Angle Wire**
-  instead replaces every wire on the frame. Wires behave like the other multi-instance
-  contours (calcification, lipid, …): each is stored separately, all of them are exported
-  to the mask (label 9), and :kbd:`Ctrl+Z` undoes the last one.
+- 📐 **Angle Wire** (:kbd:`3`) marks the guide-wire shadow as an angular sector. Click
+  once to set the boundary it opens from: two handles and an arc appear on a circle
+  ``angle_handle_radius_mm`` (5 mm by default) out from the image centre, and the sector
+  then **opens as you move the pointer**, its second boundary dotted and the opening shown
+  in degrees. Click again to fix it, and the dotted boundary turns solid. Because the
+  opening is tracked as you turn rather than derived from the two clicks, a sector can be
+  opened **past 180 degrees** — keep turning the same way — and turning back through the
+  first boundary opens it the other way instead. Either handle can be **dragged**
+  afterwards to re-aim that boundary; the other one stays put.
+- 📐 **Angle Blood** marks a blood artefact the same way, in dark red (:kbd:`B`, and
+  :kbd:`Ctrl+B` to add). It is the same tool and the same shape — pick it from the 📐
+  dropdown, which also points ➕📐 **Add** at it.
+- ➕📐 **Add Wire** (:kbd:`Ctrl+3`) marks another sector of the selected type on the same
+  frame, keeping the ones already there; some pullbacks show more than one wire. Drawing
+  with **Angle Wire** instead replaces every wire on the frame. Sectors behave like the
+  other multi-instance contours (calcification, lipid, …): each is stored separately, all
+  of them are exported to the mask (wire label 9, blood label 10 — blood sits at the
+  very back, so a wire shadow crossing it stays visible), and :kbd:`Ctrl+Z`
+  undoes the last edit — placing one, or dragging a boundary.
 - 🟡 **Reference** places a reference point on the frame. This point defines the rotational
   reference used when the pullback is later aligned in the :doc:`fusion` module.
 - :kbd:`G` hides the measurement overlays, :kbd:`H` hides all contours.
@@ -303,8 +412,8 @@ coronary artery anomalies for fusion with CCTA. Also the reference points should
 set either at the ostium or at bifurcation points. A detailed description of how the input format
 for the fusion module is expected is given in :doc:`fusion`.
 
-9. Review in the longitudinal view
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+10. Review in the longitudinal view
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The longitudinal view under the gating plot shows the pullback cut along its axis,
 overlaid with the lumen-area dots, the diastolic/systolic marker lines and the breathing
@@ -319,7 +428,7 @@ EEM diameter, calcification distribution on top and lipid distribution on the bo
 This is a quick way to spot regions of interest, which can then be inspected in the 
 image view and annotated with the contouring tools.
 
-10. Export
+11. Export
 ~~~~~~~~~~
 
 .. list-table::
@@ -334,7 +443,7 @@ image view and annotated with the contouring tools.
    * - **File → Save Report** (:kbd:`Ctrl+R`)
      - Per-frame metrics report, plus the contour CSVs when ``report.save_as_csv`` is on.
        **These CSVs are the Fusion module's intravascular input.**
-   * - **File → Save NIfTis → Contoured / Gated / All Frames**
+   * - **File → Save NIfTis → Contoured / Tagged Gated / All Frames**
      - Image and mask NIfTI files for the chosen frame selection.
    * - **File → Save Gated Images**
      - The gated (or tagged) frames as numpy arrays (.npy).
@@ -347,9 +456,15 @@ See :doc:`../outputs` for the exact file names and directory layout.
 
 The NIfTI export is the intended bridge to model training: masks are rasterised from your
 contours using a fixed layering ruleset, so overlapping structures resolve the same way
-every time. Choose **All Frames** for a dense dataset, or **Contoured Frames** to export
-only what you actually annotated. ``save.save_2d`` and ``save.save_3d`` control whether you
-get one file per frame, a single 3D volume, or both.
+every time. Choose **All Frames** for a dense dataset, **Contoured Frames** to export
+any frames with contours or **Tagged/Gated Frames** to export the tagged/gated frames.
+``save.save_2d`` and ``save.save_3d`` control whether you get one file per frame, 
+a single 3D volume, or both.
+
+.. important::
+
+  It is recommended to use the Save NIfTI for tagged/gated frames, to not accidentely
+  export any non-visited and corrected frames.
 
 Example Video
 -------------

@@ -16,17 +16,28 @@ from PyQt6.QtWidgets import (
 
 from domain.all_types import (
     ALLOWED_TOOLS,
+    ANGLE_TYPES,
     ContourConfig,
     ContourType,
     SegmentationTool,
 )
-from domain.io_types import Contour, Measure, iter_wires, set_wire_points, wire_points
+from domain.io_types import Contour, Measure, sector_points, set_sector_points
 from domain.mask_types import MASK_ALPHA, MASK_SPECS
 from domain.undo import push_contour_snapshot
 from input_output.output.imgs_masks import contours_to_mask
 from pages.intravascular.utils.metrics import MetricsMixin
 from segmentation.segment import downsample
+from tools.angle import (
+    accumulate_sweep,
+    angle_of,
+    continue_sweep,
+    points_for_sector,
+    sector_from_points,
+    signed_to_sector,
+    sweep_between,
+)
 from tools.geometry import (
+    AngleSector,
     Marker,
     OpenSpline,
     OpenSplineGeometry,
@@ -59,6 +70,11 @@ class Display(QGraphicsView, MetricsMixin):
         self.start_color: str = config.intravascular.color_start_point
         self.end_color: str = config.intravascular.color_end_point
         self.color_angle: str = config.intravascular.color_angle
+        self.color_blood: str = getattr(config.intravascular, 'color_blood', 'darkred')
+        # How far from the image centre every angular-sector handle sits (see tools.angle):
+        # far enough out to keep the vessel clear, and clamped to the image in
+        # _angle_handle_radius for pullbacks with a smaller field of view.
+        self.angle_handle_radius_mm: float = getattr(config.intravascular, 'angle_handle_radius_mm', 5.0)
         self.snap_radius_px: int = config.intravascular.snap_radius_px
 
         self.color_contour = getattr(config.intravascular, "color_contour", (255, 255, 255))
@@ -115,10 +131,17 @@ class Display(QGraphicsView, MetricsMixin):
         self.measure_index: int | None = None  # wtf is this legacy crap
         self.pending_measure_points: list = [None, None]  # first-click-only state per measure index
         self.reference_mode: bool = False
-        self.angle_mode: bool = False
-        self.angle_clicks: list[QPointF] = []
         self._display_updating: bool = False
         #####################################################################################################
+
+        # Angular sectors (ANGLE_TYPES) — placement, and dragging a boundary afterwards.
+        self.angle_mode: bool = False
+        self._angle_sectors: list[tuple[ContourType, int, AngleSector]] = []  # what is on screen
+        self._angle_start: float | None = None  # boundary the sector being placed opens from
+        self._angle_sweep: float = 0.0  # how far it has opened so far, signed (see tools.angle)
+        self._angle_pointer: float = 0.0  # angle the pointer was last seen at
+        self._angle_drag: tuple[ContourType, int, AngleSector, int] | None = None
+        self._angle_dragged: bool = False  # whether the grabbed handle actually moved
 
         # Brush tool state
         self._brush_active: bool = False
@@ -142,6 +165,7 @@ class Display(QGraphicsView, MetricsMixin):
             ContourType.LIPID: self.color_lipid,
             ContourType.MACROPHAGE: self.color_macrophage,
             ContourType.WIRE: self.color_angle,
+            ContourType.BLOOD: self.color_blood,
             ContourType.REFERENCE: self.color_reference,
         }
         configs = {}
@@ -179,6 +203,8 @@ class Display(QGraphicsView, MetricsMixin):
         self.start_color = values['color_start_point']
         self.end_color = values['color_end_point']
         self.color_angle = values['color_angle']
+        self.color_blood = values['color_blood']
+        self.angle_handle_radius_mm = values['angle_handle_radius_mm']
 
         self.contour_configs = self._build_contour_configs()
         if self.images is not None:
@@ -210,7 +236,10 @@ class Display(QGraphicsView, MetricsMixin):
         self.pending_measure_points = [None, None]
         self.reference_mode = False
         self.angle_mode = False
-        self.angle_clicks = []
+        self._angle_sectors = []
+        self._angle_drag = None
+        self._angle_dragged = False
+        self._reset_angle_placement()
         self.window_level = self.initial_window_level
         self.window_width = self.initial_window_width
         self._brush_active = False
@@ -543,13 +572,14 @@ class Display(QGraphicsView, MetricsMixin):
             self._add_center_marker(int(h))
 
         if self.main_window.hide_contours:
+            self._angle_sectors = []  # nothing is on screen, so no handle can be grabbed
             self.main_window.longitudinal_view.hide_lview_contours()
         else:
             if update_contours:
                 self._draw_contours_frame()
                 self._draw_measure()
                 self._draw_reference()
-                self._draw_angles()
+                self._draw_angle_sectors()
                 self._draw_open_spline_edge_lines()
 
                 # Read the splines only after _draw_contours_frame() has rebuilt them from
@@ -776,9 +806,9 @@ class Display(QGraphicsView, MetricsMixin):
 
         ct = self.active_contour_type
         spec = MASK_SPECS.get(ct)
-        # A wire is stored as two angle points, not a paintable region — a brushed
-        # boundary cannot be turned back into one.
-        if spec is None or ct is ContourType.WIRE:
+        # A sector is stored as the angles bounding it, not as a paintable region — a
+        # brushed boundary cannot be turned back into one.
+        if spec is None or ct in ANGLE_TYPES:
             self._brush_add = None
             self._brush_erase = None
             return
@@ -890,16 +920,19 @@ class Display(QGraphicsView, MetricsMixin):
         self.drawing_mode = False
         self.reference_mode = False
         if self.angle_mode:
-            self._discard_incomplete_wire()
+            self._discard_incomplete_sector()
         self.angle_mode = False
+        self._reset_angle_placement()
+        self._angle_drag = None
+        self.setMouseTracking(False)
         self.append_contour_mode = False
         self._contour_close_committed = False
         self.active_point = None
-        if was_drawing and (
-            self.active_contour_type == ContourType.MEASUREMENT_1
-            or self.active_contour_type == ContourType.MEASUREMENT_2
-            or self.active_contour_type == ContourType.REFERENCE
-            or self.active_contour_type == ContourType.WIRE
+        if was_drawing and self.active_contour_type in (
+            ContourType.MEASUREMENT_1,
+            ContourType.MEASUREMENT_2,
+            ContourType.REFERENCE,
+            *ANGLE_TYPES,
         ):
             self.active_contour_type = ContourType.LUMEN
 
@@ -1351,25 +1384,32 @@ class Display(QGraphicsView, MetricsMixin):
     ################################################################################################
 
     def start_angle(self, append: bool = False):
-        """Initializes the angle measurement mode for one wire.
+        """Initializes placement of one angular sector of the active type (see ANGLE_TYPES).
 
-        append=False replaces every wire on the frame; append=True adds another one
-        (a pullback can show more than one guide wire).
+        append=False replaces every sector of that type on the frame; append=True adds
+        another one (a pullback can show more than one guide wire, or blood in two places).
         """
         if self.drawing_mode:
             self.stop_contour()
+        contour_type = self.active_contour_type
+        if contour_type not in ANGLE_TYPES:  # nothing else can be drawn as a sector
+            contour_type = ContourType.WIRE
+            self.set_active_contour_type(contour_type)
+
         self.angle_mode = True
-        self.angle_clicks = []
+        self._reset_angle_placement()
+        self.setMouseTracking(True)  # the sector opens as the pointer moves, with no button held
         self.main_window.display.setCursor(Qt.CursorShape.CrossCursor)
 
-        key = self.contour_key(ContourType.WIRE)
+        key = self.contour_key(contour_type)
         push_contour_snapshot(self.main_window.runtime_data, self.frame, key, self.active_contour_index)
 
         fd = self.main_window.runtime_data.frame_data_dct[self.frame]
         if not append:
-            fd.wire = Contour()
-        # The new wire becomes the active instance, so Delete/Ctrl+Z act on it.
-        self.active_contour_index = len(fd.wire.contours)
+            setattr(fd, key, Contour())
+        contour_obj = getattr(fd, key)
+        # The new sector becomes the active instance, so Delete/Ctrl+Z act on it.
+        self.active_contour_index = len(contour_obj.contours)
         self.display_image(update_contours=True)
         if self.active_segmentation_tool == SegmentationTool.OPEN_SPLINE:
             self.main_window.left_half.open_spline_btn.setChecked(True)
@@ -1378,67 +1418,244 @@ class Display(QGraphicsView, MetricsMixin):
         else:
             self.main_window.left_half.closed_spline_btn.setChecked(True)
 
-    def _handle_angle_placement(self, pos: QPointF):
-        """Handles the two clicks required to define the wire currently being drawn."""
-        self.angle_clicks.append(pos)
-        original_point = (pos.x() / self.scaling_factor, pos.y() / self.scaling_factor)
-        fd = self.main_window.runtime_data.frame_data_dct[self.frame]
-        first = wire_points(fd.wire, self.active_contour_index)
+    def _reset_angle_placement(self) -> None:
+        """Forget the sector being placed, without touching what is already stored."""
+        self._angle_start = None
+        self._angle_sweep = 0.0
+        self._angle_pointer = 0.0
 
-        if len(self.angle_clicks) < 2 or not first:
+    def _handle_angle_placement(self, pos: QPointF):
+        """The two clicks that define one sector: the first sets the boundary it opens
+        from, the second the boundary it opens to.
+
+        Between them the opening follows the pointer (_track_angle_opening), and it is
+        that accumulated opening rather than the two click positions that gets stored —
+        two boundaries on their own cannot say which way round a sector wider than 180
+        degrees was meant.
+        """
+        key = self.contour_key(self.active_contour_type)
+        fd = self.main_window.runtime_data.frame_data_dct[self.frame]
+        contour_obj = getattr(fd, key)
+        angle = self._scene_angle(pos)
+
+        if self._angle_start is None or not sector_points(contour_obj, self.active_contour_index):
             # First click, or the frame changed mid-placement: (re)start on this frame.
-            self.angle_clicks = [pos]
-            self.active_contour_index = len(fd.wire.contours)
-            set_wire_points(fd.wire, self.active_contour_index, [original_point])
+            self._angle_start = angle
+            self._angle_pointer = angle
+            self._angle_sweep = 0.0
+            self.active_contour_index = len(contour_obj.contours)
+            set_sector_points(contour_obj, self.active_contour_index, [self._image_point(angle)])
             self.main_window.save_contours_soon()
             self.display_image(update_contours=True)
             return
 
-        set_wire_points(fd.wire, self.active_contour_index, [first[0], original_point])
+        # Take the click as the last pointer position, so the sector ends up exactly where
+        # the user saw it even if the pointer never moved between the two clicks.
+        self._angle_sweep = accumulate_sweep(self._angle_sweep, self._angle_pointer, angle)
+        self._angle_pointer = angle
+        if self._angle_sweep == 0.0:
+            return  # a second click on the first opens nothing; wait for one that does
+
+        start, sweep = signed_to_sector(self._angle_start, self._angle_sweep)
+        set_sector_points(contour_obj, self.active_contour_index, self._image_points(start, sweep))
         self.angle_mode = False
+        self._reset_angle_placement()
+        self.setMouseTracking(False)
         self.main_window.display.setCursor(Qt.CursorShape.ArrowCursor)
         self.main_window.save_contours_soon()
         self.display_image(update_contours=True)
 
-    def _discard_incomplete_wire(self):
-        """Drop the wire being placed if the user left angle mode after one click:
-        a single point defines no shadow sector and would only draw a stray line."""
-        fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
-        if fd is None or self.active_contour_type is not ContourType.WIRE:
+    def _track_angle_opening(self, pos: QPointF) -> None:
+        """Open the sector being placed to follow the pointer and redraw its preview."""
+        if self._angle_start is None:
             return
+        angle = self._scene_angle(pos)
+        self._angle_sweep = accumulate_sweep(self._angle_sweep, self._angle_pointer, angle)
+        self._angle_pointer = angle
+        geometry = signed_to_sector(self._angle_start, self._angle_sweep)
+        for contour_type, index, sector in self._angle_sectors:
+            if contour_type is self.active_contour_type and index == self.active_contour_index:
+                sector.update(*geometry, dotted=True)
+                return
+
+    def _discard_incomplete_sector(self):
+        """Drop the sector being placed if the user left angle mode after one click:
+        a single point defines no wedge and would only draw a stray line."""
+        fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
+        if fd is None or self.active_contour_type not in ANGLE_TYPES:
+            return
+        contour_obj = getattr(fd, self.contour_key())
         index = self.active_contour_index
-        if index < len(fd.wire.contours) and len(wire_points(fd.wire, index)) < 2:
-            for lst in (fd.wire.contours, fd.wire.closed, fd.wire.start_coords, fd.wire.end_coords):
+        if index < len(contour_obj.contours) and len(sector_points(contour_obj, index)) < 2:
+            for lst in (contour_obj.contours, contour_obj.closed, contour_obj.start_coords, contour_obj.end_coords):
                 if index < len(lst):
                     del lst[index]
-            self.active_contour_index = max(len(fd.wire.contours) - 1, 0)
+            self.active_contour_index = max(len(contour_obj.contours) - 1, 0)
             self.main_window.save_contours_soon()
 
-    def _draw_angles(self):
-        """Draws lines from center through every wire's angle points, stopping at image edges."""
+    def _scene_angle(self, pos: QPointF) -> float:
+        """Direction of a scene position seen from the image centre."""
+        return angle_of((pos.x(), pos.y()), self._scene_centre())
+
+    def _scene_centre(self) -> Tuple[float, float]:
+        """Image centre in scene coordinates — every sector is measured from it."""
+        half_size = self.image_size / 2
+        return (half_size, half_size)
+
+    def _image_centre(self) -> Tuple[float, float]:
+        """Image centre in original image coordinates, which is what gets stored."""
+        half_size = self.image_size / (2 * self.scaling_factor)
+        return (half_size, half_size)
+
+    def _angle_handle_radius(self) -> float:
+        """Scene-pixel radius of the circle every sector handle sits on.
+
+        `angle_handle_radius_mm` from the centre, pulled back inside the image for
+        pullbacks whose field of view is smaller than that (as most are: a 10 mm wide
+        image only reaches 5 mm in the first place). Only the angle of a sector point
+        means anything, so putting them all on one circle costs nothing and makes a
+        sector look the same in every pullback.
+        """
+        limit = 0.9 * self.image_size / 2
+        metadata = getattr(self.main_window.runtime_data, 'metadata', None) or {}
+        resolution = metadata.get('resolution')
+        if not resolution:
+            return limit
+        return min(self.angle_handle_radius_mm / float(resolution) * self.scaling_factor, limit)
+
+    def _image_point(self, angle: float) -> Tuple[float, float]:
+        """One sector boundary point, in stored image coordinates."""
+        return self._image_points(angle, 0.0)[0]
+
+    def _image_points(self, start: float, sweep: float) -> List[Tuple[float, float]]:
+        """The points storing the sector (`start`, `sweep`), in image coordinates.
+
+        Angles are the same in both spaces (the scene is the image scaled about the same
+        centre), so only the radius has to be converted.
+        """
+        return points_for_sector(self._image_centre(), self._angle_handle_radius() / self.scaling_factor, start, sweep)
+
+    def _draw_angle_sectors(self):
+        """Draw every angular sector on the frame, and the one being placed on top of them.
+
+        The sector being placed is the only dotted one: its second boundary is still
+        following the pointer.
+        """
+        self._angle_sectors = []
         fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
         if fd is None:
             return
 
+        centre = self._scene_centre()
+        radius = self._angle_handle_radius()
         half_size = self.image_size / 2
-        center = QPointF(half_size, half_size)
-        pen = get_qt_pen(self.color_angle, self.point_thickness)
 
-        for wire in iter_wires(fd.wire):
-            for pt_coords in wire:
-                target_pt = QPointF(pt_coords[0] * self.scaling_factor, pt_coords[1] * self.scaling_factor)
-                dx = target_pt.x() - center.x()
-                dy = target_pt.y() - center.y()
-                if dx == 0 and dy == 0:
-                    continue
-                t_x = abs(half_size / dx) if dx != 0 else float('inf')
-                t_y = abs(half_size / dy) if dy != 0 else float('inf')
-                t = min(t_x, t_y)
-                edge_pt = QPointF(center.x() + t * dx, center.y() + t * dy)
-                self.graphics_scene.addLine(QLineF(center, edge_pt), pen)
-                self.graphics_scene.addItem(
-                    Point((target_pt.x(), target_pt.y()), self.point_thickness, self.point_radius, 0, self.color_angle)
+        for contour_type in ANGLE_TYPES:
+            contour_obj = getattr(fd, contour_type.value, None)
+            if contour_obj is None:
+                continue
+            cfg = self.contour_configs.get(contour_type)
+            color = cfg.color if cfg else self.color_angle
+            for index in range(len(contour_obj.contours)):
+                points = [
+                    (x * self.scaling_factor, y * self.scaling_factor) for x, y in sector_points(contour_obj, index)
+                ]
+                placing = (
+                    self.angle_mode and contour_type is self.active_contour_type and index == self.active_contour_index
                 )
+                if len(points) >= 2:
+                    geometry = sector_from_points(points, centre)
+                elif placing and self._angle_start is not None:
+                    geometry = signed_to_sector(self._angle_start, self._angle_sweep)
+                else:
+                    continue  # a lone point left behind by a placement that never finished
+                if geometry is None:
+                    continue
+                sector = AngleSector(
+                    self.graphics_scene,
+                    centre,
+                    half_size,
+                    radius,
+                    color,
+                    self.point_thickness,
+                    self.point_radius,
+                )
+                sector.update(*geometry, dotted=placing)
+                self._angle_sectors.append((contour_type, index, sector))
+
+    def _grab_angle_handle(self, pos: QPointF) -> bool:
+        """Grab the sector boundary handle under `pos` for dragging, if there is one.
+
+        Returns True when one was grabbed, so the click does not also go to the spline
+        handling that normally follows it.
+        """
+        reach = max(self.snap_radius_px, self.point_radius)
+        nearest = None
+        nearest_dist = float('inf')
+        for contour_type, index, sector in self._angle_sectors:
+            for which, (handle_x, handle_y) in enumerate(sector.handle_positions()):
+                dist = math.hypot(pos.x() - handle_x, pos.y() - handle_y)
+                if dist < nearest_dist:
+                    nearest_dist = dist
+                    nearest = (contour_type, index, sector, which)
+        if nearest is None or nearest_dist > reach:
+            return False
+
+        contour_type, index, _, _ = nearest
+        if contour_type is not self.active_contour_type or index != self.active_contour_index:
+            # Make the grabbed sector the active one (Delete/Ctrl+Z follow it) without
+            # redrawing, which would replace the very sector object being dragged.
+            self.active_contour_type = contour_type
+            self.active_contour_index = index
+            self.working_spline = None
+            self.points_to_draw = []
+            self.active_point = None
+            self.active_point_index = None
+            lh = getattr(self.main_window, 'left_half', None)
+            if lh is not None:
+                lh.set_active_contour_type_ui(contour_type)
+        self._angle_drag = nearest
+        self._angle_dragged = False
+        self.setCursor(Qt.CursorShape.ClosedHandCursor)
+        return True
+
+    def _drag_angle_handle(self, pos: QPointF) -> None:
+        """Turn the grabbed boundary to the pointer, keeping the other one where it is."""
+        assert self._angle_drag is not None
+        _, _, sector, which = self._angle_drag
+        angle = self._scene_angle(pos)
+        end = sector.start + sector.sweep
+        if which == 0:
+            sweep = continue_sweep(sector.sweep, sweep_between(angle, end))
+            start = end - sweep
+        else:
+            start = sector.start
+            sweep = continue_sweep(sector.sweep, sweep_between(start, angle))
+        sector.update(start, sweep)
+        self._angle_dragged = True
+
+    def _release_angle_handle(self) -> None:
+        """Store the sector as it now stands and let go of the handle."""
+        assert self._angle_drag is not None
+        contour_type, index, sector, _ = self._angle_drag
+        dragged = self._angle_dragged
+        self._angle_drag = None
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        if not dragged:
+            return  # a click that grabbed a handle and let go again changed nothing
+
+        key = self.contour_key(contour_type)
+        fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
+        contour_obj = getattr(fd, key, None) if fd else None
+        if contour_obj is None:
+            return
+        push_contour_snapshot(self.main_window.runtime_data, self.frame, key, index)
+        set_sector_points(contour_obj, index, self._image_points(sector.start, sector.sweep))
+        self.main_window.save_contours_soon()
+
+        # A sector is part of the mask overlay, so that has to be rebuilt along with it.
+        mask_active = getattr(self.main_window, 'mask_mode_box', None) and self.main_window.mask_mode_box.isChecked()
+        self.display_image(update_image=bool(mask_active), update_contours=True)
 
     def _draw_open_spline_edge_lines(self):
         """Draw lines from open spline start/end points to image edge, in direction away from contour centroid."""
@@ -1526,6 +1743,10 @@ class Display(QGraphicsView, MetricsMixin):
             elif self.angle_mode:
                 self._handle_angle_placement(pos)
             else:
+                # A sector boundary handle takes the click before any contour does: it is
+                # drawn on top of them and is the only thing that can be dragged there.
+                if self._grab_angle_handle(pos):
+                    return
                 # First, try to switch active contour if user clicked near another one.
                 # If a switch occurred the scene was redrawn; skip item interaction for this click.
                 if not self._attempt_contour_switch(pos):
@@ -1682,6 +1903,37 @@ class Display(QGraphicsView, MetricsMixin):
         ci = self.active_contour_index
         return contour_obj.closed[ci] if ci < len(contour_obj.closed) else True
 
+    def _knot_labels(self, contour_obj, ci: int, kx: float, ky: float) -> Tuple[bool, bool]:
+        """Whether the knot at unscaled (kx, ky) is currently labelled start, and end.
+
+        A knot carries one label at most, so at least one of the two is always False;
+        both False means it is unlabelled. A label is matched by position rather than by
+        knot index, because that is how it is stored (see Contour.start_coords).
+        """
+
+        def carries(coord_lists) -> bool:
+            coords = coord_lists[ci] if ci < len(coord_lists) else []
+            return any(math.hypot(kx - x, ky - y) < self.snap_radius_px for x, y in coords)
+
+        return carries(contour_obj.start_coords), carries(contour_obj.end_coords)
+
+    def _label_knot(self, coord_lists: list, ci: int, kx: float, ky: float) -> None:
+        """Record the knot at unscaled (kx, ky) in `coord_lists`, one of the contour's
+        start/end lists, growing it to reach contour `ci`."""
+        while len(coord_lists) <= ci:
+            coord_lists.append([])
+        coord_lists[ci].append((kx, ky))
+
+    def _unlabel_knot(self, contour_obj, ci: int, kx: float, ky: float) -> None:
+        """Drop the knot at unscaled (kx, ky) from both of contour `ci`'s label lists."""
+        for coord_lists in (contour_obj.start_coords, contour_obj.end_coords):
+            if ci < len(coord_lists):
+                coord_lists[ci] = [
+                    coord
+                    for coord in coord_lists[ci]
+                    if math.hypot(kx - coord[0], ky - coord[1]) >= self.snap_radius_px
+                ]
+
     def _show_knot_label_popup(self, knot_item: Point, view_pos):
         """QMenu popup beside a knot point for labelling it as start, end, or neutral."""
         key = self.contour_key(self.active_contour_type)
@@ -1693,11 +1945,7 @@ class Display(QGraphicsView, MetricsMixin):
         kx = knot_item.x / sf  # type: ignore[operator]
         ky = knot_item.y / sf  # type: ignore[operator]
 
-        starts = contour_obj.start_coords[ci] if ci < len(contour_obj.start_coords) else []
-        ends = contour_obj.end_coords[ci] if ci < len(contour_obj.end_coords) else []
-
-        is_start = any(math.hypot(kx - sx, ky - sy) < self.snap_radius_px for sx, sy in starts)
-        is_end = any(math.hypot(kx - ex, ky - ey) < self.snap_radius_px for ex, ey in ends)
+        is_start, is_end = self._knot_labels(contour_obj, ci, kx, ky)
 
         menu = QMenu(self)
         start_action = menu.addAction("Mark as Start")
@@ -1708,33 +1956,25 @@ class Display(QGraphicsView, MetricsMixin):
         assert end_action is not None
         assert neutral_action is not None
 
-        # A point cannot be both start and end; only allow labeling unlabeled points.
-        start_action.setEnabled(not is_start and not is_end)
-        end_action.setEnabled(not is_start and not is_end)
+        # Whatever the knot is not already, it can become: a start switches straight to an
+        # end and back, without removing the label in between. Only the label it already
+        # carries is greyed out, and Remove Label only while it carries one at all.
+        start_action.setEnabled(not is_start)
+        end_action.setEnabled(not is_end)
         neutral_action.setEnabled(is_start or is_end)
 
         action = menu.exec(self.mapToGlobal(view_pos))
+        if action is None:
+            return
 
+        # A knot carries one label at most, so every switch drops the old one first.
+        self._unlabel_knot(contour_obj, ci, kx, ky)
         if action == start_action:
-            while len(contour_obj.start_coords) <= ci:
-                contour_obj.start_coords.append([])
-            contour_obj.start_coords[ci].append((kx, ky))
+            self._label_knot(contour_obj.start_coords, ci, kx, ky)
         elif action == end_action:
-            while len(contour_obj.end_coords) <= ci:
-                contour_obj.end_coords.append([])
-            contour_obj.end_coords[ci].append((kx, ky))
-        elif action == neutral_action:
-            if is_start and ci < len(contour_obj.start_coords):
-                contour_obj.start_coords[ci] = [
-                    s for s in contour_obj.start_coords[ci] if math.hypot(kx - s[0], ky - s[1]) >= self.snap_radius_px
-                ]
-            if is_end and ci < len(contour_obj.end_coords):
-                contour_obj.end_coords[ci] = [
-                    e for e in contour_obj.end_coords[ci] if math.hypot(kx - e[0], ky - e[1]) >= self.snap_radius_px
-                ]
+            self._label_knot(contour_obj.end_coords, ci, kx, ky)
 
-        if action is not None:
-            self.update_display()
+        self.update_display()
 
     def _delete_point(self, point_item: Point):
         """Removes a knot point from the scene and the data model."""
@@ -1756,18 +1996,13 @@ class Display(QGraphicsView, MetricsMixin):
                 if len(contour_obj.contours[ci]) > 1:
                     contour_obj.contours[ci][1].pop(idx)
 
-                px = point_item.x / self.scaling_factor  # type: ignore[operator]
-                py = point_item.y / self.scaling_factor  # type: ignore[operator]
-                if point_item.color == self.start_color and ci < len(contour_obj.start_coords):
-                    contour_obj.start_coords[ci] = [
-                        s
-                        for s in contour_obj.start_coords[ci]
-                        if math.hypot(px - s[0], py - s[1]) >= self.snap_radius_px
-                    ]
-                if point_item.color == self.end_color and ci < len(contour_obj.end_coords):
-                    contour_obj.end_coords[ci] = [
-                        e for e in contour_obj.end_coords[ci] if math.hypot(px - e[0], py - e[1]) >= self.snap_radius_px
-                    ]
+                # The knot is gone, so any start/end label sitting on it goes too.
+                self._unlabel_knot(
+                    contour_obj,
+                    ci,
+                    point_item.x / self.scaling_factor,  # type: ignore[operator]
+                    point_item.y / self.scaling_factor,  # type: ignore[operator]
+                )
 
         self.display_image(update_contours=True)
 
@@ -1781,6 +2016,14 @@ class Display(QGraphicsView, MetricsMixin):
         if self._brush_active and event.buttons() & Qt.MouseButton.LeftButton:
             pos = self.mapToScene(event.pos())
             self._paint_brush(pos)
+            return
+        # Both of these move a sector boundary, so they come before the drag handling
+        # below (which would otherwise read the same movement as a zoom).
+        if self.angle_mode and self._angle_start is not None:
+            self._track_angle_opening(self.mapToScene(event.pos()))
+            return
+        if self._angle_drag is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            self._drag_angle_handle(self.mapToScene(event.pos()))
             return
         if event.buttons() == Qt.MouseButton.LeftButton:
             if self.active_point_index is not None:
@@ -1819,6 +2062,9 @@ class Display(QGraphicsView, MetricsMixin):
             return
         if event.button() == Qt.MouseButton.LeftButton and self._brush_active:
             self._commit_brush_stroke()
+            return
+        if event.button() == Qt.MouseButton.LeftButton and self._angle_drag is not None:
+            self._release_angle_handle()
             return
         if event.button() == Qt.MouseButton.LeftButton:
             if self.active_point_index is not None and self.working_spline:
@@ -1872,8 +2118,8 @@ class Display(QGraphicsView, MetricsMixin):
 
     def _scale_active_contour(self, delta: int) -> None:
         """Move all knot points of the active contour toward (delta<0) or away (delta>0) from their centroid."""
-        if self.active_contour_type is ContourType.WIRE:
-            return  # a wire's two points mark angles from the image centre; scaling them is meaningless
+        if self.active_contour_type in ANGLE_TYPES:
+            return  # a sector's points mark angles from the image centre; scaling them is meaningless
         key = self.contour_key(self.active_contour_type)
         fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
         if fd is None:

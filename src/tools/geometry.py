@@ -1,13 +1,22 @@
 import bisect
+import math
 from dataclasses import dataclass, field
 from typing import Any, List, Optional, Tuple
 
 import numpy as np
 from loguru import logger
-from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtCore import QLineF, QPointF, Qt
 from PyQt6.QtGui import QBrush, QColor, QPainterPath, QPen
-from PyQt6.QtWidgets import QGraphicsEllipseItem, QGraphicsLineItem, QGraphicsPathItem
+from PyQt6.QtWidgets import (
+    QGraphicsEllipseItem,
+    QGraphicsLineItem,
+    QGraphicsPathItem,
+    QGraphicsScene,
+    QGraphicsTextItem,
+)
 from scipy.interpolate import splev, splprep
+
+from tools.angle import edge_point, point_at
 
 
 @dataclass
@@ -549,3 +558,102 @@ class Marker(QGraphicsLineItem):
         pen.setDashPattern([1, 6])
         self.setLine(x1, y1, x2, y2)
         self.setPen(pen)
+
+
+class AngleSector:
+    """One sector drawn on a QGraphicsScene: two radial boundaries, the arc between them
+    at the handle radius, the opening in degrees, and the two draggable handles.
+
+    The same object draws a sector being placed and a stored one — `dotted` is the only
+    difference, marking the boundary that is still following the mouse. Items are created
+    once and moved by `update`, so dragging a handle (or opening the angle) does not have
+    to rebuild the scene.
+    """
+
+    def __init__(
+        self,
+        scene: QGraphicsScene,
+        centre: Tuple[float, float],
+        half_size: float,
+        radius: float,
+        color,
+        line_thickness: int = 1,
+        point_radius: int = 10,
+    ) -> None:
+        self.scene = scene
+        self.centre = centre
+        self.half_size = half_size
+        self.radius = radius
+        self.start = 0.0
+        self.sweep = 0.0
+        self.dotted = False  # whether the end boundary is still following the mouse
+
+        self._solid_pen = get_qt_pen(color, line_thickness)
+        self._dotted_pen = get_qt_pen(color, line_thickness)
+        self._dotted_pen.setStyle(Qt.PenStyle.DotLine)
+
+        self._start_line = QGraphicsLineItem()
+        self._end_line = QGraphicsLineItem()
+        self._arc = QGraphicsPathItem()
+        for item in (self._start_line, self._end_line, self._arc):
+            item.setPen(self._solid_pen)
+            scene.addItem(item)
+
+        self._label = QGraphicsTextItem('')
+        self._label.setDefaultTextColor(self._solid_pen.color())
+        scene.addItem(self._label)
+
+        self._handles = [
+            Point((centre[0], centre[1]), line_thickness, point_radius, index, color) for index in range(2)
+        ]
+        for handle in self._handles:
+            scene.addItem(handle)
+
+    def update(self, start: float, sweep: float, dotted: bool = False) -> None:
+        """Redraw for the sector (`start`, `sweep`); `dotted` while the end still follows
+        the mouse."""
+        self.start = start
+        self.sweep = sweep
+        self.dotted = dotted
+        end = start + sweep
+        end_pen = self._dotted_pen if dotted else self._solid_pen
+
+        self._start_line.setLine(self._radial_line(start))
+        self._start_line.setPen(self._solid_pen)
+        self._end_line.setLine(self._radial_line(end))
+        self._end_line.setPen(end_pen)
+
+        self._arc.setPath(self._arc_path(start, sweep))
+        self._arc.setPen(end_pen)
+
+        self._handles[0].update_pos(QPointF(*point_at(self.centre, self.radius, start)))
+        self._handles[1].update_pos(QPointF(*point_at(self.centre, self.radius, end)))
+
+        self._label.setPlainText(f'{math.degrees(sweep):.0f}°')
+        # Just inside the arc: the handle circle can sit close to the image border, and
+        # text drawn from a point on it would run off the edge.
+        label_x, label_y = point_at(self.centre, self.radius * 0.85, start + sweep / 2)
+        self._label.setPos(label_x, label_y)
+
+    def handle_positions(self) -> List[Tuple[float, float]]:
+        """Scene positions of the start and end handles, in that order."""
+        return [
+            point_at(self.centre, self.radius, self.start),
+            point_at(self.centre, self.radius, self.start + self.sweep),
+        ]
+
+    def _radial_line(self, angle: float) -> QLineF:
+        return QLineF(QPointF(*self.centre), QPointF(*edge_point(self.centre, angle, self.half_size)))
+
+    def _arc_path(self, start: float, sweep: float) -> QPainterPath:
+        """The arc as a polyline: one segment every two degrees, so it is drawn the same
+        way (and with the same dotted pen) whichever direction the angles run in."""
+        path = QPainterPath()
+        steps = max(2, int(abs(sweep) / math.radians(2)) + 1)
+        for step in range(steps + 1):
+            x, y = point_at(self.centre, self.radius, start + sweep * step / steps)
+            if step == 0:
+                path.moveTo(QPointF(x, y))
+            else:
+                path.lineTo(QPointF(x, y))
+        return path

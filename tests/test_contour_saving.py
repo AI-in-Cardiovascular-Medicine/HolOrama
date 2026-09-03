@@ -250,20 +250,40 @@ class TestPageSaveTriggers:
 
         assert not os.path.exists(self._out_path(page))
 
-    def test_oct_quality_edit_triggers_a_save(self, page):
+    def test_oct_label_edit_triggers_a_save(self, page):
         """A non-contour, OCT-only edit — and one that refreshes nothing on screen."""
-        from pages.intravascular.right_half.right_half_oct import set_oct_quality
+        from pages.intravascular.right_half.right_half_oct import set_oct_label
 
         page.display_slider.setMaximum(3)
         page.display_slider.blockSignals(True)
         page.display_slider.setValue(2)
         page.display_slider.blockSignals(False)
 
-        set_oct_quality(page, 'Bad')
+        set_oct_label(page, quality='Bad')
         self._settle()
 
         with open(self._out_path(page)) as f:
-            assert json.load(f)['2']['quality'] == 'Bad'
+            saved = json.load(f)['2']
+        assert saved['quality'] == 'Bad'
+        assert saved['unlabeled'] is False  # a rating and the flags are one exclusive choice
+
+    def test_oct_flag_edit_triggers_a_save(self, page):
+        """The flags share the quality's exclusive group, so setting one clears the rating."""
+        from pages.intravascular.right_half.right_half_oct import set_oct_label
+
+        page.display_slider.setMaximum(3)
+        page.display_slider.blockSignals(True)
+        page.display_slider.setValue(2)
+        page.display_slider.blockSignals(False)
+
+        set_oct_label(page, quality='Bad')
+        set_oct_label(page, flag='guiding_catheter')
+        self._settle()
+
+        with open(self._out_path(page)) as f:
+            saved = json.load(f)['2']
+        assert saved['guiding_catheter'] is True
+        assert saved['quality'] == '' and saved['unlabeled'] is False and saved['unanalyzable'] is False
 
     def test_reset_state_cancels_a_pending_save(self, page):
         page.runtime_data.frame_data_dct[1].phase = 'T'

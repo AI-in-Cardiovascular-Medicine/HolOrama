@@ -22,10 +22,17 @@ Intravascular module
      - Every contour, tag, phase and the cached gating/breathing state. Written by
        **File → Save** (:kbd:`Ctrl+S`) and by auto-save. Reloaded automatically when the
        case is reopened.
-   * - ``<case>_report.txt``
-     - Tab-separated per-frame metrics (areas, elliptic ratio, measurements, positions),
-       with pullback speed, start frame and frame rate on the first row. Written by
-       **File → Save Report** (:kbd:`Ctrl+R`).
+   * - ``<case>_report.csv``
+     - One comma-separated row per contoured frame: position and phase, the lumen metrics
+       (area, circumference, longest/shortest distance, elliptic ratio), the EEM area,
+       each plaque as an **area and an angle** (``calcium_area`` / ``calcium_angle`` and
+       the same for lipid and macrophage), ``blood_angle`` — every blood sector on the
+       frame combined, overlap counted once — then both hand measurements and, as the last
+       columns, the pullback's own parameters (modality, pullback speed, start frame, frame
+       rate, resolution) repeated on every row. Written by **File → Save Report**
+       (:kbd:`Ctrl+R`). Plaque areas and angles are measured on the rasterized mask, so
+       they say exactly what the exported mask holds. The guide-wire shadow is not
+       reported: it says where the image cannot be read, not what is in the vessel.
    * - ``<case>_csv_files/``
      - Contour coordinates as CSV. Only written when ``report.save_as_csv: True``.
        **This folder is the Fusion module's intravascular input.**

@@ -5,7 +5,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from domain.all_types import OCT_QUALITY_LABELS
+from domain.all_types import ContourType
 
 
 @dataclass
@@ -29,42 +29,46 @@ class Contour:
     end_coords: List[List[Tuple[float, float]]] = field(default_factory=list)
 
 
-def wire_points(wire: Contour, index: int) -> List[Tuple[float, float]]:
-    """The (x, y) angle points of wire `index`, or [] if that wire does not exist."""
-    if index < 0 or index >= len(wire.contours):
+def sector_points(contour: Contour, index: int) -> List[Tuple[float, float]]:
+    """The (x, y) angle points of sector `index`, or [] if that sector does not exist.
+
+    See ANGLE_TYPES in domain.all_types for what a sector is and tools.angle for how its
+    points describe it.
+    """
+    if index < 0 or index >= len(contour.contours):
         return []
-    entry = wire.contours[index]
+    entry = contour.contours[index]
     xs = entry[0] if entry else []
     ys = entry[1] if len(entry) > 1 else []
     return [(float(x), float(y)) for x, y in zip(xs, ys)]
 
 
-def iter_wires(wire) -> List[List[Tuple[float, float]]]:
-    """Every wire on a frame, each as its list of (x, y) angle points.
+def iter_sectors(contour) -> List[List[Tuple[float, float]]]:
+    """Every angular sector on a frame, each as its list of (x, y) angle points.
 
     Also accepts the pre-multi-wire shape (a single ((x, y), ...) tuple), so data
     that has not been through the loader's migration still reads correctly.
     """
-    if wire is None:
+    if contour is None:
         return []
-    if isinstance(wire, Contour):
-        return [pts for pts in (wire_points(wire, i) for i in range(len(wire.contours))) if pts]
-    legacy = [(float(p[0]), float(p[1])) for p in wire if p is not None and len(p) >= 2]
+    if isinstance(contour, Contour):
+        return [pts for pts in (sector_points(contour, i) for i in range(len(contour.contours))) if pts]
+    legacy = [(float(p[0]), float(p[1])) for p in contour if p is not None and len(p) >= 2]
     return [legacy] if legacy else []
 
 
-def set_wire_points(wire: Contour, index: int, points: Sequence[Tuple[float, float]]) -> None:
-    """Write `points` as wire `index`, growing the wire list and its aligned
+def set_sector_points(contour: Contour, index: int, points: Sequence[Tuple[float, float]]) -> None:
+    """Write `points` as sector `index`, growing the sector list and its aligned
     per-contour lists as needed."""
-    while len(wire.contours) <= index:
-        wire.contours.append(([], []))
-    while len(wire.closed) <= index:
-        wire.closed.append(False)
-    while len(wire.start_coords) <= index:
-        wire.start_coords.append([])
-    while len(wire.end_coords) <= index:
-        wire.end_coords.append([])
-    wire.contours[index] = ([float(p[0]) for p in points], [float(p[1]) for p in points])
+    while len(contour.contours) <= index:
+        contour.contours.append(([], []))
+    while len(contour.closed) <= index:
+        contour.closed.append(False)
+    while len(contour.start_coords) <= index:
+        contour.start_coords.append([])
+    while len(contour.end_coords) <= index:
+        contour.end_coords.append([])
+    contour.contours[index] = ([float(p[0]) for p in points], [float(p[1]) for p in points])
 
 
 @dataclass
@@ -76,7 +80,12 @@ class Measure:
 @dataclass
 class FrameData:
     phase: str = '-'
-    quality: str = OCT_QUALITY_LABELS[-1]
+    # OCT frame rating: one of OCT_QUALITY_LABELS, or '' while the frame is unrated.
+    quality: str = ''
+    guiding_catheter: bool = False
+    unanalyzable: bool = False
+    # Mutually exclusive with `quality`: a frame is unlabeled until it gets a rating.
+    unlabeled: bool = True
     lumen: Contour = field(default_factory=Contour)
     eem: Contour = field(default_factory=Contour)
     calcium: Contour = field(default_factory=Contour)
@@ -86,14 +95,34 @@ class FrameData:
     measurement_1: Optional[Measure] = None
     measurement_2: Optional[Measure] = None
     reference: Optional[Tuple[float, float]] = None
-    # Guide wires are stored like any other multi-instance contour (calcium, lipid, ...):
-    # one entry in Contour.contours per wire, holding that wire's 1-2 angle points as
-    # ([x, ...], [y, ...]) — the radial lines bounding its shadow. A frame can carry
-    # several wires. Read/write via iter_wires / wire_points / set_wire_points.
-    wire: Contour = field(default_factory=Contour)
+    # Angular sectors (ANGLE_TYPES) are stored like any other multi-instance contour
+    # (calcium, lipid, ...): one entry in Contour.contours per sector, holding that
+    # sector's 2-3 angle points as ([x, ...], [y, ...]) — the radial lines bounding it,
+    # plus the interior marker that says which of the two arcs between them is meant
+    # (see tools.angle). A frame can carry several of each. Read/write via
+    # iter_sectors / sector_points / set_sector_points.
+    wire: Contour = field(default_factory=Contour)  # guide-wire shadow
+    blood: Contour = field(default_factory=Contour)  # blood artefact sector
     centroid: Optional[Tuple[float, float]] = None
     closest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
     farthest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
+
+
+# Everything the user can draw on one image: every contour type (which includes both
+# measurements, the reference point and the angular sectors) plus the values derived from
+# the lumen. Not the phase or the OCT label — those describe the frame, not the drawing.
+FRAME_ANNOTATION_FIELDS = tuple(contour_type.value for contour_type in ContourType) + (
+    'centroid',
+    'closest_points',
+    'farthest_points',
+)
+
+
+def clear_frame_annotations(frame_data: FrameData) -> None:
+    """Reset every annotation on `frame_data` to the state of a frame nobody has touched."""
+    blank = FrameData()  # one fresh instance hands out every default, contours included
+    for field_name in FRAME_ANNOTATION_FIELDS:
+        setattr(frame_data, field_name, getattr(blank, field_name))
 
 
 @dataclass
@@ -125,6 +154,37 @@ class MetaDataCCTA:
     model: str = 'Unknown'
     raw_tags: dict = field(default_factory=dict)  # all remaining DICOM / NIfTI tags
     ...
+
+
+CANONICAL_ORIENTATION = 'LAS'
+
+# Direction cosines of CANONICAL_ORIENTATION, in SimpleITK's row-major order.
+CANONICAL_DIRECTION: Tuple[float, ...] = (1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0)
+
+
+@dataclass(frozen=True)
+class VolumeGeometry:
+    """Voxel-grid geometry of a loaded CCTA volume.
+
+    ``origin`` / ``spacing`` / ``direction`` describe the canonicalized grid the app works
+    in, so they can be attached to any array shaped like the loaded volume.
+    ``source_orientation`` is the orientation code the file was stored in, kept so a mask
+    drawn here can be written back the way the source image was laid out.
+    """
+
+    origin: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+    spacing: Tuple[float, float, float] = (1.0, 1.0, 1.0)  # sitk order: (x, y, z)
+    direction: Tuple[float, ...] = CANONICAL_DIRECTION
+    source_orientation: str = CANONICAL_ORIENTATION
+
+
+def geometry_from_spacing(voxel_spacing: Tuple[float, float, float]) -> VolumeGeometry:
+    """A canonical-orientation geometry carrying just `voxel_spacing` (dz, dy, dx).
+
+    Fallback for writing a mask when the source image's geometry is not at hand.
+    """
+    dz, dy, dx = voxel_spacing
+    return VolumeGeometry(spacing=(dx, dy, dz))
 
 
 @dataclass

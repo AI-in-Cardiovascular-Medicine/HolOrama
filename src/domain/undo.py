@@ -5,6 +5,8 @@ from collections import deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generic, TypeVar
 
+from domain.io_types import FRAME_ANNOTATION_FIELDS
+
 if TYPE_CHECKING:
     from domain.io_types import Contour
     from domain.runtime_types import RuntimeData
@@ -38,6 +40,35 @@ class ContourSnapshot:
     key: str
     contour: Contour
     active_index: int
+
+
+@dataclass
+class FrameAnnotationSnapshot:
+    """Every annotation on one frame, for edits that clear the lot in one go."""
+
+    frame: int
+    fields: dict
+
+
+def push_frame_annotation_snapshot(runtime_data: RuntimeData, frame: int) -> None:
+    """Record every contour, measurement and derived value on `frame` before it is wiped.
+
+    One entry rather than one per contour type: the stack keeps only the last few edits,
+    so ten separate snapshots would evict the rest of the history and still need ten
+    Ctrl+Z presses to walk back what the user did with a single click.
+    """
+    runtime_data.mark_unsaved()
+    if runtime_data.frame_data_dct is None:
+        return
+    fd = runtime_data.frame_data_dct.get(frame)
+    if fd is None:
+        return
+    runtime_data.contour_undo.push(
+        FrameAnnotationSnapshot(
+            frame=frame,
+            fields={name: copy.deepcopy(getattr(fd, name)) for name in FRAME_ANNOTATION_FIELDS},
+        )
+    )
 
 
 def push_contour_snapshot(runtime_data: RuntimeData, frame: int, key: str, active_index: int) -> None:

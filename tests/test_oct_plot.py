@@ -324,3 +324,95 @@ class TestPainting:
         )
         widget.mousePressEvent(event)
         assert jumped == [round((N_FRAMES - 1) / 2)]
+
+
+class TestCatheterRangeVeil:
+    """Frames labelled as guiding catheter are veiled: nothing under them is vessel."""
+
+    def _column_rgb(self, widget, frame, n_frames=N_FRAMES):
+        """Average colour of the plot column showing *frame*."""
+        from pages.intravascular.utils.oct_plot import (
+            BOTTOM_MARGIN,
+            LEFT_MARGIN,
+            READOUT_HEIGHT,
+            RIGHT_MARGIN,
+            TOP_MARGIN,
+        )
+
+        image = widget.grab().toImage()
+        x0, x1 = LEFT_MARGIN, widget.width() - RIGHT_MARGIN
+        x = min(max(int(x0 + (x1 - x0) * frame / (n_frames - 1)), x0 + 1), x1 - 2)
+        rows = range(TOP_MARGIN + READOUT_HEIGHT + 4, widget.height() - BOTTOM_MARGIN - 4, 3)
+        pixels = [image.pixelColor(x, y) for y in rows]
+        return tuple(
+            round(sum(channel(p) for p in pixels) / len(pixels))
+            for channel in (lambda p: p.red(), lambda p: p.green(), lambda p: p.blue())
+        )
+
+    def _flag(self, widget, first_frame):
+        for frame in range(first_frame, N_FRAMES):
+            widget.main_window.runtime_data.frame_data_dct[frame].guiding_catheter = True
+
+    def test_flags_read_live_from_the_frame_data(self, plot):
+        widget = plot({i: _frame(lumen_mm=1.0, eem_mm=2.0) for i in range(N_FRAMES)})
+        assert not widget.catheter_range_flags().any()
+        self._flag(widget, 40)
+        flags = widget.catheter_range_flags()
+        assert flags[40:].all() and not flags[:40].any()
+
+    def test_veils_the_flagged_stretch_and_nothing_else(self, plot, qt_app):
+        widget = plot({i: _frame(lumen_mm=1.0, eem_mm=2.0) for i in range(N_FRAMES)})
+        widget.refresh()
+        widget.set_frame(0)  # keep the frame marker off the columns sampled below
+
+        before_early, before_late = self._column_rgb(widget, 20), self._column_rgb(widget, 50)
+        assert before_early == pytest.approx(before_late, abs=3)  # uniform vessel, no veil
+
+        self._flag(widget, 40)
+        widget.update()
+        after_early, after_late = self._column_rgb(widget, 20), self._column_rgb(widget, 50)
+
+        assert after_early == pytest.approx(before_early, abs=3), 'outside the range nothing changes'
+        assert after_late != pytest.approx(after_early, abs=10), 'inside the range it is veiled'
+        # a translucent grey lifts every channel and flattens the tissue red
+        assert all(a > b for a, b in zip(after_late, after_early))
+        assert max(after_late) - min(after_late) < max(after_early) - min(after_early)
+
+    def test_the_boundary_falls_between_frames(self, plot, qt_app):
+        widget = plot({i: _frame(lumen_mm=1.0, eem_mm=2.0) for i in range(N_FRAMES)})
+        widget.refresh()
+        widget.set_frame(0)
+        self._flag(widget, 40)
+        widget.update()
+
+        assert self._column_rgb(widget, 36) == pytest.approx(self._column_rgb(widget, 20), abs=3)
+        assert self._column_rgb(widget, 44) == pytest.approx(self._column_rgb(widget, 50), abs=3)
+
+    def test_clearing_the_labels_removes_the_veil(self, plot, qt_app):
+        widget = plot({i: _frame(lumen_mm=1.0, eem_mm=2.0) for i in range(N_FRAMES)})
+        widget.refresh()
+        widget.set_frame(0)
+        self._flag(widget, 40)
+        widget.update()
+        assert self._column_rgb(widget, 50) != pytest.approx(self._column_rgb(widget, 20), abs=10)
+
+        for frame_data in widget.main_window.runtime_data.frame_data_dct.values():
+            frame_data.guiding_catheter = False
+        widget.update()
+        assert self._column_rgb(widget, 50) == pytest.approx(self._column_rgb(widget, 20), abs=3)
+
+    @pytest.mark.parametrize(
+        'frames',
+        [
+            {},  # placeholder text, no profile to veil
+            {5: _frame(lumen_mm=1.0)},
+            {i: _frame(lumen_mm=1.0, eem_mm=1.6, calcium_arc=(0.0, 1.0)) for i in range(5, 15)},
+        ],
+    )
+    def test_paint_with_a_veil_does_not_raise(self, plot, frames):
+        from PyQt6.QtGui import QPixmap
+
+        widget = plot(frames)
+        widget.refresh()
+        self._flag(widget, 40)
+        widget.render(QPixmap(widget.size()))

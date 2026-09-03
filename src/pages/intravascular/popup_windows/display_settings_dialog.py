@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QColorDialog,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -36,6 +37,8 @@ DEFAULT_DISPLAY_SETTINGS: dict[str, Any] = {
     'color_start_point': 'yellow',
     'color_end_point': 'red',
     'color_angle': '#ffa500',
+    'color_blood': '#8b0000',
+    'angle_handle_radius_mm': 5.0,
 }
 
 # windowing/zoom sensitivity are shared across pages (config.common); everything else
@@ -53,6 +56,7 @@ _COLOR_LABELS = {
     'color_start_point': 'Change Color Start Point',
     'color_end_point': 'Change Color End Point',
     'color_angle': 'Change Color Angle',
+    'color_blood': 'Change Color Blood',
 }
 
 # (label, slider_min, slider_max, to_slider, from_slider, value_fmt)
@@ -142,6 +146,20 @@ class DisplaySettingsDialog(QDialog):
         self._snap_radius_box.setValue(int(current['snap_radius_px']))
         form.addRow('Snap Radius', self._snap_radius_box)
 
+        self._angle_radius_box = QDoubleSpinBox()
+        self._angle_radius_box.setRange(0.5, 20.0)
+        self._angle_radius_box.setSingleStep(0.5)
+        self._angle_radius_box.setDecimals(1)
+        self._angle_radius_box.setSuffix(' mm')
+        self._angle_radius_box.setToolTip(
+            'How far from the image centre the handles and the arc of an angular sector '
+            '(wire shadow, blood) are drawn. Only the direction of those points means '
+            'anything; this is where they are shown. Pulled inside the image for '
+            'pullbacks that do not reach that far.'
+        )
+        self._angle_radius_box.setValue(float(current['angle_handle_radius_mm']))
+        form.addRow('Angle Handle Radius', self._angle_radius_box)
+
         self._color_values: dict[str, str] = {k: current[k] for k in _COLOR_LABELS}
         self._color_swatches: dict[str, QPushButton] = {}
         for key, label in _COLOR_LABELS.items():
@@ -197,6 +215,7 @@ class DisplaySettingsDialog(QDialog):
         self._point_thickness_box.setValue(DEFAULT_DISPLAY_SETTINGS['point_thickness'])
         self._point_radius_box.setValue(DEFAULT_DISPLAY_SETTINGS['point_radius'])
         self._snap_radius_box.setValue(DEFAULT_DISPLAY_SETTINGS['snap_radius_px'])
+        self._angle_radius_box.setValue(DEFAULT_DISPLAY_SETTINGS['angle_handle_radius_mm'])
         for key, swatch in self._color_swatches.items():
             default = DEFAULT_DISPLAY_SETTINGS[key]
             self._color_values[key] = default
@@ -212,6 +231,7 @@ class DisplaySettingsDialog(QDialog):
         values['point_thickness'] = self._point_thickness_box.value()
         values['point_radius'] = self._point_radius_box.value()
         values['snap_radius_px'] = self._snap_radius_box.value()
+        values['angle_handle_radius_mm'] = self._angle_radius_box.value()
         values.update(self._color_values)
         return values
 

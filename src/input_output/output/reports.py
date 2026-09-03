@@ -3,7 +3,6 @@ import math
 import os
 from itertools import combinations
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from loguru import logger
@@ -11,7 +10,11 @@ from PyQt6.QtWidgets import QApplication, QProgressDialog
 from shapely.errors import TopologicalError
 from shapely.geometry import Polygon
 
+from domain.all_types import PLAQUE_TYPES, ContourType
+from domain.io_types import iter_sectors
+from input_output.output.imgs_masks import frame_region_metrics
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
+from tools.angle import combined_sweep
 
 
 def _pullback_positions(main_window) -> np.ndarray:
@@ -64,33 +67,140 @@ def report(main_window, lower_limit=None, upper_limit=None, suppress_messages=Fa
             ErrorMessage(main_window, 'Cannot write report before drawing contours')
         return None
 
-    report_data = compute_all(
-        main_window,
-        contoured_frames,
-        suppress_messages,
-        plot=main_window.config.report.plot if write_files else False,
-        save_as_csv=main_window.config.report.save_as_csv if write_files else False,
-    )
+    save_as_csv = main_window.config.report.save_as_csv if write_files else False
+    # One dialog for the whole report: the per-frame passes, the contour CSVs and the
+    # write. It used to cover the first pass only, so it hit 100% and then sat there
+    # (with the success box still to come) through everything that actually took time.
+    progress = None
+    if not suppress_messages:
+        # Two passes over the frames, then a step each for the contour CSVs, the report
+        # file and the combined CSV.
+        tail_steps = (1 if save_as_csv else 0) + (2 if write_files else 0)
+        progress = QProgressDialog(
+            'Measuring contours...', 'Cancel', 0, 2 * len(contoured_frames) + tail_steps, main_window
+        )
+        progress.setWindowTitle('Writing report')
+        progress.setMinimumDuration(0)
+        progress.setModal(True)
+        # A QProgressDialog hides itself the moment its value reaches the maximum, which
+        # is half of how the old bar managed to disappear while the report was still being
+        # written. This one closes when report() is done with it and not before.
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.show()
+        QApplication.processEvents()
+
+    report_data = compute_all(main_window, contoured_frames, progress, save_as_csv=save_as_csv)
     if report_data is not None:  # else user cancelled progress bar
-        # Add metadata information as columns to the first row
-        report_data.loc[0, 'pullback_speed'] = main_window.runtime_data.metadata['pullback_speed']
-        report_data.loc[0, 'pullback_start_frame'] = main_window.runtime_data.metadata['pullback_start_frame']
-        report_data.loc[0, 'frame_rate'] = main_window.runtime_data.metadata['frame_rate']
+        # The pullback's own parameters go last, on every row rather than only the first:
+        # one row then carries everything needed to interpret it, which is what a reader
+        # filtering or concatenating these files gets served by.
+        for column, value in _metadata_columns(main_window).items():
+            report_data[column] = value
 
         if write_files:
+            _advance(progress, 'Writing the report...')
             report_data.to_csv(
-                main_window.file_name + '_report.txt',  # already extension-free; see write_contours
-                sep='\t',
+                main_window.file_name + '_report.csv',  # already extension-free; see write_contours
                 float_format='%.2f',
                 index=False,
                 header=True,
             )
+            _advance(progress)
             save_combined_sorted_manual(main_window, report_data)
 
-        if not suppress_messages:
-            SuccessMessage(main_window, 'Write report')
+    if progress is not None:
+        progress.close()
+        QApplication.processEvents()
+
+    if report_data is not None and not suppress_messages:
+        SuccessMessage(main_window, 'Write report')
 
     return report_data
+
+
+def _advance(progress, label: str | None = None) -> None:
+    """Step the report's progress dialog on one place, if there is one.
+
+    `label` names the phase now starting, so the dialog says what the wait is for rather
+    than only how far along it is.
+    """
+    if progress is None:
+        return
+    if label is not None:
+        progress.setLabelText(label)
+    progress.setValue(progress.value() + 1)
+    QApplication.processEvents()
+
+
+def _metadata_columns(main_window) -> dict:
+    """The pullback's acquisition parameters, one value per column for the whole file.
+
+    Read with .get: a NIfTI or a hand-entered pullback can be missing any of them, and a
+    report without a frame rate is still worth writing.
+    """
+    metadata = main_window.runtime_data.metadata
+    return {
+        'modality': metadata.get('modality'),
+        'pullback_speed': metadata.get('pullback_speed'),
+        'pullback_start_frame': metadata.get('pullback_start_frame'),
+        'frame_rate': metadata.get('frame_rate'),
+        'resolution': metadata.get('resolution'),
+    }
+
+
+def _image_shape(main_window) -> tuple:
+    """(H, W) of one frame, for the rasterized plaque metrics."""
+    images = getattr(main_window.runtime_data, 'images', None)
+    if images is not None and getattr(images, 'ndim', 0) >= 3:
+        return int(images.shape[1]), int(images.shape[2])
+    dimension = int(main_window.runtime_data.metadata.get('dimension') or 0)
+    return dimension, dimension
+
+
+def _plaque_and_blood_columns(main_window, contoured_frames, progress=None):
+    """Per-frame plaque area (mm²) and angle (degrees), plus the combined blood angle.
+
+    Both come off the rasterized mask rather than the contour polygons, because a plaque
+    is usually drawn as an open arc that encloses nothing until it is closed against the
+    EEM (see imgs_masks._plaque_mask) — and because that way the report says exactly what
+    the exported mask holds. A frame with no plaque contour at all skips the rasterization,
+    which is every frame while gating runs.
+
+    Blood is reported as one angle per frame, several sectors counted once over any
+    overlap. The guide wire is left out: its shadow says where the image cannot be read,
+    not what is in the vessel.
+
+    Returns None if the user cancelled partway through.
+    """
+    columns: dict = {}
+    for contour_type in PLAQUE_TYPES:
+        columns[f'{contour_type.value}_area'] = []
+        columns[f'{contour_type.value}_angle'] = []
+    columns['blood_angle'] = []
+
+    image_shape = _image_shape(main_window)
+    resolution = main_window.runtime_data.metadata.get('resolution') or 0.0
+    # Sectors are measured from the image centre (the catheter), as the mask measures them.
+    sector_centre = (image_shape[1] / 2, image_shape[0] / 2)
+
+    for frame in contoured_frames:
+        _advance(progress, 'Measuring plaques and blood...' if frame == contoured_frames[0] else None)
+        if progress is not None and progress.wasCanceled():
+            return None
+
+        frame_data = main_window.runtime_data.frame_data_dct.get(frame)
+        has_plaque = frame_data is not None and any(
+            getattr(frame_data, contour_type.value).contours for contour_type in PLAQUE_TYPES
+        )
+        metrics = frame_region_metrics(frame_data, image_shape, resolution) if has_plaque else {}
+        for contour_type in PLAQUE_TYPES:
+            columns[f'{contour_type.value}_area'].append(metrics.get(contour_type.value, 0.0))
+            columns[f'{contour_type.value}_angle'].append(metrics.get(f'{contour_type.value}_angle', 0.0))
+        blood = iter_sectors(frame_data.blood) if frame_data is not None else []
+        columns['blood_angle'].append(math.degrees(combined_sweep(blood, sector_centre)))
+
+    return columns
 
 
 def save_combined_sorted_manual(main_window, report_data) -> None:
@@ -151,90 +261,26 @@ def _safe_polygon_area(x_coords, y_coords, frame, contour_name, main_window):
         raise
 
 
-def compute_all(main_window, contoured_frames, suppress_messages, plot=True, save_as_csv=True):
-    """compute all metrics and plot if desired"""
-    if not suppress_messages:
-        progress = QProgressDialog('Writing report...', 'Cancel', 0, len(contoured_frames), main_window)
-        progress.setWindowTitle('Writing report')
-        progress.setMinimumDuration(0)
-        progress.setModal(True)
-        progress.show()
-        QApplication.processEvents()
-        QApplication.processEvents()
-    n_frames = main_window.runtime_data.metadata['num_frames']
-    longest_distance = [None] * n_frames
-    farthest_x = [None] * n_frames
-    farthest_y = [None] * n_frames
-    shortest_distance = [None] * n_frames
-    nearest_x = [None] * n_frames
-    nearest_y = [None] * n_frames
-    lumen_area = [None] * n_frames
-    lumen_circumf = [None] * n_frames
-    centroid_x = [None] * n_frames
-    centroid_y = [None] * n_frames
-    elliptic_ratio = [None] * n_frames
+def compute_all(main_window, contoured_frames, progress=None, save_as_csv=True):
+    """compute all metrics; `progress` is report()'s dialog, or None when suppressed"""
+    (
+        longest_distance,
+        farthest_x,
+        farthest_y,
+        shortest_distance,
+        nearest_x,
+        nearest_y,
+        lumen_area,
+        lumen_circumf,
+        centroid_x,
+        centroid_y,
+        elliptic_ratio,
+    ) = _prefill_values(main_window, contoured_frames)
 
-    # Pre-fill from stored per-frame measurements
-    for frame in contoured_frames:
-        fd = main_window.runtime_data.frame_data_dct.get(frame)
-        if fd is None:
-            continue
-        m = fd.lumen.measurements
-        if m.area is not None:
-            lumen_area[frame] = m.area
-        if m.circumference is not None:
-            lumen_circumf[frame] = m.circumference
-        if fd.centroid:
-            centroid_x[frame] = fd.centroid[0]
-            centroid_y[frame] = fd.centroid[1]
-        if m.major_axis is not None:
-            longest_distance[frame] = m.major_axis
-        if fd.farthest_points:
-            farthest_x[frame] = [fd.farthest_points[0][0], fd.farthest_points[1][0]]
-            farthest_y[frame] = [fd.farthest_points[0][1], fd.farthest_points[1][1]]
-        if m.minor_axis is not None:
-            shortest_distance[frame] = m.minor_axis
-        if fd.closest_points:
-            nearest_x[frame] = [fd.closest_points[0][0], fd.closest_points[1][0]]
-            nearest_y[frame] = [fd.closest_points[0][1], fd.closest_points[1][1]]
-        if m.elliptic_ratio is not None:
-            elliptic_ratio[frame] = longest_distance[frame] / shortest_distance[frame]
-
-    # helper to fetch per-type full_contours defensively
-    def _get_full_list_by_name(name):
-        fc = getattr(main_window.display, "full_contours", None)
-        if fc is None:
-            return None
-        if isinstance(fc, dict):
-            return fc.get(name, None)
-        if isinstance(fc, list):
-            return fc
-        return None
-
-    # Per-type interpolated contour lists. Prefer a display.full_contours dict if one is
-    # ever present (backward compat), otherwise read from frame_data_dct via
-    # get_full_contour_list — the modality-agnostic source. Previously only lumen had this
-    # fallback, so eem/calcium/branch always resolved to None (display.full_contours does
-    # not exist) and were never written to CSV for ANY modality — most visible on OCT,
-    # where lumen was the only contour that ever showed up in the export.
-    from domain.all_types import ContourType
-
-    def _full_list(name, contour_type):
-        lst = _get_full_list_by_name(name)
-        if lst is not None:
-            return lst
-        try:
-            return main_window.display.get_full_contour_list(contour_type)
-        except AttributeError as e:
-            logger.bind(file=main_window.file_name).warning(
-                f'Could not fetch {name} full contour list via get_full_contour_list: {e}'
-            )
-            return getattr(main_window.display, "full_contours", None)
-
-    lumen_full_list = _full_list("lumen", ContourType.LUMEN)
-    eem_full_list = _full_list("eem", ContourType.EEM)
-    calc_full_list = _full_list("calcium", ContourType.CALCIUM)
-    branch_full_list = _full_list("branch", ContourType.BRANCH)
+    lumen_full_list = _full_list("lumen", main_window, ContourType.LUMEN)
+    eem_full_list = _full_list("eem", main_window, ContourType.EEM)
+    calc_full_list = _full_list("calcium", main_window, ContourType.CALCIUM)
+    branch_full_list = _full_list("branch", main_window, ContourType.BRANCH)
 
     def build_xy_lists(full_list):
         if full_list is None:
@@ -249,13 +295,10 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
     calc_x, calc_y = build_xy_lists(calc_full_list)
     branch_x, branch_y = build_xy_lists(branch_full_list)
 
-    for i, frame in enumerate(contoured_frames):
-        if not suppress_messages:
-            progress.setValue(i + 1)
-            QApplication.processEvents()
-            if progress.wasCanceled():
-                progress.close()
-                return None
+    for frame in contoured_frames:
+        _advance(progress)
+        if progress is not None and progress.wasCanceled():
+            return None  # report() owns the dialog and closes it
 
         # skip frames already computed (defensive check)
         if lumen_area[frame] and elliptic_ratio[frame] is not None and elliptic_ratio[frame] != 0:
@@ -323,26 +366,29 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
     report_data['longest_distance'] = [longest_distance[frame] for frame in contoured_frames]
     report_data['shortest_distance'] = [shortest_distance[frame] for frame in contoured_frames]
     report_data['elliptic_ratio'] = [elliptic_ratio[frame] for frame in contoured_frames]
-    report_data['measurement_1'] = [
-        (
-            main_window.runtime_data.frame_data_dct[frame].measurement_1.length
-            if main_window.runtime_data.frame_data_dct[frame].measurement_1
-            else None
-        )
-        for frame in contoured_frames
-    ]
-    report_data['measurement_2'] = [
-        (
-            main_window.runtime_data.frame_data_dct[frame].measurement_2.length
-            if main_window.runtime_data.frame_data_dct[frame].measurement_2
-            else None
-        )
-        for frame in contoured_frames
-    ]
-
     report_data['eem_area'] = [
         main_window.runtime_data.frame_data_dct[frame].eem.measurements.area or 0 for frame in contoured_frames
     ]
+
+    # Each plaque as the area it covers and the angle it spans, then blood as one angle.
+    # By far the slowest pass — it rasterizes every plaque on every frame — so it reports
+    # its own progress instead of running on after the bar has filled up.
+    plaque_columns = _plaque_and_blood_columns(main_window, contoured_frames, progress)
+    if plaque_columns is None:
+        return None  # cancelled
+    for column, values in plaque_columns.items():
+        report_data[column] = values
+
+    # The hand measurements come last of the per-frame columns, ahead of the pullback's own
+    # parameters that report() appends after them.
+    for index in (1, 2):
+        measurements = [
+            getattr(main_window.runtime_data.frame_data_dct[frame], f'measurement_{index}')
+            for frame in contoured_frames
+        ]
+        report_data[f'measurement_{index}'] = [
+            measure.length if measure is not None else None for measure in measurements
+        ]
 
     # Write computed metrics back into per-frame measurements
     for frame in contoured_frames:
@@ -352,93 +398,113 @@ def compute_all(main_window, contoured_frames, suppress_messages, plot=True, sav
         if elliptic_ratio[frame] is not None:
             fd.lumen.measurements.elliptic_ratio = elliptic_ratio[frame]
 
-    # Save CSVs for lumen and for other contours if present. One group per phase family
-    # that actually has frames: diastolic/systolic for IVUS gating, tagged for OCT — the
-    # latter previously produced nothing, since only the dia/sys groups were ever written.
+    # Save CSVs for lumen and for other contours if present. Uses tagged/dia/sys.
     if save_as_csv:
-        rt = main_window.runtime_data
-        frame_groups = [
-            ('diastolic', rt.gated_frames_dia),
-            ('systolic', rt.gated_frames_sys),
-            ('tagged', rt.tagged_frames),
-        ]
-        frame_groups = [(suffix, frames) for suffix, frames in frame_groups if frames]
-
-        for suffix, frames in frame_groups:
-            save_csv_files(main_window, lumen_x, lumen_y, name=suffix, frames=frames)
-
-        # save EEM/Calcium/Branch CSVs if contours exist for any frame
-        if eem_x is not None and any(elem is not None for elem in eem_x):
-            for suffix, frames in frame_groups:
-                save_csv_files(main_window, eem_x, eem_y, name=f'eem_{suffix}', frames=frames)
-        if calc_x is not None and any(elem is not None for elem in calc_x):
-            for suffix, frames in frame_groups:
-                save_csv_files(main_window, calc_x, calc_y, name=f'calcium_{suffix}', frames=frames)
-        if branch_x is not None and any(elem is not None for elem in branch_x):
-            for suffix, frames in frame_groups:
-                save_csv_files(main_window, branch_x, branch_y, name=f'branch_{suffix}', frames=frames)
-
-        if plot:
-            index_1 = int(len(contoured_frames) * 0.2)
-            index_2 = int(len(contoured_frames) * 0.4)
-            index_3 = int(len(contoured_frames) * 0.6)
-            index_4 = int(len(contoured_frames) * 0.8)
-            indices_to_plot = [index_1, index_2, index_3, index_4]
-            frames_to_plot = [contoured_frames[frame] for frame in indices_to_plot]
-            fig, axes = plt.subplots(2, 2, figsize=(12, 12))
-
-            for index, frame in enumerate(frames_to_plot):
-                ax = axes[index // 2, index % 2]
-                ax.plot(
-                    lumen_x[frame],
-                    lumen_y[frame],
-                    '-g',
-                    linewidth=2,
-                    label='Contour',
-                )
-                ax.plot(centroid_x[frame], centroid_y[frame], 'ro', markersize=8, label='Centroid')
-                ax.plot(farthest_x[frame][0], farthest_y[frame][0], 'bo', markersize=8, label='Farthest Point 1')
-                ax.plot(farthest_x[frame][1], farthest_y[frame][1], 'bo', markersize=8, label='Farthest Point 2')
-                ax.plot(nearest_x[frame][0], nearest_y[frame][0], 'yo', markersize=8, label='Nearest Point 1')
-                ax.plot(nearest_x[frame][1], nearest_y[frame][1], 'yo', markersize=8, label='Nearest Point 2')
-
-                ax.annotate(
-                    f'Shortest Distance: {shortest_distance[frame]:.2f} mm',
-                    xy=(centroid_x[frame], centroid_y[frame]),
-                    xycoords='data',
-                    xytext=(10, 30),
-                    textcoords='offset points',
-                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=.2'),
-                )
-                ax.annotate(
-                    f'Longest Distance: {longest_distance[frame]:.2f} mm',
-                    xy=(centroid_x[frame], centroid_y[frame]),
-                    xycoords='data',
-                    xytext=(10, -30),
-                    textcoords='offset points',
-                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=-.2'),
-                )
-                ax.annotate(
-                    f'Lumen Area: {lumen_area[frame]:.2f} mm\N{SUPERSCRIPT TWO}\nElliptic Ratio: {longest_distance[frame]/shortest_distance[frame]:.2f}',
-                    xy=(centroid_x[frame], centroid_y[frame]),
-                    xycoords='data',
-                    xytext=(10, 0),
-                    textcoords='offset points',
-                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0'),
-                )
-                ax.legend(loc='upper right')
-                ax.invert_yaxis()
-                ax.grid()
-                ax.set_title(f'Frame {frame + 1}')
-
-            fig.tight_layout()
-            fig.show()
-
-    if not suppress_messages:
-        progress.close()
-        QApplication.processEvents()
+        _advance(progress, 'Saving contour CSVs...')
+        _save_as_csv(main_window, lumen_x, lumen_y, eem_x, eem_y, calc_x, calc_y, branch_x, branch_y)
 
     return report_data
+
+
+def _prefill_values(main_window, contoured_frames):
+    n_frames = main_window.runtime_data.metadata['num_frames']
+    longest_distance = [None] * n_frames
+    farthest_x = [None] * n_frames
+    farthest_y = [None] * n_frames
+    shortest_distance = [None] * n_frames
+    nearest_x = [None] * n_frames
+    nearest_y = [None] * n_frames
+    lumen_area = [None] * n_frames
+    lumen_circumf = [None] * n_frames
+    centroid_x = [None] * n_frames
+    centroid_y = [None] * n_frames
+    elliptic_ratio = [None] * n_frames
+
+    # Pre-fill from stored per-frame measurements
+    for frame in contoured_frames:
+        fd = main_window.runtime_data.frame_data_dct.get(frame)
+        if fd is None:
+            continue
+        m = fd.lumen.measurements
+        if m.area is not None:
+            lumen_area[frame] = m.area
+        if m.circumference is not None:
+            lumen_circumf[frame] = m.circumference
+        if fd.centroid:
+            centroid_x[frame] = fd.centroid[0]
+            centroid_y[frame] = fd.centroid[1]
+        if m.major_axis is not None:
+            longest_distance[frame] = m.major_axis
+        if fd.farthest_points:
+            farthest_x[frame] = [fd.farthest_points[0][0], fd.farthest_points[1][0]]
+            farthest_y[frame] = [fd.farthest_points[0][1], fd.farthest_points[1][1]]
+        if m.minor_axis is not None:
+            shortest_distance[frame] = m.minor_axis
+        if fd.closest_points:
+            nearest_x[frame] = [fd.closest_points[0][0], fd.closest_points[1][0]]
+            nearest_y[frame] = [fd.closest_points[0][1], fd.closest_points[1][1]]
+        if m.elliptic_ratio is not None:
+            elliptic_ratio[frame] = longest_distance[frame] / shortest_distance[frame]
+
+    return (
+        longest_distance,
+        farthest_x,
+        farthest_y,
+        shortest_distance,
+        nearest_x,
+        nearest_y,
+        lumen_area,
+        lumen_circumf,
+        centroid_x,
+        centroid_y,
+        elliptic_ratio,
+    )
+
+
+def _full_list(name, main_window, contour_type):
+    """Per-type interpolated contour lists. Prefer a display.full_contours dict if one is
+    ever present (backward compat), otherwise read from frame_data_dct via
+    get_full_contour_list, the modality-agnostic source."""
+    full_contours = getattr(main_window.display, "full_contours", None)
+    if isinstance(full_contours, dict):
+        lst = full_contours.get(name)
+    elif isinstance(full_contours, list):
+        lst = full_contours
+    else:
+        lst = None
+    if lst is not None:
+        return lst
+    try:
+        return main_window.display.get_full_contour_list(contour_type)
+    except AttributeError as e:
+        logger.bind(file=main_window.file_name).warning(
+            f'Could not fetch {name} full contour list via get_full_contour_list: {e}'
+        )
+        return getattr(main_window.display, "full_contours", None)
+
+
+def _save_as_csv(main_window, lumen_x, lumen_y, eem_x, eem_y, calc_x, calc_y, branch_x, branch_y):
+    rt = main_window.runtime_data
+    frame_groups = [
+        ('diastolic', rt.gated_frames_dia),
+        ('systolic', rt.gated_frames_sys),
+        ('tagged', rt.tagged_frames),
+    ]
+    frame_groups = [(suffix, frames) for suffix, frames in frame_groups if frames]
+
+    for suffix, frames in frame_groups:
+        save_csv_files(main_window, lumen_x, lumen_y, name=suffix, frames=frames)
+
+        # save EEM/Calcium/Branch CSVs if contours exist for any frame
+    if eem_x is not None and any(elem is not None for elem in eem_x):
+        for suffix, frames in frame_groups:
+            save_csv_files(main_window, eem_x, eem_y, name=f'eem_{suffix}', frames=frames)
+    if calc_x is not None and any(elem is not None for elem in calc_x):
+        for suffix, frames in frame_groups:
+            save_csv_files(main_window, calc_x, calc_y, name=f'calcium_{suffix}', frames=frames)
+    if branch_x is not None and any(elem is not None for elem in branch_x):
+        for suffix, frames in frame_groups:
+            save_csv_files(main_window, branch_x, branch_y, name=f'branch_{suffix}', frames=frames)
 
 
 def compute_polygon_metrics(main_window, polygon, frame):

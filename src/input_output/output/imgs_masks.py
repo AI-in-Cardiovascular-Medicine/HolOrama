@@ -1,14 +1,16 @@
+import math
 import os
+from functools import lru_cache
 
 import numpy as np
 import SimpleITK as sitk
 from PyQt6.QtWidgets import QApplication, QProgressDialog
 from scipy.interpolate import splev, splprep
-from skimage.draw import polygon2mask
 
-from domain.all_types import ContourType
-from domain.io_types import iter_wires
+from domain.all_types import ANGLE_TYPES, PLAQUE_TYPES, ContourType
+from domain.io_types import iter_sectors
 from domain.mask_types import MASK_SPECS
+from tools.angle import contains_angle, sector_from_points
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
 
@@ -130,10 +132,71 @@ def _smooth_contour(xs, ys, is_closed=True):
         return np.array(xs), np.array(ys)
 
 
+def _polygon_mask(polygon_yx, image_shape):
+    """Rasterize a closed polygon: every pixel whose centre falls inside it, even-odd.
+
+    A scanline fill rather than skimage's polygon2mask, which tests each pixel of the
+    bounding box against every vertex of the polygon — with the ~500-vertex smoothed
+    contours this module builds, one lumen costs ~95 ms and a report rasterizes several
+    contours per frame over hundreds of frames. Walking one row at a time costs what the
+    polygon's height costs instead, some 17x less, and agrees with polygon2mask to a
+    pixel or two of boundary tangency out of tens of thousands (pinned in
+    tests/test_mask_rasterization.py).
+
+    `polygon_yx` is (row, col); the polygon closes from its last point back to its first.
+    """
+    mask = np.zeros(image_shape, dtype=bool)
+    if len(polygon_yx) < 3:
+        return mask
+
+    rows = np.asarray(polygon_yx[:, 0], dtype=float)
+    cols = np.asarray(polygon_yx[:, 1], dtype=float)
+    next_rows = np.roll(rows, -1)
+    next_cols = np.roll(cols, -1)
+
+    height, width = image_shape
+    first_row = max(int(np.ceil(rows.min())), 0)
+    last_row = min(int(np.floor(rows.max())), height - 1)
+
+    for row in range(first_row, last_row + 1):
+        # Half-open in row, so a vertex sitting exactly on this scanline is counted by one
+        # of its two edges rather than by both or neither.
+        straddling = ((rows <= row) & (next_rows > row)) | ((next_rows <= row) & (rows > row))
+        if not straddling.any():
+            continue
+        row_from = rows[straddling]
+        row_to = next_rows[straddling]
+        col_from = cols[straddling]
+        col_to = next_cols[straddling]
+        crossings = np.sort(col_from + (row - row_from) / (row_to - row_from) * (col_to - col_from))
+        for left, right in zip(crossings[0::2], crossings[1::2]):
+            start = max(int(math.ceil(left)), 0)
+            end = min(int(math.floor(right)), width - 1)
+            if end >= start:
+                mask[row, start : end + 1] = True
+    return mask
+
+
+@lru_cache(maxsize=4)
+def _pixel_angles(image_shape, centre_x: float, centre_y: float):
+    """Every pixel's angle about (centre_x, centre_y), for one frame geometry.
+
+    Cached because a frame asks for the same grid once per open contour and once per
+    angular sector, and building it costs a couple of 4 MB float arrays and an arctan2
+    over the whole frame each time. Returned read-only, so a caller cannot poison the
+    cache for the next one.
+    """
+    height, width = image_shape
+    yy, xx = np.mgrid[0:height, 0:width]
+    angles = np.arctan2(yy.astype(float) - centre_y, xx.astype(float) - centre_x)
+    angles.flags.writeable = False
+    return angles
+
+
 def _closed_polygon_mask(xs, ys, image_shape):
-    """polygon2mask for a closed contour. xs/ys in original image pixel coords."""
+    """Rasterize a closed contour. xs/ys in original image pixel coords."""
     xs_s, ys_s = _smooth_contour(xs, ys, is_closed=True)
-    return polygon2mask(image_shape, np.column_stack([ys_s, xs_s]))
+    return _polygon_mask(np.column_stack([ys_s, xs_s]), image_shape)
 
 
 def _open_outer_sector_mask(xs, ys, centroid_x, centroid_y, image_shape):
@@ -145,9 +208,7 @@ def _open_outer_sector_mask(xs, ys, centroid_x, centroid_y, image_shape):
     The caller clips the result to eem_mask & ~lumen_mask.
     """
     xs_s, ys_s = _smooth_contour(xs, ys, is_closed=False)
-    H, W = image_shape
-    yy, xx = np.mgrid[0:H, 0:W]
-    pixel_angles = np.arctan2(yy.astype(float) - centroid_y, xx.astype(float) - centroid_x)
+    pixel_angles = _pixel_angles(tuple(image_shape), float(centroid_x), float(centroid_y))
 
     # Determine which CCW/CW angular direction contains the arc midpoint
     x0, y0 = xs_s[0], ys_s[0]
@@ -171,9 +232,66 @@ def _open_outer_sector_mask(xs, ys, centroid_x, centroid_y, image_shape):
     inner_poly_yx[0] = (centroid_y, centroid_x)
     inner_poly_yx[1:-1] = np.column_stack([ys_s, xs_s])
     inner_poly_yx[-1] = (centroid_y, centroid_x)
-    inner_mask = polygon2mask(image_shape, inner_poly_yx)
+    inner_mask = _polygon_mask(inner_poly_yx, image_shape)
 
     return full_sector & ~inner_mask
+
+
+# How much of the lumen may fall outside a closed plaque contour for it to still count
+# as drawn around the lumen. Generous on purpose: a circumferential plaque is drawn along
+# the lumen border by hand and will cut inside it here and there, while a plaque drawn as
+# an arc in the wall overlaps a sliver of the lumen at most.
+_ENCIRCLES_LUMEN_FRACTION = 0.5
+
+
+def _encircles_lumen(polygon_mask, lumen_mask):
+    """Whether a closed contour was drawn around the lumen rather than inside the wall.
+
+    A plaque never contains the lumen, so a contour that swallows most of it cannot be
+    the plaque itself — see _plaque_mask.
+    """
+    lumen_area = lumen_mask.sum()
+    if not lumen_area:
+        return False
+    return (polygon_mask & lumen_mask).sum() / lumen_area >= _ENCIRCLES_LUMEN_FRACTION
+
+
+def _plaque_mask(contour_obj, centroid_x, centroid_y, image_shape, lumen_mask, eem_mask):
+    """
+    Boolean mask of one plaque type (calcium, lipid, macrophage), clipped to the wall:
+    inside the EEM, outside the lumen.
+
+    Every plaque contour marks the *luminal* side of the plaque, which then extends
+    outwards to the EEM. For an open arc that is all it can mean (see
+    _open_outer_sector_mask). A closed contour is normally the whole plaque and is simply
+    filled in — but one drawn right around the lumen, as a circumferential calcification
+    is, cannot be: no plaque contains the lumen. That ring is a luminal boundary too, so
+    the wall *outside* it is filled rather than the disc inside it, which is otherwise
+    read as plaque from the lumen out to the ring — the opposite of what was drawn.
+
+    Without an EEM there is nothing to fill outwards to, so the disc is used either way.
+    """
+    combined = np.zeros(image_shape, dtype=bool)
+    for idx, entry in enumerate(contour_obj.contours):
+        try:
+            xs, ys = entry[0], entry[1]
+            if not xs or not ys:
+                continue
+            is_closed = contour_obj.closed[idx] if idx < len(contour_obj.closed) else True
+            if not is_closed:
+                combined |= _open_outer_sector_mask(xs, ys, centroid_x, centroid_y, image_shape)
+                continue
+            polygon = _closed_polygon_mask(xs, ys, image_shape)
+            if eem_mask is not None and _encircles_lumen(polygon, lumen_mask):
+                combined |= eem_mask & ~polygon
+            else:
+                combined |= polygon
+        except Exception:
+            continue
+
+    if eem_mask is not None:
+        combined &= eem_mask
+    return combined & ~lumen_mask
 
 
 def _contour_obj_to_mask(contour_obj, centroid_x, centroid_y, image_shape):
@@ -200,6 +318,26 @@ def _contour_obj_to_mask(contour_obj, centroid_x, centroid_y, image_shape):
     return combined
 
 
+_ANGLE_BIN_DEG = 1.0  # resolution of a region's reported angular extent
+
+
+def _angular_extent_deg(mask: np.ndarray, cx: float, cy: float) -> float:
+    """How much of the circle around (cx, cy) `mask` covers, in degrees.
+
+    Measured off the rasterized region rather than its contour, so it holds for any shape
+    and for several contours of the same type at once: two calcifications that overlap
+    angularly count their shared degrees once, and a plaque drawn as an open arc is
+    measured over the wedge it actually fills (see _plaque_mask). Counted in one-degree
+    bins, which is finer than a plaque angle is ever read off an image.
+    """
+    ys, xs = np.nonzero(mask)
+    if len(xs) == 0:
+        return 0.0
+    angles = np.arctan2(ys - cy, xs - cx)
+    bins = np.floor(np.degrees(angles) / _ANGLE_BIN_DEG).astype(int) % int(360 / _ANGLE_BIN_DEG)
+    return float(np.unique(bins).size) * _ANGLE_BIN_DEG
+
+
 def _region_mean_distance(mask: np.ndarray, cx: float, cy: float) -> float | None:
     """Mean distance of mask's True pixels from (cx, cy); None if mask is empty.
 
@@ -211,41 +349,31 @@ def _region_mean_distance(mask: np.ndarray, cx: float, cy: float) -> float | Non
     return float(np.hypot(xs - cx, ys - cy).mean())
 
 
-def _wire_shadow_mask(wire, image_shape, center_y, center_x):
+def _angle_sector_mask(contour, image_shape, center_y, center_x):
     """
-    Boolean mask for the guide-wire angular shadow(s): per wire, the smaller
-    sector between its two radial lines, unioned over every wire on the frame.
+    Boolean mask for one contour type's angular sectors (the guide-wire shadow, the
+    blood artefact): the wedge each one covers, unioned over every sector on the frame.
 
-    wire: Contour holding one entry of 1-2 (x, y) points per wire, in original
-    image pixel coords. Wires with fewer than two points are still being drawn
-    and contribute no shadow.
+    contour: Contour holding one entry of 1-3 (x, y) points per sector, in original
+    image pixel coords — see tools.angle for how those points describe the wedge,
+    including the sectors wider than 180 degrees that a stored interior marker allows.
+    Sectors with fewer than two points are still being drawn and cover nothing.
     """
-    shadow = np.zeros(image_shape, dtype=bool)
-    wires = [pts for pts in iter_wires(wire) if len(pts) >= 2]
-    if not wires:
-        return shadow
+    covered = np.zeros(image_shape, dtype=bool)
+    sectors = [pts for pts in iter_sectors(contour) if len(pts) >= 2]
+    if not sectors:
+        return covered
 
-    H, W = image_shape
-    yy, xx = np.mgrid[0:H, 0:W]
-    pixel_angles = np.arctan2(yy.astype(float) - center_y, xx.astype(float) - center_x)
+    pixel_angles = _pixel_angles(tuple(image_shape), float(center_x), float(center_y))
+    centre = (float(center_x), float(center_y))
 
-    for pts in wires:
-        (p1x, p1y), (p2x, p2y) = pts[0], pts[1]
+    for pts in sectors:
+        geometry = sector_from_points(pts, centre)
+        if geometry is None:
+            continue
+        covered |= contains_angle(pixel_angles, *geometry)
 
-        a1 = np.arctan2(p1y - center_y, p1x - center_x)
-        a2 = np.arctan2(p2y - center_y, p2x - center_x)
-
-        # CCW arc from a1 → a2; pick the smaller of the two arcs
-        ccw_size = (a2 - a1) % (2 * np.pi)
-        if ccw_size <= np.pi:
-            # CCW a1→a2 is the smaller sector
-            shadow |= ((pixel_angles - a1) % (2 * np.pi)) <= ccw_size
-        else:
-            # CCW a2→a1 is the smaller sector
-            cw_size = (a1 - a2) % (2 * np.pi)
-            shadow |= ((pixel_angles - a2) % (2 * np.pi)) <= cw_size
-
-    return shadow
+    return covered
 
 
 # ---------------------------------------------------------------------------
@@ -280,11 +408,13 @@ def _scaled_frame_view(frame_data, factor: float):
     )
 
 
-def frame_region_areas(frame_data, image_shape, resolution: float, downsample: int = 1) -> dict[str, float]:
-    """Areas (mm²) of one frame's lumen, wall and plaque regions, rasterized.
+def frame_region_metrics(frame_data, image_shape, resolution: float, downsample: int = 1) -> dict[str, float]:
+    """Areas (mm²) of one frame's lumen, wall and plaque regions, rasterized, plus how
+    much of the circle each plaque covers (`<plaque>_angle`, in degrees about the lumen
+    centroid — the angle a calcification or lipid pool is read off an image as).
 
-    Plaques are clipped to the wall (inside EEM, outside lumen) exactly the way
-    contours_to_mask clips them, so every plaque area is a subset of `wall` and a
+    Plaques are read and clipped to the wall (inside EEM, outside lumen) by the same
+    _plaque_mask as contours_to_mask, so every plaque area is a subset of `wall` and a
     caller's plaque/wall fraction stays in 0..1. Rasterizing rather than taking a
     polygon area is what makes the plaques measurable at all: calcium/lipid are
     usually drawn as open arcs, which only enclose a region once closed against
@@ -317,16 +447,15 @@ def frame_region_areas(frame_data, image_shape, resolution: float, downsample: i
         'eem': float(eem_mask.sum()) * px_area if eem_mask is not None else 0.0,
         'wall': float(wall.sum()) * px_area,
     }
-    for contour_type in (ContourType.CALCIUM, ContourType.LIPID, ContourType.MACROPHAGE):
+    for contour_type in PLAQUE_TYPES:
         contour_obj = getattr(frame_data, contour_type.value)
         if not contour_obj.contours:
             areas[contour_type.value] = 0.0
+            areas[f'{contour_type.value}_angle'] = 0.0
             continue
-        plaque = _contour_obj_to_mask(contour_obj, cx, cy, image_shape)
-        if eem_mask is not None:
-            plaque &= eem_mask
-        plaque &= ~lumen_mask
+        plaque = _plaque_mask(contour_obj, cx, cy, image_shape, lumen_mask, eem_mask)
         areas[contour_type.value] = float(plaque.sum()) * px_area
+        areas[f'{contour_type.value}_angle'] = _angular_extent_deg(plaque, cx, cy)
 
     return areas
 
@@ -340,16 +469,17 @@ def contours_to_mask(images, contoured_frames, data):
     0  background  - everything not covered by another label
     1  lumen
     2  EEM wall    - inside EEM contour, outside lumen
-    3  calcium     - within EEM (open or closed spline)
-    4  lipid       - within EEM (open or closed spline)
-    5  macrophage  - within EEM (open or closed spline)
+    3  calcium     - within EEM (open or closed spline, see _plaque_mask)
+    4  lipid       - within EEM (open or closed spline, see _plaque_mask)
+    5  macrophage  - within EEM (open or closed spline, see _plaque_mask)
     7  branch      - side-branch lumen (closed spline, not EEM-clipped)
     9  wire shadow - guide-wire angular shadow
+    10 blood       - blood artefact angular sector, the bottom-most layer of all
 
     Where structures overlap, priority follows an "onion" rule: the structure
     whose pixels sit farther (on average) from the lumen centroid displaces
-    the one closer to it. Three exceptions override that rule: the wire shadow
-    is always the bottom-most layer, the EEM wall is always painted right on
+    the one closer to it. Three exceptions override that rule: the angular
+    sectors are always the bottom-most layers, the EEM wall is always painted right on
     top of it (a backdrop that never hides lumen/branch/plaques — since a
     plaque's pixels are a subset of the EEM annulus, its mean distance can
     lose to the annulus average even though it must stay visible), and the
@@ -372,12 +502,9 @@ def contours_to_mask(images, contoured_frames, data):
     _eem = MASK_SPECS[ContourType.EEM]
     _lumen = MASK_SPECS[ContourType.LUMEN]
     _branch = MASK_SPECS[ContourType.BRANCH]
-    _wire = MASK_SPECS[ContourType.WIRE]
-    _plaques = [
-        MASK_SPECS[ContourType.CALCIUM],
-        MASK_SPECS[ContourType.LIPID],
-        MASK_SPECS[ContourType.MACROPHAGE],
-    ]
+    # Bottom-up, so blood ends up under the wire shadow wherever the two overlap.
+    _sectors = sorted((MASK_SPECS[contour_type] for contour_type in ANGLE_TYPES), key=lambda spec: spec.paint_order)
+    _plaques = [MASK_SPECS[contour_type] for contour_type in PLAQUE_TYPES]
 
     for i, frame in enumerate(contoured_frames):
         fd = data.get(frame)
@@ -392,12 +519,14 @@ def contours_to_mask(images, contoured_frames, data):
 
         fm = np.zeros(image_shape, dtype=np.uint8)
 
-        # Wire is always the bottom-most layer — painted first so every other
-        # structure sits on top of it, regardless of the onion order below.
-        wire_shadow = _wire_shadow_mask(fd.wire, image_shape, center_y, center_x)
-        fm[wire_shadow] = _wire.label
+        # The angular sectors are always the bottom-most layers — painted first so every
+        # other structure sits on top of them, regardless of the onion order below.
+        # Blood goes down first of all, leaving the wire shadow visible where they meet.
+        for sector_spec in _sectors:
+            sector = _angle_sector_mask(getattr(fd, sector_spec.contour_type.value), image_shape, center_y, center_x)
+            fm[sector] = sector_spec.label
 
-        # EEM is always the backdrop, painted right on top of the wire and below
+        # EEM is always the backdrop, painted right on top of them and below
         # everything else: it must never hide the lumen, a side branch, or a
         # plaque, even a small one whose own mean distance loses to the wall
         # annulus's average (a plaque's pixels are always a subset of this
@@ -418,10 +547,7 @@ def contours_to_mask(images, contoured_frames, data):
             contour_obj = getattr(fd, spec.contour_type.value)
             if not contour_obj.contours:
                 continue
-            plaque = _contour_obj_to_mask(contour_obj, cx, cy, image_shape)
-            if fd.eem.contours:
-                plaque &= eem_mask
-            plaque &= ~lumen_mask
+            plaque = _plaque_mask(contour_obj, cx, cy, image_shape, lumen_mask, eem_mask if fd.eem.contours else None)
             regions.append((spec, plaque))
 
         scored: list[tuple] = []

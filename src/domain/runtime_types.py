@@ -4,7 +4,7 @@ from typing import Any, TypedDict
 
 import numpy as np
 
-from domain.io_types import FrameData
+from domain.io_types import FrameData, VolumeGeometry
 from domain.undo import UndoStack
 
 
@@ -13,6 +13,7 @@ class CctaRuntimeData:
         self.metadata: dict = {}
         self.volume: np.ndarray | None = None  # (Z, Y, X) int16 HU
         self.voxel_spacing: tuple[float, float, float] | None = None  # (dz, dy, dx) mm
+        self.geometry: VolumeGeometry | None = None  # source file's voxel grid, for writing masks back
         self.mask: np.ndarray | None = None  # (Z, Y, X) uint8 label values
         self.labels: list[int] = []  # non-background labels present in mask
         self.mask_undo: UndoStack = UndoStack()  # last 5 full-mask snapshots, for Ctrl+Z

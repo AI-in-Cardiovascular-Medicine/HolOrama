@@ -6,7 +6,7 @@ Keyboard & mouse reference
 Shortcuts cannot currently be remapped from the interface; changing them requires editing
 ``src/gui/shortcuts.py``.
 
-.. figure:: ../media/keyboard.png
+.. figure:: ../media/keyboard.webp
    :name: fig-keyboard
    :alt: Keyboard shortcut overview for HolOrama
    :align: center
@@ -66,7 +66,7 @@ Navigation
   Which phase :kbd:`W` and :kbd:`S` traverse is set by the **Diastolic Frames** /
   **Systolic Frames** toggle (blue = diastole, red = systole).
 
-  .. figure:: ../media/toggle_diastole.png
+  .. figure:: ../media/toggle_diastole.webp
     :name: fig-diastole-toggle
     :alt: Toggle Button Diastole
     :align: center
@@ -102,7 +102,9 @@ Drawing
    * - :kbd:`1` / :kbd:`2`
      - Draw measurement 1 / measurement 2
    * - :kbd:`3` / :kbd:`Ctrl+3`
-     - Draw a new / additional wire-shadow angle (a frame may carry several wires)
+     - Draw a new / additional wire-shadow sector (a frame may carry several wires)
+   * - :kbd:`B` / :kbd:`Ctrl+B`
+     - Draw a new / additional blood sector (same tool, in dark red)
    * - :kbd:`Delete`
      - Delete the active contour
    * - :kbd:`Ctrl+Z`

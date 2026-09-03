@@ -6,7 +6,25 @@ import numpy as np
 import pydicom as dcm
 import SimpleITK as sitk
 
-from domain.io_types import MetaDataCCTA
+from domain.io_types import CANONICAL_ORIENTATION, MetaDataCCTA, VolumeGeometry
+
+
+def _canonicalize(img: sitk.Image) -> tuple[sitk.Image, VolumeGeometry]:
+    """Reorient `img` to CANONICAL_ORIENTATION, returning it with its VolumeGeometry.
+
+    The reorientation only permutes and flips axes — no resampling, so voxel values are
+    untouched. Obliquely-acquired volumes are snapped to their nearest axis code, which
+    leaves the residual obliquity in the direction cosines exactly as ITK stores it.
+    """
+    source = sitk.DICOMOrientImageFilter.GetOrientationFromDirectionCosines(img.GetDirection())
+    if source != CANONICAL_ORIENTATION:
+        img = sitk.DICOMOrient(img, CANONICAL_ORIENTATION)
+    return img, VolumeGeometry(
+        origin=tuple(img.GetOrigin()),
+        spacing=tuple(img.GetSpacing()),
+        direction=tuple(img.GetDirection()),
+        source_orientation=source or CANONICAL_ORIENTATION,
+    )
 
 
 def read_ct_volume(
@@ -18,16 +36,17 @@ def read_ct_volume(
 
     Scans all files at the top level, keeps only CT slices that carry
     ImagePositionPatient, picks the series with the most slices, sorts by
-    z-position, applies HU calibration (RescaleSlope/Intercept), and stacks
-    into a volume.
+    z-position, applies HU calibration (RescaleSlope/Intercept), stacks into a
+    volume, and reorients it to CANONICAL_ORIENTATION.
 
     Args:
         folder: directory containing the DICOM files
         progress_cb: optional callback(current, total) called after each slice load
 
     Returns:
-        volume: (n_slices, H, W) int16 array in Hounsfield Units
-        metadata: dict with pixel_spacing (mm tuple), slice_thickness (mm), n_slices
+        volume: (Z, Y, X) int16 array in Hounsfield Units, in CANONICAL_ORIENTATION
+        metadata: dict with pixel_spacing (mm tuple), slice_thickness (mm), n_slices,
+            ccta_metadata and the source VolumeGeometry
 
     Raises:
         ValueError: if no valid CT slices are found
@@ -80,6 +99,7 @@ def read_ct_volume(
         slices.append((px * slope + intercept).astype(np.int16))
 
     volume = np.stack(slices, axis=0)  # (n_slices, H, W)
+    del slices  # the stack owns the pixel data now; reorienting below needs the headroom
 
     px_spacing = getattr(first_ds, 'PixelSpacing', [1.0, 1.0])
     if len(chosen) > 1:
@@ -87,18 +107,48 @@ def read_ct_volume(
     else:
         slice_thickness = float(getattr(first_ds, 'SliceThickness', 1.0))
 
+    stack = sitk.GetImageFromArray(volume)  # (Z, Y, X) -> sitk (X, Y, Z)
+    stack.SetSpacing((float(px_spacing[1]), float(px_spacing[0]), slice_thickness))
+    stack.SetOrigin(tuple(float(v) for v in chosen[0][1].ImagePositionPatient))
+    stack.SetDirection(_dicom_direction(first_ds))
+    oriented, geometry = _canonicalize(stack)
+    volume = sitk.GetArrayFromImage(oriented).astype(np.int16)
+    dx, dy, dz = oriented.GetSpacing()
+    del stack, oriented
+
     try:
         ccta_meta = parse_metadata_ccta(first_ds)
     except Exception:
         ccta_meta = MetaDataCCTA()
 
     metadata = {
-        'pixel_spacing': (float(px_spacing[0]), float(px_spacing[1])),
-        'slice_thickness': slice_thickness,
-        'n_slices': total,
+        'pixel_spacing': (dy, dx),
+        'slice_thickness': dz,
+        'n_slices': volume.shape[0],
         'ccta_metadata': ccta_meta,
+        'geometry': geometry,
     }
     return volume, metadata
+
+
+def _dicom_direction(first_ds: Any) -> tuple[float, ...]:
+    """Direction cosines (sitk row-major order) for a slice stack built by read_ct_volume.
+
+    The matrix columns are the patient-space (LPS) directions of the array's column, row
+    and slice index axes. The first two come from ImageOrientationPatient; the slice axis
+    is their normal, flipped if needed to point toward +z, since read_ct_volume sorts
+    slices by ascending ImagePositionPatient z. Falls back to the LPS identity when the
+    tag is missing, which is what a plain axial series would have carried anyway.
+    """
+    iop = getattr(first_ds, 'ImageOrientationPatient', None)
+    if iop is None or len(iop) != 6:
+        return (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+    col_dir = np.array([float(v) for v in iop[0:3]])  # along a row -> increasing x index
+    row_dir = np.array([float(v) for v in iop[3:6]])  # down a column -> increasing y index
+    slice_dir = np.cross(col_dir, row_dir)
+    if slice_dir[2] < 0:
+        slice_dir = -slice_dir
+    return tuple(np.column_stack([col_dir, row_dir, slice_dir]).ravel())
 
 
 _CCTA_KNOWN_KEYWORDS = frozenset(
@@ -212,9 +262,13 @@ def read_nifti_volume(path: str) -> tuple[np.ndarray, dict]:
     """
     Read a NIfTI file (.nii or .nii.gz) into the same format as read_ct_volume.
 
+    The volume is reoriented to CANONICAL_ORIENTATION, so a file stored any other way
+    (LPS / "RAI" is the common one) still displays the right way round.
+
     Returns:
         volume: (Z, Y, X) int16 array (values passed through as-is, assumed HU)
-        metadata: dict with pixel_spacing (dy, dx) in mm, slice_thickness in mm, n_slices
+        metadata: dict with pixel_spacing (dy, dx) in mm, slice_thickness in mm, n_slices,
+            ccta_metadata and the source VolumeGeometry
 
     Raises:
         ValueError: if the file cannot be read or is not 3D
@@ -227,6 +281,7 @@ def read_nifti_volume(path: str) -> tuple[np.ndarray, dict]:
     if img.GetDimension() != 3:
         raise ValueError(f'Expected a 3D NIfTI volume, got {img.GetDimension()}-D.')
 
+    img, geometry = _canonicalize(img)
     volume = sitk.GetArrayFromImage(img).astype(np.int16)  # (Z, Y, X)
     dx, dy, dz = img.GetSpacing()  # SimpleITK order: x, y, z
 
@@ -235,20 +290,38 @@ def read_nifti_volume(path: str) -> tuple[np.ndarray, dict]:
         'slice_thickness': dz,
         'n_slices': volume.shape[0],
         'ccta_metadata': parse_metadata_ccta_nifti(path, img),
+        'geometry': geometry,
     }
     return volume, metadata
 
 
-def read_mask_volume(path: str) -> tuple[np.ndarray, dict]:
+def _has_default_grid(img: sitk.Image) -> bool:
+    """Whether `img` carries SimpleITK's placeholder grid rather than a real one.
+
+    Masks this app saved before it started preserving geometry were written straight from
+    the array, so they came out with an identity direction and a zero origin — a
+    combination no mask derived from a real CT ever has.
+    """
+    return img.GetOrigin() == (0.0, 0.0, 0.0) and img.GetDirection() == (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+
+
+def read_mask_volume(path: str, volume_geometry: VolumeGeometry | None = None) -> tuple[np.ndarray, dict]:
     """
     Read a segmentation mask from a NIfTI file (.nii or .nii.gz).
 
     Integer label values are preserved as-is (e.g. 0=background, 1=lumen, …).
-    Spatial metadata uses the same convention as read_ct_volume / read_nifti_volume.
+    Spatial metadata uses the same convention as read_ct_volume / read_nifti_volume, and
+    the mask is reoriented to CANONICAL_ORIENTATION — so it lines up with the loaded
+    volume even when the two files were stored in different orientations.
+
+    Pass `volume_geometry` (the loaded volume's) so masks this app wrote before it
+    preserved geometry still line up: they carry no orientation of their own, only voxels
+    laid out the way the volume file was, so they are read as if stored that way.
 
     Returns:
         mask: (Z, Y, X) uint8 array of label values
         metadata: dict with pixel_spacing (dy, dx) in mm, slice_thickness in mm, n_slices
+            and the VolumeGeometry to write the mask back with
 
     Raises:
         ValueError: if the file cannot be read or is not 3D
@@ -261,6 +334,14 @@ def read_mask_volume(path: str) -> tuple[np.ndarray, dict]:
     if img.GetDimension() != 3:
         raise ValueError(f'Expected a 3D mask volume, got {img.GetDimension()}-D.')
 
+    if volume_geometry is not None and _has_default_grid(img):
+        img.SetDirection(
+            sitk.DICOMOrientImageFilter.GetDirectionCosinesFromOrientation(volume_geometry.source_orientation)
+        )
+        img, _ = _canonicalize(img)
+        geometry = volume_geometry  # the same voxel grid as the volume; re-saving restores it
+    else:
+        img, geometry = _canonicalize(img)
     mask = sitk.GetArrayFromImage(img).astype(np.uint8)  # (Z, Y, X)
     dx, dy, dz = img.GetSpacing()
 
@@ -268,5 +349,6 @@ def read_mask_volume(path: str) -> tuple[np.ndarray, dict]:
         'pixel_spacing': (dy, dx),
         'slice_thickness': dz,
         'n_slices': mask.shape[0],
+        'geometry': geometry,
     }
     return mask, metadata

@@ -34,7 +34,7 @@ along the bottom: **Smooth** (+ Taubin lambda), **Reduce Mesh** (+ target reduct
 - **Aortic Root with Coronaries**: mask selectors, cut-plane buttons,
   **Build Cut Geometry**, outlet points, export format and **Extract & Export**.
 
-.. figure:: ../../media/overview_ccta.png
+.. figure:: ../../media/overview_ccta.webp
    :name: fig-overview-ccta
    :alt: Overview CCTA view
    :align: center
@@ -143,7 +143,7 @@ The status circle next to each button turns green once that line is drawn. All t
 required: the aorta-top plane is where the outlet centroid is measured, so without it there
 is no outlet for the model or for the centerline computation.
 
-.. figure:: ../../media/define_cutplanes.png
+.. figure:: ../../media/define_cutplanes.webp
    :name: fig-cut-planes
    :alt: Define cutplanes
    :align: center
@@ -213,7 +213,7 @@ Choose **NIfTI** or **STL** under *Export as*, then click **Extract & Export**.
   smoothing and decimation are preserved. Smoothing never touches the voxel mask, so it
   cannot be represented in the NIfTI export.
 
-.. figure:: ../../media/prepare_geometry.png
+.. figure:: ../../media/prepare_geometry.webp
    :name: fig-prepare-geometry
    :alt: Overview geometry preparation
    :align: center

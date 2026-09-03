@@ -16,9 +16,10 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from domain.all_types import ALLOWED_TOOLS, ContourType, SegmentationTool
+from domain.all_types import ALLOWED_TOOLS, ANGLE_TYPES, ContourType, SegmentationTool
 from pages.intravascular.brush_panel import HoverButton
 from pages.intravascular.utils.contours_gui import (
+    delete_all_on_frame,
     new_angle,
     new_contour,
     new_contour_append,
@@ -36,6 +37,14 @@ _CONTOUR_TYPE_ITEMS = [
     ('Branch', ContourType.BRANCH, '8', 'Ctrl+8'),
     ('Lipid', ContourType.LIPID, '9', 'Ctrl+9'),
     ('Macrophage', ContourType.MACROPHAGE, '0', 'Ctrl+0'),
+]
+
+# The angular sectors, in the same shape — one drop-down entry each. Everything about
+# placing one is shared (see tools.angle), so a new sector type only needs a line here,
+# a ContourType with SegmentationTool.ANGLE, and a colour.
+_ANGLE_TYPE_ITEMS = [
+    ('Wire', ContourType.WIRE, '3', 'Ctrl+3'),
+    ('Blood', ContourType.BLOOD, 'B', 'Ctrl+B'),
 ]
 
 
@@ -88,17 +97,19 @@ class LeftHalf:
         self.measure_btn_2.setStyleSheet(f'border-color: {self.measure_colors[1]}')
         self.measure_btn_2.clicked.connect(partial(new_measure, main_window, 1))
 
-        self.angle_btn = QPushButton('📐 Angle Wire')
-        self.angle_btn.setCheckable(True)
-        self.angle_btn.setToolTip("Set angle between two points for wire shadow (replaces existing wires)")
-        self.angle_btn.setStyleSheet(f'border-color: {main_window.display.color_angle}')
-        self.angle_btn.clicked.connect(partial(new_angle, main_window, ContourType.WIRE))
+        # Which sector type both angle controls currently act on; kept in step with the
+        # display by set_active_contour_type_ui.
+        self.angle_type: ContourType = _ANGLE_TYPE_ITEMS[0][1]
 
-        self.add_angle_btn = QPushButton('➕📐 Add Wire')
+        self.angle_type_combo = QComboBox()
+        for label, _, _, _ in _ANGLE_TYPE_ITEMS:
+            self.angle_type_combo.addItem(f'📐 Angle {label}')
+        self.angle_type_combo.currentIndexChanged.connect(self._on_angle_type_changed)
+        self.angle_type_combo.activated.connect(self._on_angle_type_activated)
+
+        self.add_angle_btn = QPushButton()
         self.add_angle_btn.setCheckable(True)
-        self.add_angle_btn.setToolTip("Add another wire shadow, keeping the existing ones")
-        self.add_angle_btn.setStyleSheet(f'border-color: {main_window.display.color_angle}')
-        self.add_angle_btn.clicked.connect(partial(new_angle, main_window, ContourType.WIRE, True))
+        self.add_angle_btn.clicked.connect(self._on_add_angle)
 
         self.display_buttons = [
             self.closed_spline_btn,
@@ -107,13 +118,26 @@ class LeftHalf:
             self.reference_btn,
             self.measure_btn_1,
             self.measure_btn_2,
-            self.angle_btn,
             self.add_angle_btn,
         ]
         for btn in self.display_buttons:
             self.display_button_group.addButton(btn)
-            display_buttons_hbox.addWidget(btn)
+
+        # The drop-down stands where the 📐 Angle Wire button used to: picking a type from
+        # it starts a sector of that type, and points ➕📐 Add at the same one.
+        for widget in (
+            self.closed_spline_btn,
+            self.open_spline_btn,
+            self.brush_btn,
+            self.reference_btn,
+            self.measure_btn_1,
+            self.measure_btn_2,
+            self.angle_type_combo,
+            self.add_angle_btn,
+        ):
+            display_buttons_hbox.addWidget(widget)
         left_vbox.addLayout(display_buttons_hbox)
+        self._apply_angle_type(self.angle_type)  # set both controls' labels, colours and tooltips
 
         # Second row: contour type selector + new/add buttons
         contour_row_hbox = QHBoxLayout()
@@ -130,9 +154,15 @@ class LeftHalf:
         self.add_contour_btn = QPushButton('+ Add Contour')
         self.add_contour_btn.clicked.connect(self._on_add_contour)
 
+        self.delete_all_btn = QPushButton('🗑️ Delete All On Frame')
+        self.delete_all_btn.clicked.connect(self._on_delete_all)
+        self.delete_all_btn.setStyleSheet('background: darkred')
+        self.delete_all_btn.setToolTip("Deletes all currently displayed contours on the image")
+
         contour_row_hbox.addWidget(self.contour_type_combo)
         contour_row_hbox.addWidget(self.new_contour_btn)
         contour_row_hbox.addWidget(self.add_contour_btn)
+        contour_row_hbox.addWidget(self.delete_all_btn)
         left_vbox.addLayout(contour_row_hbox)
 
         self._on_contour_type_changed(0)  # set initial tooltips and button state
@@ -274,7 +304,50 @@ class LeftHalf:
         _, contour_type, _, _ = _CONTOUR_TYPE_ITEMS[self.contour_type_combo.currentIndex()]
         new_contour_append(self.main_window, contour_type)
 
+    def _on_delete_all(self):
+        delete_all_on_frame(self.main_window)
+
+    def _on_angle_type_changed(self, index: int):
+        """Point both angle controls, and the display, at the newly selected sector type."""
+        contour_type = _ANGLE_TYPE_ITEMS[index][1]
+        self._apply_angle_type(contour_type)
+        # Same as the contour drop-down: the selection *is* the active type, so Delete and
+        # Ctrl+Z act on that kind of sector without one having to be placed first.
+        if self.main_window.image_displayed:
+            self.main_window.display.set_active_contour_type(contour_type)
+
+    def _on_angle_type_activated(self, index: int):
+        """Picking a type from the drop-down starts a sector of it straight away — the
+        entry is the action, the way the button it replaced was."""
+        new_angle(self.main_window, _ANGLE_TYPE_ITEMS[index][1])
+
+    def _on_add_angle(self):
+        new_angle(self.main_window, self.angle_type, True)
+
+    def _apply_angle_type(self, contour_type: ContourType):
+        """Label, colour and describe both angle controls for `contour_type`."""
+        self.angle_type = contour_type
+        label, _, new_key, add_key = next(item for item in _ANGLE_TYPE_ITEMS if item[1] is contour_type)
+        config = self.main_window.display.contour_configs.get(contour_type)
+        color = config.color if config else self.main_window.display.color_angle
+
+        self.angle_type_combo.setStyleSheet(f'border-color: {color}')
+        self.angle_type_combo.setToolTip(
+            f'Set the angle of one {label.lower()} sector, replacing the existing ones ({new_key})'
+        )
+        self.add_angle_btn.setText(f'➕📐 Add {label}')
+        self.add_angle_btn.setStyleSheet(f'border-color: {color}')
+        self.add_angle_btn.setToolTip(f'Add another {label.lower()} sector, keeping the existing ones ({add_key})')
+
     def set_active_contour_type_ui(self, contour_type: ContourType):
+        """Mirror the display's active contour type in whichever control owns it."""
+        if contour_type in ANGLE_TYPES:
+            for i, (_, ct, _, _) in enumerate(_ANGLE_TYPE_ITEMS):
+                if ct == contour_type:
+                    self.angle_type_combo.setCurrentIndex(i)
+                    break
+            self._apply_angle_type(contour_type)  # also covers picking the type already shown
+            return
         for i, (_, ct, _, _) in enumerate(_CONTOUR_TYPE_ITEMS):
             if ct == contour_type:
                 self.contour_type_combo.setCurrentIndex(i)
