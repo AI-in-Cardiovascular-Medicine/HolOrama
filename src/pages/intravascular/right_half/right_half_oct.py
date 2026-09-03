@@ -37,6 +37,12 @@ OCT_FRAME_FLAGS = (
     ('unlabeled', 'Unlabeled'),
 )
 
+# A guiding-catheter frame shows the catheter rather than the vessel, so there is nothing
+# on it worth carrying into the report: it never also holds a tag. Both directions are
+# enforced — labelling a frame (or a whole range) as guiding catheter drops its tag, and
+# tagging skips frames that carry the label.
+_NO_TAG_TOOLTIP = 'The guiding catheter fills this frame, so there is nothing to tag'
+
 
 def _separator() -> QFrame:
     separator = QFrame()
@@ -53,7 +59,7 @@ class RightHalfOct(QWidget):
 
         self.tagged_frame_button = QCheckBox('Tagged Frame')
         self.tagged_frame_button.setChecked(False)
-        self.tagged_frame_button.stateChanged.connect(partial(toggle_tagged_frame, mw))
+        self.tagged_frame_button.stateChanged.connect(self._on_tagged_frame_toggled)
         self.use_tagged_button = QPushButton('Tagged Frames')
         self.use_tagged_button.setStyleSheet('background-color: yellow')
         self.use_tagged_button.clicked.connect(partial(use_tagged, mw))
@@ -162,15 +168,29 @@ class RightHalfOct(QWidget):
         mw = self.main_window
         if not (mw.image_displayed and mw.runtime_data.metadata.get('modality') == 'OCT'):
             return
-        self.tagged_frame_button.blockSignals(True)
-        self.tagged_frame_button.setChecked(frame in mw.runtime_data.tagged_frames)
-        self.tagged_frame_button.blockSignals(False)
+        self._show_tagged(frame)
         frame_data = (mw.runtime_data.frame_data_dct or {}).get(frame)
         if frame_data is not None:
             self._show_label(frame_data)
         self.clear_catheter_range_button.setEnabled(bool(self.oct_plot.catheter_range_flags().any()))
         self.oct_plot.set_frame(frame)
         self.oct_plot.update()  # the veil is read live, so a relabel shows without a rebuild
+
+    def _show_tagged(self, frame):
+        """Mirror the frame's tag in the checkbox, and whether it may carry one at all."""
+        mw = self.main_window
+        catheter = _is_catheter_frame(mw.runtime_data, frame)
+        self.tagged_frame_button.blockSignals(True)
+        self.tagged_frame_button.setChecked(frame in mw.runtime_data.tagged_frames)
+        self.tagged_frame_button.blockSignals(False)
+        self.tagged_frame_button.setEnabled(not catheter)
+        self.tagged_frame_button.setToolTip(_NO_TAG_TOOLTIP if catheter else '')
+
+    def _on_tagged_frame_toggled(self, state):
+        """Tag or untag the frame on screen, then show what the data actually took — a
+        guiding-catheter frame refuses the tag."""
+        toggle_tagged_frame(self.main_window, state)
+        self._show_tagged(self.main_window.display_slider.value())
 
     def deactivate(self):
         self.lview_slot.detach(self.main_window.longitudinal_view)
@@ -207,6 +227,7 @@ class RightHalfOct(QWidget):
     def _on_catheter_range(self):
         """Flag this frame and everything after it, then show the result on the current frame."""
         set_catheter_range(self.main_window)
+        self.main_window.display.update_display()  # the range may have dropped tags
         self._on_frame_changed(self.main_window.display_slider.value())
 
     def _on_clear_catheter_range(self):
@@ -218,6 +239,23 @@ class RightHalfOct(QWidget):
 # ---------------------------------------------------------------------------
 # OCT callbacks
 # ---------------------------------------------------------------------------
+
+
+def _is_catheter_frame(runtime_data, frame: int) -> bool:
+    """Whether `frame` is labelled as guiding catheter, which rules out tagging it."""
+    frame_data = (runtime_data.frame_data_dct or {}).get(frame)
+    return bool(frame_data is not None and frame_data.guiding_catheter)
+
+
+def _untag_frame(runtime_data, frame: int) -> None:
+    """Take the tag off `frame`, keeping tagged_frames and the frame's phase in step."""
+    try:
+        runtime_data.tagged_frames.remove(frame)
+    except ValueError:
+        pass
+    frame_data = (runtime_data.frame_data_dct or {}).get(frame)
+    if frame_data is not None and frame_data.phase == 'T':
+        frame_data.phase = '-'
 
 
 def _frames_at_distance(anchor: int, step_frames: float, lower_limit: int, upper_limit: int) -> list:
@@ -276,7 +314,13 @@ def tag_frames_by_distance(main_window):
     # Cleared in place, not reassigned: activate() aliases gated_frames to this same list.
     main_window.runtime_data.tagged_frames.clear()
 
-    frames = _frames_at_distance(main_window.display_slider.value(), step_frames, lower_limit, upper_limit)
+    frames = [
+        frame
+        for frame in _frames_at_distance(main_window.display_slider.value(), step_frames, lower_limit, upper_limit)
+        # The guiding-catheter stretch is skipped rather than shifting the tags along it,
+        # so the spacing of the rest is the one that was asked for.
+        if not _is_catheter_frame(main_window.runtime_data, frame)
+    ]
     main_window.runtime_data.tagged_frames.extend(frames)  # already sorted and unique
     for idx in frames:
         main_window.runtime_data.frame_data_dct[idx].phase = 'T'
@@ -288,16 +332,13 @@ def toggle_tagged_frame(main_window, state_true, drag=False):
     if main_window.image_displayed:
         frame = main_window.display_slider.value()
         if state_true:
+            if _is_catheter_frame(main_window.runtime_data, frame):
+                return  # the catheter fills it; the checkbox is disabled, so this is a guard
             if frame not in main_window.runtime_data.tagged_frames:
                 bisect.insort_left(main_window.runtime_data.tagged_frames, frame)
             main_window.runtime_data.frame_data_dct[frame].phase = 'T'
         else:
-            try:
-                main_window.runtime_data.tagged_frames.remove(frame)
-            except ValueError:
-                pass
-            if main_window.runtime_data.frame_data_dct[frame].phase == 'T':
-                main_window.runtime_data.frame_data_dct[frame].phase = '-'
+            _untag_frame(main_window.runtime_data, frame)
         main_window.display.update_display()
 
 
@@ -318,6 +359,8 @@ def set_oct_label(main_window, quality: str = '', flag: str = '') -> None:
     if main_window.image_displayed:
         frame = main_window.display_slider.value()
         apply_oct_label(main_window.runtime_data.frame_data_dct[frame], quality, flag)
+        if flag == 'guiding_catheter':
+            _untag_frame(main_window.runtime_data, frame)
         main_window.save_contours_soon()
 
 
@@ -326,7 +369,9 @@ def set_catheter_range(main_window):
 
     The catheter occupies the whole tail of a pullback once it is reached, so those frames
     are labelled in one go rather than one at a time. Each one is relabelled exactly as a
-    click would: guiding catheter replaces whatever label the frame had.
+    click would: guiding catheter replaces whatever label the frame had, and drops its tag
+    with it — the range is the stretch nothing can be read from, tags included. Clearing
+    the range later does not bring those tags back.
     """
     if not main_window.image_displayed:
         return
@@ -335,6 +380,7 @@ def set_catheter_range(main_window):
         frame_data = frame_data_dct.get(frame)
         if frame_data is not None:
             apply_oct_label(frame_data, flag='guiding_catheter')
+            _untag_frame(main_window.runtime_data, frame)
     main_window.save_contours_soon()
 
 

@@ -80,6 +80,17 @@ class TestBuildContour:
         assert c.end_coords == [[(2.0, 4.0)]]
 
 
+class TestCatheterFramesAreNotTagged:
+    def test_a_file_holding_both_loads_without_the_tag(self):
+        # A guiding-catheter frame carries no tag (see right_half_oct); files written
+        # before that rule could hold both.
+        raw = {'0': {'phase': 'T', 'guiding_catheter': True}, '1': {'phase': 'T'}}
+        frames = _build_frame_data(raw, pre_flags=False)
+
+        assert frames[0].phase == '-'
+        assert frames[1].phase == 'T'  # an ordinary tagged frame is untouched
+
+
 class TestBuildSectorContour:
     def test_none_returns_empty_sector(self):
         assert iter_sectors(_build_sector_contour(None)) == []

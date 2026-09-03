@@ -181,6 +181,10 @@ def _build_frame_data(raw: dict, pre_flags: bool = True) -> Dict[int, FrameData]
             closest_points=frame_raw.get('closest_points'),
             farthest_points=frame_raw.get('farthest_points'),
         )
+        # A guiding-catheter frame is never also a tagged frame (see right_half_oct), and
+        # a file written before that rule can hold both.
+        if guiding_catheter and frames[i].phase == 'T':
+            frames[i].phase = '-'
     return frames
 
 

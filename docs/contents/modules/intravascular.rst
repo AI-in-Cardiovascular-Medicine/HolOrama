@@ -94,6 +94,10 @@ out from the **frame on screen**, in both directions — on frame 375 of 380 wit
 4 you get 375, 379 and 371, 367, … back down — so the frame being looked at is always one
 of the tagged ones. Rate each frame with the quality
 buttons (*Very Bad* … *Very Good*). The rating travels with the frame into the report.
+A frame labelled **Guiding Catheter** shows the catheter rather than the vessel, so it
+never also carries a tag: labelling one (or a whole **Catheter Range**) drops its tag, and
+both *Tagged Frame* and **Tag Frames by Distance** skip it. Clearing the range makes those
+frames taggable again but does not bring the dropped tags back.
 
 If a region should be excluded from analysis, after running tagging / gating use
 :kbd:`Alt+Delete` and provide a range to exclude.

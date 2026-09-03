@@ -370,3 +370,126 @@ class TestTagFramesByDistance:
         main_window = self._run(oct_half, monkeypatch, anchor=3, step_frames=4)
 
         assert main_window.runtime_data.gated_frames is main_window.runtime_data.tagged_frames
+
+
+class TestCatheterRangeAndTags:
+    """A guiding-catheter frame shows the catheter, not the vessel, so it never also
+    carries a tag — enforced whichever of the two is set second."""
+
+    def _tag(self, main_window, *frames):
+        for frame in frames:
+            main_window.runtime_data.tagged_frames.append(frame)
+            main_window.runtime_data.frame_data_dct[frame].phase = 'T'
+        main_window.runtime_data.tagged_frames.sort()
+
+    def test_the_range_drops_the_tags_inside_it(self, oct_half):
+        main_window = oct_half.main_window
+        self._tag(main_window, 1, 5, 7)
+        main_window.display_slider.setValue(5)
+
+        oct_half._on_catheter_range()
+
+        assert main_window.runtime_data.tagged_frames == [1]  # only the frame before it survives
+
+    def test_the_dropped_tags_lose_their_phase_too(self, oct_half):
+        main_window = oct_half.main_window
+        self._tag(main_window, 8)
+        main_window.display_slider.setValue(8)
+
+        oct_half._on_catheter_range()
+
+        assert main_window.runtime_data.frame_data_dct[8].phase == '-'
+
+    def test_labelling_one_frame_as_catheter_drops_its_tag(self, oct_half):
+        main_window = oct_half.main_window
+        self._tag(main_window, 4)
+        main_window.display_slider.setValue(4)
+
+        oct_half.frame_flag_buttons['guiding_catheter'].click()
+
+        assert main_window.runtime_data.tagged_frames == []
+        assert main_window.runtime_data.frame_data_dct[4].phase == '-'
+
+    def test_a_quality_rating_leaves_the_tag_alone(self, oct_half):
+        main_window = oct_half.main_window
+        self._tag(main_window, 4)
+        main_window.display_slider.setValue(4)
+
+        oct_half.oct_quality_buttons['Good'].click()
+
+        assert main_window.runtime_data.tagged_frames == [4]
+
+    def test_the_tag_checkbox_is_closed_off_on_a_catheter_frame(self, oct_half):
+        main_window = oct_half.main_window
+        apply_oct_label(main_window.runtime_data.frame_data_dct[6], flag='guiding_catheter')
+
+        oct_half._on_frame_changed(6)
+        assert not oct_half.tagged_frame_button.isEnabled()
+        assert oct_half.tagged_frame_button.toolTip()
+
+        oct_half._on_frame_changed(5)
+        assert oct_half.tagged_frame_button.isEnabled()
+        assert not oct_half.tagged_frame_button.toolTip()
+
+    def test_tagging_a_catheter_frame_does_nothing(self, oct_half):
+        main_window = oct_half.main_window
+        apply_oct_label(main_window.runtime_data.frame_data_dct[6], flag='guiding_catheter')
+        main_window.display_slider.setValue(6)
+
+        oct_half._on_tagged_frame_toggled(True)  # what the checkbox would send
+
+        assert main_window.runtime_data.tagged_frames == []
+        assert main_window.runtime_data.frame_data_dct[6].phase != 'T'
+        assert not oct_half.tagged_frame_button.isChecked()  # and the box shows it
+
+    def test_untagging_still_works_on_a_frame_that_became_catheter(self, oct_half):
+        main_window = oct_half.main_window
+        self._tag(main_window, 3)
+        main_window.runtime_data.frame_data_dct[3].guiding_catheter = True
+        main_window.display_slider.setValue(3)
+
+        oct_half._on_tagged_frame_toggled(False)
+
+        assert main_window.runtime_data.tagged_frames == []
+
+    def test_tag_by_distance_skips_the_catheter_stretch(self, oct_half, monkeypatch):
+        main_window = oct_half.main_window
+        for frame in range(6, N_FRAMES):
+            apply_oct_label(main_window.runtime_data.frame_data_dct[frame], flag='guiding_catheter')
+        main_window.display_slider.setValue(0)
+
+        class _Dialog:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def setWindowTitle(self, title):
+                pass
+
+            def exec(self):
+                return True
+
+            def getInputs(self):
+                return 0, N_FRAMES
+
+            def isStepByMm(self):
+                return False
+
+            def getStepFrames(self):
+                return 2
+
+        monkeypatch.setattr(right_half_oct, 'FrameRangeDialog', _Dialog)
+        right_half_oct.tag_frames_by_distance(main_window)
+
+        assert main_window.runtime_data.tagged_frames == [0, 2, 4]
+        assert all(main_window.runtime_data.frame_data_dct[frame].phase != 'T' for frame in range(6, N_FRAMES))
+
+    def test_clearing_the_range_lets_the_frame_be_tagged_again(self, oct_half):
+        main_window = oct_half.main_window
+        main_window.display_slider.setValue(7)
+        oct_half._on_catheter_range()
+
+        oct_half._on_clear_catheter_range()
+
+        assert oct_half.tagged_frame_button.isEnabled()
+        oct_half._on_tagged_frame_toggled(True)
+        assert main_window.runtime_data.tagged_frames == [7]
