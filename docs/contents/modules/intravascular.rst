@@ -307,7 +307,12 @@ See this example for applying these tools to effectively draw new contours:
    :align: center
    :width: 900px
 
-   Example for a workflow utilizing the different contour spawning shortcuts.
+   Example for a workflow utilizing the different contour spawning shortcuts. In the .gif
+   first the contour is shrunk with :kbd:`Ctrl+MWB`, then an EEM contour is spawned from
+   the lumen contour using :kbd:`Shift+Q`. Then switched to the neighbouring frame using
+   :kbd:`W`, (here not gated so goes to the next), then with :kbd:`Shift+A` it copies
+   the currently active contour type (here ``EEM``) from the neighbouring frame to the left
+   (more distal).
 
 .. _iv-uncertainty:
 
