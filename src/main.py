@@ -142,11 +142,65 @@ def _load_config(path: Path) -> SimpleNamespace:
     return config
 
 
+def _merge_missing(bundled: dict, user: dict) -> bool:
+    """Recursively add every key present in `bundled` but missing from `user`, leaving
+    values the user already set untouched. Returns True if anything was added."""
+    changed = False
+    for key, value in bundled.items():
+        if key not in user:
+            user[key] = value
+            changed = True
+        elif isinstance(value, dict) and isinstance(user.get(key), dict):
+            changed |= _merge_missing(value, user[key])
+    return changed
+
+
+def _migrate_user_config(bundled: Path, user_cfg: Path) -> None:
+    """Bring an existing per-user config.yaml up to the bundled schema.
+
+    The per-user copy is seeded once and then survives every upgrade, so a file written
+    by an older version lacks any section or key added since - and the app reads those
+    unguarded (e.g. config.intravascular.n_points_contour), so it dies at startup with
+    AttributeError rather than falling back to a default. Merge the bundled defaults in
+    for whatever the user file is missing; values the user set win. The previous copy is
+    kept as config.yaml.bak, and one we cannot parse is replaced wholesale."""
+    from ruamel.yaml import YAML
+
+    yaml_rt = YAML(typ='rt')
+    yaml_rt.preserve_quotes = True
+    yaml_rt.boolean_representation = ['False', 'True']  # type: ignore[attr-defined]
+    yaml_rt.indent(mapping=2, sequence=4, offset=2)
+    backup = user_cfg.with_name('config.yaml.bak')
+
+    try:
+        with open(user_cfg, encoding='utf-8') as f:
+            user_data = yaml_rt.load(f)
+        with open(bundled, encoding='utf-8') as f:
+            bundled_data = yaml_rt.load(f)
+    except Exception as exc:  # corrupt / unparseable user config - start over from the default
+        logger.warning(f'Could not read {user_cfg} ({exc}); keeping it as {backup.name} and reseeding')
+        shutil.copyfile(user_cfg, backup)
+        shutil.copyfile(bundled, user_cfg)
+        return
+
+    if not isinstance(user_data, dict):
+        shutil.copyfile(user_cfg, backup)
+        shutil.copyfile(bundled, user_cfg)
+        return
+
+    if _merge_missing(bundled_data, user_data):
+        shutil.copyfile(user_cfg, backup)
+        with open(user_cfg, 'w', encoding='utf-8') as f:
+            yaml_rt.dump(user_data, f)
+        logger.info(f'Added new default settings to {user_cfg} (previous copy kept as {backup.name})')
+
+
 def _resolve_config_path() -> Path:
     """Return the config.yaml to load. In dev this is the copy next to the source; in
     the frozen app it must be a writable per-user copy so 'Display Settings...' can save
     back to it (the bundled one may sit under read-only C:\\Program Files). The per-user
-    copy is seeded from the bundled default on first run."""
+    copy is seeded from the bundled default on first run, and merged with it on later
+    runs so settings a newer version added reach a config file an older version wrote."""
     bundled = Path(__file__).parent / 'config.yaml'
     if not IS_FROZEN:
         return bundled
@@ -154,6 +208,8 @@ def _resolve_config_path() -> Path:
     if not user_cfg.exists():
         user_cfg.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(bundled, user_cfg)
+    else:
+        _migrate_user_config(bundled, user_cfg)
     return user_cfg
 
 

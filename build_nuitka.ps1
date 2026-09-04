@@ -12,7 +12,11 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $python = '.\.venv\Scripts\python.exe'
-$version = '0.9.0'
+# Read the version from src\version.py so the exe's file/product metadata can't drift
+# from the real release (build_installer.ps1 reads the same source).
+$versionLine = Select-String -Path 'src\version.py' -Pattern "__version__\s*=\s*'([^']+)'" | Select-Object -First 1
+if (-not $versionLine) { throw "Could not read __version__ from src\version.py" }
+$version = $versionLine.Matches[0].Groups[1].Value
 
 # Heavy runtime deps that are only imported lazily (inside Predict.inference) and are
 # NOT needed for anything except automatic segmentation. Also drop the dev toolchain.
