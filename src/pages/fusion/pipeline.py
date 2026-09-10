@@ -337,9 +337,11 @@ def frames_to_mesh(geometry, contour_type: str | None = None) -> trimesh.Trimesh
 
 
 def run_label_anomalous_region(centerline, frames, results: dict, *, results_key: str = 'rca_points') -> dict:
-    return mm.label_anomalous_region(
+    results = mm.label_anomalous_region(
         centerline=centerline, frames=frames, results=results, results_key=results_key, debug_plot=False
     )
+    results['overlap_points'] = results.pop('anomalous_points')
+    return results
 
 
 def run_find_scalings(
