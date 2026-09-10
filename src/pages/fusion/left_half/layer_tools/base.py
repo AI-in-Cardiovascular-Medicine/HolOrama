@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from domain.fusion_display_types import region_label
 from domain.fusion_types import FusionScene
 
 # Minimum height for the layer list's internal scroll area — below this a couple of rows
@@ -129,7 +130,9 @@ class SceneToolbar(QWidget):
 
         for key, (visible, opacity, color) in layer_states.items():
             row = QHBoxLayout()
-            box = QCheckBox(key.replace('_', ' ').title())
+            # region_label so the overlap region reads 'Overlap Points' rather than
+            # multimodars' internal 'Anomalous Points' key (see REGION_LABELS).
+            box = QCheckBox(region_label(key).replace('_', ' ').title())
             box.setChecked(visible)
             box.toggled.connect(lambda checked, k=key: self.layer_visibility_changed.emit(k, checked))
             row.addWidget(box)

@@ -489,18 +489,27 @@ class FusionPage(QWidget):
         if len(sources) == 1:
             source = sources[0]
         else:
-            source, ok = QInputDialog.getItem(
-                self, 'Reclassify points', 'Select points to reclassify:', sources, 0, False
+            source_labels = [colors.region_label(key) for key in sources]
+            label, ok = QInputDialog.getItem(
+                self, 'Reclassify points', 'Select points to reclassify:', source_labels, 0, False
             )
             if not ok:
                 return
+            source = sources[source_labels.index(label)]
 
         dest_choices = [key for key in colors.REGION_COLORS if key != source]
-        dest, ok = QInputDialog.getItem(
-            self, 'Reclassify points', f'Relabel selected "{source}" points as:', dest_choices, 0, False
+        dest_labels = [colors.region_label(key) for key in dest_choices]
+        label, ok = QInputDialog.getItem(
+            self,
+            'Reclassify points',
+            f'Relabel selected "{colors.region_label(source)}" points as:',
+            dest_labels,
+            0,
+            False,
         )
         if not ok:
             return
+        dest = dest_choices[dest_labels.index(label)]
 
         points = np.array(results[source])
         inside = viewer.points_inside_lasso(points)
@@ -513,7 +522,9 @@ class FusionPage(QWidget):
         results[dest] = list(results.get(dest) or []) + moved
 
         self._refresh_geometry_scene()
-        self.status_bar.showMessage(f'Reclassified {len(moved)} point(s): {source} → {dest}.')
+        self.status_bar.showMessage(
+            f'Reclassified {len(moved)} point(s): {colors.region_label(source)} → {colors.region_label(dest)}.'
+        )
         self.left_half.geometry_toolbar.lasso_btn.setChecked(False)  # ends lasso mode, clears overlay
 
     def _refresh_branch_scene(self) -> None:
@@ -1050,7 +1061,8 @@ class FusionPage(QWidget):
         )
         if results is not None:
             self.data.results = results
-            self._refresh_geometry_scene()  # proximal/distal/overlap_points now exist
+            # proximal_points/distal_points/anomalous_points (shown as overlap) now exist
+            self._refresh_geometry_scene()
 
     def _on_run_compute_scaling(self) -> None:
         frames = self._aligned_frames()

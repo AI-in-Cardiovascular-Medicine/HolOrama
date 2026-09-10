@@ -13,6 +13,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from domain.fusion_display_types import region_label
+
 
 class FusionColumn(QWidget):
     """Column 3: scale the CCTA geometry to match the intravascular lumen, stitch the two
@@ -99,7 +101,7 @@ class FusionColumn(QWidget):
     def _build_cleanup_group(self) -> QGroupBox:
         box = QGroupBox('Remove Labeled Points')
         layout = QVBoxLayout(box)
-        self._remove_anomalous = QCheckBox('overlap_points')
+        self._remove_anomalous = QCheckBox(region_label('anomalous_points'))
         self._remove_anomalous.setChecked(True)
         self._remove_proximal = QCheckBox('proximal_points')
         self._remove_proximal.setChecked(True)
@@ -206,9 +208,11 @@ class FusionColumn(QWidget):
         return {key: spin.value() for key, spin in self._scaling_spinboxes.items()}
 
     def remove_point_keys(self) -> list[str]:
+        # Upstream keys, not the displayed labels — mm.remove_labeled_points_from_mesh
+        # indexes results by these names (see REGION_LABELS).
         keys = []
         if self._remove_anomalous.isChecked():
-            keys.append('overlap_points')
+            keys.append('anomalous_points')
         if self._remove_proximal.isChecked():
             keys.append('proximal_points')
         return keys

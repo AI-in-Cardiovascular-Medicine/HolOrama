@@ -7,6 +7,8 @@ from domain.colors import CATEGORICAL_PALETTE, DIASTOLE_COLOR, SYSTOLE_COLOR, br
 
 __all__ = [
     'REGION_COLORS',
+    'REGION_LABELS',
+    'region_label',
     'CENTERLINE_COLORS',
     'TREE_AORTA_COLOR',
     'TREE_RCA_MAIN_COLOR',
@@ -33,8 +35,18 @@ REGION_COLORS: dict[str, tuple[int, int, int]] = {
     'lca_removed_points': (255, 0, 0),  # red — upstream uses the same key/color for both
     'proximal_points': (0, 255, 255),  # cyan
     'distal_points': (255, 0, 255),  # magenta
-    'overlap_points': (255, 165, 0),  # orange
+    'anomalous_points': (255, 165, 0),  # orange
 }
+
+REGION_LABELS: dict[str, str] = {
+    'anomalous_points': 'overlap_points',
+}
+
+
+def region_label(key: str) -> str:
+    """The user-facing name for a results-dict key — the key itself unless overridden."""
+    return REGION_LABELS.get(key, key)
+
 
 # Centerline overlay colors, from plot_results_key()'s cl_rca/cl_lca/cl_aorta.
 CENTERLINE_COLORS: dict[str, tuple[int, int, int]] = {
