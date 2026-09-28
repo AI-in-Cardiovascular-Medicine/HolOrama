@@ -1173,6 +1173,7 @@ class FusionPage(QWidget):
         if results is not None:
             self.data.results = results
             self.data.results_points_removed = copy.deepcopy(results)
+            fc.set_seam_points_limit(pipeline.max_seam_points(results))
             self._clear_stitch_outputs()
             self._refresh_geometry_scene()
             self._refresh_aligned_ccta_mesh()

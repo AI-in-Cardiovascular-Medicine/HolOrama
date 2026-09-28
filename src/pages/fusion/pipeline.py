@@ -19,6 +19,7 @@ matplotlib/trimesh scenes, which would fight with our VTK viewer; we recreate th
 visualizations as native VTK layers instead (see page.py's ``_refresh_*_scene`` methods
 and left_half/colors.py for the color legend, ported from multimodars/ccta/debug_plots.py).
 """
+
 from __future__ import annotations
 
 import os
@@ -403,6 +404,8 @@ def run_stitch(
     clamp_overshoot: float = 0.5,
     fillet_bulge: float = 1.0,
     fillet_layers: int = 2,
+    seam_points_a: int = 2,
+    seam_points_b: int = 4,
 ) -> dict:
     return mm.stitch_ccta_to_intravascular(
         iv_mesh,
@@ -413,7 +416,27 @@ def run_stitch(
         clamp_overshoot=clamp_overshoot,
         fillet_bulge=fillet_bulge,
         fillet_layers=fillet_layers,
+        seam_points_a=seam_points_a,
+        seam_points_b=seam_points_b,
     )
+
+
+def max_seam_points(results: dict) -> int:
+    """Largest seam_points_a/_b the stitch can use for the boundary rings in `results`.
+
+    The ostial ring is split into two halves of roughly n/2 points, and multimodars'
+    _blend_half_seams takes at most (n_half - 2) // 2 points per half at each seam. Which
+    ring ends up proximal is only decided inside the stitch, so bound by the smallest ring.
+    multimodars still clamps (with a warning) if the actual split turns out more uneven.
+    """
+    ring_sizes = [
+        len(v)
+        for k, v in results.items()
+        if k.startswith('boundary_points_') and k.removeprefix('boundary_points_').isdigit()
+    ]
+    if not ring_sizes:
+        return 0
+    return max((min(ring_sizes) // 2 - 2) // 2, 0)
 
 
 def run_remesh(
