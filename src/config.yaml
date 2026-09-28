@@ -72,8 +72,7 @@ vmtk:
   # WSL before every call, as the original bash pipeline did. Needed for Calculate Centerlines.
   venv_path: 'D:\00_coding\vmtk-env'  # the plain Python venv (bin/activate)
   build_path: 'D:\00_coding\vmtk\vmtk-build\Install'  # the build itself (vmtk_env.sh, bin/vmtkcenterlines)
-  # Which WSL distro has vmtk's runtime deps. The default Ubuntu-22.04 on this machine
-  # lacks GLIBCXX_3.4.32; plain "Ubuntu" (24.04) has it. Empty = whatever `wsl.exe` picks.
+  # Which WSL distro has vmtk's runtime deps (several distors on this machine). Empty = whatever `wsl.exe` picks.
   wsl_distro: 'Ubuntu'
 
 segmentation:

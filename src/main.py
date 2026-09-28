@@ -21,8 +21,8 @@ from version import __version__
 
 # When frozen (Nuitka standalone), the app may be installed under a read-only
 # location such as C:\Program Files, and the shortcut's working directory points
-# there. The only two things the app writes on its own — its logs and its config
-# file — must therefore live in a per-user, always-writable directory instead of
+# there. The only two things the app writes on its own (its logs and its config
+# file) must therefore live in a per-user, always-writable directory instead of
 # next to the exe / relative to the CWD (which raises PermissionError on startup).
 # User data (contours, reports, NIfTi/STL exports) is unaffected: it keeps writing
 # next to the opened data file. Uncompiled dev runs keep the original in-repo paths.
