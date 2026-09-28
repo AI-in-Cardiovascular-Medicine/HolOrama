@@ -25,6 +25,7 @@ from pages.fusion.left_half.left_half import LeftHalf
 from pages.fusion.progress_worker import StdoutCapturingWorker
 from pages.fusion.right_half.right_half import RightHalf
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
+from tools.sphere_smooth import local_smooth, local_smooth_region
 
 
 class FusionPage(QWidget):
@@ -1359,7 +1360,7 @@ class FusionPage(QWidget):
         if mesh is None:
             return
         radius = self.left_half.geometry_toolbar.sphere_radius.value()
-        region, _ = pipeline.local_smooth_region(mesh, (x, y, z), radius)
+        region, _ = local_smooth_region(mesh, (x, y, z), radius)
         self.left_half.viewer.set_sphere_highlight(np.asarray(mesh.vertices)[region])
 
     def _on_sphere_clicked(self, x: float, y: float, z: float) -> None:
@@ -1370,7 +1371,7 @@ class FusionPage(QWidget):
         smoothed = self._run(
             'Smoothing locally…',
             'Locally smoothed.',
-            pipeline.run_local_smooth,
+            local_smooth,
             mesh,
             (x, y, z),
             gt.sphere_radius.value(),

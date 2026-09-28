@@ -13,7 +13,7 @@ class GeometryToolbar(SceneToolbar):
     the vertices it would move, highlighted orange), click to smooth them. Ctrl+wheel
     resizes the brush; camera rotate/zoom keep working as usual. Undo (Ctrl+Z) steps back
     through the local smoothing strokes (and whole-mesh Smooth runs) since the last
-    Fix & Remesh. See FusionPage._on_sphere_* and pipeline.run_local_smooth.
+    Fix & Remesh. See FusionPage._on_sphere_* and tools.sphere_smooth.
     """
 
     sphere_mode_toggled = pyqtSignal(bool)

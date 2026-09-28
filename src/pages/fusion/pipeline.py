@@ -27,8 +27,6 @@ import os
 from typing import Any
 
 import numpy as np
-import scipy.sparse
-import scipy.sparse.csgraph
 import trimesh
 import multimodars as mm
 from loguru import logger
@@ -450,74 +448,6 @@ def run_taubin_smooth(mesh: trimesh.Trimesh, lamb: float = 0.6) -> trimesh.Trime
     """Mutates and returns ``mesh`` (trimesh.smoothing operates in place)."""
     trimesh.smoothing.filter_taubin(mesh, lamb=lamb)
     return mesh
-
-
-def local_smooth_region(mesh: trimesh.Trimesh, center, radius_mm: float) -> tuple[np.ndarray, np.ndarray]:
-    """Vertices a sphere brush at `center` acts on, and their falloff weights.
-
-    Not simply every vertex within `radius_mm` (straight-line): on a vessel no wider than
-    the brush that would also grab the opposite wall — and so would "in-sphere and
-    edge-connected", since the whole ring around a thin tube is both. Instead distance is
-    measured along the surface (shortest edge path from the vertex nearest `center`), so
-    the brush is the sphere projected onto the clicked surface patch: the opposite wall
-    of a radius-r vessel is ~pi*r away along the surface, not 2r.
-
-    Weights fall off smoothly as (1 - (d/r)^2)^2 with that surface distance d, so the
-    smoothed patch blends into the untouched surface instead of leaving a step at its rim.
-    Returns (vertex_indices, weights); both empty if no vertex lies inside the sphere.
-    """
-    empty = np.empty(0, dtype=np.int64), np.empty(0, dtype=np.float64)
-    center = np.asarray(center, dtype=np.float64)
-    if radius_mm <= 0.0 or len(mesh.vertices) == 0:
-        return empty
-    seed_dist, seed = mesh.kdtree.query(center)
-    if seed_dist > radius_mm:
-        return empty
-    # Surface distance >= straight-line distance, so the ball is a safe superset to run
-    # the shortest-path search on, keeps it local instead of over the whole mesh.
-    inside = np.asarray(mesh.kdtree.query_ball_point(center, radius_mm), dtype=np.int64)
-    local = np.full(len(mesh.vertices), -1, dtype=np.int64)
-    local[inside] = np.arange(len(inside))
-    edge_mask = (local[mesh.edges_unique] >= 0).all(axis=1)
-    edges = local[mesh.edges_unique[edge_mask]]
-    graph = scipy.sparse.coo_matrix(
-        (mesh.edges_unique_length[edge_mask], (edges[:, 0], edges[:, 1])), shape=(len(inside), len(inside))
-    )
-    dist = seed_dist + scipy.sparse.csgraph.dijkstra(
-        graph, directed=False, indices=local[seed], limit=radius_mm - seed_dist
-    )
-    keep = dist <= radius_mm
-    weights = (1.0 - (dist[keep] / radius_mm) ** 2) ** 2
-    return inside[keep], weights
-
-
-def run_local_smooth(
-    mesh: trimesh.Trimesh, center, radius_mm: float, *, iterations: int = 10, lamb: float = 0.6
-) -> trimesh.Trimesh:
-    """Taubin-smooth only the sphere-brush region around `center` (see
-    local_smooth_region). Returns a new mesh — `mesh` itself is left untouched, so the
-    caller can keep it for undo. Faces never change, only vertex positions.
-
-    Each iteration is one shrink (lamb) + one inflate (-nu) step. Unlike trimesh's
-    filter_taubin default (nu=0.5 regardless of lamb), nu is derived from lamb to meet
-    Taubin's no-shrink condition 0 < 1/lamb - 1/nu < 0.1, so repeated brushing doesn't
-    slowly narrow the lumen.
-    """
-    region, weights = local_smooth_region(mesh, center, radius_mm)
-    out = mesh.copy()
-    if len(region) == 0 or iterations <= 0 or lamb <= 0.0:
-        return out
-    nu = 1.0 / (1.0 / lamb - 0.05)
-    # Only the region's rows are needed: L[region] @ v averages each region vertex's
-    # neighbors, which may lie outside the region (those stay fixed and anchor the patch).
-    laplacian = trimesh.smoothing.laplacian_calculation(mesh).tocsr()[region]
-    w = weights[:, None]
-    vertices = mesh.vertices.copy().view(np.ndarray)
-    for _ in range(iterations):
-        for step in (lamb, -nu):
-            vertices[region] += step * w * (laplacian @ vertices - vertices[region])
-    out.vertices = vertices
-    return out
 
 
 def export_mesh(mesh: trimesh.Trimesh, path: str) -> None:

@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import trimesh
 
-from pages.fusion.pipeline import local_smooth_region, run_local_smooth
+from tools.sphere_smooth import local_smooth, local_smooth_region
 
 
 @pytest.fixture
@@ -35,7 +35,7 @@ def test_local_smooth_only_moves_region_and_reduces_noise(noisy_sphere):
     region, _ = local_smooth_region(noisy_sphere, center, 3.0)
     original = noisy_sphere.vertices.copy()
 
-    out = run_local_smooth(noisy_sphere, center, 3.0, iterations=10, lamb=0.6)
+    out = local_smooth(noisy_sphere, center, 3.0, iterations=10, lamb=0.6)
 
     assert np.array_equal(noisy_sphere.vertices, original)  # input left untouched (undo)
     assert np.array_equal(out.faces, noisy_sphere.faces)

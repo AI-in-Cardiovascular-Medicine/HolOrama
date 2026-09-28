@@ -11,7 +11,6 @@ from vtkmodules.util import numpy_support
 from vtkmodules.vtkCommonCore import vtkPoints
 from vtkmodules.vtkCommonDataModel import vtkCellArray, vtkPolyData
 from vtkmodules.vtkFiltersCore import vtkTriangleFilter
-from vtkmodules.vtkFiltersSources import vtkSphereSource
 from vtkmodules.vtkInteractionStyle import vtkInteractorStyleTrackballCamera
 from vtkmodules.vtkRenderingCore import (
     vtkActor,
@@ -26,6 +25,7 @@ from vtkmodules.vtkRenderingCore import (
 from domain.fusion_types import FusionScene
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from tools.lasso import Lasso2D, project_world_batch
+from tools.sphere_smooth import SphereBrush
 
 
 @dataclass
@@ -141,34 +141,12 @@ class FusionViewer3D(QWidget):
         self._lasso_mode = False
         self._lasso = Lasso2D(self._ren)
 
-        # Sphere brush: hover preview (translucent sphere + the affected vertices, which
-        # the caller computes and hands back via set_sphere_highlight) and click-to-apply.
-        # Picks only against the target layer's actor, never the point clouds on top.
+        # Sphere brush (tools.sphere_smooth): hover preview — sphere + the affected
+        # vertices, which the caller computes and hands back via set_sphere_highlight —
+        # and click-to-apply, picking only against the target layer's actor.
         self._sphere_mode = False
         self._sphere_target: tuple[FusionScene, str] | None = None
-        self._sphere_picker = vtkCellPicker()
-        self._sphere_picker.SetTolerance(0.0005)
-        self._sphere_picker.PickFromListOn()
-        self._sphere_source = vtkSphereSource()
-        self._sphere_source.SetThetaResolution(32)
-        self._sphere_source.SetPhiResolution(16)
-        sphere_mapper = vtkPolyDataMapper()
-        sphere_mapper.SetInputConnection(self._sphere_source.GetOutputPort())
-        self._sphere_actor = vtkActor()
-        self._sphere_actor.SetMapper(sphere_mapper)
-        self._sphere_actor.GetProperty().SetColor(0.3, 0.7, 1.0)
-        self._sphere_actor.GetProperty().SetOpacity(0.2)
-        self._sphere_actor.PickableOff()
-        self._sphere_actor.VisibilityOff()
-        self._ren.AddActor(self._sphere_actor)
-        self._sphere_highlight_mapper = vtkPolyDataMapper()
-        self._sphere_highlight_actor = vtkActor()
-        self._sphere_highlight_actor.SetMapper(self._sphere_highlight_mapper)
-        self._sphere_highlight_actor.GetProperty().SetColor(1.0, 0.55, 0.0)
-        self._sphere_highlight_actor.GetProperty().SetPointSize(4.0)
-        self._sphere_highlight_actor.PickableOff()
-        self._sphere_highlight_actor.VisibilityOff()
-        self._ren.AddActor(self._sphere_highlight_actor)
+        self._sphere_brush = SphereBrush(self._ren)
         # Hover picks are coalesced: a mouse move only (re)starts this timer, so moving
         # across a big mesh costs one pick + region query per ~30 ms, not one per event.
         self._sphere_hover_pos = QPoint()
@@ -436,22 +414,17 @@ class FusionViewer3D(QWidget):
             self.hide_sphere_preview()
 
     def set_sphere_radius(self, radius_mm: float) -> None:
-        self._sphere_source.SetRadius(radius_mm)
-        if self._sphere_actor.GetVisibility():
+        self._sphere_brush.set_radius(radius_mm)
+        if self._sphere_brush.visible:
             self._vtk_widget.GetRenderWindow().Render()
 
     def set_sphere_highlight(self, points: np.ndarray) -> None:
         """Show `points` (N, 3) as the vertices the brush would move at the hovered spot."""
-        if len(points) == 0:
-            self._sphere_highlight_actor.VisibilityOff()
-        else:
-            self._sphere_highlight_mapper.SetInputData(_points_to_polydata(points, as_polyline=False))
-            self._sphere_highlight_actor.VisibilityOn()
+        self._sphere_brush.set_highlight(points)
         self._vtk_widget.GetRenderWindow().Render()
 
     def hide_sphere_preview(self, render: bool = True) -> None:
-        self._sphere_actor.VisibilityOff()
-        self._sphere_highlight_actor.VisibilityOff()
+        self._sphere_brush.hide()
         if render:
             self._vtk_widget.GetRenderWindow().Render()
 
@@ -470,7 +443,7 @@ class FusionViewer3D(QWidget):
             if event.buttons() == Qt.MouseButton.NoButton:
                 self._sphere_hover_pos = event.pos()
                 self._sphere_hover_timer.start()
-            elif self._sphere_actor.GetVisibility():
+            elif self._sphere_brush.visible:
                 self.hide_sphere_preview()  # rotating/panning — the preview would lag behind
         elif etype == QEvent.Type.Leave:
             self._sphere_hover_timer.stop()
@@ -497,15 +470,7 @@ class FusionViewer3D(QWidget):
         layer = self._scenes[scene].layers.get(key)
         if layer is None or isinstance(layer.actor, list) or not layer.visible:
             return None
-        # Re-resolved on every pick: re-adding the layer (after each smoothing step)
-        # swaps in a new actor, so a pick list built once would go stale.
-        self._sphere_picker.InitializePickList()
-        self._sphere_picker.AddPickList(layer.actor)
-        vtk_y = self._vtk_widget.height() - 1 - pos.y()
-        if not self._sphere_picker.Pick(pos.x(), vtk_y, 0, self._ren):
-            return None
-        x, y, z = self._sphere_picker.GetPickPosition()
-        return x, y, z
+        return self._sphere_brush.pick(layer.actor, pos.x(), self._vtk_widget.height() - 1 - pos.y())
 
     def _on_sphere_hover_timer(self) -> None:
         if not self._sphere_mode:
@@ -514,8 +479,7 @@ class FusionViewer3D(QWidget):
         if hit is None:
             self.hide_sphere_preview()
             return
-        self._sphere_source.SetCenter(*hit)
-        self._sphere_actor.VisibilityOn()
+        self._sphere_brush.show_at(hit)
         self.sphere_hovered.emit(*hit)  # the caller answers with set_sphere_highlight (which renders)
 
     def set_lasso_mode(self, enabled: bool) -> None:
