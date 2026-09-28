@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import numpy as np
 from loguru import logger
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -91,6 +92,7 @@ class FusionPage(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
         self.data = FusionRuntimeData()
+        self._reset_smoothing_state()
         self._branch_markers = []
         self._selected_branch_marker = None
         self.left_half.branch_toolbar.set_selected_marker(None)
@@ -140,6 +142,18 @@ class FusionPage(QWidget):
         fc.run_remesh_requested.connect(self._on_run_remesh)
         fc.run_smooth_requested.connect(self._on_run_smooth)
         fc.export_requested.connect(self._on_export)
+
+        gt = self.left_half.geometry_toolbar
+        viewer = self.left_half.viewer
+        gt.sphere_mode_toggled.connect(self._on_sphere_mode_toggled)
+        gt.sphere_radius_changed.connect(self._on_sphere_radius_changed)
+        gt.undo_requested.connect(self._on_undo_smoothing)
+        viewer.sphere_hovered.connect(self._on_sphere_hovered)
+        viewer.sphere_clicked.connect(self._on_sphere_clicked)
+        viewer.sphere_radius_step.connect(gt.step_sphere_radius)
+        undo_shortcut = QShortcut(QKeySequence.StandardKey.Undo, self)
+        undo_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)  # fusion page only
+        undo_shortcut.activated.connect(self._on_undo_smoothing)
 
     def _require(self, ok: bool, message: str) -> bool:
         if not ok:
@@ -1209,6 +1223,7 @@ class FusionPage(QWidget):
         re-run of Stitch never leaves a stale final_mesh from the previous stitch behind."""
         self.data.stitched = None
         self.data.final_mesh = None
+        self._reset_smoothing_state()
         viewer = self.left_half.viewer
         viewer.remove_layer(FusionScene.CCTA_GEOMETRY, 'stitched_mesh')
         viewer.remove_layer(FusionScene.CCTA_GEOMETRY, 'final_mesh')
@@ -1271,9 +1286,8 @@ class FusionPage(QWidget):
     def _on_remesh_done(self, progress: QProgressDialog, mesh) -> None:
         progress.close()
         self._remesh_worker = None
-        self.data.final_mesh = mesh
-        self.left_half.viewer.add_mesh(FusionScene.CCTA_GEOMETRY, 'final_mesh', mesh, color=(230, 230, 230))
-        self.left_half.refresh_toolbar(FusionScene.CCTA_GEOMETRY)
+        self.data.final_mesh_undo.clear()
+        self._set_final_mesh(mesh)
         self.status_bar.showMessage('Remeshed.')
 
     def _on_remesh_failed(self, progress: QProgressDialog, message: str) -> None:
@@ -1285,16 +1299,99 @@ class FusionPage(QWidget):
 
     def _on_run_smooth(self) -> None:
         fc = self.right_half.fusion_column
-        if not self._require(self.data.final_mesh is not None, 'Fix and remesh first.'):
+        final_mesh = self.data.final_mesh
+        if not self._require(final_mesh is not None, 'Fix and remesh first.'):
             return
-        mesh = self._run(
-            'Smoothing…', 'Smoothed.', pipeline.run_taubin_smooth, self.data.final_mesh, lamb=fc.taubin_lamb()
-        )
+        assert final_mesh is not None
+        # run_taubin_smooth works in place, so snapshot the vertices before, not after.
+        before = final_mesh.vertices.copy()
+        mesh = self._run('Smoothing…', 'Smoothed.', pipeline.run_taubin_smooth, final_mesh, lamb=fc.taubin_lamb())
         if mesh is None:
             return
+        self._push_smoothing_undo(before)
+        self._set_final_mesh(mesh)
+
+    # ------------------------------------------------------------------
+    # Local sphere smoothing of the final mesh (+ undo)
+    # ------------------------------------------------------------------
+
+    _SMOOTHING_UNDO_LIMIT = 20  # vertex snapshots kept — each is a full (N, 3) float array
+
+    def _set_final_mesh(self, mesh) -> None:
         self.data.final_mesh = mesh
         self.left_half.viewer.add_mesh(FusionScene.CCTA_GEOMETRY, 'final_mesh', mesh, color=(230, 230, 230))
         self.left_half.refresh_toolbar(FusionScene.CCTA_GEOMETRY)
+        self.left_half.geometry_toolbar.set_undo_available(bool(self.data.final_mesh_undo))
+
+    def _push_smoothing_undo(self, vertices: np.ndarray) -> None:
+        undo = self.data.final_mesh_undo
+        undo.append(vertices)
+        del undo[: max(len(undo) - self._SMOOTHING_UNDO_LIMIT, 0)]
+
+    def _reset_smoothing_state(self) -> None:
+        """No final mesh any more (re-stitch, Clear All Data): drop undo and end brushing."""
+        self.data.final_mesh_undo.clear()
+        gt = self.left_half.geometry_toolbar
+        gt.set_undo_available(False)
+        gt.sphere_btn.setChecked(False)  # its toggled slot turns the viewer's sphere mode off
+
+    def _on_sphere_mode_toggled(self, enabled: bool) -> None:
+        viewer = self.left_half.viewer
+        if enabled:
+            if self.data.final_mesh is None:
+                ErrorMessage(self, 'Fix and remesh first — the sphere brush smooths the final mesh.')
+                self.left_half.geometry_toolbar.sphere_btn.setChecked(False)
+                return
+            viewer.set_sphere_radius(self.left_half.geometry_toolbar.sphere_radius.value())
+            viewer.set_sphere_mode(True, FusionScene.CCTA_GEOMETRY, 'final_mesh')
+            self.left_half.show_scene(FusionScene.CCTA_GEOMETRY)
+            self.status_bar.showMessage('Sphere smooth: hover to preview, click to smooth, Ctrl+wheel for radius.')
+        else:
+            viewer.set_sphere_mode(False)
+
+    def _on_sphere_radius_changed(self, radius_mm: float) -> None:
+        viewer = self.left_half.viewer
+        viewer.set_sphere_radius(radius_mm)
+        viewer.refresh_sphere_hover()  # highlight must follow the new radius
+
+    def _on_sphere_hovered(self, x: float, y: float, z: float) -> None:
+        mesh = self.data.final_mesh
+        if mesh is None:
+            return
+        radius = self.left_half.geometry_toolbar.sphere_radius.value()
+        region, _ = pipeline.local_smooth_region(mesh, (x, y, z), radius)
+        self.left_half.viewer.set_sphere_highlight(np.asarray(mesh.vertices)[region])
+
+    def _on_sphere_clicked(self, x: float, y: float, z: float) -> None:
+        mesh = self.data.final_mesh
+        if mesh is None:
+            return
+        gt = self.left_half.geometry_toolbar
+        smoothed = self._run(
+            'Smoothing locally…',
+            'Locally smoothed.',
+            pipeline.run_local_smooth,
+            mesh,
+            (x, y, z),
+            gt.sphere_radius.value(),
+            iterations=gt.sphere_iterations.value(),
+            lamb=self.right_half.fusion_column.taubin_lamb(),
+        )
+        if smoothed is None:
+            return
+        self._push_smoothing_undo(mesh.vertices.copy())
+        self._set_final_mesh(smoothed)
+        self.left_half.viewer.refresh_sphere_hover()
+
+    def _on_undo_smoothing(self) -> None:
+        mesh = self.data.final_mesh
+        if mesh is None or not self.data.final_mesh_undo:
+            return
+        restored = mesh.copy()
+        restored.vertices = self.data.final_mesh_undo.pop()
+        self._set_final_mesh(restored)
+        self.left_half.viewer.refresh_sphere_hover()
+        self.status_bar.showMessage(f'Undid smoothing step ({len(self.data.final_mesh_undo)} left).')
 
     def _on_export(self, path: str) -> None:
         if not self._require(self.data.final_mesh is not None, 'Nothing to export yet — finish the pipeline first.'):

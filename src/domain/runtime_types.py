@@ -63,6 +63,10 @@ class FusionRuntimeData:
         self.results_points_removed: dict | None = None
         self.stitched: dict | None = None  # result of stitch_ccta_to_intravascular
         self.final_mesh: Any | None = None  # trimesh.Trimesh after remesh/smoothing
+        # Previous final_mesh vertex arrays (oldest first) for undoing smoothing steps
+        # smoothing never changes faces, so vertices alone restore a mesh. Reset whenever a
+        # new final_mesh topology arrives (Fix & Remesh) or the final mesh is dropped.
+        self.final_mesh_undo: list[np.ndarray] = []
 
 
 class GatingSignal(TypedDict, total=False):

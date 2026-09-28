@@ -4,13 +4,14 @@ import numpy as np
 import trimesh
 import vtkmodules.vtkInteractionStyle  # noqa: F401
 import vtkmodules.vtkRenderingOpenGL2  # noqa: F401
-from PyQt6.QtCore import QEvent, QPoint, Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, QPoint, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from vtkmodules.util import numpy_support
 from vtkmodules.vtkCommonCore import vtkPoints
 from vtkmodules.vtkCommonDataModel import vtkCellArray, vtkPolyData
 from vtkmodules.vtkFiltersCore import vtkTriangleFilter
+from vtkmodules.vtkFiltersSources import vtkSphereSource
 from vtkmodules.vtkInteractionStyle import vtkInteractorStyleTrackballCamera
 from vtkmodules.vtkRenderingCore import (
     vtkActor,
@@ -97,7 +98,12 @@ class FusionViewer3D(QWidget):
     """
 
     point_picked = pyqtSignal(float, float, float, str)  # x, y, z, scene.value
-    lasso_closed = pyqtSignal()  # lasso polygon closed — caller decides what "inside" means
+    lasso_closed = pyqtSignal()  # lasso polygon closed, caller decides what "inside" means
+    # Sphere brush (see set_sphere_mode): surface point under the cursor / clicked, and
+    # Ctrl+wheel radius steps (+1 / -1) — the caller owns the radius value itself.
+    sphere_hovered = pyqtSignal(float, float, float)
+    sphere_clicked = pyqtSignal(float, float, float)
+    sphere_radius_step = pyqtSignal(int)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -134,6 +140,43 @@ class FusionViewer3D(QWidget):
 
         self._lasso_mode = False
         self._lasso = Lasso2D(self._ren)
+
+        # Sphere brush: hover preview (translucent sphere + the affected vertices, which
+        # the caller computes and hands back via set_sphere_highlight) and click-to-apply.
+        # Picks only against the target layer's actor, never the point clouds on top.
+        self._sphere_mode = False
+        self._sphere_target: tuple[FusionScene, str] | None = None
+        self._sphere_picker = vtkCellPicker()
+        self._sphere_picker.SetTolerance(0.0005)
+        self._sphere_picker.PickFromListOn()
+        self._sphere_source = vtkSphereSource()
+        self._sphere_source.SetThetaResolution(32)
+        self._sphere_source.SetPhiResolution(16)
+        sphere_mapper = vtkPolyDataMapper()
+        sphere_mapper.SetInputConnection(self._sphere_source.GetOutputPort())
+        self._sphere_actor = vtkActor()
+        self._sphere_actor.SetMapper(sphere_mapper)
+        self._sphere_actor.GetProperty().SetColor(0.3, 0.7, 1.0)
+        self._sphere_actor.GetProperty().SetOpacity(0.2)
+        self._sphere_actor.PickableOff()
+        self._sphere_actor.VisibilityOff()
+        self._ren.AddActor(self._sphere_actor)
+        self._sphere_highlight_mapper = vtkPolyDataMapper()
+        self._sphere_highlight_actor = vtkActor()
+        self._sphere_highlight_actor.SetMapper(self._sphere_highlight_mapper)
+        self._sphere_highlight_actor.GetProperty().SetColor(1.0, 0.55, 0.0)
+        self._sphere_highlight_actor.GetProperty().SetPointSize(4.0)
+        self._sphere_highlight_actor.PickableOff()
+        self._sphere_highlight_actor.VisibilityOff()
+        self._ren.AddActor(self._sphere_highlight_actor)
+        # Hover picks are coalesced: a mouse move only (re)starts this timer, so moving
+        # across a big mesh costs one pick + region query per ~30 ms, not one per event.
+        self._sphere_hover_pos = QPoint()
+        self._sphere_hover_timer = QTimer(self)
+        self._sphere_hover_timer.setSingleShot(True)
+        self._sphere_hover_timer.setInterval(30)
+        self._sphere_hover_timer.timeout.connect(self._on_sphere_hover_timer)
+        self._sphere_press_qt = QPoint()
 
         self._scenes: dict[FusionScene, _SceneLayers] = {scene: _SceneLayers() for scene in FusionScene}
         self._current_scene: FusionScene = FusionScene.CCTA_GEOMETRY
@@ -315,6 +358,7 @@ class FusionViewer3D(QWidget):
 
     def set_scene(self, scene: FusionScene) -> None:
         self._current_scene = scene
+        self.hide_sphere_preview(render=False)
         for s, scene_layers in self._scenes.items():
             for layer in scene_layers.layers.values():
                 visible = int(layer.visible and s == scene)
@@ -342,7 +386,10 @@ class FusionViewer3D(QWidget):
 
     def eventFilter(self, obj, event) -> bool:
         if obj is self._vtk_widget:
-            if self._lasso_mode:
+            if self._sphere_mode and self._sphere_target is not None and self._sphere_target[0] == self._current_scene:
+                if self._sphere_event(event):
+                    return True
+            elif self._lasso_mode:
                 if event.type() == QEvent.Type.MouseButtonPress:
                     vtk_y = self._vtk_widget.height() - 1 - event.pos().y()
                     if event.button() == Qt.MouseButton.LeftButton:
@@ -374,6 +421,102 @@ class FusionViewer3D(QWidget):
     # Lasso (reclassify points between labels — drawing/projection mechanics shared
     # with CCTA's mask-erase lasso via tools.lasso)
     # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Sphere brush (local smoothing)
+    # ------------------------------------------------------------------
+
+    def set_sphere_mode(self, enabled: bool, scene: FusionScene | None = None, key: str | None = None) -> None:
+        """Turn the sphere brush on for layer `key` of `scene` (hover to preview, click to
+        emit sphere_clicked) or off. Camera rotate/zoom keep working while it's on."""
+        self._sphere_mode = enabled
+        self._sphere_target = (scene, key) if enabled and scene is not None and key is not None else None
+        if not enabled:
+            self._sphere_hover_timer.stop()
+            self.hide_sphere_preview()
+
+    def set_sphere_radius(self, radius_mm: float) -> None:
+        self._sphere_source.SetRadius(radius_mm)
+        if self._sphere_actor.GetVisibility():
+            self._vtk_widget.GetRenderWindow().Render()
+
+    def set_sphere_highlight(self, points: np.ndarray) -> None:
+        """Show `points` (N, 3) as the vertices the brush would move at the hovered spot."""
+        if len(points) == 0:
+            self._sphere_highlight_actor.VisibilityOff()
+        else:
+            self._sphere_highlight_mapper.SetInputData(_points_to_polydata(points, as_polyline=False))
+            self._sphere_highlight_actor.VisibilityOn()
+        self._vtk_widget.GetRenderWindow().Render()
+
+    def hide_sphere_preview(self, render: bool = True) -> None:
+        self._sphere_actor.VisibilityOff()
+        self._sphere_highlight_actor.VisibilityOff()
+        if render:
+            self._vtk_widget.GetRenderWindow().Render()
+
+    def refresh_sphere_hover(self) -> None:
+        """Re-run the hover pick at the last cursor position — e.g. after the target mesh
+        changed under a stationary cursor, so the highlight matches the new surface."""
+        if self._sphere_mode:
+            self._sphere_hover_timer.start()
+
+    def _sphere_event(self, event) -> bool:
+        """Sphere-mode handling for one widget event; True = consumed (VTK never sees it).
+        Presses/drags are passed through so the camera still rotates; a click is a press +
+        release that moved at most 3 px, like Pick Point."""
+        etype = event.type()
+        if etype == QEvent.Type.MouseMove:
+            if event.buttons() == Qt.MouseButton.NoButton:
+                self._sphere_hover_pos = event.pos()
+                self._sphere_hover_timer.start()
+            elif self._sphere_actor.GetVisibility():
+                self.hide_sphere_preview()  # rotating/panning — the preview would lag behind
+        elif etype == QEvent.Type.Leave:
+            self._sphere_hover_timer.stop()
+            self.hide_sphere_preview()
+        elif etype == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+            self._sphere_press_qt = event.pos()
+        elif etype == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
+            dp = event.pos() - self._sphere_press_qt
+            if abs(dp.x()) <= 3 and abs(dp.y()) <= 3:
+                hit = self._sphere_pick(event.pos())
+                if hit is not None:
+                    self.sphere_clicked.emit(*hit)
+        elif etype == QEvent.Type.Wheel and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            delta = event.angleDelta().y()
+            if delta:
+                self.sphere_radius_step.emit(1 if delta > 0 else -1)
+            return True  # Ctrl+wheel resizes the brush instead of zooming
+        return False
+
+    def _sphere_pick(self, pos: QPoint) -> tuple[float, float, float] | None:
+        if self._sphere_target is None:
+            return None
+        scene, key = self._sphere_target
+        layer = self._scenes[scene].layers.get(key)
+        if layer is None or isinstance(layer.actor, list) or not layer.visible:
+            return None
+        # Re-resolved on every pick: re-adding the layer (after each smoothing step)
+        # swaps in a new actor, so a pick list built once would go stale.
+        self._sphere_picker.InitializePickList()
+        self._sphere_picker.AddPickList(layer.actor)
+        vtk_y = self._vtk_widget.height() - 1 - pos.y()
+        if not self._sphere_picker.Pick(pos.x(), vtk_y, 0, self._ren):
+            return None
+        x, y, z = self._sphere_picker.GetPickPosition()
+        return x, y, z
+
+    def _on_sphere_hover_timer(self) -> None:
+        if not self._sphere_mode:
+            return
+        hit = self._sphere_pick(self._sphere_hover_pos)
+        if hit is None:
+            self.hide_sphere_preview()
+            return
+        self._sphere_source.SetCenter(*hit)
+        self._sphere_actor.VisibilityOn()
+        self.sphere_hovered.emit(*hit)  # the caller answers with set_sphere_highlight (which renders)
 
     def set_lasso_mode(self, enabled: bool) -> None:
         self._lasso_mode = enabled
