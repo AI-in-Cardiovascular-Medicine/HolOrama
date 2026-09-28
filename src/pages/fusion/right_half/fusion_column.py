@@ -135,17 +135,23 @@ class FusionColumn(QWidget):
         self._clamp_overshoot.setValue(0.5)
         layout.addLayout(_row('Clamp overshoot (mm):', self._clamp_overshoot))
 
+        # Fillet + seam params only act on the two-half ostium conditioning, which
+        # multimodars runs only for prox_start_mode='highest_z' — hidden otherwise.
+        self._ostium_params = QWidget()
+        ostium_layout = QVBoxLayout(self._ostium_params)
+        ostium_layout.setContentsMargins(0, 0, 0, 0)
+
         self._fillet_bulge = QDoubleSpinBox()
         self._fillet_bulge.setRange(0.0, 1.0)
         self._fillet_bulge.setSingleStep(0.5)
         self._fillet_bulge.setValue(0.5)
-        layout.addLayout(_row('Fillet bulge strength:', self._fillet_bulge))
+        ostium_layout.addLayout(_row('Fillet bulge strength:', self._fillet_bulge))
 
         self._fillet_layers = QSpinBox()
         self._fillet_layers.setRange(0, 20)
         self._fillet_layers.setSingleStep(1)
         self._fillet_layers.setValue(3)
-        layout.addLayout(_row('Fillet layers:', self._fillet_layers))
+        ostium_layout.addLayout(_row('Fillet layers:', self._fillet_layers))
 
         # Ranges are capped to the actual boundary ring size once Remove Labeled Points
         # has run (see set_seam_points_limit); until then any value is accepted.
@@ -153,18 +159,25 @@ class FusionColumn(QWidget):
         self._seam_points_a.setRange(0, 125)
         self._seam_points_a.setSingleStep(1)
         self._seam_points_a.setValue(2)
-        layout.addLayout(_row('Seam A n points:', self._seam_points_a))
+        ostium_layout.addLayout(_row('Seam A n points:', self._seam_points_a))
 
         self._seam_points_b = QSpinBox()
         self._seam_points_b.setRange(0, 125)
         self._seam_points_b.setSingleStep(1)
         self._seam_points_b.setValue(4)
-        layout.addLayout(_row('Seam B n points:', self._seam_points_b))
+        ostium_layout.addLayout(_row('Seam B n points:', self._seam_points_b))
+
+        layout.addWidget(self._ostium_params)
+        self._prox_start_mode.currentTextChanged.connect(self._update_ostium_params_visible)
+        self._update_ostium_params_visible(self._prox_start_mode.currentText())
 
         btn = QPushButton('Stitch')
         btn.clicked.connect(self.run_stitch_requested.emit)
         layout.addWidget(btn)
         return box
+
+    def _update_ostium_params_visible(self, prox_start_mode: str) -> None:
+        self._ostium_params.setVisible(prox_start_mode == 'highest_z')
 
     def _build_remesh_group(self) -> QGroupBox:
         box = QGroupBox('Remesh and Smooth')
