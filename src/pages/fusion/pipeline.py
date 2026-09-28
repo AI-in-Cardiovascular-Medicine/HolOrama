@@ -401,6 +401,8 @@ def run_stitch(
     prox_start_mode: str = 'nearest_iv',
     dist_start_mode: str = 'nearest_iv',
     clamp_overshoot: float = 0.5,
+    fillet_bulge: float = 1.0,
+    fillet_layers: int = 2,
 ) -> dict:
     return mm.stitch_ccta_to_intravascular(
         iv_mesh,
@@ -409,6 +411,8 @@ def run_stitch(
         prox_start_mode=prox_start_mode,
         dist_start_mode=dist_start_mode,
         clamp_overshoot=clamp_overshoot,
+        fillet_bulge=fillet_bulge,
+        fillet_layers=fillet_layers,
     )
 
 

@@ -1,3 +1,4 @@
+import copy
 from types import SimpleNamespace
 
 import numpy as np
@@ -251,6 +252,7 @@ class FusionPage(QWidget):
         if results is None:
             return
         self.data.results = results
+        self.data.results_points_removed = None  # stale: based on the previous labeling
         self._refresh_geometry_scene()
         self.left_half.show_scene(FusionScene.CCTA_GEOMETRY)
         self._run_label_branches_pair()
@@ -1061,6 +1063,7 @@ class FusionPage(QWidget):
         )
         if results is not None:
             self.data.results = results
+            self.data.results_points_removed = None  # stale: re-run Remove Labeled Points
             # proximal_points/distal_points/anomalous_points (shown as overlap) now exist
             self._refresh_geometry_scene()
 
@@ -1152,6 +1155,7 @@ class FusionPage(QWidget):
         if results_out is None:
             return
         self.data.results = results_out
+        self.data.results_points_removed = None  # stale: re-run Remove Labeled Points on the scaled mesh
         self._refresh_geometry_scene()
         self._refresh_aligned_ccta_mesh()
 
@@ -1168,29 +1172,44 @@ class FusionPage(QWidget):
         )
         if results is not None:
             self.data.results = results
+            self.data.results_points_removed = copy.deepcopy(results)
+            self._clear_stitch_outputs()
             self._refresh_geometry_scene()
             self._refresh_aligned_ccta_mesh()
+
+    def _clear_stitch_outputs(self) -> None:
+        """Drop the stitched mesh and everything derived from it (remesh/smooth), so a
+        re-run of Stitch never leaves a stale final_mesh from the previous stitch behind."""
+        self.data.stitched = None
+        self.data.final_mesh = None
+        viewer = self.left_half.viewer
+        viewer.remove_layer(FusionScene.CCTA_GEOMETRY, 'stitched_mesh')
+        viewer.remove_layer(FusionScene.CCTA_GEOMETRY, 'final_mesh')
+        self.left_half.refresh_toolbar(FusionScene.CCTA_GEOMETRY)
 
     def _on_run_stitch(self) -> None:
         fc = self.right_half.fusion_column
         if not self._require(self.data.aligned is not None, 'Align the intravascular geometry first.'):
             return
-        if not self._require(self.data.results is not None, 'Run label_geometry first.'):
+        if not self._require(self.data.results_points_removed is not None, 'Remove labeled points first.'):
             return
-        results = self.data.results
+        if self._remesh_worker is not None and self._remesh_worker.isRunning():
+            return
         aligned_geom = self._primary_geom(self.data.aligned)  # geom_a for a pair, else the single geometry
-        assert aligned_geom is not None and results is not None
-        stitched = self._run(
-            'Stitching CCTA to intravascular…',
-            'Stitched.',
-            pipeline.run_stitch,
-            aligned_geom,
-            results['mesh'],
-            results,
-            **fc.stitch_kwargs(),
-        )
+        snapshot = self.data.results_points_removed
+        assert aligned_geom is not None and snapshot is not None
+
+        def _run():
+            # stitch_ccta_to_intravascular mutates the results dict (and its mesh) in place,
+            # so always hand it a fresh copy of the post-removal snapshot — that keeps the
+            # snapshot pristine and makes Stitch re-runnable with different parameters.
+            results = copy.deepcopy(snapshot)
+            return pipeline.run_stitch(aligned_geom, results['mesh'], results, **fc.stitch_kwargs())
+
+        stitched = self._run('Stitching CCTA to intravascular…', 'Stitched.', _run)
         if stitched is None:
             return
+        self._clear_stitch_outputs()
         self.data.stitched = stitched
         viewer = self.left_half.viewer
         viewer.add_mesh(FusionScene.CCTA_GEOMETRY, 'stitched_mesh', stitched['mesh'], color=(230, 180, 60))

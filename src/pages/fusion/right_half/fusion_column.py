@@ -135,6 +135,18 @@ class FusionColumn(QWidget):
         self._clamp_overshoot.setValue(0.5)
         layout.addLayout(_row('Clamp overshoot (mm):', self._clamp_overshoot))
 
+        self._fillet_bulge = QDoubleSpinBox()
+        self._fillet_bulge.setRange(0.0, 10.0)
+        self._fillet_bulge.setSingleStep(0.5)
+        self._fillet_bulge.setValue(1.0)
+        layout.addLayout(_row('Fillet bulge strength:', self._fillet_bulge))
+
+        self._fillet_layers = QSpinBox()
+        self._fillet_layers.setRange(0, 20)
+        self._fillet_layers.setSingleStep(1)
+        self._fillet_layers.setValue(3)
+        layout.addLayout(_row('Fillet layers:', self._fillet_layers))
+
         btn = QPushButton('Stitch')
         btn.clicked.connect(self.run_stitch_requested.emit)
         layout.addWidget(btn)
@@ -222,6 +234,8 @@ class FusionColumn(QWidget):
             'prox_start_mode': self._prox_start_mode.currentText(),
             'dist_start_mode': self._dist_start_mode.currentText(),
             'clamp_overshoot': self._clamp_overshoot.value(),
+            'fillet_bulge': self._fillet_bulge.value(),
+            'fillet_layers': self._fillet_layers.value(),
         }
 
     def remesh_kwargs(self) -> dict:

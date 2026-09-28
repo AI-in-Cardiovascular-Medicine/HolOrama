@@ -57,6 +57,10 @@ class FusionRuntimeData:
         self.prox_scaling: float | None = None
         self.distal_scaling: float | None = None
         self.aortic_scaling: float | None = None
+        # Deep-copied snapshot of `results` right after Remove Labeled Points. Stitching
+        # always starts from a fresh copy of this (stitch_ccta_to_intravascular mutates the
+        # results dict + mesh in place), so Stitch can be re-run with different parameters.
+        self.results_points_removed: dict | None = None
         self.stitched: dict | None = None  # result of stitch_ccta_to_intravascular
         self.final_mesh: Any | None = None  # trimesh.Trimesh after remesh/smoothing
 
