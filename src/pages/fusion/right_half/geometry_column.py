@@ -154,7 +154,7 @@ class GeometryColumn(QWidget):
         self._range_mm_takeoff_rca.setValue(45)
         layout.addLayout(_row('RCA takeoff range (mm):', self._range_mm_takeoff_rca))
 
-        self._range_mm_takeoff_lca = QDoubleSpinBox()
+        self._range_mm_takeoff_lca = QSpinBox()
         self._range_mm_takeoff_lca.setRange(0, 200)
         self._range_mm_takeoff_lca.setSingleStep(1)
         self._range_mm_takeoff_lca.setValue(45)

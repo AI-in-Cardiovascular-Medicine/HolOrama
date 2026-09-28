@@ -8,6 +8,7 @@ from domain.colors import CATEGORICAL_PALETTE, DIASTOLE_COLOR, SYSTOLE_COLOR, br
 __all__ = [
     'REGION_COLORS',
     'REGION_LABELS',
+    'BOUNDARY_RING_COLORS',
     'region_label',
     'CENTERLINE_COLORS',
     'TREE_AORTA_COLOR',
@@ -37,6 +38,15 @@ REGION_COLORS: dict[str, tuple[int, int, int]] = {
     'distal_points': (255, 0, 255),  # magenta
     'anomalous_points': (255, 165, 0),  # orange
 }
+
+# boundary_points_1, boundary_points_2, ... (the rims left by Remove Labeled Points),
+# shown in the Intravascular Aligned scene. Indexed by ring number - 1, wrapping.
+BOUNDARY_RING_COLORS: tuple[tuple[int, int, int], ...] = (
+    (255, 60, 60),  # red
+    (0, 210, 210),  # cyan
+    (255, 220, 0),  # yellow
+    (220, 60, 220),  # magenta
+)
 
 REGION_LABELS: dict[str, str] = {
     'anomalous_points': 'overlap_points',

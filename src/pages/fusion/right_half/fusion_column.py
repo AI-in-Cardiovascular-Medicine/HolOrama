@@ -130,9 +130,9 @@ class FusionColumn(QWidget):
         layout.addLayout(_row('Distal start mode:', self._dist_start_mode))
 
         self._clamp_overshoot = QDoubleSpinBox()
-        self._clamp_overshoot.setRange(0.0, 10.0)
+        self._clamp_overshoot.setRange(0.0, 2.0)
         self._clamp_overshoot.setSingleStep(0.1)
-        self._clamp_overshoot.setValue(0.5)
+        self._clamp_overshoot.setValue(0.0)
         layout.addLayout(_row('Clamp overshoot (mm):', self._clamp_overshoot))
 
         # Fillet + seam params only act on the two-half ostium conditioning, which
@@ -143,14 +143,14 @@ class FusionColumn(QWidget):
 
         self._fillet_bulge = QDoubleSpinBox()
         self._fillet_bulge.setRange(0.0, 1.0)
-        self._fillet_bulge.setSingleStep(0.5)
+        self._fillet_bulge.setSingleStep(0.1)
         self._fillet_bulge.setValue(0.5)
         ostium_layout.addLayout(_row('Fillet bulge strength:', self._fillet_bulge))
 
         self._fillet_layers = QSpinBox()
         self._fillet_layers.setRange(0, 20)
         self._fillet_layers.setSingleStep(1)
-        self._fillet_layers.setValue(3)
+        self._fillet_layers.setValue(5)
         ostium_layout.addLayout(_row('Fillet layers:', self._fillet_layers))
 
         # Ranges are capped to the actual boundary ring size once Remove Labeled Points

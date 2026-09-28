@@ -33,9 +33,6 @@ from loguru import logger
 
 
 def load_centerline(path: str, name: str) -> Any:
-    # multimodars>=0.6.0 API (unreleased — see multimoda-rs branch fix/centerline-workflow).
-    # pyproject.toml is still pinned to the last PyPI release (0.5.8), which mypy resolves
-    # against and which lacks this function — bump the pin once 0.6.0 ships and drop these.
     return mm.load_centerline(path, name)  # type: ignore[attr-defined]
 
 
@@ -54,7 +51,6 @@ def prepare_centerline(
     prepared aorta centerline for RCA/LCA, leave it ``None`` for the aorta itself.
     See ``multimodars.prepare_centerline`` for the full step-by-step docstring.
     """
-    # multimodars>=0.6.0 API — see the note in load_centerline() above.
     return mm.prepare_centerline(  # type: ignore[attr-defined]
         centerline,
         ref_centerline=ref_centerline,
@@ -85,9 +81,6 @@ def run_label_geometry(
 ) -> dict:
     """Centerlines must already be prepared (see ``prepare_centerline``) — label_geometry
     no longer loads or orients them itself."""
-    # multimodars>=0.6.0 API — see the note in load_centerline() above. The pinned 0.5.8
-    # stub still has the old path_centerline_*/n_points_takeoff_*/(dict, centerlines)-tuple
-    # signature, hence the call-arg + return-value mismatches silenced below.
     return mm.label_geometry(  # type: ignore[call-arg, return-value]
         path_ccta_geometry=path_ccta_geometry,
         centerline_aorta=centerline_aorta,

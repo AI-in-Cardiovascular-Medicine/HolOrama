@@ -1025,7 +1025,31 @@ class FusionPage(QWidget):
             color=(160, 160, 160),
             opacity=0.35,
         )
+        self._refresh_aligned_boundary_rings()
         self.left_half.refresh_toolbar(FusionScene.INTRAVASCULAR_ALIGNED)
+
+    def _refresh_aligned_boundary_rings(self) -> None:
+        """Show the rims left by Remove Labeled Points (boundary_points_1, _2, ...) in the
+        Intravascular Aligned scene next to the IV ostium, so the seam A/B point counts
+        can be judged against the actual ring. Old ring layers are always dropped first — the ring count
+        can change between removals, and results without rings (e.g. after a fresh
+        label_geometry) should leave none behind."""
+        viewer = self.left_half.viewer
+        scene = FusionScene.INTRAVASCULAR_ALIGNED
+        # Remembered so a re-added layer keeps the user's checkbox state.
+        was_visible = {key: state[0] for key, state in viewer.layer_states(scene).items()}
+        for key in was_visible:
+            if key.startswith('boundary_ring_'):
+                viewer.remove_layer(scene, key)
+        results = self.data.results or {}
+        ring_number = 1
+        while f'boundary_points_{ring_number}' in results:
+            points = np.asarray(results[f'boundary_points_{ring_number}'], dtype=np.float64)
+            if len(points):
+                color = colors.BOUNDARY_RING_COLORS[(ring_number - 1) % len(colors.BOUNDARY_RING_COLORS)]
+                key = f'boundary_ring_{ring_number}'
+                viewer.add_points(scene, key, points, color=color, size=8.0, visible=was_visible.get(key, True))
+            ring_number += 1
 
     # ------------------------------------------------------------------
     # Column 3: fusion
@@ -1177,6 +1201,8 @@ class FusionPage(QWidget):
             self._clear_stitch_outputs()
             self._refresh_geometry_scene()
             self._refresh_aligned_ccta_mesh()
+            if self.data.aligned is not None:  # the aligned scene is empty until alignment
+                self.left_half.show_scene(FusionScene.INTRAVASCULAR_ALIGNED)
 
     def _clear_stitch_outputs(self) -> None:
         """Drop the stitched mesh and everything derived from it (remesh/smooth), so a
