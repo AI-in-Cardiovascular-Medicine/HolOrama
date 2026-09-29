@@ -130,15 +130,54 @@ class FusionColumn(QWidget):
         layout.addLayout(_row('Distal start mode:', self._dist_start_mode))
 
         self._clamp_overshoot = QDoubleSpinBox()
-        self._clamp_overshoot.setRange(0.0, 10.0)
+        self._clamp_overshoot.setRange(0.0, 2.0)
         self._clamp_overshoot.setSingleStep(0.1)
-        self._clamp_overshoot.setValue(0.5)
+        self._clamp_overshoot.setValue(0.0)
         layout.addLayout(_row('Clamp overshoot (mm):', self._clamp_overshoot))
+
+        # Fillet + seam params only act on the two-half ostium conditioning, which
+        # multimodars runs only for prox_start_mode='highest_z' — hidden otherwise.
+        self._ostium_params = QWidget()
+        ostium_layout = QVBoxLayout(self._ostium_params)
+        ostium_layout.setContentsMargins(0, 0, 0, 0)
+
+        self._fillet_bulge = QDoubleSpinBox()
+        self._fillet_bulge.setRange(0.0, 1.0)
+        self._fillet_bulge.setSingleStep(0.1)
+        self._fillet_bulge.setValue(0.5)
+        ostium_layout.addLayout(_row('Fillet bulge strength:', self._fillet_bulge))
+
+        self._fillet_layers = QSpinBox()
+        self._fillet_layers.setRange(0, 20)
+        self._fillet_layers.setSingleStep(1)
+        self._fillet_layers.setValue(5)
+        ostium_layout.addLayout(_row('Fillet layers:', self._fillet_layers))
+
+        # Ranges are capped to the actual boundary ring size once Remove Labeled Points
+        # has run (see set_seam_points_limit); until then any value is accepted.
+        self._seam_points_a = QSpinBox()
+        self._seam_points_a.setRange(0, 125)
+        self._seam_points_a.setSingleStep(1)
+        self._seam_points_a.setValue(2)
+        ostium_layout.addLayout(_row('Seam A n points:', self._seam_points_a))
+
+        self._seam_points_b = QSpinBox()
+        self._seam_points_b.setRange(0, 125)
+        self._seam_points_b.setSingleStep(1)
+        self._seam_points_b.setValue(4)
+        ostium_layout.addLayout(_row('Seam B n points:', self._seam_points_b))
+
+        layout.addWidget(self._ostium_params)
+        self._prox_start_mode.currentTextChanged.connect(self._update_ostium_params_visible)
+        self._update_ostium_params_visible(self._prox_start_mode.currentText())
 
         btn = QPushButton('Stitch')
         btn.clicked.connect(self.run_stitch_requested.emit)
         layout.addWidget(btn)
         return box
+
+    def _update_ostium_params_visible(self, prox_start_mode: str) -> None:
+        self._ostium_params.setVisible(prox_start_mode == 'highest_z')
 
     def _build_remesh_group(self) -> QGroupBox:
         box = QGroupBox('Remesh and Smooth')
@@ -199,6 +238,13 @@ class FusionColumn(QWidget):
             if value is not None:
                 spin.setValue(value)
 
+    def set_seam_points_limit(self, max_points: int) -> None:
+        """Cap both seam spinboxes to what the current boundary rings can give. QSpinBox
+        clamps the current value into the new range, so an oversized value shrinks too."""
+        for spin in (self._seam_points_a, self._seam_points_b):
+            spin.setMaximum(max_points)
+            spin.setToolTip(f'At most {max_points} for the current boundary rings')
+
     # ------------------------------------------------------------------
     # Param getters
     # ------------------------------------------------------------------
@@ -222,6 +268,10 @@ class FusionColumn(QWidget):
             'prox_start_mode': self._prox_start_mode.currentText(),
             'dist_start_mode': self._dist_start_mode.currentText(),
             'clamp_overshoot': self._clamp_overshoot.value(),
+            'fillet_bulge': self._fillet_bulge.value(),
+            'fillet_layers': self._fillet_layers.value(),
+            'seam_points_a': self._seam_points_a.value(),
+            'seam_points_b': self._seam_points_b.value(),
         }
 
     def remesh_kwargs(self) -> dict:

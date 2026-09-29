@@ -34,8 +34,9 @@ dependencies = [
     "torch==2.4.0+cu118",
     "torchvision==0.19.0+cu118",
     "vtk",
+    "trimesh",
     "nibabel",
-    "multimodars[meshlab]>=0.7.0",
+    "multimodars[meshlab]>=0.7.3",
     "ruamel.yaml>=0.18",
 ]
 

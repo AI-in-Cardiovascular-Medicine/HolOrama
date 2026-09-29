@@ -558,6 +558,7 @@ dependencies = [
     { name = "torch", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "torchvision", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "tqdm", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "trimesh", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "vtk", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 
@@ -586,7 +587,7 @@ docs = [
 requires-dist = [
     { name = "loguru" },
     { name = "matplotlib" },
-    { name = "multimodars", extras = ["meshlab"], specifier = ">=0.7.0" },
+    { name = "multimodars", extras = ["meshlab"], specifier = ">=0.7.3" },
     { name = "nibabel" },
     { name = "numpy", specifier = ">=2.0.0" },
     { name = "opencv-python-headless", specifier = ">=4.9.0.80" },
@@ -607,6 +608,7 @@ requires-dist = [
     { name = "torch", specifier = "==2.4.0+cu118", index = "https://download.pytorch.org/whl/cu118" },
     { name = "torchvision", specifier = "==0.19.0+cu118", index = "https://download.pytorch.org/whl/cu118" },
     { name = "tqdm" },
+    { name = "trimesh" },
     { name = "vtk" },
 ]
 
@@ -1013,7 +1015,7 @@ wheels = [
 
 [[package]]
 name = "multimodars"
-version = "0.7.0"
+version = "0.7.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "networkx", version = "3.4.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.11' and sys_platform == 'linux') or (python_full_version < '3.11' and sys_platform == 'win32')" },
@@ -1024,28 +1026,28 @@ dependencies = [
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.11' and sys_platform == 'linux') or (python_full_version >= '3.11' and sys_platform == 'win32')" },
     { name = "trimesh", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fa/51/3be85dfdd0aa2087300580474b283099b300956c0c0911fab9417a68e572/multimodars-0.7.0.tar.gz", hash = "sha256:d14c4873d99a5ea6d96cf1ddccbd63d6d58890a7b6177575e1416712376f2cbb", size = 6137875, upload-time = "2026-08-13T15:08:15.729Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e3/00/cf07c5b21db361f510941ddbfea435f54fe17f3d679ddc4c84c740d05e7e/multimodars-0.7.3.tar.gz", hash = "sha256:5a697933e007385d1de1780af233277994e1a5512bf8273b75f6a4ef7d1a5712", size = 6402159, upload-time = "2026-09-28T11:01:29.024Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/87/2e/3ab0111ff7f20e696c84096ad9e221052db10cef415c09a640da71201529/multimodars-0.7.0-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:4111b9781cca0733f4d862169fa7b7d26105ebb719335f83733ba4faba2eb57a", size = 3008632, upload-time = "2026-08-13T15:06:30.349Z" },
-    { url = "https://files.pythonhosted.org/packages/b5/e5/57d8cf2338c29fa7b9fdda91dcf017fc16426672e1d3a95b3760386d4e57/multimodars-0.7.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ee0bcf393e2159e248748062c5edf095bebff22a411bf7b4df9e1c62859be9b5", size = 3086672, upload-time = "2026-08-13T15:06:43.938Z" },
-    { url = "https://files.pythonhosted.org/packages/23/a4/bf7cf0621fd499682d5eb4e778de3690da2819035a23ab3ad1937f5a63ec/multimodars-0.7.0-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:67042a8dbb7c3507fcfb336f7c984474084d92e2f4c3a32d91c21ab1587eed80", size = 3182175, upload-time = "2026-08-13T15:07:17.795Z" },
-    { url = "https://files.pythonhosted.org/packages/98/e3/4b84f799c0b964b7cd50c96edb09c04ad2667f6ce9b837a19ff4316dee44/multimodars-0.7.0-cp310-cp310-musllinux_1_2_armv7l.whl", hash = "sha256:6603dc5cf816ba7e26f91d02416ee4aa0448d35bd3fa379a52ffab9cf7118737", size = 3262171, upload-time = "2026-08-13T15:07:31.58Z" },
-    { url = "https://files.pythonhosted.org/packages/98/48/dc502c452d2aa2f22b56e93b7a45821a0ad55fa1c4650e95b62e68456c3a/multimodars-0.7.0-cp310-cp310-musllinux_1_2_i686.whl", hash = "sha256:f3ad587343c856b1b37376b2744cc9179e72b737dc7aae702b1c6f05fa735509", size = 3409541, upload-time = "2026-08-13T15:07:46.611Z" },
-    { url = "https://files.pythonhosted.org/packages/5b/e7/246a5661c83cc3d79d8ecd73ad5ca5f4eb318f38c0bfba22d88d208a7f52/multimodars-0.7.0-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:7bed5c337855d396eabd715f160d037cf632fcf4b9cfef52e2f87c59dffbb08b", size = 3346205, upload-time = "2026-08-13T15:08:01.803Z" },
-    { url = "https://files.pythonhosted.org/packages/cf/42/5e37e8545e21bcd0bfebf815631947933d6aa798245f5a4a9e05b4c0f045/multimodars-0.7.0-cp310-cp310-win_amd64.whl", hash = "sha256:6b01c078931f6ca66493bfd2034e52bd8ded4a21dd663223d7e580f46f6b52db", size = 2731889, upload-time = "2026-08-13T15:08:18.002Z" },
-    { url = "https://files.pythonhosted.org/packages/1e/7c/8a0f474c5315fe36469423a0aa86d7a3004acb4e14f8bb46be4dc8b35221/multimodars-0.7.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:02674fe3cbfd88d844bf9cd93a35ce7015e9676afc2f9ffbcb9b55cbccfaffa1", size = 3009058, upload-time = "2026-08-13T15:06:32.372Z" },
-    { url = "https://files.pythonhosted.org/packages/3e/bf/c4b68bac1503044666e8b6d31f99de9b23a000a89920c9a4d1732571d907/multimodars-0.7.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:2fa6dccbb0b2a7c49397e7bdf28606b00ae11ecf4cdb6a9e906033ca56ec6ea1", size = 3086225, upload-time = "2026-08-13T15:06:45.971Z" },
-    { url = "https://files.pythonhosted.org/packages/97/ed/56ab4620756833650ad97e8f387f539152c85508773d56b7031c40418cfe/multimodars-0.7.0-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:01021f5f3d1708243bc3efb7c429eee5c43947816225f595a212246c0a5342a3", size = 3183142, upload-time = "2026-08-13T15:07:19.762Z" },
-    { url = "https://files.pythonhosted.org/packages/a5/ef/24e88753ba7d11ad9bd9560149f21d682ced74d988f685a9a4f0ed323df4/multimodars-0.7.0-cp311-cp311-musllinux_1_2_armv7l.whl", hash = "sha256:c6cf16e48d19458ad4f78b5734bca9668139b23cadf77fe5936abd38a133ac57", size = 3263603, upload-time = "2026-08-13T15:07:33.779Z" },
-    { url = "https://files.pythonhosted.org/packages/ff/4b/83cbaccb5112ca1b7242ea6474a9f6df8af5dd8602e7d8a4d488072935ec/multimodars-0.7.0-cp311-cp311-musllinux_1_2_i686.whl", hash = "sha256:188a294d1caf466e7cc4151885067c7a73f4b4ecf4b75c11d9a0267f3f5200ba", size = 3408720, upload-time = "2026-08-13T15:07:48.549Z" },
-    { url = "https://files.pythonhosted.org/packages/ad/4a/70051cacc9077616f6ffe75c0979d0cdcfa44ef458fdf175d8170a58a084/multimodars-0.7.0-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:f28196aa88211a836ace92a610dc4f0d807544045f90aec0ec780c8f27f843cc", size = 3347384, upload-time = "2026-08-13T15:08:04.142Z" },
-    { url = "https://files.pythonhosted.org/packages/a7/fc/aff24bb8eff565053ddfbd27cf8225b7aa1323d92ef6c2e4ce225d4b4b0d/multimodars-0.7.0-cp311-cp311-win_amd64.whl", hash = "sha256:cd59ba4ffe8d891761a2c7981ad3dead7e6a8a63a73820deccac35753427e8fc", size = 2733593, upload-time = "2026-08-13T15:08:19.894Z" },
-    { url = "https://files.pythonhosted.org/packages/e7/59/892b86e86835a281b955be7c672d126fc157a60d574b266f2d926720bcdb/multimodars-0.7.0-pp311-pypy311_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:990e3d8baeab0f10cd0f2bc8d2870b7f51a7bbd9d9c10396b9a227f3caa0295e", size = 3011208, upload-time = "2026-08-13T15:06:42.073Z" },
-    { url = "https://files.pythonhosted.org/packages/d7/39/bdd52446ddf91786c89e99093195466fbbe3d4c682c393971f7e72d015bf/multimodars-0.7.0-pp311-pypy311_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a66b5c5ebc65be4221dca07ac2d884b51321d67b3971f9e2bfe61c3969cf776b", size = 3086975, upload-time = "2026-08-13T15:06:59.678Z" },
-    { url = "https://files.pythonhosted.org/packages/7c/7e/0878bd4066b4e8aa87cfe4e7c984a5c6246b006a248c16bcf19f3d70106d/multimodars-0.7.0-pp311-pypy311_pp73-musllinux_1_2_aarch64.whl", hash = "sha256:2398f7f0fd2512637e47462de23b2e83c8285b8e0151cb254715eb873a85b560", size = 3185282, upload-time = "2026-08-13T15:07:29.333Z" },
-    { url = "https://files.pythonhosted.org/packages/79/71/5703a8eda329869b56bf28184f38180ecd52bba2b2ecdff485919dd38521/multimodars-0.7.0-pp311-pypy311_pp73-musllinux_1_2_armv7l.whl", hash = "sha256:8da39745ef92801d092169ccff92dd0defc8c2902ec34a802248d8e34137a09e", size = 3280776, upload-time = "2026-08-13T15:07:44.497Z" },
-    { url = "https://files.pythonhosted.org/packages/b9/b7/d7d602e7a55011d5dbc4571eb7d074f0e4edf13e18560422708e28977ac8/multimodars-0.7.0-pp311-pypy311_pp73-musllinux_1_2_i686.whl", hash = "sha256:0eefd95eb2b840b4bd11933e43d4fab036c979b0fd359df894b065bec5ec445d", size = 3423420, upload-time = "2026-08-13T15:07:59.786Z" },
-    { url = "https://files.pythonhosted.org/packages/42/a6/24f213ebefa0048767ec19295e0df3008ea8b60c0886ddee1372285fdbe1/multimodars-0.7.0-pp311-pypy311_pp73-musllinux_1_2_x86_64.whl", hash = "sha256:3dadbc4313d225db4f007938af062b259e07f567b6fc96928d06f7881d2845b9", size = 3349274, upload-time = "2026-08-13T15:08:13.721Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/a3/a09c00814b6afec15e847f73898178a638b3de44c736d60bd1f48adc2116/multimodars-0.7.3-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:a0d10156a6d58a1fe35028cfcb63f4d311673b18a862d456067dc51148639ec0", size = 3029868, upload-time = "2026-09-28T11:00:12.651Z" },
+    { url = "https://files.pythonhosted.org/packages/50/f8/7928d4c16d8339e3443337377cc1b748e58fb9e67d216456b96e7f40f245/multimodars-0.7.3-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:8e53a2fe64211382da059720c4be1b276c6a9706847d65eeab2fde867b3b0eb0", size = 3106089, upload-time = "2026-09-28T11:00:22.786Z" },
+    { url = "https://files.pythonhosted.org/packages/9b/fe/533d8c80f20403589ac203c088ba20fc7391ddb2fdebf745cbd6f73a04a5/multimodars-0.7.3-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:f0e64b95193c8834a57af706dcb2bea2cc2224ea3693ad53e9289f1c457bd572", size = 3205047, upload-time = "2026-09-28T11:00:47.608Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/70/26765e3f417933d9e3238b377ac8f9e96b09ed331ae3bdd5876f5a24f5bc/multimodars-0.7.3-cp310-cp310-musllinux_1_2_armv7l.whl", hash = "sha256:fab4c6819b0d5d768c81ec3d230261741c252c37baceba623c9ee833a5a9c810", size = 3282417, upload-time = "2026-09-28T11:00:57.601Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/fc/68a759051cf5aa3185735930742852491bdd1b3332c5e80faed4b144e947/multimodars-0.7.3-cp310-cp310-musllinux_1_2_i686.whl", hash = "sha256:9d4811d1226c5863e0e81c97d13d1376e16213788be101a3990faffbbae2e597", size = 3411813, upload-time = "2026-09-28T11:01:08.284Z" },
+    { url = "https://files.pythonhosted.org/packages/69/a6/25fd8942dc7a1930161a9fb544d29cc4969582ddd670fa71acbea23fb7fc/multimodars-0.7.3-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:79d23e539e9132794ab17ea1d736199de999d874cff1c01717ed63e197255454", size = 3360806, upload-time = "2026-09-28T11:01:18.698Z" },
+    { url = "https://files.pythonhosted.org/packages/72/41/2235b4d8564b95d193509c4bd9593ab731d29bdc57b0db7818f738b845b4/multimodars-0.7.3-cp310-cp310-win_amd64.whl", hash = "sha256:aaaa59774204c2602bdd8dde21d36a4db3fe5fcedd4cd08d7012e463e7bd011a", size = 2770392, upload-time = "2026-09-28T11:01:30.952Z" },
+    { url = "https://files.pythonhosted.org/packages/ff/e5/b627bf7623bd569750eba4d1700a1677e15321d0217a81450339348b2c38/multimodars-0.7.3-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:1df8dcaae94a2d0ce595b4c4bfea8af6cf43a90a67f6a9b4864a4c20daf04e6d", size = 3030289, upload-time = "2026-09-28T11:00:14.222Z" },
+    { url = "https://files.pythonhosted.org/packages/36/a3/f162462d38bf9bb6b5645c45113a78c8687fb66a2f70c7389c5ae52eaf02/multimodars-0.7.3-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3367f995c4a8b2a31fdb20ef95d3131749bb30c119a7671e591e2a0ca869397f", size = 3106173, upload-time = "2026-09-28T11:00:24.327Z" },
+    { url = "https://files.pythonhosted.org/packages/81/bb/0c87a8cd068363f7043aa4811ceb7870ea83cb97ab264315ab23fa330d49/multimodars-0.7.3-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:4bdf8ef688b18966ec58b9f6a698253d6511dbdc372fd7889f1711da2e53aa4e", size = 3204717, upload-time = "2026-09-28T11:00:48.934Z" },
+    { url = "https://files.pythonhosted.org/packages/52/45/b52910916923e3b35b6621997393e1fae132e664f087d34e016c787abf58/multimodars-0.7.3-cp311-cp311-musllinux_1_2_armv7l.whl", hash = "sha256:f45551c741f359edd41cf20399bc361dbc05ff59f7809869333d00dbd89ed900", size = 3283952, upload-time = "2026-09-28T11:00:58.972Z" },
+    { url = "https://files.pythonhosted.org/packages/06/04/3d6f98dd74f34d4a39c01fcac5d98c7aca2a953118b9fff5aa89507fae0f/multimodars-0.7.3-cp311-cp311-musllinux_1_2_i686.whl", hash = "sha256:3448b4d18c6b652c0f69b5d065181ce7c0f4e829d15e9f68ba09ff9fd9c673da", size = 3415332, upload-time = "2026-09-28T11:01:09.773Z" },
+    { url = "https://files.pythonhosted.org/packages/62/28/79757a0e028974164319ad7249ed21b959abf0b905103979ea2a5538901c/multimodars-0.7.3-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:8413441999e2ffbfba517a64d57bf2a4efbb4056f76726bc1c333afb1991df80", size = 3360939, upload-time = "2026-09-28T11:01:20.318Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/29/b8f14f48ac72f75ced12ee00582540a279c91693b18933e3e76a196fab20/multimodars-0.7.3-cp311-cp311-win_amd64.whl", hash = "sha256:b6668e2dabf43c6fefeba700c00cdf33ba6a3c66c7a375c64231c3a97f3e4c99", size = 2770392, upload-time = "2026-09-28T11:01:32.601Z" },
+    { url = "https://files.pythonhosted.org/packages/71/cf/f34286c1e3debe0b3393a800391e8b4dcafd9a88dd12d92e8883e477c41f/multimodars-0.7.3-pp311-pypy311_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:29efb629024147c089225212999e7644febc9ba54177fc9c9361fc27a545dd8e", size = 3035210, upload-time = "2026-09-28T11:00:21.119Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/fb/3592df680277a645bdc28a516b08b36825c39a3ba630dc400086c511d62a/multimodars-0.7.3-pp311-pypy311_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e1e93751be2c00de843a0f4fe7b1a9e446ad8e04f85348c8518c4aae30d86a80", size = 3111780, upload-time = "2026-09-28T11:00:34.51Z" },
+    { url = "https://files.pythonhosted.org/packages/9e/ed/4b900a38825974de9e6cd2c34dab82cb1dc98861f6d2d99bd641dc0ad815/multimodars-0.7.3-pp311-pypy311_pp73-musllinux_1_2_aarch64.whl", hash = "sha256:9067f8c5876d124381ba060b9dae91faaeb36ca3c107a83859baab2d75abaaec", size = 3211722, upload-time = "2026-09-28T11:00:56.153Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/a0/81bccb005c12ae167764eea2bd20ac5e7d2e90fc3f89c88a9dac86f2163f/multimodars-0.7.3-pp311-pypy311_pp73-musllinux_1_2_armv7l.whl", hash = "sha256:c4c28eca89c6e2bacd695b6b5e1e4927ee0f7cbe908f16510fe48be6ed8750a3", size = 3285988, upload-time = "2026-09-28T11:01:06.803Z" },
+    { url = "https://files.pythonhosted.org/packages/98/2f/8d51da9ebf67c3e6c3e0c5f500cefbee9ab7c967a40dbc1de47897ddd62d/multimodars-0.7.3-pp311-pypy311_pp73-musllinux_1_2_i686.whl", hash = "sha256:de15073dbb82db68115caaa5a79e55151ce87b4e0eb9a072cc8938c0560f1f99", size = 3420411, upload-time = "2026-09-28T11:01:17.415Z" },
+    { url = "https://files.pythonhosted.org/packages/05/01/b721a104aa62c52d5637f029728d430020722812412732458bebd69be84f/multimodars-0.7.3-pp311-pypy311_pp73-musllinux_1_2_x86_64.whl", hash = "sha256:7af2e45d3d6b5125acc7853eb3e96654e926e6c687e5758920df57e8c869ec9a", size = 3368071, upload-time = "2026-09-28T11:01:27.44Z" },
 ]
 
 [package.optional-dependencies]
