@@ -558,6 +558,7 @@ dependencies = [
     { name = "torch", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "torchvision", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "tqdm", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "trimesh", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "vtk", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 
@@ -607,6 +608,7 @@ requires-dist = [
     { name = "torch", specifier = "==2.4.0+cu118", index = "https://download.pytorch.org/whl/cu118" },
     { name = "torchvision", specifier = "==0.19.0+cu118", index = "https://download.pytorch.org/whl/cu118" },
     { name = "tqdm" },
+    { name = "trimesh" },
     { name = "vtk" },
 ]
 
