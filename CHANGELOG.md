@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.12.0] - 2026-09-28
+
+### Added
+- **Sphere Smooth** (CCTA Geometry toolbar): a brush that locally smooths the final fusion mesh. Hover to preview the affected patch, click to smooth it, `Ctrl+wheel` to resize. The radius is measured along the surface, so the opposite vessel wall is never caught. Lives in `tools/sphere_smooth.py` for reuse.
+- **Undo** (`Ctrl+Z`) for local and whole-mesh smoothing, up to 20 steps.
+- Stitch parameters **Fillet bulge strength**, **Fillet layers**, **Seam A/B n points**, shown only with **Proximal start mode** `highest_z`. Seam counts are capped to the boundary ring size.
+- Boundary rings left by **Remove** are shown in the **Intravascular Aligned** view.
+
+### Changed
+- **Stitch can be re-run**: each run starts again from the geometry saved after **Remove**, replacing the previous result.
+- **Clamp overshoot** defaults to 0.0 mm.
+- Requires multimodars ≥ 0.7.3.
+
+### Fixed
+- A second **Stitch** stitched onto the already-stitched mesh.
+
 ## [0.11.0] - 2026-09-02
 
 ### Added
