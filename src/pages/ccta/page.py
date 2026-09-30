@@ -41,6 +41,7 @@ from pages.ccta.left_half.left_half import LeftHalf
 from pages.ccta.right_half.right_half import RightHalf
 from pages.ccta.popup_windows.settings_dialog import resolve_label_colors
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
+from tools.sphere_smooth import local_smooth, local_smooth_region
 from version import version_file_str
 
 if TYPE_CHECKING:
@@ -81,6 +82,7 @@ class CctaPage(QWidget):
         self._cut_state_dirty: bool = False
         self._cut_labels: tuple[int, int, int] | None = None  # (cor, aorta, lv) from the last Build Cut Geometry
         self._centerlines_worker: StdoutCapturingWorker | None = None
+        self._remesh_worker: StdoutCapturingWorker | None = None
 
         common_cfg = config.common
         windowing_sensitivity = common_cfg.windowing_sensitivity
@@ -145,6 +147,11 @@ class CctaPage(QWidget):
         self._cut_viewer.outlet_points_changed.connect(self._on_outlet_points_changed)
         self._cut_viewer.smooth_requested.connect(self._on_smooth_requested)
         self._cut_viewer.reduce_mesh_requested.connect(self._on_reduce_mesh_requested)
+        self._cut_viewer.remesh_requested.connect(self._on_remesh_requested)
+        self._cut_viewer.sphere_mode_toggled.connect(self._on_sphere_mode_toggled)
+        self._cut_viewer.sphere_hovered.connect(self._on_sphere_hovered)
+        self._cut_viewer.sphere_clicked.connect(self._on_sphere_clicked)
+        self._cut_viewer.undo_requested.connect(self._undo_cut_mesh_smoothing)
         self._cut_viewer.calculate_centerlines_requested.connect(self._on_calculate_centerlines)
 
         self._pending_coronal_cut: int = 1  # 1 = LVOT, 2 = aorta top
@@ -507,6 +514,14 @@ class CctaPage(QWidget):
         if self.data.mask is not None:
             self.data.mask_undo.push(self.data.mask.copy())
 
+    def undo_last_edit(self) -> None:
+        """Ctrl+Z: steps back a cut-geometry smoothing step while the Cut Geometry tab is
+        shown, otherwise the last mask edit."""
+        if self._left_half.widget.currentWidget() is self._cut_viewer:
+            self._undo_cut_mesh_smoothing()
+        else:
+            self.undo_last_mask_edit()
+
     def undo_last_mask_edit(self) -> None:
         snapshot = self.data.mask_undo.pop()
         if snapshot is None:
@@ -779,6 +794,8 @@ class CctaPage(QWidget):
         self.data.cut_mesh = mesh
         self.data.cut_mesh_inlet = inlet
         self.data.cut_mesh_outlet = outlet
+        self.data.cut_mesh_undo.clear()
+        self._cut_viewer.set_undo_available(False)
         self._cut_labels = (cor_label, aorta_label, lv_label)
         self._cut_state_dirty = True
         self._cut_viewer.set_cut_mesh(mesh, inlet, outlet, combined, self.data.voxel_spacing)
@@ -797,55 +814,53 @@ class CctaPage(QWidget):
             ErrorMessage(self, 'Build the cut geometry first.')
             self._stl_panel.reset_outlet_mode()
             return
-        self._cut_viewer.set_point_mode(category)
+        self._cut_viewer.set_point_mode(category)  # also turns the sphere brush off
+
+    def _locate_inlet_outlet(self, mesh: trimesh.Trimesh, planes: _CutPlanes) -> tuple[np.ndarray, np.ndarray]:
+        assert self.data.mask is not None and self.data.voxel_spacing is not None  # implied by cut_mesh existing
+        return cut_geometry.find_inlet_outlet_centroids(mesh, self.data.voxel_spacing, self.data.mask.shape, *planes)
 
     def _apply_mesh_op(
         self,
         op: Callable[[trimesh.Trimesh], trimesh.Trimesh],
         op_name: str,
         status_message: Callable[[trimesh.Trimesh], str],
+        *,
+        smoothing: bool = False,
     ) -> None:
-        """Shared skeleton for Smooth/Reduce Mesh: both replace self.data.cut_mesh
-        with the result of a single trimesh -> trimesh operation, relocate the
-        inlet/outlet centroids on the result, and push it to the viewer. `op_name`
-        labels the error if `op` raises; `status_message` receives the *new* mesh so
-        callers can report on it (e.g. its new face count)."""
+        """Shared skeleton for Smooth/Sphere Smooth/Reduce Mesh: each replaces
+        self.data.cut_mesh with the result of a single trimesh -> trimesh operation
+        (which must not mutate its input), relocates the inlet/outlet centroids on the
+        result, and pushes it to the viewer. `op_name` labels the error if `op` raises;
+        `status_message` receives the *new* mesh so callers can report on it (e.g. its
+        new face count). smoothing=True (vertices move, faces don't) records the old
+        mesh for Undo; anything else changes the topology and drops the undo history."""
         if self.data.cut_mesh is None:
             ErrorMessage(self, 'Build the cut geometry first.')
             return
-        assert self.data.mask is not None and self.data.voxel_spacing is not None  # implied by cut_mesh existing
         planes = self._compute_cut_planes()
         if planes is None:
             return
-        lvot_anchor, lvot_normal, aorta_anchor, aorta_normal = planes
 
         try:
             mesh = op(self.data.cut_mesh)
-            inlet, outlet = cut_geometry.find_inlet_outlet_centroids(
-                mesh,
-                self.data.voxel_spacing,
-                self.data.mask.shape,
-                lvot_anchor,
-                lvot_normal,
-                aorta_anchor,
-                aorta_normal,
-            )
+            inlet, outlet = self._locate_inlet_outlet(mesh, planes)
         except Exception as e:
             logger.exception(f'{op_name} failed')
             ErrorMessage(self, f'{op_name} failed: {e}')
             return
 
-        self.data.cut_mesh = mesh
-        self.data.cut_mesh_inlet = inlet
-        self.data.cut_mesh_outlet = outlet
-        self._cut_viewer.update_cut_mesh(mesh, inlet, outlet)
+        if smoothing:
+            self._push_cut_mesh_undo()
+        self._replace_cut_mesh(mesh, inlet, outlet, keep_undo=smoothing)
         self.status_bar.showMessage(status_message(mesh))
 
     def _on_smooth_requested(self, lamb: float) -> None:
         self._apply_mesh_op(
-            lambda mesh: cut_geometry.smooth_mesh(mesh, lamb=lamb),
+            lambda mesh: cut_geometry.smooth_mesh(mesh.copy(), lamb=lamb),  # smooth_mesh works in place
             'Smoothing',
             lambda _mesh: 'Cut geometry smoothed.',
+            smoothing=True,
         )
 
     def _on_reduce_mesh_requested(self, target_reduction: float) -> None:
@@ -857,6 +872,115 @@ class CctaPage(QWidget):
             lambda mesh: cut_geometry.reduce_mesh(mesh, target_reduction),
             'Mesh reduction',
             lambda mesh: f'Mesh reduced: {before} -> {len(mesh.faces)} faces.',
+        )
+
+    # ── Remesh (background thread, like Fusion's Fix & Remesh) ──────────────
+
+    def _on_remesh_requested(self, target_edge_length_mm: float, iterations: int) -> None:
+        if self.data.cut_mesh is None:
+            ErrorMessage(self, 'Build the cut geometry first.')
+            return
+        if self._remesh_worker is not None and self._remesh_worker.isRunning():
+            return
+        planes = self._compute_cut_planes()
+        if planes is None:
+            return
+        mesh_in = self.data.cut_mesh
+        before = len(mesh_in.faces)
+
+        def _do_work() -> tuple[trimesh.Trimesh, np.ndarray, np.ndarray]:
+            mesh = cut_geometry.remesh_mesh(mesh_in, target_edge_length_mm, iterations)
+            return (mesh, *self._locate_inlet_outlet(mesh, planes))
+
+        progress = QProgressDialog('Remeshing…', None, 0, 0, self)
+        progress.setWindowTitle('Remesh')
+        progress.setMinimumDuration(0)
+        progress.setModal(True)
+        progress.show()
+        self.status_bar.showMessage('Remeshing…')
+
+        worker = StdoutCapturingWorker(_do_work, (), {}, parent=self)
+        worker.line_printed.connect(progress.setLabelText)
+        worker.finished_ok.connect(lambda result: self._on_remesh_done(progress, result, before))
+        worker.failed.connect(lambda message: self._on_remesh_failed(progress, message))
+        self._remesh_worker = worker
+        worker.start()
+
+    def _on_remesh_done(
+        self, progress: QProgressDialog, result: tuple[trimesh.Trimesh, np.ndarray, np.ndarray], before: int
+    ) -> None:
+        progress.close()
+        self._remesh_worker = None
+        mesh, inlet, outlet = result
+        self._replace_cut_mesh(mesh, inlet, outlet, keep_undo=False)
+        self.status_bar.showMessage(f'Remeshed: {before} -> {len(mesh.faces)} faces.')
+
+    def _on_remesh_failed(self, progress: QProgressDialog, message: str) -> None:
+        progress.close()
+        self._remesh_worker = None
+        logger.error(f'Remesh failed: {message}')
+        ErrorMessage(self, f'Remesh failed: {message}')
+        self.status_bar.showMessage('Remesh failed — see log')
+
+    # ── Sphere brush local smoothing (+ undo) ────────────────────────────────
+
+    _SMOOTHING_UNDO_LIMIT = 20  # snapshots kept — each holds a full (N, 3) vertex array
+
+    def _replace_cut_mesh(
+        self, mesh: trimesh.Trimesh, inlet: np.ndarray, outlet: np.ndarray, *, keep_undo: bool
+    ) -> None:
+        if not keep_undo:
+            self.data.cut_mesh_undo.clear()
+        self.data.cut_mesh = mesh
+        self.data.cut_mesh_inlet = inlet
+        self.data.cut_mesh_outlet = outlet
+        self._cut_viewer.update_cut_mesh(mesh, inlet, outlet)
+        self._cut_viewer.set_undo_available(bool(self.data.cut_mesh_undo))
+        self._cut_viewer.refresh_sphere_hover()  # highlight must follow the new surface
+
+    def _push_cut_mesh_undo(self) -> None:
+        assert self.data.cut_mesh is not None
+        assert self.data.cut_mesh_inlet is not None and self.data.cut_mesh_outlet is not None
+        undo = self.data.cut_mesh_undo
+        undo.append((self.data.cut_mesh.vertices.copy(), self.data.cut_mesh_inlet, self.data.cut_mesh_outlet))
+        del undo[: max(len(undo) - self._SMOOTHING_UNDO_LIMIT, 0)]
+
+    def _undo_cut_mesh_smoothing(self) -> None:
+        mesh = self.data.cut_mesh
+        if mesh is None or not self.data.cut_mesh_undo:
+            return
+        vertices, inlet, outlet = self.data.cut_mesh_undo.pop()
+        restored = mesh.copy()
+        restored.vertices = vertices
+        self._replace_cut_mesh(restored, inlet, outlet, keep_undo=True)
+        self.status_bar.showMessage(f'Undid smoothing step ({len(self.data.cut_mesh_undo)} left).')
+
+    def _on_sphere_mode_toggled(self, enabled: bool) -> None:
+        if enabled and self.data.cut_mesh is None:
+            ErrorMessage(self, 'Build the cut geometry first.')
+            enabled = False
+        if enabled:
+            self._stl_panel.reset_outlet_mode()  # outlet picking and the brush both take left-clicks
+            self.status_bar.showMessage('Sphere smooth: hover to preview, click to smooth, Ctrl+wheel for radius.')
+        self._cut_viewer.set_sphere_mode(enabled)
+
+    def _on_sphere_hovered(self, x: float, y: float, z: float) -> None:
+        mesh = self.data.cut_mesh
+        if mesh is None:
+            return
+        region, _ = local_smooth_region(mesh, (x, y, z), self._cut_viewer.sphere_radius.value())
+        self._cut_viewer.set_sphere_highlight(np.asarray(mesh.vertices)[region])
+
+    def _on_sphere_clicked(self, x: float, y: float, z: float) -> None:
+        viewer = self._cut_viewer
+        radius = viewer.sphere_radius.value()
+        iterations = viewer.sphere_iterations.value()
+        lamb = viewer.smooth_lambda()
+        self._apply_mesh_op(
+            lambda mesh: local_smooth(mesh, (x, y, z), radius, iterations=iterations, lamb=lamb),
+            'Local smoothing',
+            lambda _mesh: 'Locally smoothed.',
+            smoothing=True,
         )
 
     def _on_calculate_centerlines(self) -> None:

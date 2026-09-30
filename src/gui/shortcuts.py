@@ -54,7 +54,7 @@ def init_ccta_shortcuts(ccta_page):
     _widget_children_shortcut('R', ccta_page, ccta_page.reset_windowing)
     _widget_children_shortcut('F', ccta_page, ccta_page.reset_zoom)
     _widget_children_shortcut('Escape', ccta_page, ccta_page.reset_to_neutral)
-    _widget_children_shortcut('Ctrl+Z', ccta_page, ccta_page.undo_last_mask_edit)
+    _widget_children_shortcut('Ctrl+Z', ccta_page, ccta_page.undo_last_edit)
 
 
 def _widget_children_shortcut(key, parent, slot):

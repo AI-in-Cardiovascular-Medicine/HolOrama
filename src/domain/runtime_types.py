@@ -22,6 +22,11 @@ class CctaRuntimeData:
         self.cut_mesh: Any | None = None  # trimesh.Trimesh built from the LVOT/aorta-top cut
         self.cut_mesh_inlet: np.ndarray | None = None  # world (x, y, z) mm — lower-Z cut plane centroid
         self.cut_mesh_outlet: np.ndarray | None = None  # world (x, y, z) mm — higher-Z cut plane centroid
+        # Previous (cut_mesh vertices, inlet, outlet) snapshots (oldest first) for undoing
+        # Smooth / Sphere Smooth steps — smoothing never changes faces, so vertices alone
+        # restore a mesh. Reset whenever the topology changes (Build Cut Geometry, Reduce
+        # Mesh, Remesh).
+        self.cut_mesh_undo: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
 
 
 class FusionRuntimeData:

@@ -6,6 +6,7 @@ this module keeps the mesh in memory so it can be added as a 3D layer, smoothed,
 and re-inspected before anything is exported.
 """
 
+import multimodars as mm
 import numpy as np
 import trimesh
 from skimage.measure import marching_cubes
@@ -89,6 +90,21 @@ def reduce_mesh(mesh: trimesh.Trimesh, target_reduction: float) -> trimesh.Trime
     decimate.Update()
 
     return vtk_polydata_to_mesh(decimate.GetOutput())
+
+
+def remesh_mesh(
+    mesh: trimesh.Trimesh, target_edge_length_mm: float, iterations: int = 10, verbose: bool = True
+) -> trimesh.Trimesh:
+    """Repair + isotropically remesh ``mesh`` to roughly uniform ``target_edge_length_mm``
+    edges — the same multimodars call as Fusion's Fix & Remesh (pymeshlab under the hood).
+    Its hole-filling step is a no-op here since marching cubes output is already closed;
+    what matters is the remesh, which replaces marching cubes' staircase triangles with
+    well-shaped ones so smoothing (global or sphere brush) behaves evenly across the surface.
+    ``verbose`` progress goes to print(), for a StdoutCapturingWorker to forward.
+    """
+    return mm.fix_and_remesh_stitched_mesh(
+        mesh, target_edge_length_mm=target_edge_length_mm, remesh_iterations=iterations, verbose=verbose
+    )
 
 
 def mesh_to_vtk_polydata(mesh: trimesh.Trimesh, triangulate: bool = True) -> vtkPolyData:

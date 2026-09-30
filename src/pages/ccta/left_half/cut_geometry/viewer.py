@@ -12,7 +12,7 @@ import numpy as np
 import trimesh
 import vtkmodules.vtkInteractionStyle  # noqa: F401
 import vtkmodules.vtkRenderingOpenGL2  # noqa: F401
-from PyQt6.QtCore import QEvent, QPoint, Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, QPoint, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QDoubleSpinBox,
     QHBoxLayout,
@@ -43,6 +43,7 @@ from domain.ccta_display_types import (
     RCA_POINT_COLOR,
 )
 from pages.ccta.left_half.cut_geometry.geometry import mesh_to_vtk_polydata
+from tools.sphere_smooth import SphereBrush
 
 
 def _points_to_polydata(points: np.ndarray) -> vtkPolyData:
@@ -62,7 +63,14 @@ class CutGeometryViewer3D(QWidget):
     outlet_points_changed = pyqtSignal(str, int)  # category ('rca'/'lca'), point count
     smooth_requested = pyqtSignal(float)  # taubin lambda
     reduce_mesh_requested = pyqtSignal(float)  # target reduction fraction (0-1)
+    remesh_requested = pyqtSignal(float, int)  # target edge length (mm), iterations
     calculate_centerlines_requested = pyqtSignal()
+    # Sphere brush (local smoothing, see set_sphere_mode / tools.sphere_smooth): mode
+    # toggled from the button bar, surface point under the cursor / clicked, and undo.
+    sphere_mode_toggled = pyqtSignal(bool)
+    sphere_hovered = pyqtSignal(float, float, float)
+    sphere_clicked = pyqtSignal(float, float, float)
+    undo_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -82,7 +90,7 @@ class CutGeometryViewer3D(QWidget):
 
         self._reduce_pct_spin = QSpinBox()
         self._reduce_pct_spin.setRange(1, 95)
-        self._reduce_pct_spin.setValue(50)
+        self._reduce_pct_spin.setValue(10)
         self._reduce_pct_spin.setSuffix('%')
         self._reduce_pct_spin.setToolTip('Target face-count reduction (higher = faster centerlines, less detail)')
         self._reduce_pct_spin.setFixedWidth(60)
@@ -90,6 +98,52 @@ class CutGeometryViewer3D(QWidget):
         self._reduce_btn = QPushButton('Reduce Mesh')
         self._reduce_btn.setToolTip('Decimate the cut geometry to speed up Calculate Centerlines')
         self._reduce_btn.clicked.connect(lambda: self.reduce_mesh_requested.emit(self._reduce_pct_spin.value() / 100.0))
+
+        self._remesh_edge_spin = QDoubleSpinBox()
+        self._remesh_edge_spin.setRange(0.01, 10.0)
+        self._remesh_edge_spin.setSingleStep(0.05)
+        self._remesh_edge_spin.setValue(0.5)
+        self._remesh_edge_spin.setSuffix(' mm')
+        self._remesh_edge_spin.setToolTip('Remesh target edge length')
+        self._remesh_edge_spin.setFixedWidth(75)
+
+        self._remesh_iter_spin = QSpinBox()
+        self._remesh_iter_spin.setRange(1, 100)
+        self._remesh_iter_spin.setValue(10)
+        self._remesh_iter_spin.setToolTip('Remesh iterations')
+        self._remesh_iter_spin.setFixedWidth(50)
+
+        self._remesh_btn = QPushButton('Remesh')
+        self._remesh_btn.setToolTip("Fix and isotropically remesh the cut geometry (same as Fusion's Fix and Remesh)")
+        self._remesh_btn.clicked.connect(
+            lambda: self.remesh_requested.emit(self._remesh_edge_spin.value(), self._remesh_iter_spin.value())
+        )
+
+        self.sphere_btn = QPushButton('Sphere Smooth')
+        self.sphere_btn.setCheckable(True)
+        self.sphere_btn.setToolTip(
+            'Hover over the cut geometry to preview, click to smooth the highlighted patch.\n'
+            'Ctrl+wheel changes the radius. Uses the Smooth lambda.'
+        )
+        self.sphere_btn.toggled.connect(self.sphere_mode_toggled.emit)
+
+        self.sphere_radius = QDoubleSpinBox()
+        self.sphere_radius.setRange(0.2, 20.0)
+        self.sphere_radius.setSingleStep(0.2)
+        self.sphere_radius.setValue(2.0)
+        self.sphere_radius.setSuffix(' mm')
+        self.sphere_radius.setToolTip('Brush radius, measured along the surface (Ctrl+wheel in the view)')
+        self.sphere_radius.valueChanged.connect(self._on_sphere_radius_changed)
+
+        self.sphere_iterations = QSpinBox()
+        self.sphere_iterations.setRange(1, 100)
+        self.sphere_iterations.setValue(10)
+        self.sphere_iterations.setToolTip('Taubin iterations per click')
+
+        self._undo_btn = QPushButton('Undo')
+        self._undo_btn.setToolTip('Undo the last smoothing step (Ctrl+Z while this tab is shown)')
+        self._undo_btn.setEnabled(False)
+        self._undo_btn.clicked.connect(self.undo_requested.emit)
 
         self._opacity_slider = QSlider(Qt.Orientation.Horizontal)
         self._opacity_slider.setRange(0, 100)
@@ -107,6 +161,9 @@ class CutGeometryViewer3D(QWidget):
         btn_bar.addWidget(self._smooth_btn)
         btn_bar.addWidget(self._reduce_pct_spin)
         btn_bar.addWidget(self._reduce_btn)
+        btn_bar.addWidget(self._remesh_edge_spin)
+        btn_bar.addWidget(self._remesh_iter_spin)
+        btn_bar.addWidget(self._remesh_btn)
         btn_bar.addStretch()
         btn_bar.addWidget(QLabel('Opacity:'))
         btn_bar.addWidget(self._opacity_slider)
@@ -117,6 +174,17 @@ class CutGeometryViewer3D(QWidget):
         layout.setSpacing(0)
         layout.addWidget(self._vtk_widget, 1)
         layout.addLayout(btn_bar)
+
+        sphere_bar = QHBoxLayout()
+        sphere_bar.setContentsMargins(4, 0, 4, 2)
+        sphere_bar.addWidget(self.sphere_btn)
+        sphere_bar.addWidget(QLabel('Radius:'))
+        sphere_bar.addWidget(self.sphere_radius)
+        sphere_bar.addWidget(QLabel('Iterations:'))
+        sphere_bar.addWidget(self.sphere_iterations)
+        sphere_bar.addWidget(self._undo_btn)
+        sphere_bar.addStretch()
+        layout.addLayout(sphere_bar)
 
         self._ren = vtkRenderer()
         self._ren.SetBackground(0.0, 0.0, 0.0)
@@ -151,6 +219,18 @@ class CutGeometryViewer3D(QWidget):
         self._point_mode: str | None = None  # 'rca' | 'lca' | None
         self._points: dict[str, list[tuple[int, int, int]]] = {'rca': [], 'lca': []}  # voxel (z, y, x)
         self._points_actors: dict[str, vtkActor | None] = {'rca': None, 'lca': None}
+
+        # Sphere brush: hover preview (sphere + the vertices that would move, which the
+        # caller computes and hands back via set_sphere_highlight), debounced so a fast
+        # mouse doesn't queue up a region search per pixel.
+        self._sphere_mode = False
+        self._sphere_brush = SphereBrush(self._ren)
+        self._sphere_brush.set_radius(self.sphere_radius.value())
+        self._sphere_hover_pos = QPoint()
+        self._sphere_hover_timer = QTimer(self)
+        self._sphere_hover_timer.setSingleShot(True)
+        self._sphere_hover_timer.setInterval(30)
+        self._sphere_hover_timer.timeout.connect(self._on_sphere_hover_timer)
 
         self._vtk_widget.installEventFilter(self)
 
@@ -354,6 +434,8 @@ class CutGeometryViewer3D(QWidget):
         not) before calling this.
         """
         self._point_mode = category or None
+        if self._point_mode is not None:
+            self.set_sphere_mode(False)  # both take over left-clicks — only one at a time
 
     _POINT_COLORS = {'rca': RCA_POINT_COLOR, 'lca': LCA_POINT_COLOR}
 
@@ -422,11 +504,99 @@ class CutGeometryViewer3D(QWidget):
         self._points_actors[category] = actor
         self._vtk_widget.GetRenderWindow().Render()
 
-    # ── mouse handling: point-mode add/remove, else plain camera passthrough ─
+    # ── sphere brush (local smoothing) ──────────────────────────────────────
+
+    def set_sphere_mode(self, enabled: bool) -> None:
+        """Turn the sphere brush on (hover to preview, click to emit sphere_clicked) or
+        off. Camera rotate/zoom keep working while it's on. The page calls this once it
+        has accepted/rejected the toggle; turning off also unchecks the button (silently)."""
+        self._sphere_mode = enabled
+        if enabled:
+            self._point_mode = None
+            return
+        self.sphere_btn.blockSignals(True)
+        self.sphere_btn.setChecked(False)
+        self.sphere_btn.blockSignals(False)
+        self._sphere_hover_timer.stop()
+        self.hide_sphere_preview()
+
+    def set_sphere_highlight(self, points: np.ndarray) -> None:
+        """Show `points` (N, 3) as the vertices the brush would move, and render."""
+        self._sphere_brush.set_highlight(points)
+        self._vtk_widget.GetRenderWindow().Render()
+
+    def hide_sphere_preview(self) -> None:
+        self._sphere_brush.hide()
+        self._vtk_widget.GetRenderWindow().Render()
+
+    def refresh_sphere_hover(self) -> None:
+        """Re-run the hover pick at the last cursor position (after the mesh or radius
+        changed under a stationary cursor)."""
+        if self._sphere_mode:
+            self._sphere_hover_timer.start()
+
+    def smooth_lambda(self) -> float:
+        """Taubin lambda from the Smooth spin box — shared by whole-mesh Smooth and the sphere brush."""
+        return self._smooth_lambda_spin.value()
+
+    def set_undo_available(self, available: bool) -> None:
+        self._undo_btn.setEnabled(available)
+
+    def _on_sphere_radius_changed(self, radius_mm: float) -> None:
+        self._sphere_brush.set_radius(radius_mm)
+        self.refresh_sphere_hover()  # highlight must follow the new radius
+
+    def _sphere_pick(self, pos: QPoint) -> tuple[float, float, float] | None:
+        if self._cut_mesh_actor is None:
+            return None
+        return self._sphere_brush.pick(self._cut_mesh_actor, pos.x(), self._vtk_widget.height() - 1 - pos.y())
+
+    def _on_sphere_hover_timer(self) -> None:
+        if not self._sphere_mode:
+            return
+        hit = self._sphere_pick(self._sphere_hover_pos)
+        if hit is None:
+            self.hide_sphere_preview()
+            return
+        self._sphere_brush.show_at(hit)
+        self.sphere_hovered.emit(*hit)  # the caller answers with set_sphere_highlight (which renders)
+
+    def _sphere_event(self, event) -> bool:
+        """Sphere-mode handling for one widget event; True = consumed (VTK never sees it).
+        Presses/drags are passed through so the camera still rotates; a click is a press +
+        release that moved at most 3 px. Same behavior as Fusion's sphere brush."""
+        etype = event.type()
+        if etype == QEvent.Type.MouseMove:
+            if event.buttons() == Qt.MouseButton.NoButton:
+                self._sphere_hover_pos = event.pos()
+                self._sphere_hover_timer.start()
+            elif self._sphere_brush.visible:
+                self.hide_sphere_preview()  # rotating/panning — the preview would lag behind
+        elif etype == QEvent.Type.Leave:
+            self._sphere_hover_timer.stop()
+            self.hide_sphere_preview()
+        elif etype == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+            self._press_qt = event.pos()
+        elif etype == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
+            dp = event.pos() - self._press_qt
+            if abs(dp.x()) <= 3 and abs(dp.y()) <= 3:
+                hit = self._sphere_pick(event.pos())
+                if hit is not None:
+                    self.sphere_clicked.emit(*hit)
+        elif etype == QEvent.Type.Wheel and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            delta = event.angleDelta().y()
+            if delta:
+                self.sphere_radius.stepBy(1 if delta > 0 else -1)
+            return True  # Ctrl+wheel resizes the brush instead of zooming
+        return False
+
+    # ── mouse handling: point-mode add/remove, sphere brush, else camera passthrough ─
 
     def eventFilter(self, obj, event) -> bool:
         if obj is self._vtk_widget:
             t = event.type()
+            if self._sphere_mode and self._sphere_event(event):
+                return True
             if self._point_mode is not None:
                 if t == QEvent.Type.MouseButtonPress:
                     vtk_y = self._vtk_widget.height() - 1 - event.pos().y()
