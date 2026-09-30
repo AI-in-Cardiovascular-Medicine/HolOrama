@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.13.0] - 2026-09-30
+
+### Added
+- **Remesh** (CCTA Cut Geometry tab, next to **Reduce Mesh**): repairs and isotropically remeshes the cut geometry to a target edge length, the same step as Fusion's **Fix and Remesh**. Runs in the background with live progress; inlet/outlet are re-located on the result.
+- **Sphere Smooth** on the CCTA cut geometry, working like Fusion's: hover to preview the affected patch, click to smooth it, `Ctrl+wheel` to resize. Uses the **Smooth** lambda. Outlet point picking and the brush switch each other off.
+- **Undo** for cut-geometry smoothing (**Smooth** and **Sphere Smooth**), up to 20 steps, via the **Undo** button or `Ctrl+Z` while the Cut Geometry tab is shown (elsewhere `Ctrl+Z` still undoes mask edits). **Build Cut Geometry**, **Reduce Mesh** and **Remesh** clear the history and cannot be undone.
+
+### Changed
+- The **Metadata** window opens at full screen height and is freely resizable, with the table scrolling instead of being cut off at the window edge. The CCTA metadata window, previously capped at 600 px, behaves the same.
+
+### Fixed
+- A failed **Smooth** on the cut geometry (inlet/outlet could not be located afterwards) left the mesh half-modified; it now smooths a copy and keeps the original on failure.
+
 ## [0.12.0] - 2026-09-28
 
 ### Added
