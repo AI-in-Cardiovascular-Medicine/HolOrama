@@ -5,7 +5,7 @@ from typing import Callable, Optional
 import numpy as np
 import pandas as pd
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QMainWindow, QTableWidget, QTableWidgetItem, QWidget
+from PyQt6.QtWidgets import QHeaderView, QMainWindow, QStyle, QTableWidget, QTableWidgetItem, QWidget
 
 from domain.io_types import MetaDataCCTA, MetaDataIntravascular
 
@@ -129,13 +129,32 @@ class MetadataWindow(QMainWindow):
         super().__init__(main_window)
         self.table = main_window.metadata_table
         self.setWindowTitle('Metadata')
-        self._fit_to_table()
         self.setCentralWidget(self.table)
+        _fit_window_to_screen(self, self.table)
 
-    def _fit_to_table(self) -> None:
-        w = sum(self.table.columnWidth(i) for i in range(self.table.columnCount()))
-        h = sum(self.table.rowHeight(i) for i in range(self.table.rowCount()))
-        self.setFixedSize(w, h)
+
+def _fit_window_to_screen(window: QMainWindow, table: QTableWidget) -> None:
+    """Open the window at full available screen height, wide enough for the table; stays resizable."""
+    table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    h_header = table.horizontalHeader()
+    if h_header is not None:
+        h_header.setStretchLastSection(True)
+        h_header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+
+    style = window.style()
+    scrollbar_w = style.pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent) if style else 20
+    title_h = style.pixelMetric(QStyle.PixelMetric.PM_TitleBarHeight) if style else 30
+    content_w = sum(table.columnWidth(i) for i in range(table.columnCount())) + scrollbar_w + 2 * table.frameWidth()
+
+    screen = window.screen()
+    if screen is None:
+        window.resize(content_w, 600)
+        return
+    avail = screen.availableGeometry()
+    w = min(content_w, avail.width())
+    h = avail.height() - title_h
+    window.setGeometry(avail.left() + (avail.width() - w) // 2, avail.top() + title_h, w, h)
 
 
 _CCTA_DISPLAY_FIELDS: list[tuple[str, Callable[[MetaDataCCTA], Optional[str]]]] = [
@@ -188,10 +207,8 @@ class CctaMetadataWindow(QMainWindow):
         table.resizeColumnsToContents()
         table.resizeRowsToContents()
 
-        w = sum(table.columnWidth(i) for i in range(table.columnCount()))
-        h = min(600, sum(table.rowHeight(i) for i in range(table.rowCount())))
-        self.setFixedSize(w, h)
         self.setCentralWidget(table)
+        _fit_window_to_screen(self, table)
 
 
 # Descriptions consumed by MetaData — excluded from the raw "remaining" section
@@ -274,8 +291,6 @@ def populate_metadata_table(
         v_header.hide()
     table.resizeColumnsToContents()
     table.resizeRowsToContents()
-    table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
 
 # ─── DICOM value formatters ──────────────────────────────────────────────────
