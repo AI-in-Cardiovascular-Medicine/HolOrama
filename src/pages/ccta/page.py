@@ -13,6 +13,7 @@ import numpy as np
 import trimesh
 from loguru import logger
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QCursor
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
@@ -41,7 +42,7 @@ from pages.ccta.left_half.left_half import LeftHalf
 from pages.ccta.right_half.right_half import RightHalf
 from pages.ccta.popup_windows.settings_dialog import resolve_label_colors
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
-from tools.sphere_smooth import local_smooth, local_smooth_region
+from tools.sphere_smooth import local_remesh, local_smooth, local_smooth_region
 from version import version_file_str
 
 if TYPE_CHECKING:
@@ -828,7 +829,7 @@ class CctaPage(QWidget):
         *,
         smoothing: bool = False,
     ) -> None:
-        """Shared skeleton for Smooth/Sphere Smooth/Reduce Mesh: each replaces
+        """Shared skeleton for Smooth/Sphere Smooth/Sphere Remesh/Reduce Mesh: each replaces
         self.data.cut_mesh with the result of a single trimesh -> trimesh operation
         (which must not mutate its input), relocates the inlet/outlet centroids on the
         result, and pushes it to the viewer. `op_name` labels the error if `op` raises;
@@ -922,7 +923,7 @@ class CctaPage(QWidget):
         ErrorMessage(self, f'Remesh failed: {message}')
         self.status_bar.showMessage('Remesh failed — see log')
 
-    # ── Sphere brush local smoothing (+ undo) ────────────────────────────────
+    # ── Sphere brush local smoothing / remeshing (+ undo) ───────────────────
 
     _SMOOTHING_UNDO_LIMIT = 20  # snapshots kept — each holds a full (N, 3) vertex array
 
@@ -955,14 +956,15 @@ class CctaPage(QWidget):
         self._replace_cut_mesh(restored, inlet, outlet, keep_undo=True)
         self.status_bar.showMessage(f'Undid smoothing step ({len(self.data.cut_mesh_undo)} left).')
 
-    def _on_sphere_mode_toggled(self, enabled: bool) -> None:
-        if enabled and self.data.cut_mesh is None:
+    def _on_sphere_mode_toggled(self, mode: str) -> None:
+        if mode and self.data.cut_mesh is None:
             ErrorMessage(self, 'Build the cut geometry first.')
-            enabled = False
-        if enabled:
+            mode = ''
+        if mode:
             self._stl_panel.reset_outlet_mode()  # outlet picking and the brush both take left-clicks
-            self.status_bar.showMessage('Sphere smooth: hover to preview, click to smooth, Ctrl+wheel for radius.')
-        self._cut_viewer.set_sphere_mode(enabled)
+            action = 'smooth' if mode == 'smooth' else 'remesh'
+            self.status_bar.showMessage(f'Sphere {action}: hover to preview, click to {action}, Ctrl+wheel for radius.')
+        self._cut_viewer.set_sphere_mode(mode)
 
     def _on_sphere_hovered(self, x: float, y: float, z: float) -> None:
         mesh = self.data.cut_mesh
@@ -974,6 +976,9 @@ class CctaPage(QWidget):
     def _on_sphere_clicked(self, x: float, y: float, z: float) -> None:
         viewer = self._cut_viewer
         radius = viewer.sphere_radius.value()
+        if viewer.sphere_mode == 'remesh':
+            self._sphere_remesh(x, y, z, radius)
+            return
         iterations = viewer.sphere_iterations.value()
         lamb = viewer.smooth_lambda()
         self._apply_mesh_op(
@@ -982,6 +987,22 @@ class CctaPage(QWidget):
             lambda _mesh: 'Locally smoothed.',
             smoothing=True,
         )
+
+    def _sphere_remesh(self, x: float, y: float, z: float, radius: float) -> None:
+        """Not undoable (new topology) — clears the smoothing undo history like Remesh."""
+        if self.data.cut_mesh is None:
+            return
+        edge, iterations = self._cut_viewer.remesh_params()
+        before = len(self.data.cut_mesh.faces)
+        QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))  # whole mesh goes through pymeshlab
+        try:
+            self._apply_mesh_op(
+                lambda mesh: local_remesh(mesh, (x, y, z), radius, edge, iterations=iterations),
+                'Local remeshing',
+                lambda mesh: f'Locally remeshed: {before} -> {len(mesh.faces)} faces.',
+            )
+        finally:
+            QApplication.restoreOverrideCursor()
 
     def _on_calculate_centerlines(self) -> None:
         if self._centerlines_worker is not None and self._centerlines_worker.isRunning():

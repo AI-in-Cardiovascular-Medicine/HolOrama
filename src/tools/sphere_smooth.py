@@ -1,4 +1,4 @@
-"""Sphere-brush local smoothing of a triangle mesh, for VTK 3D views.
+"""Sphere-brush local smoothing / remeshing of a triangle mesh, for VTK 3D views.
 
 Used by Fusion's final-mesh brush (pages/fusion/left_half/display_results.py +
 FusionPage._on_sphere_*), and meant to be reusable wherever a surface mesh needs
@@ -9,9 +9,11 @@ while the Qt mouse-event wiring (hover, click, Ctrl+wheel) and what a click does
 """
 
 import numpy as np
+import pymeshlab
 import scipy.sparse
 import scipy.sparse.csgraph
 import trimesh
+from scipy.spatial import cKDTree
 from vtkmodules.util import numpy_support
 from vtkmodules.vtkCommonCore import vtkPoints
 from vtkmodules.vtkCommonDataModel import vtkCellArray, vtkPolyData
@@ -89,6 +91,70 @@ def local_smooth(
             vertices[region] += step * w * (laplacian @ vertices - vertices[region])
     out.vertices = vertices
     return out
+
+
+def local_remesh(
+    mesh: trimesh.Trimesh, center, radius_mm: float, target_edge_length_mm: float, *, iterations: int = 5
+) -> trimesh.Trimesh:
+    """Isotropically remesh only the sphere-brush region around `center` (see
+    local_smooth_region) to roughly `target_edge_length_mm` edges: vertices bunched
+    closer than that (the dense clusters behind spikes and pinched holes) are collapsed
+    and the survivors spread evenly, too-long edges are split. Returns a new mesh with
+    new topology — `mesh` itself is left untouched.
+
+    Only faces with all three vertices inside the region are rebuilt (pymeshlab's
+    selected-only remesh); the patch rim stays fixed, so the patch joins the untouched
+    surface seamlessly and a closed mesh stays closed. Unlike local_smooth there's no
+    falloff — the rim itself is the transition.
+
+    pymeshlab only ever sees the patch plus the one ring of faces around it (which pins
+    the rim), not the whole mesh — its per-call cost scales with the mesh it's handed,
+    so remeshing a 100k-face surface for a 100-face patch took ~3 s instead of ~0.05 s.
+    """
+    region, _ = local_smooth_region(mesh, center, radius_mm)
+    in_region = np.zeros(len(mesh.vertices), dtype=bool)
+    in_region[region] = True
+    faces = np.asarray(mesh.faces)
+    selected = in_region[faces].all(axis=1)
+    if not selected.any() or target_edge_length_mm <= 0.0 or iterations <= 0:
+        return mesh.copy()
+
+    # Sub-mesh: the selected patch + every face sharing a vertex with it (the pinning ring).
+    sub_face_idx = np.flatnonzero(np.isin(faces, faces[selected]).any(axis=1))
+    sub_vertex_idx, sub_faces = np.unique(faces[sub_face_idx], return_inverse=True)
+    sub_vertices = np.asarray(mesh.vertices, dtype=np.float64)[sub_vertex_idx]
+
+    ms = pymeshlab.MeshSet()
+    ms.add_mesh(
+        pymeshlab.Mesh(
+            vertex_matrix=sub_vertices,
+            face_matrix=sub_faces.reshape(-1, 3).astype(np.int32),
+            f_scalar_array=selected[sub_face_idx].astype(np.float64),  # face quality carries the selection in
+        )
+    )
+    ms.compute_selection_by_condition_per_face(condselect='fq > 0')
+    ms.meshing_isotropic_explicit_remeshing(
+        iterations=iterations, selectedonly=True, targetlen=pymeshlab.PureValue(target_edge_length_mm)
+    )
+    out = ms.current_mesh()
+    out_vertices = out.vertex_matrix()
+    patch_faces = out.face_matrix()[out.face_selection_array()]  # the rebuilt patch; the ring comes back as-is
+
+    # Stitch back: output vertices sitting exactly on an input vertex (the fixed rim, plus
+    # any interior vertex that didn't move) reuse its index; the rest are appended.
+    dist, nearest = cKDTree(sub_vertices).query(out_vertices)
+    reused = dist < 1e-9
+    index_map = np.empty(len(out_vertices), dtype=np.int64)
+    index_map[reused] = sub_vertex_idx[nearest[reused]]
+    index_map[~reused] = len(mesh.vertices) + np.arange(np.count_nonzero(~reused))
+
+    result = trimesh.Trimesh(
+        vertices=np.vstack([mesh.vertices, out_vertices[~reused]]),
+        faces=np.vstack([faces[~selected], index_map[patch_faces]]),
+        process=False,
+    )
+    result.remove_unreferenced_vertices()  # interior vertices the remesh collapsed away
+    return result
 
 
 # ----------------------------------------------------------------------

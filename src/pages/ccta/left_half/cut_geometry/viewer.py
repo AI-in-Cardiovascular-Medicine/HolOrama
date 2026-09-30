@@ -65,9 +65,10 @@ class CutGeometryViewer3D(QWidget):
     reduce_mesh_requested = pyqtSignal(float)  # target reduction fraction (0-1)
     remesh_requested = pyqtSignal(float, int)  # target edge length (mm), iterations
     calculate_centerlines_requested = pyqtSignal()
-    # Sphere brush (local smoothing, see set_sphere_mode / tools.sphere_smooth): mode
-    # toggled from the button bar, surface point under the cursor / clicked, and undo.
-    sphere_mode_toggled = pyqtSignal(bool)
+    # Sphere brush (local smoothing/remeshing, see set_sphere_mode / tools.sphere_smooth):
+    # mode picked from the button bar ('smooth' | 'remesh' | '' = off), surface point
+    # under the cursor / clicked, and undo.
+    sphere_mode_toggled = pyqtSignal(str)
     sphere_hovered = pyqtSignal(float, float, float)
     sphere_clicked = pyqtSignal(float, float, float)
     undo_requested = pyqtSignal()
@@ -125,7 +126,17 @@ class CutGeometryViewer3D(QWidget):
             'Hover over the cut geometry to preview, click to smooth the highlighted patch.\n'
             'Ctrl+wheel changes the radius. Uses the Smooth lambda.'
         )
-        self.sphere_btn.toggled.connect(self.sphere_mode_toggled.emit)
+        self.sphere_btn.toggled.connect(lambda checked: self._on_sphere_btn_toggled('smooth', checked))
+
+        self.sphere_remesh_btn = QPushButton('Sphere Remesh')
+        self.sphere_remesh_btn.setCheckable(True)
+        self.sphere_remesh_btn.setToolTip(
+            'Hover to preview, click to remesh the highlighted patch evenly at the Remesh edge length\n'
+            '(thins out dense point clusters behind spikes and holes). Ctrl+wheel changes the radius.\n'
+            'Cannot be undone, and clears the smoothing undo history.'
+        )
+        self.sphere_remesh_btn.toggled.connect(lambda checked: self._on_sphere_btn_toggled('remesh', checked))
+        self._sphere_btns = {'smooth': self.sphere_btn, 'remesh': self.sphere_remesh_btn}
 
         self.sphere_radius = QDoubleSpinBox()
         self.sphere_radius.setRange(0.2, 20.0)
@@ -138,7 +149,7 @@ class CutGeometryViewer3D(QWidget):
         self.sphere_iterations = QSpinBox()
         self.sphere_iterations.setRange(1, 100)
         self.sphere_iterations.setValue(10)
-        self.sphere_iterations.setToolTip('Taubin iterations per click')
+        self.sphere_iterations.setToolTip('Sphere Smooth: Taubin iterations per click')
 
         self._undo_btn = QPushButton('Undo')
         self._undo_btn.setToolTip('Undo the last smoothing step (Ctrl+Z while this tab is shown)')
@@ -178,6 +189,7 @@ class CutGeometryViewer3D(QWidget):
         sphere_bar = QHBoxLayout()
         sphere_bar.setContentsMargins(4, 0, 4, 2)
         sphere_bar.addWidget(self.sphere_btn)
+        sphere_bar.addWidget(self.sphere_remesh_btn)
         sphere_bar.addWidget(QLabel('Radius:'))
         sphere_bar.addWidget(self.sphere_radius)
         sphere_bar.addWidget(QLabel('Iterations:'))
@@ -223,7 +235,7 @@ class CutGeometryViewer3D(QWidget):
         # Sphere brush: hover preview (sphere + the vertices that would move, which the
         # caller computes and hands back via set_sphere_highlight), debounced so a fast
         # mouse doesn't queue up a region search per pixel.
-        self._sphere_mode = False
+        self._sphere_mode = ''  # 'smooth' | 'remesh' | '' (off)
         self._sphere_brush = SphereBrush(self._ren)
         self._sphere_brush.set_radius(self.sphere_radius.value())
         self._sphere_hover_pos = QPoint()
@@ -435,7 +447,7 @@ class CutGeometryViewer3D(QWidget):
         """
         self._point_mode = category or None
         if self._point_mode is not None:
-            self.set_sphere_mode(False)  # both take over left-clicks — only one at a time
+            self.set_sphere_mode('')  # both take over left-clicks — only one at a time
 
     _POINT_COLORS = {'rca': RCA_POINT_COLOR, 'lca': LCA_POINT_COLOR}
 
@@ -504,21 +516,30 @@ class CutGeometryViewer3D(QWidget):
         self._points_actors[category] = actor
         self._vtk_widget.GetRenderWindow().Render()
 
-    # ── sphere brush (local smoothing) ──────────────────────────────────────
+    # ── sphere brush (local smoothing / remeshing) ──────────────────────────
 
-    def set_sphere_mode(self, enabled: bool) -> None:
-        """Turn the sphere brush on (hover to preview, click to emit sphere_clicked) or
-        off. Camera rotate/zoom keep working while it's on. The page calls this once it
-        has accepted/rejected the toggle; turning off also unchecks the button (silently)."""
-        self._sphere_mode = enabled
-        if enabled:
+    @property
+    def sphere_mode(self) -> str:
+        return self._sphere_mode
+
+    def set_sphere_mode(self, mode: str) -> None:
+        """Turn the sphere brush on as 'smooth' or 'remesh' (hover to preview, click to
+        emit sphere_clicked) or off (''). Camera rotate/zoom keep working while it's on.
+        The page calls this once it has accepted/rejected a toggle; the buttons are
+        synced here silently, so only the chosen mode's button stays checked."""
+        self._sphere_mode = mode
+        if mode:
             self._point_mode = None
-            return
-        self.sphere_btn.blockSignals(True)
-        self.sphere_btn.setChecked(False)
-        self.sphere_btn.blockSignals(False)
-        self._sphere_hover_timer.stop()
-        self.hide_sphere_preview()
+        for key, btn in self._sphere_btns.items():
+            btn.blockSignals(True)
+            btn.setChecked(key == mode)
+            btn.blockSignals(False)
+        if not mode:
+            self._sphere_hover_timer.stop()
+            self.hide_sphere_preview()
+
+    def _on_sphere_btn_toggled(self, mode: str, checked: bool) -> None:
+        self.sphere_mode_toggled.emit(mode if checked else '')
 
     def set_sphere_highlight(self, points: np.ndarray) -> None:
         """Show `points` (N, 3) as the vertices the brush would move, and render."""
@@ -534,6 +555,10 @@ class CutGeometryViewer3D(QWidget):
         changed under a stationary cursor)."""
         if self._sphere_mode:
             self._sphere_hover_timer.start()
+
+    def remesh_params(self) -> tuple[float, int]:
+        """(target edge length mm, iterations) from the Remesh controls — shared by Remesh and Sphere Remesh."""
+        return self._remesh_edge_spin.value(), self._remesh_iter_spin.value()
 
     def smooth_lambda(self) -> float:
         """Taubin lambda from the Smooth spin box — shared by whole-mesh Smooth and the sphere brush."""
