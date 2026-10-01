@@ -151,21 +151,6 @@ class CctaViewer3D(QWidget):
         if changed:
             self._vtk_widget.GetRenderWindow().Render()
 
-    def set_base_label_colors(self, colors: tuple[tuple[int, int, int], ...]) -> None:
-        """Update the default (non-anatomic-preset) label palette — e.g. from Settings.
-        Applies immediately unless a custom preset (set_label_colors) is currently active."""
-        self._label_colors = tuple(colors) if colors else LABEL_COLORS
-        if self._custom_colors is not None:
-            return
-        changed = False
-        for i, label in enumerate(self._labels):
-            if label in self._actors:
-                r, g, b = self._label_colors[i % len(self._label_colors)]
-                self._actors[label].GetProperty().SetColor(r / 255.0, g / 255.0, b / 255.0)
-                changed = True
-        if changed:
-            self._vtk_widget.GetRenderWindow().Render()
-
     def set_label_visible(self, label: int, visible: bool) -> None:
         if visible:
             self._hidden_labels.discard(label)

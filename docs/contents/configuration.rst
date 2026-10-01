@@ -36,7 +36,8 @@ analysis outputs are unaffected and are still written next to the file you opene
    * - Key
      - Meaning
    * - ``contour_preset``
-     - Name of the contour preset to annotate with (see `Contour presets`_ below).
+     - Name of the contour preset to annotate with (see `Contour presets`_ below). The
+       ``ccta`` section has its own: the label preset naming and colouring CCTA masks.
    * - ``image_size``
      - Initial side length in pixels of the square box showing the IVUS/OCT image.
        Default 800. Window size adjustable with :kbd:`LMB` drag.
@@ -221,3 +222,6 @@ Each preset is one JSON file, so it can be exported and shared. User presets are
 ``%LOCALAPPDATA%\HolOrama\presets\intravascular`` (Windows installer) or
 ``presets/intravascular`` in the repository (from source). Every saved contour file also
 records the contour types it was drawn with.
+
+The CCTA module has label presets of its own, in ``presets\ccta`` next to them, edited in
+**Settings → CCTA Contour Settings…**: each row is a mask value, its colour and its name.

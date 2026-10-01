@@ -115,14 +115,6 @@ class BrushPanel(QWidget):
         if self._enable_cb.isChecked():
             self._emit()
 
-    def set_base_label_colors(self, colors: tuple[tuple[int, int, int], ...]) -> None:
-        """Update the default (non-anatomic-preset) label palette — e.g. from Settings."""
-        self._label_colors = tuple(colors) if colors else LABEL_COLORS
-        if self._custom_colors is None:
-            self._update_swatch()
-            if self._enable_cb.isChecked():
-                self._emit()
-
     def update_label_name(self, label: int, name: str) -> None:
         """Update the combo box text for a label when its name changes in the mask panel."""
         for i in range(self._combo.count()):

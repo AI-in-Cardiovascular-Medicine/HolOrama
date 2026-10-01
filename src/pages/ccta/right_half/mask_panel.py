@@ -4,7 +4,6 @@ from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QPushButton,
     QScrollArea,
     QSlider,
@@ -12,17 +11,14 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from domain.ccta_display_types import (
-    DEFAULT_MASK_ALPHA,
-    LABEL_COLORS,
-    LABEL_COLORS_ANATOMIC,
-    LABEL_NAMES_ANATOMIC,
-)
+from domain.ccta_display_types import DEFAULT_MASK_ALPHA, LABEL_COLORS
 
 
 class _LabelRow(QWidget):
+    """One label of the mask: whether it is shown, and the colour and name its preset gives
+    it. The name is renamed in CCTA Contour Settings, not here."""
+
     visibility_changed = pyqtSignal(bool)
-    name_changed = pyqtSignal(str)
 
     def __init__(self, label: int, color: tuple[int, int, int], parent=None) -> None:
         super().__init__(parent)
@@ -43,9 +39,7 @@ class _LabelRow(QWidget):
         r, g, b = color
         swatch.setStyleSheet(f'background-color: rgb({r},{g},{b}); border: 1px solid #666; border-radius: 2px;')
 
-        self._name_edit = QLineEdit(f'Label {label}')
-        self._name_edit.setPlaceholderText(f'Label {label}')
-        self._name_edit.textChanged.connect(self._on_name_changed)
+        self._name_label = QLabel(f'Label {label}')
 
         num_lbl = QLabel(str(label))
         num_lbl.setFixedWidth(22)
@@ -54,12 +48,12 @@ class _LabelRow(QWidget):
 
         layout.addWidget(self._checkbox)
         layout.addWidget(swatch)
-        layout.addWidget(self._name_edit, 1)
+        layout.addWidget(self._name_label, 1)
         layout.addWidget(num_lbl)
 
     @property
     def name(self) -> str:
-        return self._name_edit.text() or f'Label {self.label_value}'
+        return self._name_label.text()
 
     @property
     def visible(self) -> bool:
@@ -70,19 +64,16 @@ class _LabelRow(QWidget):
         self._swatch.setStyleSheet(f'background-color: rgb({r},{g},{b}); border: 1px solid #666; border-radius: 2px;')
 
     def set_label_name(self, name: str) -> None:
-        self._name_edit.setText(name)
-
-    def _on_name_changed(self, text: str) -> None:
-        self.name_changed.emit(text or f'Label {self.label_value}')
+        self._name_label.setText(name)
 
 
 class MaskPanel(QWidget):
-    """Side panel for controlling mask overlay: opacity and per-label visibility + names."""
+    """Side panel for controlling mask overlay: opacity and per-label visibility, with each
+    label's name and colour as the active CCTA preset gives them (see set_label_appearance)."""
 
     alpha_changed = pyqtSignal(float)  # 0.0–1.0
     label_visibility_changed = pyqtSignal(int, bool)  # label_value, visible
-    label_name_changed = pyqtSignal(int, str)  # label_value, name
-    label_colors_changed = pyqtSignal(list)  # list[tuple[int,int,int]] ordered by label position
+    switch_default_requested = pyqtSignal()
 
     def __init__(
         self,
@@ -123,25 +114,21 @@ class MaskPanel(QWidget):
         self._all_cb.setToolTip('Show / hide all labels')
         self._all_cb.toggled.connect(self._on_toggle_all)
         header_row.addStretch()
+        self._btn_switch = QPushButton('Switch default')
+        self._btn_switch.setToolTip(
+            'Switch between the two built-in presets, Colorful and Publication. Names and colours '
+            'are edited in Settings > CCTA Contour Settings'
+        )
+        self._btn_switch.setFixedHeight(22)
+        self._btn_switch.clicked.connect(self.switch_default_requested)
+        header_row.addWidget(self._btn_switch)
         header_row.addWidget(self._all_cb)
         root.addLayout(header_row)
 
-        preset_row = QHBoxLayout()
-        preset_row.addWidget(QLabel('Cardiac CCTA:'))
-        preset_row.addStretch()
-        self._btn_names = QPushButton('Names')
-        self._btn_names.setCheckable(True)
-        self._btn_names.setToolTip('Toggle cardiac CCTA anatomic label names')
-        self._btn_names.setFixedHeight(22)
-        self._btn_names.toggled.connect(self._on_names_toggled)
-        self._btn_colors = QPushButton('Colors')
-        self._btn_colors.setCheckable(True)
-        self._btn_colors.setToolTip('Toggle cardiac CCTA anatomic colors')
-        self._btn_colors.setFixedHeight(22)
-        self._btn_colors.toggled.connect(self._on_colors_toggled)
-        preset_row.addWidget(self._btn_names)
-        preset_row.addWidget(self._btn_colors)
-        root.addLayout(preset_row)
+        self._preset_lbl = QLabel()  # the preset the labels are named and coloured after
+        self._preset_lbl.setStyleSheet('color: #888; font-size: 10px;')
+        self._preset_lbl.setWordWrap(True)
+        root.addWidget(self._preset_lbl)
 
         self._rows_widget = QWidget()
         self._rows_layout = QVBoxLayout(self._rows_widget)
@@ -158,22 +145,25 @@ class MaskPanel(QWidget):
         self._rows: dict[int, _LabelRow] = {}
 
     def set_labels(self, labels: list[int]) -> None:
-        """Populate the label list. Colors are assigned by position in the base palette
-        (see set_base_label_colors)."""
+        """Populate the label list, each row in its palette colour and as 'Label <value>'
+        until set_label_appearance names and colours it."""
         self._clear_rows()
         for i, label in enumerate(labels):
             color = self._label_colors[i % len(self._label_colors)]
             row = _LabelRow(label, color)
             row.visibility_changed.connect(lambda visible, lbl=label: self.label_visibility_changed.emit(lbl, visible))
-            row.name_changed.connect(lambda name, lbl=label: self.label_name_changed.emit(lbl, name))
             # Insert before the trailing stretch
             self._rows_layout.insertWidget(self._rows_layout.count() - 1, row)
             self._rows[label] = row
         self._all_cb.setChecked(True)
-        for btn in (self._btn_names, self._btn_colors):
-            btn.blockSignals(True)
-            btn.setChecked(False)
-            btn.blockSignals(False)
+
+    def set_label_appearance(self, preset_name: str, names: dict[int, str], colors: dict[int, tuple]) -> None:
+        """Show each label with the name and colour the active preset (`preset_name`) gives it."""
+        self._preset_lbl.setText(preset_name)
+        for label, row in self._rows.items():
+            row.set_label_name(names.get(label, f'Label {label}'))
+            if label in colors:
+                row.set_color(colors[label])
 
     def clear_labels(self) -> None:
         self._clear_rows()
@@ -181,16 +171,6 @@ class MaskPanel(QWidget):
     def label_names(self) -> dict[int, str]:
         """Return the current user-defined name for every label."""
         return {label: row.name for label, row in self._rows.items()}
-
-    def set_label_names(self, names: dict[int, str]) -> None:
-        """Restore previously-saved custom names (used when auto-loading a saved
-        cut state). No-op per label if it's not present anymore. Goes through
-        _LabelRow.set_label_name, which re-emits name_changed same as if the user
-        had typed it — so brush_panel/stl_panel stay in sync automatically."""
-        for label, name in names.items():
-            row = self._rows.get(label)
-            if row is not None:
-                row.set_label_name(name)
 
     def set_brush_panel(self, panel: 'QWidget') -> None:
         """Attach a widget below the label scroll area (called once at setup)."""
@@ -217,38 +197,6 @@ class MaskPanel(QWidget):
             row._checkbox.setChecked(checked)
             row._checkbox.blockSignals(False)
             self.label_visibility_changed.emit(row.label_value, checked)
-
-    def _on_names_toggled(self, checked: bool) -> None:
-        for i, (label, row) in enumerate(self._rows.items()):
-            if checked and i < len(LABEL_NAMES_ANATOMIC):
-                row.set_label_name(LABEL_NAMES_ANATOMIC[i])
-            else:
-                row.set_label_name(f'Label {label}')
-
-    def _on_colors_toggled(self, checked: bool) -> None:
-        colors: list[tuple[int, int, int]] = []
-        for i, (label, row) in enumerate(self._rows.items()):
-            if checked and i < len(LABEL_COLORS_ANATOMIC):
-                color = LABEL_COLORS_ANATOMIC[i]
-            else:
-                color = self._label_colors[i % len(self._label_colors)]
-            row.set_color(color)
-            colors.append(color)
-        self.label_colors_changed.emit(colors)
-
-    def set_base_label_colors(self, colors: tuple[tuple[int, int, int], ...]) -> None:
-        """Update the base (non-anatomic-preset) palette — e.g. from Settings — and
-        immediately recolor any rows currently showing it."""
-        self._label_colors = tuple(colors) if colors else LABEL_COLORS
-        if self._btn_colors.isChecked():
-            return  # anatomic preset is active; base palette applies once it's toggled off
-        row_colors: list[tuple[int, int, int]] = []
-        for i, (_label, row) in enumerate(self._rows.items()):
-            color = self._label_colors[i % len(self._label_colors)]
-            row.set_color(color)
-            row_colors.append(color)
-        if row_colors:
-            self.label_colors_changed.emit(row_colors)
 
     def _clear_rows(self) -> None:
         for row in self._rows.values():

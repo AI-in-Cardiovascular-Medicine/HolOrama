@@ -17,8 +17,6 @@ class RightHalf:
 
         # Wire up the panels to work together
         self.mask_panel.set_brush_panel(self.brush_panel)
-        self.mask_panel.label_name_changed.connect(self.brush_panel.update_label_name)
-        self.mask_panel.label_name_changed.connect(self.stl_extraction_panel.update_label_name)
 
         # Mask labels (top, stretches) + STL extraction (bottom, fixed)
         layout = QVBoxLayout(self.widget)

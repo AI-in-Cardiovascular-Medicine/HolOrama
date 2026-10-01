@@ -138,14 +138,6 @@ class CctaDisplay(QGraphicsView):
             self._rebuild_lut()
             self._render()
 
-    def set_base_label_colors(self, colors: tuple[tuple[int, int, int], ...]) -> None:
-        """Update the default (non-anatomic-preset) label palette — e.g. from Settings.
-        Applies immediately unless a custom preset (set_label_colors) is currently active."""
-        self._label_colors = tuple(colors)
-        if self._custom_colors is None and self._mask is not None:
-            self._rebuild_lut()
-            self._render()
-
     def set_sensitivity(self, windowing_sensitivity: float, zoom_sensitivity: float) -> None:
         self.windowing_sensitivity = windowing_sensitivity
         self.zoom_sensitivity = zoom_sensitivity

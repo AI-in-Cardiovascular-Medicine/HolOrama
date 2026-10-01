@@ -7,6 +7,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 - **Settings → Intravascular Contour Settings**: a table of the contour types (mask label, colour, name, tools, the type each lies inside, layer), with **+ Add contour type** and per-row move/remove. Lumen and EEM stay the first two rows.
+- **Settings → CCTA Contour Settings**: CCTA label presets naming and colouring each mask value, with the same preset bar. Built in: **Default 1 - Colorful** and **Default 2 - Publication**, both with the anatomic names.
 - **Contour presets**: named sets of contour types (e.g. "IVUS CAD", "OCT CAD") with New, Duplicate, Rename, Delete, Import and Export. The built-in **Default** is read-only. The chosen preset is remembered in `config.yaml` (`contour_preset`).
 
 ### Changed
@@ -16,6 +17,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Reports** have an area and angle column for every contour type besides lumen and EEM (now including `branch_area`/`branch_angle`), an angle column for every angle type (now including `wire_angle`), and a contour CSV per type (now including lipid and macrophage).
 - **Contour files** save the contour types they were drawn with, and keep contours of types the active preset lacks.
 - Contour colours moved from `config.yaml` and **Display Settings** into the preset.
+- **CCTA labels** are named and coloured by their mask value after the active label preset, instead of by their position in the mask: label 7 is the Aorta whichever other labels the mask holds. The **Names** / **Colors** buttons are replaced by **Switch default** (Colorful ↔ Publication); names are no longer edited in the label list, and the names saved with a cut state are no longer restored. The label colours left **CCTA Settings** and `config.yaml`.
 
 ### Fixed
 - An EEM read back from a mask (NIfTI import, brush) now includes the plaques painted over it.

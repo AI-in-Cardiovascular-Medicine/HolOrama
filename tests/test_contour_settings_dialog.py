@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import QComboBox, QLineEdit, QMessageBox, QPushButton, QSpi
 from domain.all_types import ContourType
 from domain.contour_presets import DEFAULT_PRESET_FILE, ToolSet, active_preset, load_preset, set_active_preset
 from input_output import preset_library
-from pages.intravascular.popup_windows import contour_settings_dialog as dialog_module
+from gui import preset_dialog as dialog_module
 from pages.intravascular.popup_windows.contour_settings_dialog import (
     _COL_INSIDE,
     _COL_LABEL,
@@ -24,7 +24,7 @@ from pages.intravascular.popup_windows.contour_settings_dialog import (
 
 @pytest.fixture
 def user_dir(tmp_path, monkeypatch):
-    monkeypatch.setattr(preset_library, 'user_presets_dir', lambda: tmp_path)
+    monkeypatch.setattr(preset_library, 'user_presets_dir', lambda kind=None: tmp_path)
     return tmp_path
 
 

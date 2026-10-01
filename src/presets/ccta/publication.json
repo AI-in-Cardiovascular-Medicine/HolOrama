@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "name": "Default 2 - Publication",
+  "labels": [
+    {"label": 1, "name": "Coronaries", "color": "#ff3c3c"},
+    {"label": 2, "name": "LVM", "color": "#7b241c"},
+    {"label": 3, "name": "LA", "color": "#f08a8a"},
+    {"label": 4, "name": "LV", "color": "#e74c3c"},
+    {"label": 5, "name": "RA", "color": "#8399e2"},
+    {"label": 6, "name": "RV", "color": "#4453db"},
+    {"label": 7, "name": "Aorta", "color": "#a8201a"},
+    {"label": 8, "name": "Pulmonary Arteries", "color": "#1b4f72"},
+    {"label": 9, "name": "Pericardial Fat", "color": "#fae5c3"},
+    {"label": 10, "name": "Epicardial Fat", "color": "#f1c40f"},
+    {"label": 11, "name": "Pulmonary Vein", "color": "#f4b5b5"},
+    {"label": 12, "name": "SVC", "color": "#48c9b0"},
+    {"label": 13, "name": "IVC", "color": "#0e6655"},
+    {"label": 14, "name": "LAA", "color": "#c8604a"}
+  ]
+}
