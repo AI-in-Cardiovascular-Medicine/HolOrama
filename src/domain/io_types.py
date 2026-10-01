@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import List, Optional, Sequence, Tuple
+from dataclasses import asdict, dataclass, field, fields
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -32,7 +32,7 @@ class Contour:
 def sector_points(contour: Contour, index: int) -> List[Tuple[float, float]]:
     """The (x, y) angle points of sector `index`, or [] if that sector does not exist.
 
-    See ANGLE_TYPES in domain.all_types for what a sector is and tools.angle for how its
+    See ContourPreset.angle_types in domain.contour_presets for what a sector is and tools.angle for how its
     points describe it.
     """
     if index < 0 or index >= len(contour.contours):
@@ -86,32 +86,89 @@ class FrameData:
     unanalyzable: bool = False
     # Mutually exclusive with `quality`: a frame is unlabeled until it gets a rating.
     unlabeled: bool = True
-    lumen: Contour = field(default_factory=Contour)
-    eem: Contour = field(default_factory=Contour)
-    calcium: Contour = field(default_factory=Contour)
-    branch: Contour = field(default_factory=Contour)
-    lipid: Contour = field(default_factory=Contour)
-    macrophage: Contour = field(default_factory=Contour)
+    # Every contour on the frame, by contour type id (see domain.contour_presets). Read and
+    # write them through contour(), which hands out an empty one for a type not drawn yet.
+    # Kept for any id rather than only the active preset's, so a file annotated with other
+    # types loses nothing on its way through.
+    #
+    # Angular sectors (a preset's angle types) are stored like any other multi-instance
+    # contour: one entry in Contour.contours per sector, holding that sector's 2-3 angle
+    # points as ([x, ...], [y, ...]) — the radial lines bounding it, plus the interior
+    # marker that says which of the two arcs between them is meant (see tools.angle). A
+    # frame can carry several of each. Read/write via iter_sectors / sector_points /
+    # set_sector_points.
+    contours: Dict[str, Contour] = field(default_factory=dict)
     measurement_1: Optional[Measure] = None
     measurement_2: Optional[Measure] = None
     reference: Optional[Tuple[float, float]] = None
-    # Angular sectors (ANGLE_TYPES) are stored like any other multi-instance contour
-    # (calcium, lipid, ...): one entry in Contour.contours per sector, holding that
-    # sector's 2-3 angle points as ([x, ...], [y, ...]) — the radial lines bounding it,
-    # plus the interior marker that says which of the two arcs between them is meant
-    # (see tools.angle). A frame can carry several of each. Read/write via
-    # iter_sectors / sector_points / set_sector_points.
-    wire: Contour = field(default_factory=Contour)  # guide-wire shadow
-    blood: Contour = field(default_factory=Contour)  # blood artefact sector
     centroid: Optional[Tuple[float, float]] = None
     closest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
     farthest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
 
+    def contour(self, contour_type: ContourType | str) -> Contour:
+        """The frame's contour of `contour_type` (a ContourType or its id), created empty
+        on first use so that it can be written to like any other."""
+        key = contour_type if isinstance(contour_type, str) else contour_type.value
+        if key in NON_CONTOUR_KEYS:
+            raise KeyError(f'{key} is not a contour type')
+        return self.contours.setdefault(key, Contour())
 
-# Everything the user can draw on one image: every contour type (which includes both
-# measurements, the reference point and the angular sectors) plus the values derived from
-# the lumen. Not the phase or the OCT label — those describe the frame, not the drawing.
-FRAME_ANNOTATION_FIELDS = tuple(contour_type.value for contour_type in ContourType) + (
+    @property
+    def lumen(self) -> Contour:
+        return self.contour(ContourType.LUMEN)
+
+    @lumen.setter
+    def lumen(self, contour: Contour) -> None:
+        self.contours[ContourType.LUMEN.value] = contour
+
+    @property
+    def eem(self) -> Contour:
+        return self.contour(ContourType.EEM)
+
+    @eem.setter
+    def eem(self, contour: Contour) -> None:
+        self.contours[ContourType.EEM.value] = contour
+
+
+# The annotations that are drawn but are not contours: the measurements and the reference
+# point, which sit outside the contour presets (see ContourType).
+NON_CONTOUR_KEYS = frozenset(
+    contour_type.value for contour_type in (ContourType.MEASUREMENT_1, ContourType.MEASUREMENT_2, ContourType.REFERENCE)
+)
+
+# Names a contour type id cannot take. A frame is saved with each contour as a key of its
+# own next to FrameData's other fields (see frame_to_dict), so it may not shadow one of
+# them; 'wall' is the vessel wall's key among a frame's measured regions (see
+# imgs_masks.frame_region_metrics).
+RESERVED_CONTOUR_IDS = frozenset(f.name for f in fields(FrameData)) | {'wall'}
+
+
+def is_contour_key(key: str) -> bool:
+    """Whether `key` names a contour type rather than a measurement or the reference point."""
+    return key not in NON_CONTOUR_KEYS
+
+
+def frame_to_dict(frame_data: FrameData) -> dict:
+    """One frame as it is saved: its fields, with every contour as a key of its own in
+    place of the `contours` dict — the layout every earlier version wrote, so a file stays
+    readable by them and by anything else that parses it."""
+    raw: dict = {}
+    for key, value in asdict(frame_data).items():
+        if key == 'contours':
+            raw.update(value)
+        else:
+            raw[key] = value
+    return raw
+
+
+# Everything the user can draw on one image: every contour (which includes the angular
+# sectors), both measurements and the reference point, plus the values derived from the
+# lumen. Not the phase or the OCT label — those describe the frame, not the drawing.
+FRAME_ANNOTATION_FIELDS = (
+    'contours',
+    'measurement_1',
+    'measurement_2',
+    'reference',
     'centroid',
     'closest_points',
     'farthest_points',

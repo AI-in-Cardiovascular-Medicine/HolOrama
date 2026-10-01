@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Tuple, Union
+from typing import Any, ClassVar, Tuple, Union
 
 OCT_QUALITY_LABELS = ['Very Bad', 'Bad', 'Ok', 'Good', 'Very Good']  # best needs to be on the right
 
@@ -11,18 +11,31 @@ class SupportedType(Enum):
     OCT = "OCT"
 
 
-class ContourType(Enum):
-    LUMEN = "lumen"
-    EEM = "eem"
-    CALCIUM = "calcium"
-    BRANCH = "branch"
-    LIPID = "lipid"
-    MACROPHAGE = "macrophage"
-    MEASUREMENT_1 = "measurement_1"
-    MEASUREMENT_2 = "measurement_2"
-    REFERENCE = "reference"
-    WIRE = "wire"
-    BLOOD = "blood"
+@dataclass(frozen=True)
+class ContourType:
+    """One kind of annotation, identified by its stable id (`value`).
+
+    Which contour types exist is data rather than code: the active contour preset defines
+    them (see domain.contour_presets), and a user can add their own there. Only the ones
+    the software itself relies on are named here — the lumen and the EEM, which every
+    preset has to define, and the two measurements and the reference point, which are not
+    contours at all and so sit outside the presets.
+    """
+
+    value: str
+
+    LUMEN: ClassVar['ContourType']
+    EEM: ClassVar['ContourType']
+    MEASUREMENT_1: ClassVar['ContourType']
+    MEASUREMENT_2: ClassVar['ContourType']
+    REFERENCE: ClassVar['ContourType']
+
+
+ContourType.LUMEN = ContourType('lumen')
+ContourType.EEM = ContourType('eem')
+ContourType.MEASUREMENT_1 = ContourType('measurement_1')
+ContourType.MEASUREMENT_2 = ContourType('measurement_2')
+ContourType.REFERENCE = ContourType('reference')
 
 
 class SegmentationTool(Enum):
@@ -32,65 +45,6 @@ class SegmentationTool(Enum):
     ANGLE = "angle"
     LINE = "line"
     POINT = "point"
-
-
-def validate_tool(contour_type: ContourType, tool: SegmentationTool):
-    if tool not in ALLOWED_TOOLS.get(contour_type, set()):
-        raise ValueError(f"{tool} not allowed for {contour_type}")
-
-
-ALLOWED_TOOLS = {
-    ContourType.LUMEN: {
-        SegmentationTool.CLOSED_SPLINE,
-        SegmentationTool.BRUSH,
-    },
-    ContourType.EEM: {
-        SegmentationTool.CLOSED_SPLINE,
-        SegmentationTool.BRUSH,
-    },
-    ContourType.CALCIUM: {
-        SegmentationTool.OPEN_SPLINE,
-        SegmentationTool.CLOSED_SPLINE,
-        SegmentationTool.BRUSH,
-    },
-    ContourType.BRANCH: {
-        SegmentationTool.CLOSED_SPLINE,
-        SegmentationTool.BRUSH,
-    },
-    ContourType.LIPID: {
-        SegmentationTool.OPEN_SPLINE,
-        SegmentationTool.CLOSED_SPLINE,
-        SegmentationTool.BRUSH,
-    },
-    ContourType.MACROPHAGE: {
-        SegmentationTool.OPEN_SPLINE,
-        SegmentationTool.CLOSED_SPLINE,
-        SegmentationTool.BRUSH,
-    },
-    ContourType.MEASUREMENT_1: {SegmentationTool.LINE},
-    ContourType.MEASUREMENT_2: {SegmentationTool.LINE},
-    ContourType.REFERENCE: {SegmentationTool.POINT},
-    ContourType.WIRE: {SegmentationTool.ANGLE},
-    ContourType.BLOOD: {SegmentationTool.ANGLE},
-}
-
-# Every contour type drawn as an angular sector around the image centre: two radial
-# boundaries and the region between them (the guide-wire shadow, the blood artefact).
-# Derived rather than listed so a new sector type only has to be added to ALLOWED_TOOLS,
-# the way the closed/open spline families are derived where they are needed.
-ANGLE_TYPES: Tuple[ContourType, ...] = tuple(
-    contour_type for contour_type in ContourType if SegmentationTool.ANGLE in ALLOWED_TOOLS.get(contour_type, set())
-)
-
-# The plaque types: whatever they are drawn with, they describe something inside the vessel
-# wall, so the mask clips them to it (inside the EEM, outside the lumen) and their area and
-# angle are measured within it. Stated rather than derived — it is what they mean, not how
-# they are drawn.
-PLAQUE_TYPES: Tuple[ContourType, ...] = (
-    ContourType.CALCIUM,
-    ContourType.LIPID,
-    ContourType.MACROPHAGE,
-)
 
 
 @dataclass

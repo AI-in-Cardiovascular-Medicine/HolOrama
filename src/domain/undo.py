@@ -5,7 +5,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generic, TypeVar
 
-from domain.io_types import FRAME_ANNOTATION_FIELDS
+from domain.io_types import FRAME_ANNOTATION_FIELDS, is_contour_key
 
 if TYPE_CHECKING:
     from domain.io_types import Contour
@@ -72,7 +72,7 @@ def push_frame_annotation_snapshot(runtime_data: RuntimeData, frame: int) -> Non
 
 
 def push_contour_snapshot(runtime_data: RuntimeData, frame: int, key: str, active_index: int) -> None:
-    """Record the current state of `frame_data_dct[frame].<key>` before it gets mutated.
+    """Record the current state of the contour `key` on `frame` before it gets mutated.
 
     Taking a snapshot means an edit is about to happen, so this also flags the frame data
     as unsaved — every caller is by definition a contour-changing operation.
@@ -83,9 +83,8 @@ def push_contour_snapshot(runtime_data: RuntimeData, frame: int, key: str, activ
     fd = runtime_data.frame_data_dct.get(frame)
     if fd is None:
         return
-    contour_obj = getattr(fd, key, None)
-    if contour_obj is None:
+    if not is_contour_key(key):
         return
     runtime_data.contour_undo.push(
-        ContourSnapshot(frame=frame, key=key, contour=copy.deepcopy(contour_obj), active_index=active_index)
+        ContourSnapshot(frame=frame, key=key, contour=copy.deepcopy(fd.contour(key)), active_index=active_index)
     )

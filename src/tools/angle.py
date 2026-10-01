@@ -1,4 +1,4 @@
-"""Angular sectors: the shape behind every ContourType in ANGLE_TYPES (the guide-wire
+"""Angular sectors: the shape behind every angle type of a contour preset (the guide-wire
 shadow, the blood artefact). A sector is the wedge between two radial lines through the
 image centre, so only the *angles* of its points carry meaning — their distance from the
 centre is free, and the app keeps every handle on one circle (see
@@ -6,7 +6,7 @@ Display._angle_handle_radius) purely so a sector looks the same in every pullbac
 
 How the stored points describe it
 ---------------------------------
-A sector lives in one entry of a Contour (see FrameData.wire / .blood) as 2-3 points in
+A sector lives in one entry of a Contour (see FrameData.contours) as 2-3 points in
 original image pixel coordinates:
 
     [p_start, p_end]            legacy shape: the sector is the *smaller* of the two arcs

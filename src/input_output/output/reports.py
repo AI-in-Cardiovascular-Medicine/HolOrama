@@ -10,9 +10,10 @@ from PyQt6.QtWidgets import QApplication, QProgressDialog
 from shapely.errors import TopologicalError
 from shapely.geometry import Polygon
 
-from domain.all_types import PLAQUE_TYPES, ContourType
+from domain.all_types import ContourType
+from domain.contour_presets import active_preset
 from domain.io_types import iter_sectors
-from input_output.output.imgs_masks import frame_region_metrics
+from input_output.output.imgs_masks import frame_region_metrics, measured_types
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 from tools.angle import combined_sweep
 
@@ -158,26 +159,31 @@ def _image_shape(main_window) -> tuple:
     return dimension, dimension
 
 
-def _plaque_and_blood_columns(main_window, contoured_frames, progress=None):
-    """Per-frame plaque area (mm²) and angle (degrees), plus the combined blood angle.
+def _region_and_sector_columns(main_window, contoured_frames, progress=None):
+    """Per-frame area (mm²) and angle (degrees) of every contour type measured as a region
+    of its own (see imgs_masks.measured_types: the plaques, a side branch, ...), then the
+    combined angle of every angular sector type (the guide-wire shadow, blood, ...).
 
-    Both come off the rasterized mask rather than the contour polygons, because a plaque
-    is usually drawn as an open arc that encloses nothing until it is closed against the
-    EEM (see imgs_masks._plaque_mask) — and because that way the report says exactly what
-    the exported mask holds. A frame with no plaque contour at all skips the rasterization,
-    which is every frame while gating runs.
+    The regions come off the rasterized mask rather than the contour polygons, because a
+    plaque is usually drawn as an open arc that encloses nothing until it is closed
+    against the EEM (see imgs_masks._contained_mask) — and because that way the report
+    says exactly what the exported mask holds. A frame with none of those contours at all
+    skips the rasterization, which is every frame while gating runs.
 
-    Blood is reported as one angle per frame, several sectors counted once over any
-    overlap. The guide wire is left out: its shadow says where the image cannot be read,
-    not what is in the vessel.
+    Each sector type is reported as one angle per frame, several sectors counted once over
+    any overlap.
 
     Returns None if the user cancelled partway through.
     """
+    preset = active_preset()
+    regions = [defn.type.value for defn in measured_types(preset)]
+    sectors = [defn.type.value for defn in preset.angle_types]
     columns: dict = {}
-    for contour_type in PLAQUE_TYPES:
-        columns[f'{contour_type.value}_area'] = []
-        columns[f'{contour_type.value}_angle'] = []
-    columns['blood_angle'] = []
+    for key in regions:
+        columns[f'{key}_area'] = []
+        columns[f'{key}_angle'] = []
+    for key in sectors:
+        columns[f'{key}_angle'] = []
 
     image_shape = _image_shape(main_window)
     resolution = main_window.runtime_data.metadata.get('resolution') or 0.0
@@ -185,20 +191,19 @@ def _plaque_and_blood_columns(main_window, contoured_frames, progress=None):
     sector_centre = (image_shape[1] / 2, image_shape[0] / 2)
 
     for frame in contoured_frames:
-        _advance(progress, 'Measuring plaques and blood...' if frame == contoured_frames[0] else None)
+        _advance(progress, 'Measuring plaques and sectors...' if frame == contoured_frames[0] else None)
         if progress is not None and progress.wasCanceled():
             return None
 
         frame_data = main_window.runtime_data.frame_data_dct.get(frame)
-        has_plaque = frame_data is not None and any(
-            getattr(frame_data, contour_type.value).contours for contour_type in PLAQUE_TYPES
-        )
-        metrics = frame_region_metrics(frame_data, image_shape, resolution) if has_plaque else {}
-        for contour_type in PLAQUE_TYPES:
-            columns[f'{contour_type.value}_area'].append(metrics.get(contour_type.value, 0.0))
-            columns[f'{contour_type.value}_angle'].append(metrics.get(f'{contour_type.value}_angle', 0.0))
-        blood = iter_sectors(frame_data.blood) if frame_data is not None else []
-        columns['blood_angle'].append(math.degrees(combined_sweep(blood, sector_centre)))
+        has_region = frame_data is not None and any(frame_data.contour(key).contours for key in regions)
+        metrics = frame_region_metrics(frame_data, image_shape, resolution, preset=preset) if has_region else {}
+        for key in regions:
+            columns[f'{key}_area'].append(metrics.get(key, 0.0))
+            columns[f'{key}_angle'].append(metrics.get(f'{key}_angle', 0.0))
+        for key in sectors:
+            covered = iter_sectors(frame_data.contour(key)) if frame_data is not None else []
+            columns[f'{key}_angle'].append(math.degrees(combined_sweep(covered, sector_centre)))
 
     return columns
 
@@ -279,8 +284,6 @@ def compute_all(main_window, contoured_frames, progress=None, save_as_csv=True):
 
     lumen_full_list = _full_list("lumen", main_window, ContourType.LUMEN)
     eem_full_list = _full_list("eem", main_window, ContourType.EEM)
-    calc_full_list = _full_list("calcium", main_window, ContourType.CALCIUM)
-    branch_full_list = _full_list("branch", main_window, ContourType.BRANCH)
 
     def build_xy_lists(full_list):
         if full_list is None:
@@ -292,8 +295,6 @@ def compute_all(main_window, contoured_frames, progress=None, save_as_csv=True):
 
     lumen_x, lumen_y = build_xy_lists(lumen_full_list)
     eem_x, eem_y = build_xy_lists(eem_full_list)
-    calc_x, calc_y = build_xy_lists(calc_full_list)
-    branch_x, branch_y = build_xy_lists(branch_full_list)
 
     for frame in contoured_frames:
         _advance(progress)
@@ -370,13 +371,14 @@ def compute_all(main_window, contoured_frames, progress=None, save_as_csv=True):
         main_window.runtime_data.frame_data_dct[frame].eem.measurements.area or 0 for frame in contoured_frames
     ]
 
-    # Each plaque as the area it covers and the angle it spans, then blood as one angle.
-    # By far the slowest pass — it rasterizes every plaque on every frame — so it reports
-    # its own progress instead of running on after the bar has filled up.
-    plaque_columns = _plaque_and_blood_columns(main_window, contoured_frames, progress)
-    if plaque_columns is None:
+    # Each plaque (or other region) as the area it covers and the angle it spans, then each
+    # sector type as one angle. By far the slowest pass — it rasterizes every region on
+    # every frame — so it reports its own progress instead of running on after the bar
+    # has filled up.
+    region_columns = _region_and_sector_columns(main_window, contoured_frames, progress)
+    if region_columns is None:
         return None  # cancelled
-    for column, values in plaque_columns.items():
+    for column, values in region_columns.items():
         report_data[column] = values
 
     # The hand measurements come last of the per-frame columns, ahead of the pullback's own
@@ -401,7 +403,11 @@ def compute_all(main_window, contoured_frames, progress=None, save_as_csv=True):
     # Save CSVs for lumen and for other contours if present. Uses tagged/dia/sys.
     if save_as_csv:
         _advance(progress, 'Saving contour CSVs...')
-        _save_as_csv(main_window, lumen_x, lumen_y, eem_x, eem_y, calc_x, calc_y, branch_x, branch_y)
+        others = {
+            defn.type.value: build_xy_lists(_full_list(defn.type.value, main_window, defn.type))
+            for defn in measured_types(active_preset())
+        }
+        _save_as_csv(main_window, lumen_x, lumen_y, {'eem': (eem_x, eem_y), **others})
 
     return report_data
 
@@ -483,7 +489,9 @@ def _full_list(name, main_window, contour_type):
         return getattr(main_window.display, "full_contours", None)
 
 
-def _save_as_csv(main_window, lumen_x, lumen_y, eem_x, eem_y, calc_x, calc_y, branch_x, branch_y):
+def _save_as_csv(main_window, lumen_x, lumen_y, others: dict):
+    """The lumen contours, one file per frame group, then every other spline type's the
+    same way (`others`: {id: (x lists, y lists)}) where it is drawn on any frame."""
     rt = main_window.runtime_data
     frame_groups = [
         ('diastolic', rt.gated_frames_dia),
@@ -495,16 +503,10 @@ def _save_as_csv(main_window, lumen_x, lumen_y, eem_x, eem_y, calc_x, calc_y, br
     for suffix, frames in frame_groups:
         save_csv_files(main_window, lumen_x, lumen_y, name=suffix, frames=frames)
 
-        # save EEM/Calcium/Branch CSVs if contours exist for any frame
-    if eem_x is not None and any(elem is not None for elem in eem_x):
-        for suffix, frames in frame_groups:
-            save_csv_files(main_window, eem_x, eem_y, name=f'eem_{suffix}', frames=frames)
-    if calc_x is not None and any(elem is not None for elem in calc_x):
-        for suffix, frames in frame_groups:
-            save_csv_files(main_window, calc_x, calc_y, name=f'calcium_{suffix}', frames=frames)
-    if branch_x is not None and any(elem is not None for elem in branch_x):
-        for suffix, frames in frame_groups:
-            save_csv_files(main_window, branch_x, branch_y, name=f'branch_{suffix}', frames=frames)
+    for key, (xs, ys) in others.items():
+        if xs is not None and any(elem is not None for elem in xs):
+            for suffix, frames in frame_groups:
+                save_csv_files(main_window, xs, ys, name=f'{key}_{suffix}', frames=frames)
 
 
 def compute_polygon_metrics(main_window, polygon, frame):

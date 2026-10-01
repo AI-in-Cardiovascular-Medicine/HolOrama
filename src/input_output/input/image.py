@@ -15,9 +15,9 @@ from PyQt6.QtWidgets import (
 )
 from skimage import measure as sk_measure
 
-from domain.all_types import ANGLE_TYPES, ContourType, SupportedType
+from domain.all_types import ContourType, SupportedType
+from domain.contour_presets import active_preset
 from domain.io_types import FrameData
-from domain.mask_types import MASK_SPECS
 from domain.oct_display_types import OCT_LUT
 from input_output.input.contours import read_contours
 from input_output.output.contours import write_contours
@@ -190,10 +190,11 @@ def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) 
         return
 
     # Angular sectors are not spline contours (each entry holds the angles bounding it,
-    # see FrameData.wire), so a traced mask boundary cannot be imported into them.
-    if contour_type not in MASK_SPECS or contour_type in ANGLE_TYPES:
+    # see FrameData.contours), so a traced mask boundary cannot be imported into them.
+    preset = active_preset()
+    if contour_type not in preset or preset.is_angle(contour_type):
         return
-    spec = MASK_SPECS[contour_type]
+    labels = list(preset.mask_labels(contour_type))
 
     file_name, _ = QFileDialog.getOpenFileName(
         main_window,
@@ -213,7 +214,6 @@ def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) 
         return
 
     num_frames = min(mask_arr.shape[0], main_window.runtime_data.metadata['num_frames'])
-    field_name = contour_type.value
     single_contour = contour_type in (ContourType.LUMEN, ContourType.EEM)
 
     n_pts = main_window.display.n_interactive_points
@@ -221,7 +221,7 @@ def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) 
     sf = main_window.display.scaling_factor
     try:
         for frame_idx in range(num_frames):
-            binary = spec.matches(mask_arr[frame_idx]).astype(np.uint8)
+            binary = np.isin(mask_arr[frame_idx], labels).astype(np.uint8)
             if not binary.any():
                 continue
             found = sk_measure.find_contours(binary, 0.5)
@@ -231,7 +231,7 @@ def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) 
                 found = [max(found, key=len)]
             if frame_idx not in main_window.runtime_data.frame_data_dct:
                 main_window.runtime_data.frame_data_dct[frame_idx] = FrameData()
-            contour_obj = getattr(main_window.runtime_data.frame_data_dct[frame_idx], field_name)
+            contour_obj = main_window.runtime_data.frame_data_dct[frame_idx].contour(contour_type)
             sparse_contours = []
             for c in found:
                 xs_scaled = [float(col) * sf for col in c[:, 1]]
@@ -255,7 +255,7 @@ def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) 
 
     main_window.segmentation = True
     main_window.display.set_frame(main_window.display.frame)
-    if contour_type is ContourType.LUMEN:  # the overviews are built from lumen measurements
+    if contour_type == ContourType.LUMEN:  # the overviews are built from lumen measurements
         main_window.display.refresh_all_frame_metrics()
     write_contours(main_window, force=True)
 

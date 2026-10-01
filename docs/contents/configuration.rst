@@ -56,13 +56,11 @@ analysis outputs are unaffected and are still written next to the file you opene
        multiple of 100 (used when computing closest points).
    * - ``contour_thickness`` / ``point_thickness`` / ``point_radius``
      - Line and knot-point drawing sizes.
-   * - ``color_contour`` / ``color_eem`` / ``color_calcium`` / ``color_branch``
-     - Colour per contour type. Accepts any of the 20 predefined Qt colour names or a hex
-       code (see `Qt colors <https://doc.qt.io/qt-6/qcolor.html>`_).
    * - ``color_start_point`` / ``color_end_point``
      - Colours of the two markers delimiting an uncertain region (default yellow and red).
-   * - ``color_angle`` / ``color_blood``
-     - Colours of the two angular sectors: the wire shadow and the blood artefact.
+       Accepts any of the 20 predefined Qt colour names or a hex code (see
+       `Qt colors <https://doc.qt.io/qt-6/qcolor.html>`_). Each contour type's own colour
+       is set in its contour preset (``src/presets/intravascular``), not here.
    * - ``angle_handle_radius_mm``
      - How far from the image centre an angular sector's two handles and its arc are
        drawn (default 5 mm). Only the *direction* of a sector's points means anything,

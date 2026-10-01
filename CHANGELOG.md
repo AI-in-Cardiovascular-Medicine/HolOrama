@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **Intravascular contour types are defined by a contour preset** (`src/presets/intravascular/default.json`) instead of being hardcoded: each type's name, colour, mask label, tools, layer and the type it lies inside. The default preset reproduces the previous types, mask labels and keyboard shortcuts.
+- **Mask layering** follows each type's layer instead of the distance from the lumen centroid. Only differs where two plaque types overlap: the higher layer now wins.
+- **Reports** have an area and angle column for every contour type besides lumen and EEM (now including `branch_area`/`branch_angle`), an angle column for every angle type (now including `wire_angle`), and a contour CSV per type (now including lipid and macrophage).
+- **Contour files** save the contour types they were drawn with, and keep contours of types the active preset lacks.
+- Contour colours moved from `config.yaml` and **Display Settings** into the preset.
+
+### Fixed
+- An EEM read back from a mask (NIfTI import, brush) now includes the plaques painted over it.
+
 ## [0.13.0] - 2026-09-30
 
 ### Added

@@ -1,6 +1,6 @@
 """Color primitives shared across ccta/intravascular/fusion — the single source of
 truth for values that used to be redefined independently in each module (see
-ccta_display_types.py, mask_types.py, and fusion_display_types.py for the
+ccta_display_types.py, contour_presets.py, and fusion_display_types.py for the
 domain-specific palettes built on top of these)."""
 
 # Generic qualitative palette for indexed/categorical coloring (segmentation labels,

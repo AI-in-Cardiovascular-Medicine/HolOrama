@@ -241,7 +241,7 @@ Make sure to quickly check the **src/config.yaml** file and configure everything
 - n_interactive_points: The draggable points on the contour (lumen); calcium, lipid, macrophage and branch contours default to half of this. New points can also be added interactively by clicking on the contour.
 - n_points_contour: Number of points used to represent the interpolated contour outline. Ideally a multiple of 100 (used when calculating closest points).
 - contour_thickness / point_thickness / point_radius: Line and knot-point drawing sizes for contours.
-- color_contour / color_eem / color_calcium / color_branch / color_start_point / color_end_point / color_angle / color_blood: Colors used for each contour/marker type. Accepts any of the 20 predefined PyQt colors or a hex code (see [Qt colors](https://doc.qt.io/qt-6/qcolor.html)).
+- color_start_point / color_end_point: Colors of the start/end markers. Accepts any of the 20 predefined PyQt colors or a hex code (see [Qt colors](https://doc.qt.io/qt-6/qcolor.html)). Each contour type's own color is set in its contour preset (`src/presets/intravascular`).
 - angle_handle_radius_mm: How far from the image centre the handles and arc of an angular sector (wire shadow, blood) are drawn. Only their direction carries meaning, so this is purely where they are shown; clamped to stay inside the image.
 - alpha_contour: Contour fill transparency, 0-255 (higher is more opaque).
 

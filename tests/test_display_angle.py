@@ -17,6 +17,7 @@ import yaml
 from PyQt6.QtCore import QPointF, Qt
 
 from domain.all_types import ContourType
+from domain.contour_presets import active_preset
 from domain.io_types import FrameData, sector_points
 from domain.runtime_types import RuntimeData
 from tools.angle import angle_of, sector_from_points
@@ -25,6 +26,10 @@ DIM = 200  # frame is DIM x DIM pixels
 N_FRAMES = 4
 RESOLUTION = 0.1  # mm/pixel — a 20 mm frame, so the 5 mm handle circle fits inside it
 CONFIG_PATH = Path(__file__).resolve().parents[1] / 'src' / 'config.yaml'
+# The default preset's two sector types, and one of its spline types.
+WIRE = ContourType('wire')
+BLOOD = ContourType('blood')
+CALCIUM = ContourType('calcium')
 
 
 def _to_namespace(obj):
@@ -103,7 +108,7 @@ def _place(widget, from_deg, to_deg, step=10):
 
 def _stored_sector(widget, frame_data, contour_type, index=0):
     """The (start, sweep) that was written for one sector, in scene angles."""
-    contour_obj = getattr(frame_data, contour_type.value)
+    contour_obj = frame_data.contour(contour_type)
     points = [(x * widget.scaling_factor, y * widget.scaling_factor) for x, y in sector_points(contour_obj, index)]
     return sector_from_points(points, widget._scene_centre())
 
@@ -111,7 +116,7 @@ def _stored_sector(widget, frame_data, contour_type, index=0):
 def _preview(widget):
     """The one sector currently drawn for the active type and index."""
     for contour_type, index, sector in widget._angle_sectors:
-        if contour_type is widget.active_contour_type and index == widget.active_contour_index:
+        if contour_type == widget.active_contour_type and index == widget.active_contour_index:
             return sector
     return None
 
@@ -119,19 +124,19 @@ def _preview(widget):
 class TestPlacement:
     def test_first_click_stores_one_point_and_previews_it_dotted(self, display):
         widget = display.widget
-        widget.set_active_contour_type(ContourType.WIRE)
+        widget.set_active_contour_type(WIRE)
         widget.start_angle()
 
         widget._handle_angle_placement(_at(widget, 0))
 
-        assert len(sector_points(display.frames[0].wire, 0)) == 1
+        assert len(sector_points(display.frames[0].contour('wire'), 0)) == 1
         preview = _preview(widget)
         assert preview is not None and preview.dotted
         assert preview._end_line.pen().style() == Qt.PenStyle.DotLine
 
     def test_the_opening_follows_the_pointer_before_the_second_click(self, display):
         widget = display.widget
-        widget.set_active_contour_type(ContourType.WIRE)
+        widget.set_active_contour_type(WIRE)
         widget.start_angle()
         widget._handle_angle_placement(_at(widget, 0))
 
@@ -141,13 +146,13 @@ class TestPlacement:
 
     def test_second_click_stores_the_sector_and_draws_it_solid(self, display):
         widget = display.widget
-        widget.set_active_contour_type(ContourType.WIRE)
+        widget.set_active_contour_type(WIRE)
         widget.start_angle()
 
         _place(widget, 0, 60)
 
         assert not widget.angle_mode
-        start, sweep = _stored_sector(widget, display.frames[0], ContourType.WIRE)
+        start, sweep = _stored_sector(widget, display.frames[0], WIRE)
         assert math.degrees(sweep) == pytest.approx(60, abs=1)
         drawn = _preview(widget)
         assert drawn is not None and not drawn.dotted
@@ -156,51 +161,51 @@ class TestPlacement:
     @pytest.mark.parametrize('opening', [45, 179, 181, 270, 350])
     def test_any_opening_can_be_placed(self, display, opening):
         widget = display.widget
-        widget.set_active_contour_type(ContourType.WIRE)
+        widget.set_active_contour_type(WIRE)
         widget.start_angle()
 
         _place(widget, 20, 20 + opening)
 
-        start, sweep = _stored_sector(widget, display.frames[0], ContourType.WIRE)
+        start, sweep = _stored_sector(widget, display.frames[0], WIRE)
         assert math.degrees(start) % 360 == pytest.approx(20, abs=1)
         assert math.degrees(sweep) == pytest.approx(opening, abs=1)
 
     def test_turning_the_other_way_opens_the_other_side(self, display):
         widget = display.widget
-        widget.set_active_contour_type(ContourType.WIRE)
+        widget.set_active_contour_type(WIRE)
         widget.start_angle()
 
         _place(widget, 200, 200 - 240)  # a wide sector opened anticlockwise
 
-        start, sweep = _stored_sector(widget, display.frames[0], ContourType.WIRE)
+        start, sweep = _stored_sector(widget, display.frames[0], WIRE)
         assert math.degrees(sweep) == pytest.approx(240, abs=1)
         assert math.degrees(start) % 360 == pytest.approx((200 - 240) % 360, abs=1)
 
     def test_a_second_click_that_opens_nothing_is_ignored(self, display):
         widget = display.widget
-        widget.set_active_contour_type(ContourType.WIRE)
+        widget.set_active_contour_type(WIRE)
         widget.start_angle()
 
         widget._handle_angle_placement(_at(widget, 30))
         widget._handle_angle_placement(_at(widget, 30))  # a double click on the first point
 
         assert widget.angle_mode  # still waiting for a click that opens the sector
-        assert len(sector_points(display.frames[0].wire, 0)) == 1
+        assert len(sector_points(display.frames[0].contour('wire'), 0)) == 1
 
     def test_leaving_angle_mode_after_one_click_drops_the_sector(self, display):
         widget = display.widget
-        widget.set_active_contour_type(ContourType.WIRE)
+        widget.set_active_contour_type(WIRE)
         widget.start_angle()
         widget._handle_angle_placement(_at(widget, 0))
 
         widget.cleanup_temporary_drawing()  # what Esc does
 
-        assert display.frames[0].wire.contours == []
+        assert display.frames[0].contour('wire').contours == []
         assert not widget.angle_mode
 
     def test_handles_sit_on_the_configured_circle(self, display):
         widget = display.widget
-        widget.set_active_contour_type(ContourType.WIRE)
+        widget.set_active_contour_type(WIRE)
         widget.start_angle()
         _place(widget, 0, 90)
 
@@ -219,21 +224,19 @@ class TestPlacement:
 class TestSeveralSectors:
     def test_add_keeps_the_existing_ones(self, display):
         widget = display.widget
-        widget.set_active_contour_type(ContourType.WIRE)
+        widget.set_active_contour_type(WIRE)
         widget.start_angle()
         _place(widget, 0, 40)
 
         widget.start_angle(append=True)
         _place(widget, 180, 220)
 
-        assert len(display.frames[0].wire.contours) == 2
-        assert math.degrees(_stored_sector(widget, display.frames[0], ContourType.WIRE, 1)[0]) % 360 == pytest.approx(
-            180, abs=1
-        )
+        assert len(display.frames[0].contour('wire').contours) == 2
+        assert math.degrees(_stored_sector(widget, display.frames[0], WIRE, 1)[0]) % 360 == pytest.approx(180, abs=1)
 
     def test_a_new_one_replaces_them(self, display):
         widget = display.widget
-        widget.set_active_contour_type(ContourType.WIRE)
+        widget.set_active_contour_type(WIRE)
         widget.start_angle()
         _place(widget, 0, 40)
         widget.start_angle(append=True)
@@ -242,36 +245,34 @@ class TestSeveralSectors:
         widget.start_angle()
         _place(widget, 90, 130)
 
-        assert len(display.frames[0].wire.contours) == 1
+        assert len(display.frames[0].contour('wire').contours) == 1
 
     def test_blood_is_stored_apart_from_the_wire(self, display):
         widget = display.widget
-        widget.set_active_contour_type(ContourType.WIRE)
+        widget.set_active_contour_type(WIRE)
         widget.start_angle()
         _place(widget, 0, 40)
 
-        widget.set_active_contour_type(ContourType.BLOOD)
+        widget.set_active_contour_type(BLOOD)
         widget.start_angle()
         _place(widget, 100, 220)
 
-        assert len(display.frames[0].wire.contours) == 1
-        assert len(display.frames[0].blood.contours) == 1
-        assert math.degrees(_stored_sector(widget, display.frames[0], ContourType.BLOOD)[1]) == pytest.approx(
-            120, abs=1
-        )
+        assert len(display.frames[0].contour('wire').contours) == 1
+        assert len(display.frames[0].contour('blood').contours) == 1
+        assert math.degrees(_stored_sector(widget, display.frames[0], BLOOD)[1]) == pytest.approx(120, abs=1)
 
     def test_blood_is_drawn_in_its_own_colour(self, display):
         widget = display.widget
-        widget.set_active_contour_type(ContourType.BLOOD)
+        widget.set_active_contour_type(BLOOD)
         widget.start_angle()
         _place(widget, 0, 40)
 
-        assert widget.contour_configs[ContourType.BLOOD].color == widget.color_blood
-        assert widget.color_blood != widget.color_angle
+        assert widget.contour_configs[BLOOD].color == active_preset()[BLOOD].color
+        assert widget.contour_color(BLOOD) != widget.contour_color(WIRE)
 
 
 class TestDragging:
-    def _placed(self, display, from_deg=0, to_deg=60, contour_type=ContourType.WIRE):
+    def _placed(self, display, from_deg=0, to_deg=60, contour_type=WIRE):
         widget = display.widget
         widget.set_active_contour_type(contour_type)
         widget.start_angle()
@@ -286,7 +287,7 @@ class TestDragging:
         widget._drag_angle_handle(_at(widget, 100))
         widget._release_angle_handle()
 
-        start, sweep = _stored_sector(widget, display.frames[0], ContourType.WIRE)
+        start, sweep = _stored_sector(widget, display.frames[0], WIRE)
         assert math.degrees(start) % 360 == pytest.approx(0, abs=1)  # the other boundary stayed
         assert math.degrees(sweep) == pytest.approx(100, abs=1)
 
@@ -298,7 +299,7 @@ class TestDragging:
         widget._drag_angle_handle(_at(widget, -50))
         widget._release_angle_handle()
 
-        start, sweep = _stored_sector(widget, display.frames[0], ContourType.WIRE)
+        start, sweep = _stored_sector(widget, display.frames[0], WIRE)
         assert math.degrees(start) % 360 == pytest.approx(310, abs=1)
         assert math.degrees(start + sweep) % 360 == pytest.approx(60, abs=1)
 
@@ -311,7 +312,7 @@ class TestDragging:
             widget._drag_angle_handle(_at(widget, degrees))
         widget._release_angle_handle()
 
-        _, sweep = _stored_sector(widget, display.frames[0], ContourType.WIRE)
+        _, sweep = _stored_sector(widget, display.frames[0], WIRE)
         assert math.degrees(sweep) < 1  # collapsed, rather than snapping round to ~340
 
     def test_a_click_away_from_every_handle_grabs_nothing(self, display):
@@ -319,27 +320,25 @@ class TestDragging:
         assert not widget._grab_angle_handle(QPointF(*widget._scene_centre()))
 
     def test_grabbing_another_type_makes_it_active(self, display):
-        widget = self._placed(display, 0, 60, ContourType.WIRE)
-        widget.set_active_contour_type(ContourType.BLOOD)
+        widget = self._placed(display, 0, 60, WIRE)
+        widget.set_active_contour_type(BLOOD)
         widget.start_angle()
         _place(widget, 180, 240)
         widget.set_active_contour_type(ContourType.LUMEN)
         display.ui_syncs.clear()
 
         wire_handle = next(
-            sector.handle_positions()[0]
-            for contour_type, _, sector in widget._angle_sectors
-            if contour_type is ContourType.WIRE
+            sector.handle_positions()[0] for contour_type, _, sector in widget._angle_sectors if contour_type == WIRE
         )
         assert widget._grab_angle_handle(QPointF(*wire_handle))
 
-        assert widget.active_contour_type is ContourType.WIRE
-        assert display.ui_syncs == [ContourType.WIRE]
+        assert widget.active_contour_type == WIRE
+        assert display.ui_syncs == [WIRE]
         widget._release_angle_handle()
 
     def test_a_drag_is_undoable(self, display):
         widget = self._placed(display)
-        before = _stored_sector(widget, display.frames[0], ContourType.WIRE)
+        before = _stored_sector(widget, display.frames[0], WIRE)
         depth = len(display.runtime.contour_undo._stack)
 
         widget._grab_angle_handle(QPointF(*_preview(widget).handle_positions()[1]))
@@ -348,7 +347,7 @@ class TestDragging:
 
         assert len(display.runtime.contour_undo._stack) == depth + 1
         snapshot = display.runtime.contour_undo.pop()
-        assert snapshot.key == ContourType.WIRE.value
+        assert snapshot.key == WIRE.value
         restored = [
             (x * widget.scaling_factor, y * widget.scaling_factor) for x, y in sector_points(snapshot.contour, 0)
         ]
@@ -361,16 +360,16 @@ class TestLegacyData:
         widget = display.widget
         centre = widget._image_centre()
         radius = 40.0
-        display.frames[0].wire.contours = [
+        display.frames[0].contour('wire').contours = [
             (
                 [centre[0] + radius, centre[0]],
                 [centre[1], centre[1] + radius],
             )
         ]
-        display.frames[0].wire.closed = [False]
+        display.frames[0].contour('wire').closed = [False]
         widget.display_image(update_contours=True)
 
-        drawn = next(sector for contour_type, _, sector in widget._angle_sectors if contour_type is ContourType.WIRE)
+        drawn = next(sector for contour_type, _, sector in widget._angle_sectors if contour_type == WIRE)
         assert math.degrees(drawn.sweep) == pytest.approx(90, abs=1)
 
         # Dragging it rewrites it in the current shape, keeping the wedge it described.
@@ -378,8 +377,8 @@ class TestLegacyData:
         widget._drag_angle_handle(_at(widget, 120))
         widget._release_angle_handle()
 
-        assert len(sector_points(display.frames[0].wire, 0)) == 3
-        _, sweep = _stored_sector(widget, display.frames[0], ContourType.WIRE)
+        assert len(sector_points(display.frames[0].contour('wire'), 0)) == 3
+        _, sweep = _stored_sector(widget, display.frames[0], WIRE)
         assert math.degrees(sweep) == pytest.approx(120, abs=1)
 
 
@@ -388,10 +387,10 @@ class TestSectorsInTheMask:
         from input_output.output.imgs_masks import contours_to_mask
 
         widget = display.widget
-        widget.set_active_contour_type(ContourType.WIRE)
+        widget.set_active_contour_type(WIRE)
         widget.start_angle()
         _place(widget, 0, 90)
-        widget.set_active_contour_type(ContourType.BLOOD)
+        widget.set_active_contour_type(BLOOD)
         widget.start_angle()
         _place(widget, 180, 270)
 
@@ -403,10 +402,10 @@ class TestSectorsInTheMask:
         from input_output.output.imgs_masks import contours_to_mask
 
         widget = display.widget
-        widget.set_active_contour_type(ContourType.BLOOD)
+        widget.set_active_contour_type(BLOOD)
         widget.start_angle()
         _place(widget, 0, 180)  # blood over half the frame
-        widget.set_active_contour_type(ContourType.WIRE)
+        widget.set_active_contour_type(WIRE)
         widget.start_angle()
         _place(widget, 45, 90)  # a wire wholly inside it
 
@@ -418,7 +417,7 @@ class TestSectorsInTheMask:
         from input_output.output.imgs_masks import contours_to_mask
 
         widget = display.widget
-        widget.set_active_contour_type(ContourType.BLOOD)
+        widget.set_active_contour_type(BLOOD)
         widget.start_angle()
         _place(widget, 0, 300)
 
@@ -429,11 +428,11 @@ class TestSectorsInTheMask:
 def test_angle_points_are_measured_from_the_image_centre(display):
     """The stored points are directions, so only their angle about the centre matters."""
     widget = display.widget
-    widget.set_active_contour_type(ContourType.WIRE)
+    widget.set_active_contour_type(WIRE)
     widget.start_angle()
     _place(widget, 30, 90)
 
-    points = sector_points(display.frames[0].wire, 0)
+    points = sector_points(display.frames[0].contour('wire'), 0)
     assert math.degrees(angle_of(points[0], widget._image_centre())) % 360 == pytest.approx(30, abs=1)
 
 
@@ -463,20 +462,20 @@ class TestAngleControls:
 
     def test_it_starts_on_the_wire(self, angle_controls):
         left_half = angle_controls.left_half
-        assert left_half.angle_type is ContourType.WIRE
+        assert left_half.angle_type == WIRE
         assert left_half.angle_type_combo.currentText() == '📐 Angle Wire'
         assert left_half.add_angle_btn.text() == '➕📐 Add Wire'
-        assert angle_controls.widget.color_angle in left_half.add_angle_btn.styleSheet()
+        assert angle_controls.widget.contour_color(WIRE) in left_half.add_angle_btn.styleSheet()
 
     def test_choosing_blood_repoints_the_add_button(self, angle_controls):
         left_half = angle_controls.left_half
 
         left_half.angle_type_combo.setCurrentIndex(1)  # what a pick from the drop-down does first
 
-        assert left_half.angle_type is ContourType.BLOOD
+        assert left_half.angle_type == BLOOD
         assert left_half.add_angle_btn.text() == '➕📐 Add Blood'
-        assert angle_controls.widget.color_blood in left_half.add_angle_btn.styleSheet()
-        assert angle_controls.widget.color_blood in left_half.angle_type_combo.styleSheet()
+        assert angle_controls.widget.contour_color(BLOOD) in left_half.add_angle_btn.styleSheet()
+        assert angle_controls.widget.contour_color(BLOOD) in left_half.angle_type_combo.styleSheet()
 
     def test_choosing_a_type_starts_one_of_it(self, angle_controls):
         left_half = angle_controls.left_half
@@ -485,7 +484,7 @@ class TestAngleControls:
         left_half._on_angle_type_activated(1)  # the drop-down entry is the action
 
         assert angle_controls.widget.angle_mode
-        assert angle_controls.widget.active_contour_type is ContourType.BLOOD
+        assert angle_controls.widget.active_contour_type == BLOOD
 
     def test_add_appends_one_of_the_chosen_type(self, angle_controls):
         widget = angle_controls.widget
@@ -497,8 +496,8 @@ class TestAngleControls:
         left_half.add_angle_btn.click()
         _place(widget, 180, 220)
 
-        assert len(angle_controls.frames[0].blood.contours) == 2
-        assert angle_controls.frames[0].wire.contours == []
+        assert len(angle_controls.frames[0].contour('blood').contours) == 2
+        assert angle_controls.frames[0].contour('wire').contours == []
 
     def test_clicking_a_sector_on_the_image_moves_the_drop_down_to_it(self, angle_controls):
         widget = angle_controls.widget
@@ -507,7 +506,7 @@ class TestAngleControls:
         _place(widget, 0, 60)
         left_half.angle_type_combo.setCurrentIndex(1)  # user wandered off to blood
 
-        widget.set_active_contour_type(ContourType.WIRE)  # as grabbing the wire's handle does
+        widget.set_active_contour_type(WIRE)  # as grabbing the wire's handle does
 
         assert left_half.angle_type_combo.currentIndex() == 0
         assert left_half.add_angle_btn.text() == '➕📐 Add Wire'
@@ -516,30 +515,30 @@ class TestAngleControls:
         left_half = angle_controls.left_half
         left_half.angle_type_combo.setCurrentIndex(1)
 
-        left_half.set_active_contour_type_ui(ContourType.CALCIUM)
+        left_half.set_active_contour_type_ui(CALCIUM)
 
         assert left_half.contour_type_combo.currentText() == 'Calcium'
-        assert left_half.angle_type is ContourType.BLOOD  # untouched
+        assert left_half.angle_type == BLOOD  # untouched
 
 
 class TestNothingToGrab:
     def test_a_click_that_moves_nothing_is_not_an_undo_step(self, display):
         widget = display.widget
-        widget.set_active_contour_type(ContourType.WIRE)
+        widget.set_active_contour_type(WIRE)
         widget.start_angle()
         _place(widget, 0, 60)
-        before = sector_points(display.frames[0].wire, 0)
+        before = sector_points(display.frames[0].contour('wire'), 0)
         depth = len(display.runtime.contour_undo._stack)
 
         widget._grab_angle_handle(QPointF(*_preview(widget).handle_positions()[1]))
         widget._release_angle_handle()  # let go without moving
 
-        assert sector_points(display.frames[0].wire, 0) == before
+        assert sector_points(display.frames[0].contour('wire'), 0) == before
         assert len(display.runtime.contour_undo._stack) == depth
 
     def test_hidden_contours_leave_no_handles_behind(self, display):
         widget = display.widget
-        widget.set_active_contour_type(ContourType.WIRE)
+        widget.set_active_contour_type(WIRE)
         widget.start_angle()
         _place(widget, 0, 60)
         handle = QPointF(*_preview(widget).handle_positions()[1])

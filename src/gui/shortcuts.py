@@ -9,6 +9,8 @@ from PyQt6.QtGui import QDesktopServices, QKeySequence, QShortcut
 from PyQt6.QtWidgets import QApplication, QProgressDialog
 
 from domain.all_types import ContourType, SegmentationTool
+from domain.contour_presets import active_preset
+from domain.io_types import is_contour_key
 from domain.undo import FrameAnnotationSnapshot, push_contour_snapshot
 from input_output.input.image import read_image, read_nifti_mask
 from input_output.input.metadata import CctaMetadataWindow, MetadataWindow
@@ -127,49 +129,29 @@ def init_menu(main_window, ccta_page):
     exit_action.setShortcut('Ctrl+Q')
 
     edit_menu = main_window.menu_bar.addMenu('Edit')
-    manual_lumen_contour = edit_menu.addAction(
-        'Manual Lumen Contour', partial(_new_contour_synced, main_window, ContourType.LUMEN)
-    )
-    manual_lumen_contour.setShortcut('E')
-    manual_eem_contour = edit_menu.addAction(
-        'Manual EEM Contour', partial(_new_contour_synced, main_window, ContourType.EEM)
-    )
-    manual_eem_contour.setShortcut('Q')
-    spawn_eem_action = edit_menu.addAction('Spawn EEM from Lumen', partial(spawn_eem_from_lumen, main_window))
-    spawn_eem_action.setShortcut('Shift+Q')
-    manual_calc_contour = edit_menu.addAction(
-        'Manual Calcium Contour', partial(_new_contour_synced, main_window, ContourType.CALCIUM)
-    )
-    manual_calc_contour.setShortcut('7')
-    manual_branch_contour = edit_menu.addAction(
-        'Manual Branch Contour', partial(_new_contour_synced, main_window, ContourType.BRANCH)
-    )
-    manual_branch_contour.setShortcut('8')
-    manual_lipid_contour = edit_menu.addAction(
-        'Manual Lipid Contour', partial(_new_contour_synced, main_window, ContourType.LIPID)
-    )
-    manual_lipid_contour.setShortcut('9')
-    manual_macroph_contour = edit_menu.addAction(
-        'Manual Macrophage Contour', partial(_new_contour_synced, main_window, ContourType.MACROPHAGE)
-    )
-    manual_macroph_contour.setShortcut('0')
+    preset = active_preset()
+    for defn in preset.spline_types:
+        new_key, _ = preset.shortcuts(defn.type)
+        manual = edit_menu.addAction(
+            f'Manual {defn.name} Contour', partial(_new_contour_synced, main_window, defn.type)
+        )
+        if new_key:
+            manual.setShortcut(new_key)
+        if defn.type == ContourType.EEM:
+            spawn_eem_action = edit_menu.addAction(
+                f'Spawn {defn.name} from {preset[ContourType.LUMEN].name}', partial(spawn_eem_from_lumen, main_window)
+            )
+            spawn_eem_action.setShortcut('Shift+Q')
     edit_menu.addSeparator()
-    add_calc_contour = edit_menu.addAction(
-        'Add Calcium Contour', partial(_new_contour_append_synced, main_window, ContourType.CALCIUM)
-    )
-    add_calc_contour.setShortcut('Ctrl+7')
-    add_branch_contour = edit_menu.addAction(
-        'Add Branch Contour', partial(_new_contour_append_synced, main_window, ContourType.BRANCH)
-    )
-    add_branch_contour.setShortcut('Ctrl+8')
-    add_lipid_contour = edit_menu.addAction(
-        'Add Lipid Contour', partial(_new_contour_append_synced, main_window, ContourType.LIPID)
-    )
-    add_lipid_contour.setShortcut('Ctrl+9')
-    add_macroph_contour = edit_menu.addAction(
-        'Add Macrophage Contour', partial(_new_contour_append_synced, main_window, ContourType.MACROPHAGE)
-    )
-    add_macroph_contour.setShortcut('Ctrl+0')
+    for defn in preset.spline_types:
+        if not defn.appendable:
+            continue
+        _, add_key = preset.shortcuts(defn.type)
+        append = edit_menu.addAction(
+            f'Add {defn.name} Contour', partial(_new_contour_append_synced, main_window, defn.type)
+        )
+        if add_key:
+            append.setShortcut(add_key)
     edit_menu.addAction('Remove Contours', partial(remove_contours, main_window))
     edit_menu.addSeparator()
     edit_menu.addAction('Reset Phases', partial(reset_phases, main_window))
@@ -178,18 +160,14 @@ def init_menu(main_window, ccta_page):
     measure_1.setShortcut('1')
     measure_2 = edit_menu.addAction('Measurement 2', partial(new_measure, main_window, index=1))
     measure_2.setShortcut('2')
-    angle_wire = edit_menu.addAction('Angle Wire Shadow', partial(new_angle, main_window, ContourType.WIRE))
-    angle_wire.setShortcut('3')
-    add_angle_wire = edit_menu.addAction(
-        'Add Angle Wire Shadow', partial(new_angle, main_window, ContourType.WIRE, True)
-    )
-    add_angle_wire.setShortcut('Ctrl+3')
-    angle_blood = edit_menu.addAction('Angle Blood Sector', partial(new_angle, main_window, ContourType.BLOOD))
-    angle_blood.setShortcut('B')
-    add_angle_blood = edit_menu.addAction(
-        'Add Angle Blood Sector', partial(new_angle, main_window, ContourType.BLOOD, True)
-    )
-    add_angle_blood.setShortcut('Ctrl+B')
+    for defn in preset.angle_types:
+        new_key, add_key = preset.shortcuts(defn.type)
+        angle = edit_menu.addAction(f'Angle {defn.name}', partial(new_angle, main_window, defn.type))
+        if new_key:
+            angle.setShortcut(new_key)
+        add_angle = edit_menu.addAction(f'Add Angle {defn.name}', partial(new_angle, main_window, defn.type, True))
+        if add_key:
+            add_angle.setShortcut(add_key)
     closed_spline = edit_menu.addAction('Closed Spline', partial(set_tool, main_window, SegmentationTool.CLOSED_SPLINE))
     closed_spline.setShortcut('4')
     open_spline = edit_menu.addAction('Open Spline', partial(set_tool, main_window, SegmentationTool.OPEN_SPLINE))
@@ -238,14 +216,12 @@ def _copy_contour_from_frame(main_window, source_frame: int) -> None:
 
     fd_src = main_window.runtime_data.frame_data_dct.get(source_frame)
     fd_dst = main_window.runtime_data.frame_data_dct.get(current_frame)
-    if fd_src is None or fd_dst is None:
+    if fd_src is None or fd_dst is None or not is_contour_key(key):
         return
 
-    src_obj = getattr(fd_src, key, None)
-    dst_obj = getattr(fd_dst, key, None)
-    if src_obj is None or dst_obj is None:
-        return
-    if not hasattr(src_obj, 'contours') or not src_obj.contours or ci >= len(src_obj.contours):
+    src_obj = fd_src.contour(key)
+    dst_obj = fd_dst.contour(key)
+    if not src_obj.contours or ci >= len(src_obj.contours):
         return
 
     push_contour_snapshot(main_window.runtime_data, current_frame, key, ci)
@@ -333,14 +309,12 @@ def spawn_eem_from_lumen(main_window):
     if fd is None:
         return
 
-    eem_obj = getattr(fd, ContourType.EEM.value, None)
-    if eem_obj is None:
-        return
+    eem_obj = fd.eem
     if eem_obj.contours and eem_obj.contours[0] and eem_obj.contours[0][0]:
         return  # EEM already exists on this frame
 
-    lumen_obj = getattr(fd, ContourType.LUMEN.value, None)
-    if lumen_obj is None or not lumen_obj.contours or not lumen_obj.contours[0] or not lumen_obj.contours[0][0]:
+    lumen_obj = fd.lumen
+    if not lumen_obj.contours or not lumen_obj.contours[0] or not lumen_obj.contours[0][0]:
         return
 
     xs = list(lumen_obj.contours[0][0])
@@ -375,9 +349,8 @@ def remove_contours(main_window):
             for frame in range(lower_limit, upper_limit):
                 fd = main_window.runtime_data.frame_data_dct.get(frame)
                 if fd:
-                    contour_obj = getattr(fd, key, None)
-                    if contour_obj:
-                        contour_obj.contours = []
+                    if is_contour_key(key):
+                        fd.contour(key).contours = []
                     if is_lumen:
                         # the overviews plot these, so they must go with the contour
                         clear_lumen_measurements(fd)
@@ -570,9 +543,9 @@ def delete_contour(main_window):
         push_contour_snapshot(main_window.runtime_data, frame, key, c_idx)
 
         fd = main_window.runtime_data.frame_data_dct.get(frame)
-        if fd:
-            contour_obj = getattr(fd, key, None)
-            if contour_obj and c_idx < len(contour_obj.contours):
+        if fd and is_contour_key(key):
+            contour_obj = fd.contour(key)
+            if c_idx < len(contour_obj.contours):
                 del contour_obj.contours[c_idx]
                 if c_idx < len(contour_obj.start_coords):
                     del contour_obj.start_coords[c_idx]
@@ -620,7 +593,7 @@ def undo_last_contour_edit(main_window):
             setattr(fd, name, value)
         display.working_spline = None
     else:
-        setattr(fd, snap.key, snap.contour)
+        fd.contours[snap.key] = snap.contour
 
     if display.frame != snap.frame:
         main_window.display_slider.set_value(snap.frame)

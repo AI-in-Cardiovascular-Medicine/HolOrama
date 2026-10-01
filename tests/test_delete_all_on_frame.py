@@ -36,7 +36,7 @@ def _drawn_frame() -> FrameData:
             key,
             Contour(contours=[([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])], closed=[True], start_coords=[[]], end_coords=[[]]),
         )
-    frame_data.wire = Contour(contours=[([0.3], [0.9])], closed=[False], start_coords=[[]], end_coords=[[]])
+    frame_data.contours['wire'] = Contour(contours=[([0.3], [0.9])], closed=[False], start_coords=[[]], end_coords=[[]])
     frame_data.lumen.measurements = Measurements(area=7.5, circumference=9.0, minor_axis=2.0)
     frame_data.measurement_1 = Measure(points=((1.0, 2.0), (3.0, 4.0)), length=2.8)
     frame_data.measurement_2 = Measure(points=((5.0, 6.0), (7.0, 8.0)), length=2.8)
@@ -73,7 +73,11 @@ def main_window():
 
 class TestAnnotationFields:
     def test_every_drawable_contour_type_is_covered(self):
-        assert {ct.value for ct in ContourType} <= set(FRAME_ANNOTATION_FIELDS)
+        # Every contour type lives in FrameData.contours, whichever preset defined it.
+        non_contours = {
+            ct.value for ct in (ContourType.MEASUREMENT_1, ContourType.MEASUREMENT_2, ContourType.REFERENCE)
+        }
+        assert {'contours'} | non_contours <= set(FRAME_ANNOTATION_FIELDS)
 
     def test_the_lumen_derived_values_go_too(self):
         assert {'centroid', 'closest_points', 'farthest_points'} <= set(FRAME_ANNOTATION_FIELDS)
@@ -121,7 +125,10 @@ class TestDeleteAllOnFrame:
         frame_data = main_window.runtime_data.frame_data_dct[2]
         for name in FRAME_ANNOTATION_FIELDS:
             value = getattr(frame_data, name)
-            assert value.contours == [] if isinstance(value, Contour) else value is None, name
+            if name == 'contours':
+                assert all(contour.contours == [] for contour in value.values()), name
+            else:
+                assert value is None, name
         assert frame_data.lumen.measurements == Measurements()
 
     def test_leaves_every_other_frame_alone(self, main_window):

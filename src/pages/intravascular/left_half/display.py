@@ -14,15 +14,10 @@ from PyQt6.QtWidgets import (
     QMenu,
 )
 
-from domain.all_types import (
-    ALLOWED_TOOLS,
-    ANGLE_TYPES,
-    ContourConfig,
-    ContourType,
-    SegmentationTool,
-)
-from domain.io_types import Contour, Measure, sector_points, set_sector_points
-from domain.mask_types import MASK_ALPHA, MASK_SPECS
+from domain.all_types import ContourConfig, ContourType, SegmentationTool
+from domain.colors import DEFAULT_MASK_ALPHA
+from domain.contour_presets import active_preset
+from domain.io_types import Contour, Measure, is_contour_key, sector_points, set_sector_points
 from domain.undo import push_contour_snapshot
 from input_output.output.imgs_masks import contours_to_mask
 from pages.intravascular.utils.metrics import MetricsMixin
@@ -69,21 +64,15 @@ class Display(QGraphicsView, MetricsMixin):
         self.point_radius: int = config.intravascular.point_radius
         self.start_color: str = config.intravascular.color_start_point
         self.end_color: str = config.intravascular.color_end_point
-        self.color_angle: str = config.intravascular.color_angle
-        self.color_blood: str = getattr(config.intravascular, 'color_blood', 'darkred')
         # How far from the image centre every angular-sector handle sits (see tools.angle):
         # far enough out to keep the vessel clear, and clamped to the image in
         # _angle_handle_radius for pullbacks with a smaller field of view.
         self.angle_handle_radius_mm: float = getattr(config.intravascular, 'angle_handle_radius_mm', 5.0)
         self.snap_radius_px: int = config.intravascular.snap_radius_px
 
-        self.color_contour = getattr(config.intravascular, "color_contour", (255, 255, 255))
         self.alpha_contour = getattr(config.intravascular, "alpha_contour", 255)  # config uses 0..255
-        self.color_eem: str = getattr(config.intravascular, "color_eem", "red")
-        self.color_calcium: str = getattr(config.intravascular, "color_calcium", "white")
-        self.color_branch: str = getattr(config.intravascular, "color_branch", "green")
-        self.color_lipid: str = getattr(config.intravascular, "color_lipid", "yellow")
-        self.color_macrophage: str = getattr(config.intravascular, "color_macrophage", "blue")
+        # Every contour type's colour is the preset's (see domain.contour_presets); the
+        # reference point is not a contour, so it keeps its own.
         self.color_reference: str = getattr(config.intravascular, "color_reference", "yellow")
 
         self.contour_configs = self._build_contour_configs()
@@ -134,7 +123,7 @@ class Display(QGraphicsView, MetricsMixin):
         self._display_updating: bool = False
         #####################################################################################################
 
-        # Angular sectors (ANGLE_TYPES) — placement, and dragging a boundary afterwards.
+        # Angular sectors (the preset's angle types) — placement, and dragging a boundary afterwards.
         self.angle_mode: bool = False
         self._angle_sectors: list[tuple[ContourType, int, AngleSector]] = []  # what is on screen
         self._angle_start: float | None = None  # boundary the sector being placed opens from
@@ -156,22 +145,19 @@ class Display(QGraphicsView, MetricsMixin):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)  # ensures keyPressEvent fires after a click
 
     def _build_contour_configs(self) -> dict:
-        """(Re)build contour_configs from the current cached scalar attrs."""
-        default_colors = {
-            ContourType.LUMEN: self.color_contour,
-            ContourType.EEM: self.color_eem,
-            ContourType.CALCIUM: self.color_calcium,
-            ContourType.BRANCH: self.color_branch,
-            ContourType.LIPID: self.color_lipid,
-            ContourType.MACROPHAGE: self.color_macrophage,
-            ContourType.WIRE: self.color_angle,
-            ContourType.BLOOD: self.color_blood,
-            ContourType.REFERENCE: self.color_reference,
-        }
+        """(Re)build contour_configs from the active preset and the current cached scalar
+        attrs: one entry per contour type, and one each for the measurements and the
+        reference point, which can be the active type too."""
+        preset = active_preset()
+        lumen_color = preset[ContourType.LUMEN].color
+        colors = {defn.type: defn.color for defn in preset.types}
+        colors[ContourType.MEASUREMENT_1] = lumen_color
+        colors[ContourType.MEASUREMENT_2] = lumen_color
+        colors[ContourType.REFERENCE] = self.color_reference
         configs = {}
-        for ct in ContourType:
+        for ct, color in colors.items():
             configs[ct] = ContourConfig(
-                color=default_colors.get(ct, self.color_contour),
+                color=color,
                 thickness=self.contour_thickness,
                 point_radius=self.point_radius,
                 point_thickness=self.point_thickness,
@@ -196,14 +182,8 @@ class Display(QGraphicsView, MetricsMixin):
         self.point_thickness = values['point_thickness']
         self.point_radius = values['point_radius']
         self.snap_radius_px = values['snap_radius_px']
-        self.color_contour = values['color_contour']
-        self.color_eem = values['color_eem']
-        self.color_calcium = values['color_calcium']
-        self.color_branch = values['color_branch']
         self.start_color = values['color_start_point']
         self.end_color = values['color_end_point']
-        self.color_angle = values['color_angle']
-        self.color_blood = values['color_blood']
         self.angle_handle_radius_mm = values['angle_handle_radius_mm']
 
         self.contour_configs = self._build_contour_configs()
@@ -255,7 +235,7 @@ class Display(QGraphicsView, MetricsMixin):
         self.image_width = images.shape[1]
         self.scaling_factor = self.image_size / images.shape[1]
 
-        self.finalized_splines = {ct.value: [] for ct in ContourType}
+        self.finalized_splines = {defn.type.value: [] for defn in active_preset().types}
 
         try:
             self.main_window.longitudinal_view.set_data(self.images)
@@ -264,15 +244,8 @@ class Display(QGraphicsView, MetricsMixin):
         self.display_image(update_image=True, update_contours=True, update_phase=True)
 
     def _draw_contours_frame(self):
-        closed_contour_types = {
-            ct for ct in ContourType if SegmentationTool.CLOSED_SPLINE in ALLOWED_TOOLS.get(ct, set())
-        }
-        for ct in closed_contour_types:
-            fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
-            if fd is None:
-                continue
-            key = self.contour_key(ct)
-            contour_obj = getattr(fd, key, None)
+        for ct in active_preset().with_tool(SegmentationTool.CLOSED_SPLINE):
+            contour_obj = self._frame_contour(ct)
             if contour_obj is None or not contour_obj.contours:
                 continue
             for i, contour in enumerate(contour_obj.contours):
@@ -306,13 +279,11 @@ class Display(QGraphicsView, MetricsMixin):
 
         ct = contour_type
         cfg = self.contour_configs.get(ct, None)
-        color = cfg.color if cfg else self.color_contour
+        color = self.contour_color(ct)
         alpha = cfg.alpha if cfg else self.alpha_contour
         thickness = cfg.thickness if cfg else self.contour_thickness
 
-        key = self.contour_key(ct)
-        fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
-        contour_obj = getattr(fd, key, None) if fd else None
+        contour_obj = self._frame_contour(ct)
 
         # Read start/end as lists-of-tuples (new schema).
         raw_starts = (
@@ -432,7 +403,7 @@ class Display(QGraphicsView, MetricsMixin):
         if self.measure_index is not None:
             self.stop_measure(self.measure_index)
 
-        self.finalized_splines = {ct.value: None for ct in ContourType}
+        self.finalized_splines = {defn.type.value: None for defn in active_preset().types}
         self._draw_contours_frame()
 
         self.display_image(update_image=True, update_contours=True, update_phase=True)
@@ -442,15 +413,11 @@ class Display(QGraphicsView, MetricsMixin):
         Return a list of length num_frames with interpolated contours (or None per frame).
         Reads from main_window.runtime_data.frame_data_dct (Dict[int, FrameData]).
         """
-        key = self.contour_key(contour_type)
         num_frames = self.images.shape[0] if self.images is not None else 0
         full_contours: list[tuple[np.ndarray, np.ndarray] | None] = [None] * num_frames
 
         for frame_idx in range(num_frames):
-            fd = self.main_window.runtime_data.frame_data_dct.get(frame_idx)
-            if fd is None:
-                continue
-            contour_obj = getattr(fd, key, None)
+            contour_obj = self._frame_contour(contour_type, frame_idx)
             if contour_obj is None or not contour_obj.contours or not contour_obj.contours[0]:
                 continue
             x_coords = list(contour_obj.contours[0][0])
@@ -473,6 +440,22 @@ class Display(QGraphicsView, MetricsMixin):
     def contour_key(self, contour_type: ContourType | None = None) -> str:
         """Return the string key for the given contour type (defaults to active)."""
         return (contour_type or self.active_contour_type).value
+
+    def _frame_contour(self, contour_type: ContourType | None = None, frame: int | None = None) -> Contour | None:
+        """The contour of `contour_type` (the active type by default) on `frame` (the one
+        on screen by default); None without data for that frame, or for a type that is no
+        contour (a measurement or the reference point, which can be the active type)."""
+        key = self.contour_key(contour_type)
+        fd = self.main_window.runtime_data.frame_data_dct.get(self.frame if frame is None else frame)
+        if fd is None or not is_contour_key(key):
+            return None
+        return fd.contour(key)
+
+    def contour_color(self, contour_type: ContourType | None = None):
+        """Line colour of `contour_type` (the active type by default); the lumen's for a
+        type outside the active preset."""
+        cfg = self.contour_configs.get(contour_type or self.active_contour_type)
+        return cfg.color if cfg else self.contour_configs[ContourType.LUMEN].color
 
     def get_current_spline(self):
         """Returns the currently active spline based on self.active_contour_type."""
@@ -505,13 +488,7 @@ class Display(QGraphicsView, MetricsMixin):
         Return (x_list, y_list) for the given contour type at the given frame,
         or ([], []) if absent. Reads from main_window.runtime_data.frame_data_dct (Dict[int, FrameData]).
         """
-        key = self.contour_key(contour_type)
-        if frame is None:
-            frame = self.frame
-        fd = self.main_window.runtime_data.frame_data_dct.get(frame)
-        if fd is None:
-            return ([], [])
-        contour_obj = getattr(fd, key, None)
+        contour_obj = self._frame_contour(contour_type, frame)
         if contour_obj is None or not contour_obj.contours or not contour_obj.contours[0]:
             return ([], [])
         c = contour_obj.contours[0]
@@ -658,9 +635,7 @@ class Display(QGraphicsView, MetricsMixin):
     def _contour_rgb(self, contour_type: ContourType) -> tuple[int, int, int]:
         """RGB for contour_type's configured line color, so the mask fill and brush
         cursor always match the contour outline instead of MaskSpec's fallback color."""
-        cfg = self.contour_configs.get(contour_type)
-        color = cfg.color if cfg else self.color_contour
-        return QColor(color).getRgb()[:3]
+        return QColor(self.contour_color(contour_type)).getRgb()[:3]
 
     def _apply_mask_overlay(self, display_data, w):
         """
@@ -689,9 +664,9 @@ class Display(QGraphicsView, MetricsMixin):
 
             # Overlay live brush canvas on top of the contour-derived mask.
             if self._brush_add is not None:
-                spec = MASK_SPECS.get(self.active_contour_type)
-                if spec is not None:
-                    frame_mask[self._brush_add] = spec.label
+                defn = active_preset().get(self.active_contour_type)
+                if defn is not None:
+                    frame_mask[self._brush_add] = defn.label
             if self._brush_erase is not None:
                 frame_mask[self._brush_erase] = 0
 
@@ -707,12 +682,12 @@ class Display(QGraphicsView, MetricsMixin):
         else:
             rgb = display_data.astype(np.float32)
 
-        for spec in sorted(MASK_SPECS.values(), key=lambda s: s.paint_order):
-            pixels = frame_mask == spec.label
+        for defn in active_preset().paint_order():
+            pixels = frame_mask == defn.label
             if not pixels.any():
                 continue
-            color = np.array(self._contour_rgb(spec.contour_type), dtype=np.float32)
-            rgb[pixels] = rgb[pixels] * (1.0 - MASK_ALPHA) + color * MASK_ALPHA
+            color = np.array(self._contour_rgb(defn.type), dtype=np.float32)
+            rgb[pixels] = rgb[pixels] * (1.0 - DEFAULT_MASK_ALPHA) + color * DEFAULT_MASK_ALPHA
 
         result = np.clip(rgb, 0, 255).astype(np.uint8)
         return np.ascontiguousarray(result), w * 3, QImage.Format.Format_RGB888
@@ -746,8 +721,8 @@ class Display(QGraphicsView, MetricsMixin):
             return
         popup = getattr(self.main_window, 'brush_settings_popup', None)
         radius = popup.radius_px if popup is not None else 10
-        spec = MASK_SPECS.get(self.active_contour_type)
-        color = self._contour_rgb(self.active_contour_type) if spec is not None else (255, 60, 60)
+        in_preset = self.active_contour_type in active_preset()
+        color = self._contour_rgb(self.active_contour_type) if in_preset else (255, 60, 60)
         self._brush_cursor._radius_px = radius
         self._brush_cursor._color = color
         view_scale = self.scaling_factor * self.transform().m11()
@@ -805,10 +780,11 @@ class Display(QGraphicsView, MetricsMixin):
             return
 
         ct = self.active_contour_type
-        spec = MASK_SPECS.get(ct)
+        preset = active_preset()
+        defn = preset.get(ct)
         # A sector is stored as the angles bounding it, not as a paintable region — a
         # brushed boundary cannot be turned back into one.
-        if spec is None or ct in ANGLE_TYPES:
+        if defn is None or defn.is_angle:
             self._brush_add = None
             self._brush_erase = None
             return
@@ -825,17 +801,14 @@ class Display(QGraphicsView, MetricsMixin):
 
         # 2. Apply brush strokes.
         if self._brush_add is not None and self._brush_add.any():
-            base_mask[self._brush_add] = spec.label
+            base_mask[self._brush_add] = defn.label
         if self._brush_erase is not None and self._brush_erase.any():
             # Only erase pixels of this specific label, never pixels of other types.
-            base_mask[self._brush_erase & (base_mask == spec.label)] = 0
+            base_mask[self._brush_erase & (base_mask == defn.label)] = 0
 
-        # 3. Extract binary region for this contour type.
-        #    EEM uses read_predicate = isin(a, [1, 2]) so the contour wraps lumen+wall.
-        if spec.read_predicate is not None:
-            binary = spec.read_predicate(base_mask).astype(np.uint8)
-        else:
-            binary = (base_mask == spec.label).astype(np.uint8)
+        # 3. Extract binary region for this contour type, including whatever is painted
+        #    over it inside it — the EEM's contour wraps the lumen and the plaques too.
+        binary = np.isin(base_mask, list(preset.mask_labels(ct))).astype(np.uint8)
 
         # 4. Find boundary with OpenCV.
         contours_cv, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
@@ -877,7 +850,7 @@ class Display(QGraphicsView, MetricsMixin):
             self._brush_erase = None
             return
 
-        contour_obj = getattr(fd, key)
+        contour_obj = fd.contour(key)
         push_contour_snapshot(self.main_window.runtime_data, frame, key, self.active_contour_index)
         contour_obj.contours = [[list(x_sparse), list(y_sparse)]]
         contour_obj.closed = [True]
@@ -928,11 +901,14 @@ class Display(QGraphicsView, MetricsMixin):
         self.append_contour_mode = False
         self._contour_close_committed = False
         self.active_point = None
-        if was_drawing and self.active_contour_type in (
-            ContourType.MEASUREMENT_1,
-            ContourType.MEASUREMENT_2,
-            ContourType.REFERENCE,
-            *ANGLE_TYPES,
+        if was_drawing and (
+            self.active_contour_type
+            in (
+                ContourType.MEASUREMENT_1,
+                ContourType.MEASUREMENT_2,
+                ContourType.REFERENCE,
+            )
+            or active_preset().is_angle(self.active_contour_type)
         ):
             self.active_contour_type = ContourType.LUMEN
 
@@ -974,7 +950,7 @@ class Display(QGraphicsView, MetricsMixin):
 
         # Fall back to CLOSED_SPLINE if the active tool is not allowed for this contour type
         ct = contour_type or self.active_contour_type
-        if self.active_segmentation_tool not in ALLOWED_TOOLS.get(ct, set()):
+        if self.active_segmentation_tool not in active_preset().allowed_tools(ct):
             self.active_segmentation_tool = SegmentationTool.CLOSED_SPLINE
             self.main_window.left_half.closed_spline_btn.setChecked(True)
 
@@ -985,8 +961,7 @@ class Display(QGraphicsView, MetricsMixin):
         self._active_start_end_idx = None
         self.main_window.display.setCursor(Qt.CursorShape.CrossCursor)
 
-        fd = self.main_window.runtime_data.frame_data_dct[self.frame]
-        contour_obj = getattr(fd, key)
+        contour_obj = self.main_window.runtime_data.frame_data_dct[self.frame].contour(key)
         if not append:
             contour_obj.contours = []
             contour_obj.start_coords = []  # will be populated in stop_contour
@@ -1035,7 +1010,7 @@ class Display(QGraphicsView, MetricsMixin):
         """Helper to instantiate a Point with current config."""
         ct = self.active_contour_type
         cfg = self.contour_configs.get(ct, None)
-        color = cfg.color if cfg else self.color_contour
+        color = self.contour_color(ct)
         alpha = cfg.alpha if cfg else self.alpha_contour
         return Point(
             pos=(pos.x(), pos.y()),
@@ -1106,7 +1081,7 @@ class Display(QGraphicsView, MetricsMixin):
             key = self.contour_key(self.active_contour_type)
             x_list = [point / self.scaling_factor for point in downsampled[0]]
             y_list = [point / self.scaling_factor for point in downsampled[1]]
-            contour_obj = getattr(self.main_window.runtime_data.frame_data_dct[self.frame], key)
+            contour_obj = self.main_window.runtime_data.frame_data_dct[self.frame].contour(key)
             if self.append_contour_mode:
                 contour_obj.contours.append([x_list, y_list])
                 contour_obj.closed.append(True)
@@ -1141,7 +1116,7 @@ class Display(QGraphicsView, MetricsMixin):
             return
 
         key = self.contour_key(self.active_contour_type)
-        contour_obj = getattr(self.main_window.runtime_data.frame_data_dct[self.frame], key)
+        contour_obj = self.main_window.runtime_data.frame_data_dct[self.frame].contour(key)
         if self.append_contour_mode:
             contour_obj.closed.append(False)
         else:
@@ -1159,8 +1134,7 @@ class Display(QGraphicsView, MetricsMixin):
         if self.main_window.image_displayed:
             self.drawing_mode = False
             key = self.contour_key(self.active_contour_type)
-            fd = self.main_window.runtime_data.frame_data_dct[self.frame]
-            contour_obj = getattr(fd, key)
+            contour_obj = self.main_window.runtime_data.frame_data_dct[self.frame].contour(key)
 
             if self.working_spline is not None:
                 downsampled = downsample(
@@ -1384,7 +1358,7 @@ class Display(QGraphicsView, MetricsMixin):
     ################################################################################################
 
     def start_angle(self, append: bool = False):
-        """Initializes placement of one angular sector of the active type (see ANGLE_TYPES).
+        """Initializes placement of one angular sector of the active type (see ContourPreset.angle_types).
 
         append=False replaces every sector of that type on the frame; append=True adds
         another one (a pullback can show more than one guide wire, or blood in two places).
@@ -1392,8 +1366,11 @@ class Display(QGraphicsView, MetricsMixin):
         if self.drawing_mode:
             self.stop_contour()
         contour_type = self.active_contour_type
-        if contour_type not in ANGLE_TYPES:  # nothing else can be drawn as a sector
-            contour_type = ContourType.WIRE
+        angle_types = active_preset().angle_types
+        if not angle_types:
+            return  # the preset has no sector type to place
+        if contour_type not in {defn.type for defn in angle_types}:  # nothing else can be drawn as a sector
+            contour_type = angle_types[0].type
             self.set_active_contour_type(contour_type)
 
         self.angle_mode = True
@@ -1406,8 +1383,8 @@ class Display(QGraphicsView, MetricsMixin):
 
         fd = self.main_window.runtime_data.frame_data_dct[self.frame]
         if not append:
-            setattr(fd, key, Contour())
-        contour_obj = getattr(fd, key)
+            fd.contours[key] = Contour()
+        contour_obj = fd.contour(key)
         # The new sector becomes the active instance, so Delete/Ctrl+Z act on it.
         self.active_contour_index = len(contour_obj.contours)
         self.display_image(update_contours=True)
@@ -1434,8 +1411,7 @@ class Display(QGraphicsView, MetricsMixin):
         degrees was meant.
         """
         key = self.contour_key(self.active_contour_type)
-        fd = self.main_window.runtime_data.frame_data_dct[self.frame]
-        contour_obj = getattr(fd, key)
+        contour_obj = self.main_window.runtime_data.frame_data_dct[self.frame].contour(key)
         angle = self._scene_angle(pos)
 
         if self._angle_start is None or not sector_points(contour_obj, self.active_contour_index):
@@ -1474,17 +1450,18 @@ class Display(QGraphicsView, MetricsMixin):
         self._angle_pointer = angle
         geometry = signed_to_sector(self._angle_start, self._angle_sweep)
         for contour_type, index, sector in self._angle_sectors:
-            if contour_type is self.active_contour_type and index == self.active_contour_index:
+            if contour_type == self.active_contour_type and index == self.active_contour_index:
                 sector.update(*geometry, dotted=True)
                 return
 
     def _discard_incomplete_sector(self):
         """Drop the sector being placed if the user left angle mode after one click:
         a single point defines no wedge and would only draw a stray line."""
-        fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
-        if fd is None or self.active_contour_type not in ANGLE_TYPES:
+        if not active_preset().is_angle(self.active_contour_type):
             return
-        contour_obj = getattr(fd, self.contour_key())
+        contour_obj = self._frame_contour()
+        if contour_obj is None:
+            return
         index = self.active_contour_index
         if index < len(contour_obj.contours) and len(sector_points(contour_obj, index)) < 2:
             for lst in (contour_obj.contours, contour_obj.closed, contour_obj.start_coords, contour_obj.end_coords):
@@ -1550,18 +1527,16 @@ class Display(QGraphicsView, MetricsMixin):
         radius = self._angle_handle_radius()
         half_size = self.image_size / 2
 
-        for contour_type in ANGLE_TYPES:
-            contour_obj = getattr(fd, contour_type.value, None)
-            if contour_obj is None:
-                continue
-            cfg = self.contour_configs.get(contour_type)
-            color = cfg.color if cfg else self.color_angle
+        for defn in active_preset().angle_types:
+            contour_type = defn.type
+            contour_obj = fd.contour(contour_type)
+            color = self.contour_color(contour_type)
             for index in range(len(contour_obj.contours)):
                 points = [
                     (x * self.scaling_factor, y * self.scaling_factor) for x, y in sector_points(contour_obj, index)
                 ]
                 placing = (
-                    self.angle_mode and contour_type is self.active_contour_type and index == self.active_contour_index
+                    self.angle_mode and contour_type == self.active_contour_type and index == self.active_contour_index
                 )
                 if len(points) >= 2:
                     geometry = sector_from_points(points, centre)
@@ -1602,7 +1577,7 @@ class Display(QGraphicsView, MetricsMixin):
             return False
 
         contour_type, index, _, _ = nearest
-        if contour_type is not self.active_contour_type or index != self.active_contour_index:
+        if contour_type != self.active_contour_type or index != self.active_contour_index:
             # Make the grabbed sector the active one (Delete/Ctrl+Z follow it) without
             # redrawing, which would replace the very sector object being dragged.
             self.active_contour_type = contour_type
@@ -1645,8 +1620,7 @@ class Display(QGraphicsView, MetricsMixin):
             return  # a click that grabbed a handle and let go again changed nothing
 
         key = self.contour_key(contour_type)
-        fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
-        contour_obj = getattr(fd, key, None) if fd else None
+        contour_obj = self._frame_contour(contour_type)
         if contour_obj is None:
             return
         push_contour_snapshot(self.main_window.runtime_data, self.frame, key, index)
@@ -1666,16 +1640,12 @@ class Display(QGraphicsView, MetricsMixin):
         half_size = self.image_size / 2
         image_center = QPointF(half_size, half_size)
 
-        open_spline_types = {ct for ct in ContourType if SegmentationTool.OPEN_SPLINE in ALLOWED_TOOLS.get(ct, set())}
-        for ct in open_spline_types:
-            key = ct.value
-            contour_obj = getattr(fd, key, None)
-            if contour_obj is None or not contour_obj.contours:
+        for ct in active_preset().with_tool(SegmentationTool.OPEN_SPLINE):
+            contour_obj = fd.contour(ct)
+            if not contour_obj.contours:
                 continue
 
-            cfg = self.contour_configs.get(ct)
-            color = cfg.color if cfg else self.color_contour
-            pen = get_qt_pen(color, self.point_thickness)
+            pen = get_qt_pen(self.contour_color(ct), self.point_thickness)
 
             centroid = image_center
             if fd.centroid:
@@ -1777,15 +1747,8 @@ class Display(QGraphicsView, MetricsMixin):
         nearest_ct = None
         nearest_index = 0
 
-        closed_contour_types = {
-            ct for ct in ContourType if SegmentationTool.CLOSED_SPLINE in ALLOWED_TOOLS.get(ct, set())
-        }
-        for ct in closed_contour_types:
-            fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
-            if fd is None:
-                continue
-            key = self.contour_key(ct)
-            contour_obj = getattr(fd, key, None)
+        for ct in active_preset().with_tool(SegmentationTool.CLOSED_SPLINE):
+            contour_obj = self._frame_contour(ct)
             if contour_obj is None or not contour_obj.contours:
                 continue
             for i, contour in enumerate(contour_obj.contours):
@@ -1841,8 +1804,7 @@ class Display(QGraphicsView, MetricsMixin):
         # so mouseReleaseEvent can update the correct entry after a drag.
         self._active_start_end_idx = None
         if point_item.color in (self.start_color, self.end_color):
-            key = self.contour_key(self.active_contour_type)
-            contour_obj = getattr(self.main_window.runtime_data.frame_data_dct[self.frame], key, None)
+            contour_obj = self._frame_contour()
             ci = self.active_contour_index
             if contour_obj:
                 sf = self.scaling_factor
@@ -1885,7 +1847,7 @@ class Display(QGraphicsView, MetricsMixin):
             (pos.x(), pos.y()),
             self.point_thickness,
             self.point_radius,
-            cfg.color if cfg else self.color_contour,
+            self.contour_color(),
             cfg.alpha if cfg else self.alpha_contour,
         )
         self.graphics_scene.addItem(self.active_point)
@@ -1893,11 +1855,7 @@ class Display(QGraphicsView, MetricsMixin):
 
     def _get_active_closed_flag(self) -> bool:
         """Return True when the currently active contour index is a closed spline."""
-        key = self.contour_key(self.active_contour_type)
-        fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
-        if fd is None:
-            return True
-        contour_obj = getattr(fd, key, None)
+        contour_obj = self._frame_contour()
         if contour_obj is None or not contour_obj.closed:
             return True
         ci = self.active_contour_index
@@ -1936,8 +1894,7 @@ class Display(QGraphicsView, MetricsMixin):
 
     def _show_knot_label_popup(self, knot_item: Point, view_pos):
         """QMenu popup beside a knot point for labelling it as start, end, or neutral."""
-        key = self.contour_key(self.active_contour_type)
-        contour_obj = getattr(self.main_window.runtime_data.frame_data_dct[self.frame], key, None)
+        contour_obj = self._frame_contour()
         if contour_obj is None:
             return
         ci = self.active_contour_index
@@ -1986,12 +1943,10 @@ class Display(QGraphicsView, MetricsMixin):
         self.graphics_scene.removeItem(point_item)
         self.points_to_draw.pop(idx)
 
-        key = self.contour_key(self.active_contour_type)
-        fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
-        if fd:
-            contour_obj = getattr(fd, key, None)
+        contour_obj = self._frame_contour()
+        if contour_obj is not None:
             ci = self.active_contour_index
-            if contour_obj and contour_obj.contours and len(contour_obj.contours) > ci and contour_obj.contours[ci]:
+            if contour_obj.contours and len(contour_obj.contours) > ci and contour_obj.contours[ci]:
                 contour_obj.contours[ci][0].pop(idx)
                 if len(contour_obj.contours[ci]) > 1:
                     contour_obj.contours[ci][1].pop(idx)
@@ -2078,7 +2033,7 @@ class Display(QGraphicsView, MetricsMixin):
 
                 x_list = [p / self.scaling_factor for p in geom.knot_points_x]
                 y_list = [p / self.scaling_factor for p in geom.knot_points_y]
-                contour_obj = getattr(self.main_window.runtime_data.frame_data_dct[self.frame], key)
+                contour_obj = self.main_window.runtime_data.frame_data_dct[self.frame].contour(key)
                 ci = self.active_contour_index
                 push_contour_snapshot(self.main_window.runtime_data, self.frame, key, ci)
                 if ci < len(contour_obj.contours):
@@ -2118,20 +2073,12 @@ class Display(QGraphicsView, MetricsMixin):
 
     def _scale_active_contour(self, delta: int) -> None:
         """Move all knot points of the active contour toward (delta<0) or away (delta>0) from their centroid."""
-        if self.active_contour_type in ANGLE_TYPES:
+        if active_preset().is_angle(self.active_contour_type):
             return  # a sector's points mark angles from the image centre; scaling them is meaningless
         key = self.contour_key(self.active_contour_type)
-        fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
-        if fd is None:
-            return
-        contour_obj = getattr(fd, key, None)
+        contour_obj = self._frame_contour()
         ci = self.active_contour_index
-        if (
-            contour_obj is None
-            or not hasattr(contour_obj, 'contours')
-            or not contour_obj.contours
-            or len(contour_obj.contours) <= ci
-        ):
+        if contour_obj is None or not contour_obj.contours or len(contour_obj.contours) <= ci:
             return
         contour = contour_obj.contours[ci]
         if not contour or not contour[0] or len(contour[0]) < 2:
@@ -2161,7 +2108,7 @@ class Display(QGraphicsView, MetricsMixin):
             new_xs.append(cx + dx * scale)
             new_ys.append(cy + dy * scale)
 
-        contour_obj.contours[ci] = [new_xs, new_ys]
+        contour_obj.contours[ci] = (new_xs, new_ys)
         self.main_window.save_contours_soon()
         self.display_image(update_contours=True)
         try:

@@ -56,6 +56,8 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import QSizePolicy, QWidget
 
 from input_output.output.imgs_masks import frame_region_metrics
+from domain.all_types import ContourType
+from domain.contour_presets import active_preset
 from tools.geometry import SplineGeometry
 
 CATHETER_DIAMETER_MM = 0.9  # 2.7 F imaging catheter; overridden by config.intravascular.catheter_diameter
@@ -124,7 +126,7 @@ def _contour_signature(frame_data) -> tuple:
     """
     signature: list = []
     for key in ('lumen', 'eem', 'calcium', 'lipid'):
-        for entry in getattr(frame_data, key).contours:
+        for entry in frame_data.contour(key).contours:
             xs = entry[0] if entry else []
             ys = entry[1] if len(entry) > 1 else []
             signature.append((len(xs), round(float(sum(xs)), 3), round(float(sum(ys)), 3)))
@@ -359,14 +361,14 @@ class OCTPlot(QWidget):
 
         calcium = lipid = float('nan')
         if eem_r is not None:
-            if frame_data.calcium.contours or frame_data.lipid.contours:
+            if frame_data.contour('calcium').contours or frame_data.contour('lipid').contours:
                 if not allow_masks:
                     return _FrameMetrics(lumen_r=lumen_r, eem_r=eem_r, calcium=calcium, lipid=lipid, complete=False)
                 areas = frame_region_metrics(frame_data, image_shape, resolution, downsample=_downsample(image_shape))
                 wall = areas['wall']
                 if wall > 0:
-                    calcium = min(areas['calcium'] / wall, 1.0)
-                    lipid = min(areas['lipid'] / wall, 1.0)
+                    calcium = min(areas.get('calcium', 0.0) / wall, 1.0)
+                    lipid = min(areas.get('lipid', 0.0) / wall, 1.0)
             else:
                 calcium = lipid = 0.0  # EEM drawn but no plaque labelled -> genuinely zero
 
@@ -718,10 +720,10 @@ class OCTPlot(QWidget):
         painter.drawText(QPointF(x0, baseline), '   '.join(parts))
 
     def _lumen_color(self) -> QColor:
-        return QColor(getattr(self.main_window.config.intravascular, 'color_contour', 'green'))
+        return QColor(active_preset()[ContourType.LUMEN].color)
 
     def _eem_color(self) -> QColor:
-        return QColor(getattr(self.main_window.config.intravascular, 'color_eem', '#03b1fc'))
+        return QColor(active_preset()[ContourType.EEM].color)
 
     # ------------------------------------------------------------------
     # Interaction

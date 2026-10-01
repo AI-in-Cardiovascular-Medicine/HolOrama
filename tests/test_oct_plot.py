@@ -46,11 +46,11 @@ def _frame(lumen_mm=1.0, eem_mm=None, calcium_arc=None, lipid_arc=None) -> Frame
         frame_data.eem.closed = [True]
         mid = (lumen_mm + eem_mm) / 2
         if calcium_arc is not None:
-            frame_data.calcium.contours = [_ring(mid, n=12, arc=calcium_arc)]
-            frame_data.calcium.closed = [False]
+            frame_data.contour('calcium').contours = [_ring(mid, n=12, arc=calcium_arc)]
+            frame_data.contour('calcium').closed = [False]
         if lipid_arc is not None:
-            frame_data.lipid.contours = [_ring(mid, n=12, arc=lipid_arc)]
-            frame_data.lipid.closed = [False]
+            frame_data.contour('lipid').contours = [_ring(mid, n=12, arc=lipid_arc)]
+            frame_data.contour('lipid').closed = [False]
     return frame_data
 
 
@@ -166,11 +166,11 @@ class TestProfile:
         """
         lumen_mm, eem_mm = 1.0, 1.6
         frame_data = _frame(lumen_mm=lumen_mm, eem_mm=eem_mm)
-        frame_data.calcium.contours = [_ring(lumen_mm, n=12, arc=(0.0, np.pi / 2))]
-        frame_data.calcium.closed = [False]
+        frame_data.contour('calcium').contours = [_ring(lumen_mm, n=12, arc=(0.0, np.pi / 2))]
+        frame_data.contour('calcium').closed = [False]
         lipid_r = (lumen_mm + eem_mm) / 2
-        frame_data.lipid.contours = [_ring(lipid_r, n=12, arc=(np.pi, 1.25 * np.pi))]
-        frame_data.lipid.closed = [False]
+        frame_data.contour('lipid').contours = [_ring(lipid_r, n=12, arc=(np.pi, 1.25 * np.pi))]
+        frame_data.contour('lipid').closed = [False]
 
         widget = plot({8: frame_data})
         widget.refresh()
