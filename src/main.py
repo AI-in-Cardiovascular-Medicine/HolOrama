@@ -16,24 +16,12 @@ from PyQt6.QtCore import QtMsgType, qInstallMessageHandler
 from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtWidgets import QApplication
 
+from app_paths import IS_FROZEN
+from app_paths import user_data_dir as _user_data_dir
 from gui.app import Master
 from version import __version__
 
-# When frozen (Nuitka standalone), the app may be installed under a read-only
-# location such as C:\Program Files, and the shortcut's working directory points
-# there. The only two things the app writes on its own (its logs and its config
-# file) must therefore live in a per-user, always-writable directory instead of
-# next to the exe / relative to the CWD (which raises PermissionError on startup).
-# User data (contours, reports, NIfTi/STL exports) is unaffected: it keeps writing
-# next to the opened data file. Uncompiled dev runs keep the original in-repo paths.
-IS_FROZEN = "__compiled__" in globals()
-
-
-def _user_data_dir() -> Path:
-    base = Path(os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or Path.home())
-    return base / "HolOrama"
-
-
+# Logs and the config file are written per user once frozen; see app_paths.
 LOG_DIR = (_user_data_dir() / "logs") if IS_FROZEN else Path("logs")
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / f"app_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"

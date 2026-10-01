@@ -92,17 +92,14 @@ class LeftHalf:
         self.measure_btn_2.setStyleSheet(f'border-color: {self.measure_colors[1]}')
         self.measure_btn_2.clicked.connect(partial(new_measure, main_window, 1))
 
-        preset = active_preset()
-        self._contour_type_items = _type_items(preset, angle=False)
-        self._angle_type_items = _type_items(preset, angle=True)
-
+        # Both drop-downs list the active preset's types; refresh_contour_types fills them.
+        self._contour_type_items: list[_TypeItem] = []
+        self._angle_type_items: list[_TypeItem] = []
         # Which sector type both angle controls currently act on; kept in step with the
         # display by set_active_contour_type_ui. None for a preset without sector types.
-        self.angle_type: ContourType | None = self._angle_type_items[0][1] if self._angle_type_items else None
+        self.angle_type: ContourType | None = None
 
         self.angle_type_combo = QComboBox()
-        for label, _, _, _ in self._angle_type_items:
-            self.angle_type_combo.addItem(f'📐 Angle {label}')
         self.angle_type_combo.currentIndexChanged.connect(self._on_angle_type_changed)
         self.angle_type_combo.activated.connect(self._on_angle_type_activated)
 
@@ -136,18 +133,11 @@ class LeftHalf:
         ):
             display_buttons_hbox.addWidget(widget)
         left_vbox.addLayout(display_buttons_hbox)
-        if self.angle_type is not None:
-            self._apply_angle_type(self.angle_type)  # set both controls' labels, colours and tooltips
-        else:
-            self.angle_type_combo.hide()
-            self.add_angle_btn.hide()
 
         # Second row: contour type selector + new/add buttons
         contour_row_hbox = QHBoxLayout()
 
         self.contour_type_combo = QComboBox()
-        for label, _, _, _ in self._contour_type_items:
-            self.contour_type_combo.addItem(label)
         self.contour_type_combo.setToolTip("Select contour type")
         self.contour_type_combo.currentIndexChanged.connect(self._on_contour_type_changed)
 
@@ -168,7 +158,7 @@ class LeftHalf:
         contour_row_hbox.addWidget(self.delete_all_btn)
         left_vbox.addLayout(contour_row_hbox)
 
-        self._on_contour_type_changed(0)  # set initial tooltips and button state
+        self.refresh_contour_types()  # fill both drop-downs, and set tooltips and button state
 
         left_vbox.addWidget(main_window.display)
 
@@ -212,6 +202,31 @@ class LeftHalf:
 
     def __call__(self):
         return self.left_widget
+
+    def refresh_contour_types(self) -> None:
+        """(Re)fill both drop-downs from the active preset, starting on its first type of
+        each, as when the page opens."""
+        preset = active_preset()
+        self._contour_type_items = _type_items(preset, angle=False)
+        self._angle_type_items = _type_items(preset, angle=True)
+
+        for combo, items, prefix in (
+            (self.contour_type_combo, self._contour_type_items, ''),
+            (self.angle_type_combo, self._angle_type_items, '📐 Angle '),
+        ):
+            combo.blockSignals(True)
+            combo.clear()
+            for label, _, _, _ in items:
+                combo.addItem(f'{prefix}{label}')
+            combo.setCurrentIndex(0)
+            combo.blockSignals(False)
+
+        self.angle_type = self._angle_type_items[0][1] if self._angle_type_items else None
+        self.angle_type_combo.setVisible(self.angle_type is not None)
+        self.add_angle_btn.setVisible(self.angle_type is not None)
+        if self.angle_type is not None:
+            self._apply_angle_type(self.angle_type)  # set both controls' labels, colours and tooltips
+        self._on_contour_type_changed(0)
 
     def play(self, main_window):
         """Plays all frames until end of pullback starting from currently selected frame"""

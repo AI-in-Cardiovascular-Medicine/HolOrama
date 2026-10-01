@@ -6,6 +6,7 @@ common:
 
 intravascular:
   image_size: 800
+  contour_preset: 'Default'    # the contour types to annotate with (Settings > Intravascular Contour Settings)
   gating_display_stretch: 1
   lview_display_stretch: 1
   n_interactive_points: 20  # lumen and eem use this; calcium, lipid, macrophage, branch use half

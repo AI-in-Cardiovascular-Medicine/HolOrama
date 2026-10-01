@@ -17,7 +17,7 @@ import yaml
 from PyQt6.QtCore import QPointF, Qt
 
 from domain.all_types import ContourType
-from domain.contour_presets import active_preset
+from domain.contour_presets import active_preset, set_active_preset
 from domain.io_types import FrameData, sector_points
 from domain.runtime_types import RuntimeData
 from tools.angle import angle_of, sector_from_points
@@ -547,3 +547,38 @@ class TestNothingToGrab:
         widget.display_image(update_contours=True)
 
         assert not widget._grab_angle_handle(handle)
+
+
+class TestPresetChange:
+    """What the page does when another contour preset becomes active (see shortcuts.apply_contour_preset)."""
+
+    @pytest.fixture
+    def no_sectors(self):
+        from domain.contour_presets import ContourPreset
+
+        before = active_preset()
+        raw = before.to_dict()
+        raw['types'] = [row for row in raw['types'] if row['tools'] != 'angle']
+        set_active_preset(ContourPreset.from_dict(raw))
+        yield
+        set_active_preset(before)
+
+    def test_a_preset_without_sectors_hides_the_angle_controls(self, angle_controls, no_sectors):
+        left_half = angle_controls.left_half
+        left_half.refresh_contour_types()
+        assert left_half.angle_type is None
+        assert left_half.angle_type_combo.isHidden() and left_half.add_angle_btn.isHidden()
+        assert left_half.angle_type_combo.count() == 0
+
+    def test_the_display_falls_back_to_the_lumen_when_its_type_is_gone(self, angle_controls, no_sectors):
+        widget = angle_controls.widget
+        widget.active_contour_type = WIRE
+        widget.refresh_contour_types()
+        assert widget.active_contour_type == ContourType.LUMEN
+        assert WIRE not in widget.contour_configs
+
+    def test_the_contours_of_a_type_that_is_gone_are_kept(self, angle_controls, no_sectors):
+        frame_data = angle_controls.frames[0]
+        frame_data.contour('wire').contours = [([1.0, 2.0], [3.0, 4.0])]
+        angle_controls.widget.refresh_contour_types()
+        assert frame_data.contour('wire').contours == [([1.0, 2.0], [3.0, 4.0])]

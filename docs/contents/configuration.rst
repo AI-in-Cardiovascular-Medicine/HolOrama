@@ -35,6 +35,8 @@ analysis outputs are unaffected and are still written next to the file you opene
 
    * - Key
      - Meaning
+   * - ``contour_preset``
+     - Name of the contour preset to annotate with (see `Contour presets`_ below).
    * - ``image_size``
      - Initial side length in pixels of the square box showing the IVUS/OCT image.
        Default 800. Window size adjustable with :kbd:`LMB` drag.
@@ -179,3 +181,41 @@ Automatic lumen segmentation. Available only in a source install, see
    * - ``conserve_memory``
      - Set to ``True`` on machines with less than 32 GB RAM. Increases inference time but
        lowers peak memory use.
+
+Contour presets
+---------------
+
+Which contour types the intravascular page offers is set by a **contour preset**, edited in
+**Settings → Intravascular Contour Settings…**. Each row is one contour type:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 80
+
+   * - Column
+     - Meaning
+   * - Label
+     - The value the type is written into the exported mask as (1-255).
+   * - Colour
+     - The colour it is drawn and overlaid in.
+   * - Name
+     - Its name everywhere in the app.
+   * - Tools
+     - *Closed only*, *Open and closed*, or *Angle* (a sector about the catheter). The brush
+       comes with every spline type.
+   * - Inside
+     - The type it lies inside. Its region is clipped to that type (and kept out of the
+       lumen), and an open contour of it fills outwards from the arc up to that type's
+       boundary. Required for open contours.
+   * - Layer
+     - Where it sits in the mask: wherever two regions overlap, the higher layer shows. The
+       lumen is always on top, except of what lies inside it.
+
+The lumen and the EEM are always the first two rows. The keyboard shortcuts go to the rows
+in order (``E``, ``Q``, ``7``-``0`` for spline types, ``3`` and ``B`` for angles); further
+rows have none. The built-in **Default** preset is read-only — duplicate it to change it.
+
+Each preset is one JSON file, so it can be exported and shared. User presets are kept in
+``%LOCALAPPDATA%\HolOrama\presets\intravascular`` (Windows installer) or
+``presets/intravascular`` in the repository (from source). Every saved contour file also
+records the contour types it was drawn with.

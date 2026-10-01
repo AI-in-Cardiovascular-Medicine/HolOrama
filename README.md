@@ -233,6 +233,7 @@ This application is designed for IVUS, OCT and CCTA images in DICOM or NIfTi for
 Make sure to quickly check the **src/config.yaml** file and configure everything to your needs.
 
 **Display**:
+- contour_preset: Name of the contour preset defining the intravascular contour types; edited in Settings → Intravascular Contour Settings.
 - image_size: In pixels, creates the quadratic box displaying the IVUS/OCT images. Default 800x800 px.
 - gating_display_stretch: input parameter for .setStretchFactor in class RightHalf
 - lview_display_stretch: input parameter for .setStretchFactor in class RightHalf

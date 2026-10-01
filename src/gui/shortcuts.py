@@ -4,14 +4,15 @@ from functools import partial
 import cv2
 import numpy as np
 from loguru import logger
-from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtCore import Qt, QTimer, QUrl
 from PyQt6.QtGui import QDesktopServices, QKeySequence, QShortcut
 from PyQt6.QtWidgets import QApplication, QProgressDialog
 
 from domain.all_types import ContourType, SegmentationTool
-from domain.contour_presets import active_preset
+from domain.contour_presets import ContourPreset, active_preset, set_active_preset
 from domain.io_types import is_contour_key
 from domain.undo import FrameAnnotationSnapshot, push_contour_snapshot
+from gui import settings_io
 from input_output.input.image import read_image, read_nifti_mask
 from input_output.input.metadata import CctaMetadataWindow, MetadataWindow
 from input_output.output.contours import write_contours
@@ -20,6 +21,7 @@ from input_output.output.other_fmt import save_gated_images
 from input_output.output.reports import report
 from pages.ccta.popup_windows.settings_dialog import CctaSettingsDialog
 from pages.ccta.popup_windows.settings_dialog import apply_and_save as apply_and_save_ccta
+from pages.intravascular.popup_windows.contour_settings_dialog import ContourSettingsDialog
 from pages.intravascular.popup_windows.display_settings_dialog import DisplaySettingsDialog, apply_and_save
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
@@ -195,6 +197,7 @@ def init_menu(main_window, ccta_page):
 
     settings_menu = main_window.menu_bar.addMenu('Settings')
     settings_menu.addAction('Display Settings...', partial(open_display_settings, main_window))
+    settings_menu.addAction('Intravascular Contour Settings...', partial(open_contour_settings, main_window, ccta_page))
     settings_menu.addAction('CCTA Settings...', partial(open_ccta_settings, ccta_page))
 
     help_menu = main_window.menu_bar.addMenu('Help')
@@ -629,6 +632,39 @@ def open_display_settings(main_window):
     dialog = DisplaySettingsDialog(main_window)
     if dialog.exec():
         apply_and_save(main_window, dialog.get_values())
+
+
+def open_contour_settings(main_window, ccta_page):
+    dialog = ContourSettingsDialog(main_window, active_name=active_preset().name)
+    if dialog.exec():
+        preset = dialog.selected_preset()
+        if preset is not None:
+            apply_contour_preset(main_window, ccta_page, preset)
+
+
+_CONTOUR_PRESET_KEY = {'contour_preset': 'intravascular'}
+
+
+def apply_contour_preset(main_window, ccta_page, preset: ContourPreset) -> None:
+    """Make `preset` the one the intravascular page annotates with: remember it in the
+    config, and rebuild everything that lists or draws the contour types."""
+    set_active_preset(preset)
+    values = {'contour_preset': preset.name}
+    settings_io.apply_values(main_window.config, _CONTOUR_PRESET_KEY, values)
+    settings_io.save_values(settings_io.resolve_config_path(main_window.config), _CONTOUR_PRESET_KEY, values)
+
+    main_window.display.refresh_contour_types()
+    main_window.left_half.refresh_contour_types()
+    # The Edit menu lists every type. It is rebuilt once the menu action that opened the
+    # dialog has returned, rather than from inside it.
+    QTimer.singleShot(0, partial(_rebuild_menu, main_window, ccta_page))
+    if main_window.image_displayed:
+        main_window.save_contours_soon()  # the file records the contour types it was drawn with
+
+
+def _rebuild_menu(main_window, ccta_page) -> None:
+    main_window.menu_bar.clear()
+    init_menu(main_window, ccta_page)
 
 
 def open_ccta_settings(ccta_page):

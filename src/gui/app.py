@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
 from domain.io_types import MetaDataCCTA, MetaDataIntravascular, MetaDataFusion
 from gui.active_page import ActivePage
 from gui.shortcuts import init_ccta_shortcuts, init_menu, init_shortcuts
+from input_output.preset_library import activate_configured_preset
 from pages.ccta.page import CctaPage
 from pages.intravascular.page import IntravascularPage
 from pages.fusion.page import FusionPage
@@ -56,6 +57,7 @@ class Master(QMainWindow):
     def __init__(self, config: SimpleNamespace) -> None:
         super().__init__()
         self.config = config
+        activate_configured_preset(config)  # before any page lists the contour types
         for page in ActivePage:
             metadata_name = f"{ActivePage.value_to_string(page.value).lower()}_metadata"
             data_type = ActivePage.metadata_type(page)

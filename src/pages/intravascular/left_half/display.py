@@ -171,6 +171,20 @@ class Display(QGraphicsView, MetricsMixin):
             )
         return configs
 
+    def refresh_contour_types(self) -> None:
+        """Follow a change of the active preset: its colours, and its types — falling back
+        to the lumen when the type being worked on is gone."""
+        if self.images is not None:
+            self._interrupt_drawing_mode()
+        self.contour_configs = self._build_contour_configs()
+        if self.active_contour_type not in self.contour_configs:
+            self.active_contour_type = ContourType.LUMEN
+            self.active_contour_index = 0
+        self.finalized_splines = {defn.type.value: [] for defn in active_preset().types}
+        self._base_mask_cache = None
+        if self.images is not None:
+            self.update_display()
+
     def apply_display_settings(self, values: dict) -> None:
         """Apply edited Display Settings (from DisplaySettingsDialog) live to this Display."""
         self.windowing_sensitivity = values['windowing_sensitivity']

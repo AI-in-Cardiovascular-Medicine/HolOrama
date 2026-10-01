@@ -5,6 +5,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Settings → Intravascular Contour Settings**: a table of the contour types (mask label, colour, name, tools, the type each lies inside, layer), with **+ Add contour type** and per-row move/remove. Lumen and EEM stay the first two rows.
+- **Contour presets**: named sets of contour types (e.g. "IVUS CAD", "OCT CAD") with New, Duplicate, Rename, Delete, Import and Export. The built-in **Default** is read-only. The chosen preset is remembered in `config.yaml` (`contour_preset`).
+
 ### Changed
 - **Intravascular contour types are defined by a contour preset** (`src/presets/intravascular/default.json`) instead of being hardcoded: each type's name, colour, mask label, tools, layer and the type it lies inside. The default preset reproduces the previous types, mask labels and keyboard shortcuts.
 - **Mask layering** follows each type's layer instead of the distance from the lumen centroid. Only differs where two plaque types overlap: the higher layer now wins.

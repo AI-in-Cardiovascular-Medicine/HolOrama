@@ -181,3 +181,5 @@ main.dist
 
 DICOM
 PLAN.md
+# user contour presets of a dev run (the built-in ones live in src/presets)
+/presets/
