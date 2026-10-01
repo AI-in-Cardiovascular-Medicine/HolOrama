@@ -501,19 +501,17 @@ def contours_to_mask(images, contoured_frames, data, preset: ContourPreset | Non
     Convert IVUS contours to a multi-label numpy mask.
 
     Every contour type is painted as its preset `label` (0 is the background), bottom to
-    top in the preset's paint order (see ContourPreset.paint_order): by layer, so where
-    two regions overlap the higher layer is what the mask shows, with the lumen on top of
-    everything except what lies inside it. Each region is first clipped to the type it
-    lies in (see _frame_regions) — plaques to the vessel wall, say. With the default
-    preset:
+    top by layer (see ContourPreset.paint_order), so where two regions overlap the higher
+    layer is what the mask shows. Each region is first clipped to the type it lies in (see
+    _frame_regions) — plaques to the vessel wall, say. With the default preset:
 
-    1  lumen
-    2  EEM         - shows as the vessel wall: the lumen is painted over it
-    3  calcium     - within EEM (open or closed spline, see _contained_mask)
-    4  lipid       - within EEM (open or closed spline, see _contained_mask)
-    5  macrophage  - within EEM (open or closed spline, see _contained_mask)
+    1  lumen       - the top layer
+    9  wire shadow - guide-wire angular shadow, under the lumen and over everything else
     7  branch      - side-branch lumen (closed spline, not EEM-clipped)
-    9  wire shadow - guide-wire angular shadow
+    5  macrophage  - within EEM (open or closed spline, see _contained_mask)
+    4  lipid       - within EEM (open or closed spline, see _contained_mask)
+    3  calcium     - within EEM (open or closed spline, see _contained_mask)
+    2  EEM         - shows as the vessel wall: everything inside it is painted over it
     10 blood       - blood artefact angular sector, the bottom-most layer of all
 
     Parameters

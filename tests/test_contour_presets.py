@@ -99,10 +99,10 @@ class TestDefaultPreset:
         assert preset.allowed_tools('calcium') == spline | {SegmentationTool.OPEN_SPLINE}
         assert preset.allowed_tools('wire') == {SegmentationTool.ANGLE}
 
-    def test_the_sectors_are_the_bottom_layers_and_the_lumen_the_top(self):
+    def test_blood_is_the_bottom_and_the_wire_just_under_the_lumen(self):
         order = [defn.type.value for defn in active_preset().paint_order()]
-        assert order[:3] == ['blood', 'wire', 'eem']
-        assert order[-1] == 'lumen'
+        assert order[:2] == ['blood', 'eem']
+        assert order[-2:] == ['wire', 'lumen']
 
     def test_the_plaques_lie_in_the_eem(self):
         preset = active_preset()
@@ -124,10 +124,10 @@ class TestValidation:
             (lambda raw: raw['types'].reverse(), 'lumen has to be the first'),
             (lambda raw: raw['types'].pop(1), 'EEM has to be the second'),
             (lambda raw: raw['types'][2].update(label=2), 'mask label'),
-            (lambda raw: raw['types'][2].update(layer=2), 'layer'),
+            (lambda raw: raw['types'][2].update(layer=1), 'layer'),
             (lambda raw: raw['types'][2].update(inside=None), 'needs a type to lie in'),
             (lambda raw: raw['types'][2].update(layer=-5), 'layered above'),
-            (lambda raw: raw['types'][0].update(layer=-3), 'highest layer'),
+            (lambda raw: raw['types'][0].update(layer=-3), 'Lumen has to be layered above EEM'),
             (lambda raw: raw['types'][0].update(tools='open_closed'), 'closed contour'),
             (lambda raw: raw['types'][2].update(inside='wire'), 'angle'),
             (lambda raw: raw['types'][2].update(inside='thrombus'), 'lacks'),
@@ -169,8 +169,7 @@ _THROMBUS = {'id': 'thrombus', 'name': 'Thrombus', 'label': 13, 'color': 'red', 
 
 def _custom_preset() -> ContourPreset:
     raw = _with_row(_default_raw(), {**_PLAQUE, 'inside': 'eem'})
-    raw = _with_row(raw, {**_THROMBUS, 'inside': 'lumen'})
-    raw['types'][0]['layer'] = 20  # the lumen stays the highest layer
+    raw = _with_row(raw, {**_THROMBUS, 'inside': 'lumen'})  # layered above the lumen (7)
     return ContourPreset.from_dict(raw)
 
 
@@ -190,12 +189,25 @@ def _mask(frame_data, preset):
 class TestCustomTypes:
     def test_a_type_inside_the_lumen_is_painted_over_it(self):
         preset = _custom_preset()
-        assert [defn.type.value for defn in preset.paint_order()][-2:] == ['lumen', 'thrombus']
+        order = [defn.type.value for defn in preset.paint_order()]
+        assert order.index('thrombus') > order.index('lumen')
 
         thrombus = Contour(contours=[_circle(15.0)], closed=[True])
         mask = _mask(_vessel(thrombus=thrombus), preset)
         assert (mask == 13).sum() == pytest.approx(math.pi * 15.0**2, rel=0.05)
         assert (mask == 1).sum() == pytest.approx(math.pi * (LUMEN_R**2 - 15.0**2), rel=0.05)
+
+    def test_a_type_inside_the_lumen_has_to_be_layered_above_it(self):
+        raw = _with_row(_default_raw(), {**_THROMBUS, 'inside': 'lumen', 'layer': -2})
+        with pytest.raises(PresetError, match='Thrombus has to be layered above Lumen'):
+            ContourPreset.from_dict(raw)
+
+    def test_a_type_above_the_lumen_covers_it_even_when_it_lies_in_nothing(self):
+        stent = {'id': 'stent', 'name': 'Stent', 'label': 14, 'color': 'grey', 'tools': 'closed', 'layer': 8}
+        preset = ContourPreset.from_dict(_with_row(_default_raw(), stent))
+        disc = Contour(contours=[_circle(10.0)], closed=[True])
+        mask = _mask(_vessel(stent=disc), preset)
+        assert (mask == 14).sum() == pytest.approx(math.pi * 10.0**2, rel=0.05)
 
     def test_a_type_inside_the_lumen_stays_in_it(self):
         thrombus = Contour(contours=[_circle(15.0, cx=CENTRE + 35.0)], closed=[True])  # half out of the lumen

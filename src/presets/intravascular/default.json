@@ -3,12 +3,12 @@
   "name": "Default",
   "types": [
     {"id": "lumen", "name": "Lumen", "label": 1, "color": "green", "tools": "closed", "layer": 7, "inside": null},
-    {"id": "eem", "name": "EEM", "label": 2, "color": "#03b1fc", "tools": "closed", "layer": 2, "inside": null},
-    {"id": "calcium", "name": "Calcium", "label": 3, "color": "white", "tools": "open_closed", "layer": 3, "inside": "eem"},
-    {"id": "branch", "name": "Branch", "label": 7, "color": "#146450", "tools": "closed", "layer": 6, "inside": null},
-    {"id": "lipid", "name": "Lipid", "label": 4, "color": "yellow", "tools": "open_closed", "layer": 4, "inside": "eem"},
-    {"id": "macrophage", "name": "Macrophage", "label": 5, "color": "blue", "tools": "open_closed", "layer": 5, "inside": "eem"},
-    {"id": "wire", "name": "Wire", "label": 9, "color": "#ffa500", "tools": "angle", "layer": 1, "inside": null},
+    {"id": "eem", "name": "EEM", "label": 2, "color": "#03b1fc", "tools": "closed", "layer": 1, "inside": null},
+    {"id": "calcium", "name": "Calcium", "label": 3, "color": "white", "tools": "open_closed", "layer": 2, "inside": "eem"},
+    {"id": "branch", "name": "Branch", "label": 7, "color": "#146450", "tools": "closed", "layer": 5, "inside": null},
+    {"id": "lipid", "name": "Lipid", "label": 4, "color": "yellow", "tools": "open_closed", "layer": 3, "inside": "eem"},
+    {"id": "macrophage", "name": "Macrophage", "label": 5, "color": "blue", "tools": "open_closed", "layer": 4, "inside": "eem"},
+    {"id": "wire", "name": "Wire", "label": 9, "color": "#ffa500", "tools": "angle", "layer": 6, "inside": null},
     {"id": "blood", "name": "Blood", "label": 10, "color": "#8b0000", "tools": "angle", "layer": 0, "inside": null}
   ]
 }

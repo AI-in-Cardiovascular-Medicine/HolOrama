@@ -208,8 +208,10 @@ Which contour types the intravascular page offers is set by a **contour preset**
        lumen), and an open contour of it fills outwards from the arc up to that type's
        boundary. Required for open contours.
    * - Layer
-     - Where it sits in the mask: wherever two regions overlap, the higher layer shows. The
-       lumen is always on top, except of what lies inside it.
+     - Where it sits in the mask: wherever two regions overlap, the higher layer shows. A
+       type that lies inside another has to be layered above it (the lumen above the EEM, a
+       thrombus above the lumen). In the Default preset the lumen is the top layer and the
+       wire shadow sits just below it.
 
 The lumen and the EEM are always the first two rows. The keyboard shortcuts go to the rows
 in order (``E``, ``Q``, ``7``-``0`` for spline types, ``3`` and ``B`` for angles); further

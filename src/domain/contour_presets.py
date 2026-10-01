@@ -82,7 +82,8 @@ class ContourTypeDef:
     color: str  # a Qt colour name or hex code
     tools: ToolSet
     # Where it sits in the mask, bottom (lowest) to top: wherever two regions overlap, the
-    # higher one is what the mask shows. The lumen always has the highest layer.
+    # higher one is what the mask shows. Whatever lies inside another type is layered above
+    # it, as the lumen is above the EEM.
     layer: int
     # The type this one lies within. Its region is clipped to that type's (and, unless that
     # type is the lumen itself, kept out of the lumen), and an open contour of it is filled
@@ -193,16 +194,8 @@ class ContourPreset:
     # -- the mask -------------------------------------------------------------------------
 
     def paint_order(self) -> tuple[ContourTypeDef, ...]:
-        """Every type, bottom to top, the order the mask is painted in.
-
-        By layer, except that whatever lies inside the lumen is painted over it: the lumen
-        is on top of everything around it, not of what it holds.
-        """
-        by_layer = sorted(self.types, key=lambda defn: defn.layer)
-        in_lumen = {defn.type for defn in by_layer if self._lies_in(defn, ContourType.LUMEN)}
-        outer = [defn for defn in by_layer if defn.type != ContourType.LUMEN and defn.type not in in_lumen]
-        inner = [defn for defn in by_layer if defn.type in in_lumen]
-        return tuple(outer + [self[ContourType.LUMEN]] + inner)
+        """Every type, bottom to top — by layer — the order the mask is painted in."""
+        return tuple(sorted(self.types, key=lambda defn: defn.layer))
 
     def contents(self, contour_type: ContourType | str) -> tuple[ContourTypeDef, ...]:
         """The types lying directly inside `contour_type`, in row order."""
@@ -282,13 +275,11 @@ def _validate(preset: ContourPreset) -> None:
         _require(container.tools is not ToolSet.ANGLE, f'{defn.name} cannot lie inside the angle {container.name}')
         _require(container.type != defn.type, f'{defn.name} cannot lie inside itself')
         _require(not preset._lies_in(container, defn.type), f'{defn.name} and {container.name} lie inside each other')
-        if container.type != ContourType.LUMEN:
-            _require(
-                defn.layer > container.layer, f'{defn.name} has to be layered above {container.name}, its container'
-            )
+        # Painted below its container it would never show: the container covers all of it.
+        _require(defn.layer > container.layer, f'{defn.name} has to be layered above {container.name}, its container')
 
-    lumen = types[0]
-    _require(all(defn.layer < lumen.layer for defn in types[1:]), 'The lumen has to have the highest layer')
+    lumen, eem = types[0], types[1]
+    _require(lumen.layer > eem.layer, f'{lumen.name} has to be layered above {eem.name}, which it lies inside')
 
 
 def _require(condition: bool, message: str) -> None:

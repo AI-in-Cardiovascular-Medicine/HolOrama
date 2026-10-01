@@ -125,8 +125,7 @@ def _new_id(name: str, taken: set[str]) -> str:
 def build_preset(working: _WorkingPreset) -> ContourPreset:
     """The ContourPreset `working` stands for, validated (raises PresetError).
 
-    A type added in the dialog gets its id here, from its name. The lumen is always on top,
-    so its layer is not edited but set just above everyone else's.
+    A type added in the dialog gets its id here, from its name.
     """
     taken = {row.id for row in working.rows if row.id is not None}
     ids: dict[str, str] = {}
@@ -136,8 +135,6 @@ def build_preset(working: _WorkingPreset) -> ContourPreset:
             taken.add(ids[row.key])
         else:
             ids[row.key] = row.id
-    others = [row.layer for row in working.rows if row.id != ContourType.LUMEN.value]
-    lumen_layer = max(others, default=0) + 1
     types = tuple(
         ContourTypeDef(
             type=ContourType(ids[row.key]),
@@ -145,7 +142,7 @@ def build_preset(working: _WorkingPreset) -> ContourPreset:
             label=row.label,
             color=row.color,
             tools=row.tools,
-            layer=lumen_layer if row.id == ContourType.LUMEN.value else row.layer,
+            layer=row.layer,
             inside=ContourType(ids[row.inside]) if row.inside in ids else None,
         )
         for row in working.rows
@@ -326,8 +323,8 @@ class ContourSettingsDialog(QDialog):
             'What it can be drawn with; the brush comes with every spline type',
             'The type it lies inside: it is clipped to that one (and kept out of the lumen), and an open '
             'contour of it fills outwards from the arc to that type\'s boundary',
-            'Where it sits in the mask: wherever two regions overlap, the higher layer shows. The lumen '
-            'is always on top, except of what lies inside it',
+            'Where it sits in the mask: wherever two regions overlap, the higher layer shows. A type '
+            'lying inside another has to be above it',
             '',
         )
         for column, tip in enumerate(tips):
@@ -387,17 +384,11 @@ class ContourSettingsDialog(QDialog):
         self._fill_inside(inside, row)
         inside.currentIndexChanged.connect(lambda _i, r=row, c=inside: self._set(r, 'inside', c.currentData()))
 
-        if row.id == ContourType.LUMEN.value:
-            top = QLabel('top')
-            top.setToolTip('The lumen is always on top, except of what lies inside it')
-            top.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._place(index, _COL_LAYER, top, True)
-        else:
-            layer = QSpinBox()
-            layer.setRange(-99, 99)
-            layer.setValue(row.layer)
-            layer.valueChanged.connect(lambda value, r=row: self._set(r, 'layer', value))
-            self._place(index, _COL_LAYER, layer, editable)
+        layer = QSpinBox()
+        layer.setRange(-99, 99)
+        layer.setValue(row.layer)
+        layer.valueChanged.connect(lambda value, r=row: self._set(r, 'layer', value))
+        self._place(index, _COL_LAYER, layer, editable)
 
         actions = QWidget()
         box = QHBoxLayout(actions)
@@ -476,7 +467,7 @@ class ContourSettingsDialog(QDialog):
                 label=label,
                 color=color,
                 tools=ToolSet.CLOSED,
-                layer=max((row.layer for row in rows if row.id != ContourType.LUMEN.value), default=0) + 1,
+                layer=max((row.layer for row in rows), default=0) + 1,  # on top, until placed
             )
         )
         self._changed()
