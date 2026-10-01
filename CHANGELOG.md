@@ -8,6 +8,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 - **Settings → Intravascular Contour Settings**: a table of the contour types (mask label, colour, name, tools, the type each lies inside, layer), with **+ Add contour type** and per-row move/remove. Lumen and EEM stay the first two rows.
 - **Settings → CCTA Contour Settings**: CCTA label presets naming and colouring each mask value, with the same preset bar. Built in: **Default 1 - Colorful** and **Default 2 - Publication**, both with the anatomic names.
+- Opening a CCTA mask with labels the active preset does not name offers a **new preset for the mask**: CCTA Contour Settings opens on an unsaved preset with a row per mask value, each in a colour of its own, ready to be named.
 - **Contour presets**: named sets of contour types (e.g. "IVUS CAD", "OCT CAD") with New, Duplicate, Rename, Delete, Import and Export. The built-in **Default** is read-only. The chosen preset is remembered in `config.yaml` (`contour_preset`).
 
 ### Changed

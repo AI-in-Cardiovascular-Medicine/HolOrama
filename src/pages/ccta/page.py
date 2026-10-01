@@ -31,6 +31,7 @@ from domain.ccta_presets import (
     PUBLICATION_PRESET_FILE,
     CctaPreset,
     active_ccta_preset,
+    draft_for,
     load_ccta_preset,
     set_active_ccta_preset,
 )
@@ -49,6 +50,7 @@ from pages.ccta.left_half.cut_geometry import state_io as cut_state_io
 from pages.ccta.left_half.cut_geometry.dialogs.centerline_smoothing_dialog import CenterlineSmoothingDialog
 from pages.ccta.utils.progress_worker import StdoutCapturingWorker
 from pages.ccta.left_half.left_half import LeftHalf
+from pages.ccta.popup_windows.contour_settings_dialog import CctaContourSettingsDialog
 from pages.ccta.right_half.right_half import RightHalf
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from tools.sphere_smooth import local_remesh, local_smooth, local_smooth_region
@@ -324,6 +326,7 @@ class CctaPage(QWidget):
         self._apply_mask(mask, clear_undo=True)
         self.status_bar.showMessage(f'Mask auto-loaded: {os.path.basename(mask_path)}')
         self._try_load_cut_state()
+        self._offer_preset_for_mask_soon()
         return True
 
     def _try_load_cut_state(self) -> None:
@@ -416,6 +419,40 @@ class CctaPage(QWidget):
         self.apply_label_preset()
         self._cut_state_dirty = True  # it records the label names
 
+    def open_label_presets(self, draft: CctaPreset | None = None) -> None:
+        """CCTA Contour Settings, on the active preset — or on `draft` as a new one — making
+        the preset chosen there the active one on OK."""
+        dialog = CctaContourSettingsDialog(self, active_name=active_ccta_preset().name, draft=draft)
+        if dialog.exec():
+            preset = dialog.selected_preset()
+            if preset is not None:
+                self.set_label_preset(preset)
+
+    def _offer_preset_for_mask_soon(self) -> None:
+        # Once the mask is on screen, so the question is asked over what it is about.
+        QTimer.singleShot(0, self._offer_preset_for_mask)
+
+    def _offer_preset_for_mask(self) -> None:
+        """If the active preset lacks some of the mask's labels, offer a new preset with a row
+        for every one of them, each in a colour of its own, to name."""
+        preset = active_ccta_preset()
+        labels = self.data.labels
+        missing = [label for label in labels if preset.get(label) is None]
+        if not missing:
+            return
+        shown = ', '.join(str(label) for label in missing[:10]) + (', …' if len(missing) > 10 else '')
+        reply = QMessageBox.question(
+            self,
+            'Labels Without a Name',
+            f'This mask holds {len(labels)} labels, {len(missing)} of which the preset '
+            f'{preset.name!r} does not name ({shown}).\n\n'
+            f'Create a new preset with a row for each of the {len(labels)} labels?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.open_label_presets(draft_for(f'{len(labels)} labels', labels))
+
     def _on_switch_default(self) -> None:
         """Switch between the two built-in presets: Colorful and Publication. From any
         other preset, Colorful."""
@@ -446,6 +483,7 @@ class CctaPage(QWidget):
 
         self._apply_mask(mask, clear_undo=True)
         self.status_bar.showMessage(f'Mask loaded: {len(self.data.labels)} label(s) — {self.data.labels}')
+        self._offer_preset_for_mask_soon()
 
     def save_mask(self) -> None:
         if self.data.mask is None or self._source_path is None:

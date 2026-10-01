@@ -9,6 +9,7 @@ anatomic names of a cardiac CCTA segmentation.
 
 from __future__ import annotations
 
+import colorsys
 import json
 import re
 from dataclasses import dataclass
@@ -39,6 +40,34 @@ def rgb_to_hex(rgb: Rgb) -> str:
 def fallback_color(label: int) -> Rgb:
     """The colour of a mask value its preset does not define."""
     return LABEL_COLORS[(label - 1) % len(LABEL_COLORS)]
+
+
+_GOLDEN_RATIO = 0.618033988749895
+
+
+def distinct_colors(count: int) -> list[Rgb]:
+    """`count` colours that all differ: the palette first, then hues spread by the golden
+    ratio (each new one lands in the widest gap left), alternating in brightness."""
+    colors = list(LABEL_COLORS[:count])
+    hue = 0.0
+    for i in range(count - len(colors)):
+        hue = (hue + _GOLDEN_RATIO) % 1.0
+        r, g, b = colorsys.hsv_to_rgb(hue, 0.75, 0.95 if i % 2 == 0 else 0.7)
+        colors.append((round(r * 255), round(g * 255), round(b * 255)))
+    return colors
+
+
+def draft_for(name: str, labels: list[int]) -> CctaPreset:
+    """A preset naming nothing yet: one row per mask value in `labels`, each 'Label <value>'
+    in a colour of its own — for the user to fill in."""
+    colors = distinct_colors(len(labels))
+    return CctaPreset(
+        name=name,
+        labels=tuple(
+            CctaLabelDef(label=label, name=f'Label {label}', color=rgb_to_hex(color))
+            for label, color in zip(labels, colors)
+        ),
+    )
 
 
 @dataclass(frozen=True)

@@ -63,7 +63,15 @@ class PresetDialog(QDialog):
     PRESET_TIP = 'The preset to use after OK'
     FIXED_ROWS = 0  # how many leading rows stay where they are
 
-    def __init__(self, parent=None, active_name: str | None = None, library: list[PresetEntry] | None = None):
+    def __init__(
+        self,
+        parent=None,
+        active_name: str | None = None,
+        library: list[PresetEntry] | None = None,
+        draft=None,
+    ):
+        """`draft`: a preset to open on as a new one, not saved until OK (its name made
+        unique among the others first)."""
         super().__init__(parent)
         self.setWindowTitle(self.TITLE)
         self.setMinimumHeight(460)
@@ -126,6 +134,13 @@ class PresetDialog(QDialog):
         self._buttons.rejected.connect(self.reject)
         layout.addWidget(self._buttons)
 
+        if draft is not None:
+            self._presets.append(
+                WorkingPreset(
+                    name=self._unique_name(draft.name), rows=self.rows_of(draft), builtin=False, path=None, dirty=True
+                )
+            )
+            active_name = self._presets[-1].name
         names = [preset.name for preset in self._presets]
         self._refresh_presets(names.index(active_name) if active_name in names else 0)
 
@@ -164,6 +179,14 @@ class PresetDialog(QDialog):
             if all(preset.name.casefold() != name.casefold() for preset in self._presets if preset is not renaming):
                 return name
             QMessageBox.warning(self, title, f'There is already a preset called {name!r}.')
+
+    def _unique_name(self, name: str) -> str:
+        taken = {preset.name.casefold() for preset in self._presets}
+        candidate, suffix = name, 2
+        while candidate.casefold() in taken:
+            candidate = f'{name} ({suffix})'
+            suffix += 1
+        return candidate
 
     def _add_preset(self, preset: WorkingPreset) -> None:
         self._presets.append(preset)

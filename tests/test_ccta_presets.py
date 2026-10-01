@@ -176,3 +176,80 @@ class TestSwitchDefault:
         raw = json.loads(PUBLICATION_PRESET_FILE.read_text(encoding='utf-8'))
         raw['name'] = 'Mine'
         assert self._switch(CctaPreset.from_dict(raw)) == 'Default 1 - Colorful'
+
+
+class TestPresetForAMask:
+    """Opening a mask whose labels the active preset does not all name offers a new preset."""
+
+    def test_every_draft_colour_differs_past_the_palette(self):
+        from domain.ccta_presets import distinct_colors
+
+        colors = distinct_colors(40)
+        assert len(set(colors)) == 40
+        assert colors[:14] == list(CATEGORICAL_PALETTE)
+
+    def test_a_draft_has_a_row_per_mask_value_and_names_nothing(self):
+        from domain.ccta_presets import draft_for
+
+        draft = draft_for('3 labels', [1, 2, 50])
+        assert [(defn.label, defn.name) for defn in draft.labels] == [(1, 'Label 1'), (2, 'Label 2'), (50, 'Label 50')]
+        assert len({defn.color for defn in draft.labels}) == 3
+
+    def test_the_dialog_opens_on_the_draft_and_saves_it_only_on_ok(self, qt_app, user_dir):
+        from domain.ccta_presets import draft_for
+        from pages.ccta.popup_windows.contour_settings_dialog import CctaContourSettingsDialog
+
+        dialog = CctaContourSettingsDialog(active_name='Default 1 - Colorful', draft=draft_for('20 labels', [1, 2, 3]))
+        assert dialog._preset_combo.currentText() == '20 labels'
+        assert dialog._table.rowCount() == 3 and dialog._add_btn.isEnabled()
+        assert list(user_dir.iterdir()) == []
+
+        dialog._current.rows[0].name = 'Liver'
+        dialog.accept()
+        assert dialog.selected_preset().name_of(1) == 'Liver'
+        assert [p.name for p in user_dir.iterdir()] == ['20_labels.json']
+
+    def test_a_draft_name_another_preset_has_is_made_unique(self, qt_app, user_dir):
+        from domain.ccta_presets import draft_for
+        from pages.ccta.popup_windows.contour_settings_dialog import CctaContourSettingsDialog
+
+        dialog = CctaContourSettingsDialog(draft=draft_for('Default 1 - Colorful', [1]))
+        assert dialog._current.name == 'Default 1 - Colorful (2)'
+
+    def _offer(self, monkeypatch, labels, answer):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from pages.ccta import page as page_module
+        from pages.ccta.page import CctaPage
+
+        asked, opened = [], []
+
+        def question(*args, **kwargs):
+            asked.append(args[2])
+            return answer
+
+        monkeypatch.setattr(page_module.QMessageBox, 'question', question)
+        page = SimpleNamespace(data=SimpleNamespace(labels=labels), open_label_presets=opened.append)
+        CctaPage._offer_preset_for_mask(page)  # type: ignore[arg-type]
+        return asked, opened, QMessageBox
+
+    def test_a_mask_the_preset_names_in_full_asks_nothing(self, monkeypatch, restore_active):
+        set_active_ccta_preset(load_ccta_preset(COLORFUL_PRESET_FILE))
+        asked, opened, _ = self._offer(monkeypatch, [1, 4, 7], answer=None)
+        assert asked == [] and opened == []
+
+    def test_a_mask_with_labels_the_preset_lacks_is_offered_a_draft(self, monkeypatch, restore_active):
+        from PyQt6.QtWidgets import QMessageBox
+
+        set_active_ccta_preset(load_ccta_preset(COLORFUL_PRESET_FILE))
+        labels = list(range(1, 21))
+        asked, opened, _ = self._offer(monkeypatch, labels, answer=QMessageBox.StandardButton.Yes)
+        assert '20 labels, 6 of which' in asked[0]
+        assert [defn.label for defn in opened[0].labels] == labels
+
+    def test_declining_changes_nothing(self, monkeypatch, restore_active):
+        from PyQt6.QtWidgets import QMessageBox
+
+        set_active_ccta_preset(load_ccta_preset(COLORFUL_PRESET_FILE))
+        asked, opened, _ = self._offer(monkeypatch, [1, 99], answer=QMessageBox.StandardButton.No)
+        assert len(asked) == 1 and opened == []

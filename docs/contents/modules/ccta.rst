@@ -89,6 +89,10 @@ change their colours, make your own preset in **Settings → CCTA Contour Settin
 duplicate a built-in one, then edit, add or remove rows (mask value, colour, name). It works
 like the intravascular contour presets (see :doc:`../configuration`).
 
+When a mask holds labels the active preset does not name — a whole-body segmentation, say —
+HolOrama offers a new preset for it on opening: CCTA Contour Settings opens on an unsaved
+preset with one row per mask value, each in a colour of its own, for you to name and save.
+
 Use the **Mask opacity** slider to check a border against the underlying CT.
 
 4. Edit the segmentation with the brush
