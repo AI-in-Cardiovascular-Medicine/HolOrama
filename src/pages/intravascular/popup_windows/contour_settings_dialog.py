@@ -14,7 +14,14 @@ from dataclasses import dataclass
 from PyQt6.QtWidgets import QComboBox, QSpinBox
 
 from domain.all_types import ContourType
-from domain.contour_presets import DEFAULT_PRESET_FILE, ContourPreset, ContourTypeDef, ToolSet, load_preset
+from domain.contour_presets import (
+    DEFAULT_PRESET_FILE,
+    ContourPreset,
+    ContourTypeDef,
+    ToolSet,
+    active_preset,
+    load_preset,
+)
 from domain.io_types import RESERVED_CONTOUR_IDS
 from gui.preset_dialog import PresetDialog, WorkingPreset
 from input_output.preset_library import INTRAVASCULAR
@@ -139,6 +146,18 @@ class ContourSettingsDialog(PresetDialog):
 
     def new_preset_rows(self) -> list:
         return [row for row in _rows_of(load_preset(DEFAULT_PRESET_FILE)) if row.fixed]
+
+    def draft_rows(self, draft) -> list:
+        """A draft's rows, those the active preset has not as new ones: nothing is drawn with
+        them yet, so they can still become anything — an angle, say — and take their id
+        from the name they are given."""
+        known = {defn.type.value for defn in active_preset().types}
+        rows = _rows_of(draft)
+        for row in rows:
+            if row.id not in known:
+                row.id = None
+                row.key = f'new:{next(self._new_keys)}'
+        return rows
 
     def new_row(self) -> _Row:
         return _Row(

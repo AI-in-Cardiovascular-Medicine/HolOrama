@@ -22,6 +22,23 @@ CATEGORICAL_PALETTE: tuple[tuple[int, int, int], ...] = (
     (140, 140, 255),  # lavender
 )
 
+_GOLDEN_RATIO = 0.618033988749895
+
+
+def distinct_colors(count: int) -> list[tuple[int, int, int]]:
+    """`count` colours that all differ: the categorical palette first, then hues spread by
+    the golden ratio (each new one lands in the widest gap left), alternating in brightness."""
+    import colorsys
+
+    colors = list(CATEGORICAL_PALETTE[:count])
+    hue = 0.0
+    for i in range(count - len(colors)):
+        hue = (hue + _GOLDEN_RATIO) % 1.0
+        r, g, b = colorsys.hsv_to_rgb(hue, 0.75, 0.95 if i % 2 == 0 else 0.7)
+        colors.append((round(r * 255), round(g * 255), round(b * 255)))
+    return colors
+
+
 # Shared default for mask/segmentation overlay opacity (0 = transparent, 1 = opaque).
 DEFAULT_MASK_ALPHA: float = 0.45
 

@@ -62,8 +62,19 @@ The modality is detected from the data, and the right half rebuilds itself accor
 (see :ref:`fig-overview-intravascular`). **Metadata → Show Metadata** lists
 the DICOM tags.
 
-If you already have a segmentation mask, load it with **File → Open Intravascular Mask**, this works for any nifti mask which is
-then turned into contours.
+If you already have a segmentation mask, load it with **File → Open Intravascular Mask**. The mask
+is turned into contours after the active contour preset (see :doc:`../configuration`): each label
+value becomes the contour type with that label, on every frame, replacing the contours there. One
+:kbd:`Ctrl+Z` undoes the whole import. The mask needs one slice per frame of the pullback.
+
+The mask is painted bottom to top by layer, so parts of most types are hidden under others — the
+EEM under the wire shadow, a side branch under the lumen. Those parts are bridged rather than
+traced, so the EEM comes back as a smooth vessel wall instead of following the lumen through the
+wire shadow. Angular sectors come back as sectors about the image centre. A type lying inside
+another (a plaque in the EEM) comes back as an open arc if it reaches its container's boundary
+nearly everywhere it spans, as a ring if it does so all the way round the lumen, and closed
+otherwise. Components under 20 pixels are ignored. Labels the preset does not define are
+offered a new preset with a row for each of them, as on the CCTA page.
 
 2. Set the window and zoom
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

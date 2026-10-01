@@ -294,6 +294,36 @@ def _require_unique(values: Iterable, what: str) -> None:
         seen.add(value)
 
 
+def with_labels(preset: ContourPreset, labels: Iterable[int], name: str) -> ContourPreset:
+    """`preset` with a row added for every mask value in `labels` it lacks — closed,
+    'Label <value>', on top, in a colour none of its rows has — for the user to fill in."""
+    from domain.colors import distinct_colors
+
+    missing = [label for label in labels if all(defn.label != label for defn in preset.types)]
+    used = {defn.color.lower() for defn in preset.types}
+    colors = [f'#{r:02x}{g:02x}{b:02x}' for r, g, b in distinct_colors(len(preset.types) + len(missing) + len(used))]
+    fresh = [color for color in colors if color not in used]
+    ids = {defn.type.value for defn in preset.types}
+    top = max(defn.layer for defn in preset.types)
+    added = []
+    for i, label in enumerate(missing):
+        key = f'label_{label}'
+        while key in ids:
+            key += '_'
+        ids.add(key)
+        added.append(
+            ContourTypeDef(
+                type=ContourType(key),
+                name=f'Label {label}',
+                label=label,
+                color=fresh[i],
+                tools=ToolSet.CLOSED,
+                layer=top + 1 + i,
+            )
+        )
+    return ContourPreset(name=name, types=preset.types + tuple(added))
+
+
 def load_preset(path: Path) -> ContourPreset:
     """Read and validate the preset stored at `path`."""
     try:

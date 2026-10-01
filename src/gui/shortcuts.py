@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import QApplication, QProgressDialog
 from domain.all_types import ContourType, SegmentationTool
 from domain.contour_presets import ContourPreset, active_preset, set_active_preset
 from domain.io_types import is_contour_key
-from domain.undo import FrameAnnotationSnapshot, push_contour_snapshot
+from domain.undo import FrameAnnotationSnapshot, PullbackContoursSnapshot, push_contour_snapshot
 from gui import settings_io
 from input_output.input.image import read_image, read_nifti_mask
 from input_output.input.metadata import CctaMetadataWindow, MetadataWindow
@@ -587,6 +587,21 @@ def undo_last_contour_edit(main_window):
     if snap is None:
         return
 
+    if isinstance(snap, PullbackContoursSnapshot):  # a mask read over the whole pullback
+        for index, (contours, centroid) in snap.frames.items():
+            frame_data = main_window.runtime_data.frame_data_dct.get(index)
+            if frame_data is not None:
+                clear_lumen_measurements(frame_data)  # derived from the lumen being replaced
+                frame_data.contours, frame_data.centroid = contours, centroid
+        main_window.display.working_spline = None
+        main_window.display.refresh_all_frame_metrics()
+        main_window.display.update_display()
+        try:
+            main_window.longitudinal_view.plot_areas()
+        except Exception as e:
+            logger.debug(f"Could not update longitudinal view after undo: {e}")
+        return
+
     fd = main_window.runtime_data.frame_data_dct.get(snap.frame)
     if fd is None:
         return
@@ -658,7 +673,8 @@ def apply_contour_preset(main_window, ccta_page, preset: ContourPreset) -> None:
     main_window.left_half.refresh_contour_types()
     # The Edit menu lists every type. It is rebuilt once the menu action that opened the
     # dialog has returned, rather than from inside it.
-    QTimer.singleShot(0, partial(_rebuild_menu, main_window, ccta_page))
+    if ccta_page is not None:
+        QTimer.singleShot(0, partial(_rebuild_menu, main_window, ccta_page))
     if main_window.image_displayed:
         main_window.save_contours_soon()  # the file records the contour types it was drawn with
 

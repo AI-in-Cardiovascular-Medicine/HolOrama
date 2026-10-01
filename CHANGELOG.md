@@ -9,6 +9,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Settings → Intravascular Contour Settings**: a table of the contour types (mask label, colour, name, tools, the type each lies inside, layer), with **+ Add contour type** and per-row move/remove. Lumen and EEM stay the first two rows.
 - **Settings → CCTA Contour Settings**: CCTA label presets naming and colouring each mask value, with the same preset bar. Built in: **Default 1 - Colorful** and **Default 2 - Publication**, both with the anatomic names.
 - Opening a CCTA mask with labels the active preset does not name offers a **new preset for the mask**: CCTA Contour Settings opens on an unsaved preset with a row per mask value, each in a colour of its own, ready to be named.
+- **Open Intravascular Mask** reads every label of the mask into contours after the active preset, not only the lumen: the EEM bridged where the wire shadow or a side branch hides it, angular sectors as sectors, plaques as open arcs, rings or closed contours as drawn. It replaces the contours of every frame (one Ctrl+Z undoes it) and needs one mask slice per frame. Labels the preset lacks offer a new preset for them. Label 6, the fibrous cap of OCT segmentations, is read as vessel wall (unless the preset gives it a type of its own), so a lipid arc runs along the cap's far side, where the pool begins.
 - **Contour presets**: named sets of contour types (e.g. "IVUS CAD", "OCT CAD") with New, Duplicate, Rename, Delete, Import and Export. The built-in **Default** is read-only. The chosen preset is remembered in `config.yaml` (`contour_preset`).
 
 ### Changed
@@ -21,6 +22,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **CCTA labels** are named and coloured by their mask value after the active label preset, instead of by their position in the mask: label 7 is the Aorta whichever other labels the mask holds. The **Names** / **Colors** buttons are replaced by **Switch default** (Colorful ↔ Publication); names are no longer edited in the label list, and the names saved with a cut state are no longer restored. The label colours left **CCTA Settings** and `config.yaml`.
 
 ### Fixed
+- Angular sector handles no longer collapse onto the image centre when a pullback's resolution puts the 5 mm handle circle inside the catheter (e.g. a NIfTI header saying 1 mm per pixel): the circle stays at least 30% of the way out.
+- An intravascular NIfTI stored as a 3-D volume with a trailing axis of length 1 (x, y, z, 1) crashed on opening (`too many values to unpack`); the extra axis is now dropped, for images and masks.
 - An EEM read back from a mask (NIfTI import, brush) now includes the plaques painted over it.
 
 ## [0.13.0] - 2026-09-30

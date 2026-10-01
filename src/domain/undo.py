@@ -50,6 +50,29 @@ class FrameAnnotationSnapshot:
     fields: dict
 
 
+@dataclass
+class PullbackContoursSnapshot:
+    """Every frame's contours and lumen centroid, for edits that replace them all at once
+    (reading a mask). `frame` is where to go back to."""
+
+    frame: int
+    frames: dict  # frame -> (contours, centroid)
+
+
+def push_pullback_contours_snapshot(runtime_data: RuntimeData, frame: int) -> None:
+    runtime_data.mark_unsaved()
+    if runtime_data.frame_data_dct is None:
+        return
+    runtime_data.contour_undo.push(
+        PullbackContoursSnapshot(
+            frame=frame,
+            frames={
+                index: (copy.deepcopy(fd.contours), fd.centroid) for index, fd in runtime_data.frame_data_dct.items()
+            },
+        )
+    )
+
+
 def push_frame_annotation_snapshot(runtime_data: RuntimeData, frame: int) -> None:
     """Record every contour, measurement and derived value on `frame` before it is wiped.
 

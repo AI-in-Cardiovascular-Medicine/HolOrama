@@ -137,7 +137,11 @@ class PresetDialog(QDialog):
         if draft is not None:
             self._presets.append(
                 WorkingPreset(
-                    name=self._unique_name(draft.name), rows=self.rows_of(draft), builtin=False, path=None, dirty=True
+                    name=self._unique_name(draft.name),
+                    rows=self.draft_rows(draft),
+                    builtin=False,
+                    path=None,
+                    dirty=True,
                 )
             )
             active_name = self._presets[-1].name
@@ -415,6 +419,10 @@ class PresetDialog(QDialog):
     def new_row(self):
         """The row + Add appends."""
         raise NotImplementedError
+
+    def draft_rows(self, draft) -> list:
+        """The rows of a draft the dialog was opened on."""
+        return self.rows_of(draft)
 
     def new_preset_rows(self) -> list:
         """The rows of a preset made with New."""

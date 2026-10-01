@@ -9,13 +9,13 @@ anatomic names of a cardiac CCTA segmentation.
 
 from __future__ import annotations
 
-import colorsys
 import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from domain.ccta_display_types import LABEL_COLORS
+from domain.colors import distinct_colors
 from domain.contour_presets import PRESET_FORMAT, PresetError
 
 BUILTIN_CCTA_PRESETS_DIR = Path(__file__).resolve().parent.parent / 'presets' / 'ccta'
@@ -40,21 +40,6 @@ def rgb_to_hex(rgb: Rgb) -> str:
 def fallback_color(label: int) -> Rgb:
     """The colour of a mask value its preset does not define."""
     return LABEL_COLORS[(label - 1) % len(LABEL_COLORS)]
-
-
-_GOLDEN_RATIO = 0.618033988749895
-
-
-def distinct_colors(count: int) -> list[Rgb]:
-    """`count` colours that all differ: the palette first, then hues spread by the golden
-    ratio (each new one lands in the widest gap left), alternating in brightness."""
-    colors = list(LABEL_COLORS[:count])
-    hue = 0.0
-    for i in range(count - len(colors)):
-        hue = (hue + _GOLDEN_RATIO) % 1.0
-        r, g, b = colorsys.hsv_to_rgb(hue, 0.75, 0.95 if i % 2 == 0 else 0.7)
-        colors.append((round(r * 255), round(g * 255), round(b * 255)))
-    return colors
 
 
 def draft_for(name: str, labels: list[int]) -> CctaPreset:

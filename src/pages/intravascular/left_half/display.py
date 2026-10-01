@@ -1503,16 +1503,19 @@ class Display(QGraphicsView, MetricsMixin):
 
         `angle_handle_radius_mm` from the centre, pulled back inside the image for
         pullbacks whose field of view is smaller than that (as most are: a 10 mm wide
-        image only reaches 5 mm in the first place). Only the angle of a sector point
-        means anything, so putting them all on one circle costs nothing and makes a
-        sector look the same in every pullback.
+        image only reaches 5 mm in the first place), and kept out of the catheter for a
+        resolution that would put it there (a NIfTI whose header says 1 mm per pixel
+        turns 5 mm into 5 pixels). Only the angle of a sector point means anything, so
+        putting them all on one circle costs nothing and makes a sector look the same in
+        every pullback.
         """
         limit = 0.9 * self.image_size / 2
+        floor = 0.3 * self.image_size / 2
         metadata = getattr(self.main_window.runtime_data, 'metadata', None) or {}
         resolution = metadata.get('resolution')
         if not resolution:
             return limit
-        return min(self.angle_handle_radius_mm / float(resolution) * self.scaling_factor, limit)
+        return min(max(self.angle_handle_radius_mm / float(resolution) * self.scaling_factor, floor), limit)
 
     def _image_point(self, angle: float) -> Tuple[float, float]:
         """One sector boundary point, in stored image coordinates."""
