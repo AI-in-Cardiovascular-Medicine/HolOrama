@@ -160,19 +160,15 @@ class TestMaskPanel:
 
 class TestSwitchDefault:
     def _switch(self, active):
-        from pages.ccta.page import CctaPage
+        from domain.ccta_presets import switched_default
 
-        chosen = []
-        page = SimpleNamespace(set_label_preset=chosen.append, status_bar=SimpleNamespace(showMessage=lambda *a: None))
-        set_active_ccta_preset(active)
-        CctaPage._on_switch_default(page)  # type: ignore[arg-type]
-        return chosen[0].name
+        return switched_default(active).name
 
-    def test_colorful_switches_to_publication_and_back(self, restore_active):
+    def test_colorful_switches_to_publication_and_back(self):
         assert self._switch(load_ccta_preset(COLORFUL_PRESET_FILE)) == 'Default 2 - Publication'
         assert self._switch(load_ccta_preset(PUBLICATION_PRESET_FILE)) == 'Default 1 - Colorful'
 
-    def test_a_custom_preset_switches_to_colorful(self, restore_active):
+    def test_a_custom_preset_switches_to_colorful(self):
         raw = json.loads(PUBLICATION_PRESET_FILE.read_text(encoding='utf-8'))
         raw['name'] = 'Mine'
         assert self._switch(CctaPreset.from_dict(raw)) == 'Default 1 - Colorful'
@@ -219,19 +215,18 @@ class TestPresetForAMask:
     def _offer(self, monkeypatch, labels, answer):
         from PyQt6.QtWidgets import QMessageBox
 
-        from pages.ccta import page as page_module
-        from pages.ccta.page import CctaPage
+        from pages.ccta.popup_windows import contour_settings_dialog
+        from pages.ccta.popup_windows.contour_settings_dialog import ask_for_draft
 
-        asked, opened = [], []
+        asked = []
 
         def question(*args, **kwargs):
             asked.append(args[2])
             return answer
 
-        monkeypatch.setattr(page_module.QMessageBox, 'question', question)
-        page = SimpleNamespace(data=SimpleNamespace(labels=labels), open_label_presets=opened.append)
-        CctaPage._offer_preset_for_mask(page)  # type: ignore[arg-type]
-        return asked, opened, QMessageBox
+        monkeypatch.setattr(contour_settings_dialog.QMessageBox, 'question', question)
+        draft = ask_for_draft(None, labels)  # type: ignore[arg-type]
+        return asked, [] if draft is None else [draft], QMessageBox
 
     def test_a_mask_the_preset_names_in_full_asks_nothing(self, monkeypatch, restore_active):
         set_active_ccta_preset(load_ccta_preset(COLORFUL_PRESET_FILE))

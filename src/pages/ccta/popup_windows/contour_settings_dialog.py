@@ -7,14 +7,37 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PyQt6.QtWidgets import QSpinBox
+from PyQt6.QtWidgets import QMessageBox, QSpinBox, QWidget
 
-from domain.ccta_presets import MAX_LABEL, CctaLabelDef, CctaPreset
+from domain.ccta_presets import MAX_LABEL, CctaLabelDef, CctaPreset, active_ccta_preset, draft_for
 from gui.preset_dialog import PresetDialog, WorkingPreset
 from input_output.preset_library import CCTA
 
 _COLUMNS = ('Label', 'Colour', 'Name', '')
 _COL_LABEL, _COL_COLOR, _COL_NAME, _COL_ACTIONS = range(len(_COLUMNS))
+
+
+def ask_for_draft(parent: QWidget, labels: list[int]) -> CctaPreset | None:
+    """If the active preset lacks some of a mask's `labels`, ask whether to make a new preset
+    with a row for every one of them, each in a colour of its own, to name: that draft if
+    so, otherwise None."""
+    preset = active_ccta_preset()
+    missing = [label for label in labels if preset.get(label) is None]
+    if not missing:
+        return None
+    shown = ', '.join(str(label) for label in missing[:10]) + (', …' if len(missing) > 10 else '')
+    reply = QMessageBox.question(
+        parent,
+        'Labels Without a Name',
+        f'This mask holds {len(labels)} labels, {len(missing)} of which the preset '
+        f'{preset.name!r} does not name ({shown}).\n\n'
+        f'Create a new preset with a row for each of the {len(labels)} labels?',
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        QMessageBox.StandardButton.Yes,
+    )
+    if reply != QMessageBox.StandardButton.Yes:
+        return None
+    return draft_for(f'{len(labels)} labels', labels)
 
 
 @dataclass

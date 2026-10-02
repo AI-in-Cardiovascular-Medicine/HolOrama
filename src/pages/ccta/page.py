@@ -26,13 +26,10 @@ from PyQt6.QtWidgets import (
 )
 
 from domain.ccta_presets import (
-    COLORFUL_PRESET_FILE,
-    PUBLICATION_PRESET_FILE,
     CctaPreset,
     active_ccta_preset,
-    draft_for,
-    load_ccta_preset,
     set_active_ccta_preset,
+    switched_default,
 )
 from domain.io_types import VolumeGeometry, geometry_from_spacing
 from domain.runtime_types import CctaRuntimeData
@@ -49,7 +46,7 @@ from pages.ccta.left_half.cut_geometry import state_io as cut_state_io
 from pages.ccta.left_half.cut_geometry.dialogs.centerline_smoothing_dialog import CenterlineSmoothingDialog
 from pages.ccta.utils.progress_worker import StdoutCapturingWorker
 from pages.ccta.left_half.left_half import LeftHalf
-from pages.ccta.popup_windows.contour_settings_dialog import CctaContourSettingsDialog
+from pages.ccta.popup_windows.contour_settings_dialog import CctaContourSettingsDialog, ask_for_draft
 from pages.ccta.right_half.right_half import RightHalf
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from tools.sphere_smooth import local_remesh, local_smooth, local_smooth_region
@@ -430,31 +427,12 @@ class CctaPage(QWidget):
         QTimer.singleShot(0, self._offer_preset_for_mask)
 
     def _offer_preset_for_mask(self) -> None:
-        """If the active preset lacks some of the mask's labels, offer a new preset with a row
-        for every one of them, each in a colour of its own, to name."""
-        preset = active_ccta_preset()
-        labels = self.data.labels
-        missing = [label for label in labels if preset.get(label) is None]
-        if not missing:
-            return
-        shown = ', '.join(str(label) for label in missing[:10]) + (', …' if len(missing) > 10 else '')
-        reply = QMessageBox.question(
-            self,
-            'Labels Without a Name',
-            f'This mask holds {len(labels)} labels, {len(missing)} of which the preset '
-            f'{preset.name!r} does not name ({shown}).\n\n'
-            f'Create a new preset with a row for each of the {len(labels)} labels?',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
-        )
-        if reply == QMessageBox.StandardButton.Yes:
-            self.open_label_presets(draft_for(f'{len(labels)} labels', labels))
+        draft = ask_for_draft(self, self.data.labels)
+        if draft is not None:
+            self.open_label_presets(draft)
 
     def _on_switch_default(self) -> None:
-        """Switch between the two built-in presets: Colorful and Publication. From any
-        other preset, Colorful."""
-        colorful = load_ccta_preset(COLORFUL_PRESET_FILE)
-        target = load_ccta_preset(PUBLICATION_PRESET_FILE) if active_ccta_preset() == colorful else colorful
+        target = switched_default(active_ccta_preset())
         self.set_label_preset(target)
         self.status_bar.showMessage(f'Labels named and coloured after {target.name}')
 

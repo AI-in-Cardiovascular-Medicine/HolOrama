@@ -41,6 +41,13 @@ def fallback_color(label: int) -> Rgb:
     return CATEGORICAL_PALETTE[(label - 1) % len(CATEGORICAL_PALETTE)]
 
 
+def switched_default(active: CctaPreset) -> CctaPreset:
+    """The built-in preset Switch default goes to from `active`: Colorful and Publication
+    switch to each other, any other preset to Colorful."""
+    colorful = load_ccta_preset(COLORFUL_PRESET_FILE)
+    return load_ccta_preset(PUBLICATION_PRESET_FILE) if active == colorful else colorful
+
+
 def draft_for(name: str, labels: list[int]) -> CctaPreset:
     """A preset naming nothing yet: one row per mask value in `labels`, each 'Label <value>'
     in a colour for the user to fill in."""
