@@ -11,7 +11,6 @@ class LeftHalf:
 
     def __init__(
         self,
-        label_colors: tuple[tuple[int, int, int], ...],
         mask_alpha: float,
         windowing_sensitivity: float,
         zoom_sensitivity: float,
@@ -22,7 +21,6 @@ class LeftHalf:
         def display(orientation: str) -> CctaDisplay:
             return CctaDisplay(
                 orientation,
-                label_colors=label_colors,
                 mask_alpha=mask_alpha,
                 windowing_sensitivity=windowing_sensitivity,
                 zoom_sensitivity=zoom_sensitivity,
@@ -32,7 +30,7 @@ class LeftHalf:
         self.coronal = display('coronal')
         self.sagittal = display('sagittal')
 
-        self.segmentation_viewer_3d = CctaViewer3D(label_colors=label_colors)
+        self.segmentation_viewer_3d = CctaViewer3D()
 
         self.segmentation_views = SegmentationViews(
             self.axial, self.coronal, self.sagittal, self.segmentation_viewer_3d

@@ -11,7 +11,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from domain.ccta_display_types import DEFAULT_MASK_ALPHA, LABEL_COLORS
+from domain.ccta_display_types import DEFAULT_MASK_ALPHA
+from domain.ccta_presets import fallback_color
 
 
 class _LabelRow(QWidget):
@@ -77,13 +78,11 @@ class MaskPanel(QWidget):
 
     def __init__(
         self,
-        label_colors: tuple[tuple[int, int, int], ...] = LABEL_COLORS,
         initial_alpha: float = DEFAULT_MASK_ALPHA,
         parent=None,
     ) -> None:
         super().__init__(parent)
         self.setMinimumWidth(210)
-        self._label_colors: tuple[tuple[int, int, int], ...] = label_colors
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
@@ -148,9 +147,8 @@ class MaskPanel(QWidget):
         """Populate the label list, each row in its palette colour and as 'Label <value>'
         until set_label_appearance names and colours it."""
         self._clear_rows()
-        for i, label in enumerate(labels):
-            color = self._label_colors[i % len(self._label_colors)]
-            row = _LabelRow(label, color)
+        for label in labels:
+            row = _LabelRow(label, fallback_color(label))
             row.visibility_changed.connect(lambda visible, lbl=label: self.label_visibility_changed.emit(lbl, visible))
             # Insert before the trailing stretch
             self._rows_layout.insertWidget(self._rows_layout.count() - 1, row)

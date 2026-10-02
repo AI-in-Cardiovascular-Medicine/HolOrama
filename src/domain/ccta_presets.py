@@ -14,8 +14,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from domain.ccta_display_types import LABEL_COLORS
-from domain.colors import distinct_colors
+from domain.colors import CATEGORICAL_PALETTE, distinct_colors
 from domain.contour_presets import PRESET_FORMAT, PresetError
 
 BUILTIN_CCTA_PRESETS_DIR = Path(__file__).resolve().parent.parent / 'presets' / 'ccta'
@@ -39,12 +38,12 @@ def rgb_to_hex(rgb: Rgb) -> str:
 
 def fallback_color(label: int) -> Rgb:
     """The colour of a mask value its preset does not define."""
-    return LABEL_COLORS[(label - 1) % len(LABEL_COLORS)]
+    return CATEGORICAL_PALETTE[(label - 1) % len(CATEGORICAL_PALETTE)]
 
 
 def draft_for(name: str, labels: list[int]) -> CctaPreset:
     """A preset naming nothing yet: one row per mask value in `labels`, each 'Label <value>'
-    in a colour of its own — for the user to fill in."""
+    in a colour for the user to fill in."""
     colors = distinct_colors(len(labels))
     return CctaPreset(
         name=name,

@@ -8,8 +8,8 @@ from domain.ccta_display_types import (
     DEFAULT_CT_LEVEL,
     DEFAULT_CT_WIDTH,
     DEFAULT_MASK_ALPHA,
-    LABEL_COLORS,
 )
+from domain.ccta_presets import fallback_color
 from tools.painting import BrushCursor, BrushGeometry
 
 _CROSSHAIR_COLOR = QColor(255, 255, 0)
@@ -52,7 +52,6 @@ class CctaDisplay(QGraphicsView):
         self,
         orientation: str,
         *,
-        label_colors: tuple[tuple[int, int, int], ...] = LABEL_COLORS,
         mask_alpha: float = DEFAULT_MASK_ALPHA,
         windowing_sensitivity: float = 0.03,
         zoom_sensitivity: float = 0.005,
@@ -82,7 +81,6 @@ class CctaDisplay(QGraphicsView):
         self._mask_labels: list[int] = []
         self._hidden_labels: set[int] = set()
         self._mask_alpha: float = mask_alpha
-        self._label_colors: tuple[tuple[int, int, int], ...] = label_colors
         self._custom_colors: list[tuple[int, int, int]] | None = None
 
         self._brush_mode: bool = False
@@ -245,7 +243,7 @@ class CctaDisplay(QGraphicsView):
                 if self._custom_colors and i < len(self._custom_colors):
                     lut[label] = self._custom_colors[i]
                 else:
-                    lut[label] = self._label_colors[i % len(self._label_colors)]
+                    lut[label] = fallback_color(label)
         self._mask_lut = lut
 
     def _get_slice(self) -> np.ndarray:

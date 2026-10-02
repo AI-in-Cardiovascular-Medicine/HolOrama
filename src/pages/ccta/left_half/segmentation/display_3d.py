@@ -22,7 +22,7 @@ from vtkmodules.vtkRenderingCore import (
     vtkRenderer,
 )
 
-from domain.ccta_display_types import LABEL_COLORS
+from domain.ccta_presets import fallback_color
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from tools.lasso import Lasso2D, project_world_batch
 
@@ -53,9 +53,8 @@ class CctaViewer3D(QWidget):
     mask_erased = pyqtSignal()  # 3D lasso erase modified the mask
     mask_about_to_change = pyqtSignal()  # emitted before a lasso erase mutates the mask
 
-    def __init__(self, label_colors: tuple[tuple[int, int, int], ...] = LABEL_COLORS, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self._label_colors: tuple[tuple[int, int, int], ...] = label_colors
 
         self._vtk_widget = QVTKRenderWindowInteractor(self)
 
@@ -540,7 +539,7 @@ class CctaViewer3D(QWidget):
         if self._custom_colors and color_index < len(self._custom_colors):
             r, g, b = self._custom_colors[color_index]
         else:
-            r, g, b = self._label_colors[color_index % len(self._label_colors)]
+            r, g, b = fallback_color(label)
         actor.GetProperty().SetColor(r / 255.0, g / 255.0, b / 255.0)
         actor.GetProperty().SetOpacity(1.0)
         actor.GetProperty().SetInterpolationToFlat()

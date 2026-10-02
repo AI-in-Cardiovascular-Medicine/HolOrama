@@ -25,7 +25,6 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from domain.ccta_display_types import LABEL_COLORS
 from domain.ccta_presets import (
     COLORFUL_PRESET_FILE,
     PUBLICATION_PRESET_FILE,
@@ -100,12 +99,10 @@ class CctaPage(QWidget):
         windowing_sensitivity = common_cfg.windowing_sensitivity
         zoom_sensitivity = common_cfg.zoom_sensitivity
         mask_alpha = common_cfg.default_mask_alpha
-        # Only the fallback for a view not yet told its labels' colours (apply_label_preset).
-        label_colors = LABEL_COLORS
 
-        # Create left and right halves
-        self._left_half = LeftHalf(label_colors, mask_alpha, windowing_sensitivity, zoom_sensitivity)
-        self._right_half = RightHalf(label_colors, mask_alpha)
+        # Create left and right halves; the labels get their colours from apply_label_preset
+        self._left_half = LeftHalf(mask_alpha, windowing_sensitivity, zoom_sensitivity)
+        self._right_half = RightHalf(mask_alpha)
 
         # Extract references for signal connections
         self._axial = self._left_half.axial

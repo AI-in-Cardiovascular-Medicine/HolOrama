@@ -8,11 +8,11 @@ from pages.ccta.right_half.stl_extraction_panel import StlExtractionPanel
 class RightHalf:
     """Manages the right-side panel with mask controls, brush settings, and STL extraction."""
 
-    def __init__(self, label_colors: tuple[tuple[int, int, int], ...], initial_mask_alpha: float, parent=None) -> None:
+    def __init__(self, initial_mask_alpha: float, parent=None) -> None:
         self.widget = QWidget(parent)
 
-        self.mask_panel = MaskPanel(label_colors=label_colors, initial_alpha=initial_mask_alpha)
-        self.brush_panel = BrushPanel(label_colors=label_colors)
+        self.mask_panel = MaskPanel(initial_alpha=initial_mask_alpha)
+        self.brush_panel = BrushPanel()
         self.stl_extraction_panel = StlExtractionPanel()
 
         # Wire up the panels to work together

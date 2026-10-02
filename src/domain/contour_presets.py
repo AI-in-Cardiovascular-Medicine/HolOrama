@@ -48,7 +48,7 @@ class PresetError(ValueError):
 
 
 class ToolSet(Enum):
-    """What a contour type can be drawn with — a preset's Tools column.
+    """What a contour type can be drawn with (preset's Tools column).
 
     The brush comes with every spline type (it paints the region a closed contour
     encloses) and never with an angular sector, which is stored as the angles bounding it.

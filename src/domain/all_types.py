@@ -17,7 +17,7 @@ class ContourType:
 
     Which contour types exist is data rather than code: the active contour preset defines
     them (see domain.contour_presets), and a user can add their own there. Only the ones
-    the software itself relies on are named here — the lumen and the EEM, which every
+    the software itself relies on are named here (the lumen and the EEM), which every
     preset has to define, and the two measurements and the reference point, which are not
     contours at all and so sit outside the presets.
     """

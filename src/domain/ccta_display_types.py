@@ -1,7 +1,4 @@
-from domain.colors import CATEGORICAL_PALETTE
 from domain.colors import DEFAULT_MASK_ALPHA as DEFAULT_MASK_ALPHA
-
-LABEL_COLORS: tuple[tuple[int, int, int], ...] = CATEGORICAL_PALETTE
 
 # The names and colours of the labels are the CCTA presets' (src/presets/ccta, domain.ccta_presets).
 
@@ -9,7 +6,7 @@ DEFAULT_CT_LEVEL: int = 200  # HU center — cardiac soft tissue
 DEFAULT_CT_WIDTH: int = 700  # HU range
 
 # Post-cut geometry layer (Build Cut Geometry / Smooth / outlet points)
-CUT_MESH_COLOR: tuple[int, int, int] = (210, 210, 210)  # light gray, distinct from LABEL_COLORS
+CUT_MESH_COLOR: tuple[int, int, int] = (210, 210, 210)  # light gray, distinct from the label colours
 INLET_COLOR: tuple[int, int, int] = (0, 210, 210)  # cyan — lower-Z cut plane (LV / LVOT side)
 OUTLET_COLOR: tuple[int, int, int] = (220, 60, 220)  # magenta — higher-Z cut plane (aorta side)
 RCA_POINT_COLOR: tuple[int, int, int] = (255, 60, 60)  # red
