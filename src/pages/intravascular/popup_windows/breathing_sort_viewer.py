@@ -46,8 +46,8 @@ from signal_processing.breathing_pipeline import (
     register_phase,
 )
 from input_output.output.reports import report
-from domain.all_types import ContourType
-from domain.contour_presets import active_preset
+from domain.intravascular.types import ContourType
+from domain.intravascular.contour_presets import active_preset
 from tools.geometry import SplineGeometry
 
 N_STRIP = 5  # thumbnails per filmstrip (odd → current one centred)

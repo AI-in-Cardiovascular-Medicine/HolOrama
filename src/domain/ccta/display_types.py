@@ -1,6 +1,6 @@
 from domain.colors import DEFAULT_MASK_ALPHA as DEFAULT_MASK_ALPHA
 
-# The names and colours of the labels are the CCTA presets' (src/presets/ccta, domain.ccta_presets).
+# The names and colours of the labels are the CCTA presets' (src/presets/ccta, domain.ccta.presets).
 
 DEFAULT_CT_LEVEL: int = 200  # HU center — cardiac soft tissue
 DEFAULT_CT_WIDTH: int = 700  # HU range

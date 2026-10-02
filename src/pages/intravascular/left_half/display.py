@@ -17,11 +17,11 @@ from PyQt6.QtWidgets import (
     QMenu,
 )
 
-from domain.all_types import ContourConfig, ContourType, SegmentationTool
+from domain.intravascular.types import ContourConfig, ContourType, SegmentationTool
 from domain.colors import DEFAULT_MASK_ALPHA
-from domain.contour_presets import active_preset
-from domain.io_types import Contour, Measure, is_contour_key, sector_points, set_sector_points
-from domain.undo import push_contour_snapshot
+from domain.intravascular.contour_presets import active_preset
+from domain.intravascular.io_types import Contour, Measure, is_contour_key, sector_points, set_sector_points
+from domain.intravascular.undo import push_contour_snapshot
 from input_output.output.imgs_masks import contours_to_mask
 from pages.intravascular.utils.metrics import MetricsMixin
 from segmentation.segment import downsample

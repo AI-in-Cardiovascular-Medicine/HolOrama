@@ -14,11 +14,11 @@ from PyQt6.QtWidgets import (
     QProgressDialog,
 )
 
-from domain.all_types import SupportedType
-from domain.contour_presets import ContourPreset, active_preset, with_labels
-from domain.io_types import Contour, FrameData
-from domain.oct_display_types import OCT_LUT
-from domain.undo import push_pullback_contours_snapshot
+from domain.intravascular.types import SupportedType
+from domain.intravascular.contour_presets import ContourPreset, active_preset, with_labels
+from domain.intravascular.io_types import Contour, FrameData
+from domain.intravascular.oct_display_types import OCT_LUT
+from domain.intravascular.undo import push_pullback_contours_snapshot
 from input_output.input.contours import read_contours
 from input_output.input.mask_contours import frame_contours, label_aliases
 from input_output.output.contours import write_contours

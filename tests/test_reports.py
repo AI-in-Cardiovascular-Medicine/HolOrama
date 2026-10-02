@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from domain.io_types import Contour, FrameData, Measure, set_sector_points
+from domain.intravascular.io_types import Contour, FrameData, Measure, set_sector_points
 from input_output.output.reports import report
 from tools.angle import points_for_sector
 

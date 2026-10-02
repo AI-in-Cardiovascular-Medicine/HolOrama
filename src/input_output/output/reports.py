@@ -10,9 +10,9 @@ from PyQt6.QtWidgets import QApplication, QProgressDialog
 from shapely.errors import TopologicalError
 from shapely.geometry import Polygon
 
-from domain.all_types import ContourType
-from domain.contour_presets import active_preset
-from domain.io_types import iter_sectors
+from domain.intravascular.types import ContourType
+from domain.intravascular.contour_presets import active_preset
+from domain.intravascular.io_types import iter_sectors
 from input_output.output.imgs_masks import frame_region_metrics, measured_types
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 from tools.angle import combined_sweep

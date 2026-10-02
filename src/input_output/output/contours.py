@@ -8,8 +8,8 @@ import threading
 import numpy as np
 from loguru import logger
 
-from domain.contour_presets import active_preset
-from domain.io_types import frame_to_dict
+from domain.intravascular.contour_presets import active_preset
+from domain.intravascular.io_types import frame_to_dict
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from version import CONTOURS_VERSION_TAG
 

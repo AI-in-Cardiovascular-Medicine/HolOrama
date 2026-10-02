@@ -32,9 +32,9 @@ import numpy as np
 from scipy.spatial import cKDTree
 from skimage import measure as sk_measure
 
-from domain.all_types import ContourType
-from domain.contour_presets import ContourPreset, ContourTypeDef
-from domain.io_types import Contour, set_sector_points
+from domain.intravascular.types import ContourType
+from domain.intravascular.contour_presets import ContourPreset, ContourTypeDef
+from domain.intravascular.io_types import Contour, set_sector_points
 from tools.angle import MIN_SWEEP, TWO_PI, points_for_sector
 
 MIN_COMPONENT_PX = 20  # anything smaller is noise, not a structure

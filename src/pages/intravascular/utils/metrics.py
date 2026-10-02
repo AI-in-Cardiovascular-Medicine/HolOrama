@@ -6,8 +6,8 @@ from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import QGraphicsTextItem
 from shapely.geometry import Polygon
 
-from domain.contour_presets import active_preset
-from domain.io_types import FrameData, Measurements
+from domain.intravascular.contour_presets import active_preset
+from domain.intravascular.io_types import FrameData, Measurements
 from input_output.output.reports import (
     closest_points,
     compute_polygon_metrics,

@@ -16,10 +16,10 @@ import pytest
 import yaml
 from PyQt6.QtCore import QPointF, Qt
 
-from domain.all_types import ContourType
-from domain.contour_presets import active_preset, set_active_preset
-from domain.io_types import FrameData, sector_points
-from domain.runtime_types import RuntimeData
+from domain.intravascular.types import ContourType
+from domain.intravascular.contour_presets import active_preset, set_active_preset
+from domain.intravascular.io_types import FrameData, sector_points
+from domain.intravascular.runtime_types import RuntimeData
 from tools.angle import angle_of, sector_from_points
 
 DIM = 200  # frame is DIM x DIM pixels
@@ -554,7 +554,7 @@ class TestPresetChange:
 
     @pytest.fixture
     def no_sectors(self):
-        from domain.contour_presets import ContourPreset
+        from domain.intravascular.contour_presets import ContourPreset
 
         before = active_preset()
         raw = before.to_dict()

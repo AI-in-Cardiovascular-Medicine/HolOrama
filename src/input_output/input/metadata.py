@@ -7,7 +7,8 @@ import pandas as pd
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QHeaderView, QMainWindow, QStyle, QTableWidget, QTableWidgetItem, QWidget
 
-from domain.io_types import MetaDataCCTA, MetaDataIntravascular
+from domain.ccta.io_types import MetaDataCCTA
+from domain.intravascular.io_types import MetaDataIntravascular
 
 # callable(title, message, default) → float — injected so callers stay testable
 PromptFn = Callable[[str, str, float], float]

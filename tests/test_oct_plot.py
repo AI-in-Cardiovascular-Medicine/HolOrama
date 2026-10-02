@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from domain.io_types import FrameData
+from domain.intravascular.io_types import FrameData
 from pages.intravascular.utils.oct_plot import (
     OCTPlot,
     _interpolate,

@@ -1,4 +1,4 @@
-from domain.fusion_types import FusionScene
+from domain.fusion.types import FusionScene
 from pages.fusion.left_half.layer_tools.base import SceneToolbar
 
 

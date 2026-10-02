@@ -6,7 +6,7 @@ import numpy as np
 import SimpleITK as sitk
 from skimage.measure import marching_cubes
 
-from domain.io_types import CANONICAL_ORIENTATION, VolumeGeometry
+from domain.ccta.io_types import CANONICAL_ORIENTATION, VolumeGeometry
 
 
 def export_nifti(mask: np.ndarray, geometry: VolumeGeometry, output_path: str) -> None:

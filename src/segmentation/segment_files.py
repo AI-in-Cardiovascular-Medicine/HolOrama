@@ -10,7 +10,7 @@ import yaml
 from loguru import logger
 from tqdm import tqdm
 
-from domain.io_types import frame_to_dict
+from domain.intravascular.io_types import frame_to_dict
 from segmentation.predict import Predict
 from segmentation.segment import mask_to_contours
 from version import CONTOURS_VERSION_TAG

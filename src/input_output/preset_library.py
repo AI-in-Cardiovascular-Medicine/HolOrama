@@ -19,14 +19,14 @@ from typing import Any, Callable
 from loguru import logger
 
 from app_paths import IS_FROZEN, REPO_ROOT, user_data_dir
-from domain.ccta_presets import BUILTIN_CCTA_PRESETS_DIR, COLORFUL_PRESET_FILE, load_ccta_preset, set_active_ccta_preset
-from domain.contour_presets import (
+from domain.ccta.presets import BUILTIN_CCTA_PRESETS_DIR, COLORFUL_PRESET_FILE, load_ccta_preset, set_active_ccta_preset
+from domain.intravascular.contour_presets import (
     BUILTIN_PRESETS_DIR,
     DEFAULT_PRESET_FILE,
-    PresetError,
     load_preset,
     set_active_preset,
 )
+from domain.presets import PresetError
 
 
 @dataclass(frozen=True)

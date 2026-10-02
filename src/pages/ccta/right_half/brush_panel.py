@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from domain.ccta_presets import fallback_color
+from domain.ccta.presets import fallback_color
 from tools.painting import BrushGeometry
 
 _ERASE_COLOR: tuple[int, int, int] = (160, 160, 160)

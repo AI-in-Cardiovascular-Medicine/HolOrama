@@ -17,8 +17,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from domain.all_types import ContourType, SegmentationTool
-from domain.contour_presets import ContourPreset, active_preset
+from domain.intravascular.types import ContourType, SegmentationTool
+from domain.intravascular.contour_presets import ContourPreset, active_preset
 from pages.intravascular.brush_panel import HoverButton
 from pages.intravascular.utils.contours_gui import (
     delete_all_on_frame,

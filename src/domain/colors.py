@@ -1,6 +1,5 @@
-"""Color primitives shared across ccta/intravascular/fusion (see
-ccta_display_types.py, contour_presets.py, and fusion_display_types.py for the
-domain-specific palettes built on top of these)."""
+"""Color primitives shared across ccta/intravascular/fusion (the module palettes in
+domain/<module>/ build on these)."""
 
 # Generic qualitative palette for indexed/categorical coloring (segmentation labels,
 # branch/side-branch coloring, ...). Index with `CATEGORICAL_PALETTE[i % len(CATEGORICAL_PALETTE)]`.

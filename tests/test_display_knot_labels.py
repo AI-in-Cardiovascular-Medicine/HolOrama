@@ -14,9 +14,9 @@ import numpy as np
 import pytest
 import yaml
 
-from domain.all_types import ContourType
-from domain.io_types import Contour, FrameData
-from domain.runtime_types import RuntimeData
+from domain.intravascular.types import ContourType
+from domain.intravascular.io_types import Contour, FrameData
+from domain.intravascular.runtime_types import RuntimeData
 
 DIM = 200
 N_FRAMES = 2

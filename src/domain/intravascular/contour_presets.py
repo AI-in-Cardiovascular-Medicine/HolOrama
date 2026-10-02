@@ -16,14 +16,13 @@ from enum import Enum
 from pathlib import Path
 from typing import Iterable
 
-from domain.all_types import ContourType, SegmentationTool
-from domain.io_types import RESERVED_CONTOUR_IDS
-
-PRESET_FORMAT = 1
+from domain.intravascular.types import ContourType, SegmentationTool
+from domain.presets import PRESET_FORMAT, PresetError
+from domain.intravascular.io_types import RESERVED_CONTOUR_IDS
 
 # Bundled next to the source in development and next to the executable once compiled
-# (see build_nuitka.ps1); this module sits one level below either.
-BUILTIN_PRESETS_DIR = Path(__file__).resolve().parent.parent / 'presets' / 'intravascular'
+# (see build_nuitka.ps1); this module sits two levels below either.
+BUILTIN_PRESETS_DIR = Path(__file__).resolve().parents[2] / 'presets' / 'intravascular'
 DEFAULT_PRESET_FILE = BUILTIN_PRESETS_DIR / 'default.json'
 
 # The keyboard shortcuts belong to HolOrama, not to a preset: they go to a preset's rows in
@@ -41,10 +40,6 @@ SPLINE_SHORTCUTS: tuple[tuple[str, str | None], ...] = (
 ANGLE_SHORTCUTS: tuple[tuple[str, str | None], ...] = (('3', 'Ctrl+3'), ('B', 'Ctrl+B'))
 
 _ID_PATTERN = re.compile(r'^[a-z][a-z0-9_]*$')
-
-
-class PresetError(ValueError):
-    """A preset that cannot be used as it stands; the message says which rule it breaks."""
 
 
 class ToolSet(Enum):

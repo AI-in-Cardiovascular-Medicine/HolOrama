@@ -1,4 +1,4 @@
-"""Tests for the contour presets (domain.contour_presets): which contour types exist, how
+"""Tests for the contour presets (domain.intravascular.contour_presets): which contour types exist, how
 each is layered into the mask and read back out of it, and what a preset has to satisfy.
 
 The default preset has to reproduce what the types used to be hardcoded as — the same
@@ -12,16 +12,16 @@ import math
 import numpy as np
 import pytest
 
-from domain.all_types import ContourType, SegmentationTool
-from domain.contour_presets import (
+from domain.intravascular.types import ContourType, SegmentationTool
+from domain.intravascular.contour_presets import (
     DEFAULT_PRESET_FILE,
     ContourPreset,
-    PresetError,
     active_preset,
     load_preset,
     set_active_preset,
 )
-from domain.io_types import Contour, FrameData, frame_to_dict
+from domain.presets import PresetError
+from domain.intravascular.io_types import Contour, FrameData, frame_to_dict
 from input_output.input.contours import _build_frame_data, _sector_keys
 from input_output.output.imgs_masks import contours_to_mask, frame_region_metrics
 

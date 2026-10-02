@@ -11,9 +11,9 @@ import math
 import numpy as np
 import pytest
 
-from domain.all_types import ContourType
-from domain.contour_presets import DEFAULT_PRESET_FILE, ContourPreset, load_preset
-from domain.io_types import Contour, FrameData, iter_sectors, set_sector_points
+from domain.intravascular.types import ContourType
+from domain.intravascular.contour_presets import DEFAULT_PRESET_FILE, ContourPreset, load_preset
+from domain.intravascular.io_types import Contour, FrameData, iter_sectors, set_sector_points
 from input_output.input.mask_contours import frame_contours
 from input_output.output.imgs_masks import contours_to_mask
 from tools.angle import points_for_sector, sector_from_points
@@ -206,7 +206,7 @@ def test_a_thrombus_in_the_lumen_of_a_custom_preset():
 
 class TestLabelsThePresetLacks:
     def test_the_draft_adds_a_free_row_per_missing_label(self):
-        from domain.contour_presets import ToolSet, with_labels
+        from domain.intravascular.contour_presets import ToolSet, with_labels
 
         preset = load_preset(DEFAULT_PRESET_FILE)
         draft = with_labels(preset, [1, 2, 15, 16], 'Default + 2 labels')
@@ -218,7 +218,7 @@ class TestLabelsThePresetLacks:
         assert len({d.color for d in draft.types}) == len(draft.types)  # every colour its own
 
     def test_in_the_dialog_the_added_rows_can_still_be_anything(self, qt_app):
-        from domain.contour_presets import with_labels
+        from domain.intravascular.contour_presets import with_labels
         from pages.intravascular.popup_windows.contour_settings_dialog import _COL_TOOLS, ContourSettingsDialog
 
         draft = with_labels(load_preset(DEFAULT_PRESET_FILE), [15], 'Mask')
@@ -254,8 +254,8 @@ class TestLabelsThePresetLacks:
 
 
 def test_the_whole_import_is_one_undo_step():
-    from domain.runtime_types import RuntimeData
-    from domain.undo import PullbackContoursSnapshot, push_pullback_contours_snapshot
+    from domain.intravascular.runtime_types import RuntimeData
+    from domain.intravascular.undo import PullbackContoursSnapshot, push_pullback_contours_snapshot
 
     runtime = RuntimeData()
     runtime.frame_data_dct = {0: _vessel(), 1: _vessel()}
@@ -306,7 +306,7 @@ class TestFibrousCap:
         assert _iou(np.where(cap, LABELS['eem'], mask), again, LABELS['lipid']) >= MIN_IOU
 
     def test_a_preset_with_a_type_on_label_6_reads_it_as_that(self):
-        from domain.contour_presets import with_labels
+        from domain.intravascular.contour_presets import with_labels
 
         preset = with_labels(load_preset(DEFAULT_PRESET_FILE), [6], 'With a cap type')
         read = _read(self._capped_lipid_mask(preset), preset)

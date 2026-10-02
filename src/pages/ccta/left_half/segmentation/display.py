@@ -4,12 +4,8 @@ from PyQt6.QtCore import QPointF, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QImage, QPen, QPixmap
 from PyQt6.QtWidgets import QGraphicsScene, QGraphicsView
 
-from domain.ccta_display_types import (
-    DEFAULT_CT_LEVEL,
-    DEFAULT_CT_WIDTH,
-    DEFAULT_MASK_ALPHA,
-)
-from domain.ccta_presets import fallback_color
+from domain.ccta.display_types import DEFAULT_CT_LEVEL, DEFAULT_CT_WIDTH, DEFAULT_MASK_ALPHA
+from domain.ccta.presets import fallback_color
 from tools.painting import BrushCursor, BrushGeometry
 
 _CROSSHAIR_COLOR = QColor(255, 255, 0)

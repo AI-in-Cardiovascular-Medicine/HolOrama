@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 import SimpleITK as sitk
 
-from domain.io_types import CANONICAL_ORIENTATION, VolumeGeometry, geometry_from_spacing
+from domain.ccta.io_types import CANONICAL_ORIENTATION, VolumeGeometry, geometry_from_spacing
 from input_output.input.ccta_io import read_ct_volume, read_mask_volume, read_nifti_volume
 from input_output.output.stl_export import export_nifti
 

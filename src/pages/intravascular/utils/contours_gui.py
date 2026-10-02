@@ -1,9 +1,9 @@
 from loguru import logger
 
-from domain.all_types import ContourType, SegmentationTool
-from domain.contour_presets import active_preset
-from domain.io_types import clear_frame_annotations
-from domain.undo import push_frame_annotation_snapshot
+from domain.intravascular.types import ContourType, SegmentationTool
+from domain.intravascular.contour_presets import active_preset
+from domain.intravascular.io_types import clear_frame_annotations
+from domain.intravascular.undo import push_frame_annotation_snapshot
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
 

@@ -56,8 +56,8 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import QSizePolicy, QWidget
 
 from input_output.output.imgs_masks import frame_region_metrics
-from domain.all_types import ContourType
-from domain.contour_presets import active_preset
+from domain.intravascular.types import ContourType
+from domain.intravascular.contour_presets import active_preset
 from tools.geometry import SplineGeometry
 
 CATHETER_DIAMETER_MM = 0.9  # 2.7 F imaging catheter; overridden by config.intravascular.catheter_diameter

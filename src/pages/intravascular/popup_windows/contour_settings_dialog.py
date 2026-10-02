@@ -2,7 +2,7 @@
 
 One row per contour type — its mask label, colour, name, tools, the type it lies inside and
 its layer in the mask — with the lumen and the EEM always the first two (see
-domain.contour_presets). The preset bar and the saving are those of every preset dialog
+domain.intravascular.contour_presets). The preset bar and the saving are those of every preset dialog
 (see gui.preset_dialog).
 """
 
@@ -13,8 +13,8 @@ from dataclasses import dataclass
 
 from PyQt6.QtWidgets import QComboBox, QSpinBox
 
-from domain.all_types import ContourType
-from domain.contour_presets import (
+from domain.intravascular.types import ContourType
+from domain.intravascular.contour_presets import (
     DEFAULT_PRESET_FILE,
     ContourPreset,
     ContourTypeDef,
@@ -22,7 +22,7 @@ from domain.contour_presets import (
     active_preset,
     load_preset,
 )
-from domain.io_types import RESERVED_CONTOUR_IDS
+from domain.intravascular.io_types import RESERVED_CONTOUR_IDS
 from gui.preset_dialog import PresetDialog, WorkingPreset
 from input_output.preset_library import INTRAVASCULAR
 

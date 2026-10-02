@@ -1,6 +1,8 @@
 from enum import Enum
 
-from domain.io_types import MetaDataCCTA, MetaDataIntravascular, MetaDataFusion
+from domain.ccta.io_types import MetaDataCCTA
+from domain.fusion.io_types import MetaDataFusion
+from domain.intravascular.io_types import MetaDataIntravascular
 
 
 class ActivePage(Enum):

@@ -11,8 +11,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from domain.ccta_display_types import DEFAULT_MASK_ALPHA
-from domain.ccta_presets import fallback_color
+from domain.ccta.display_types import DEFAULT_MASK_ALPHA
+from domain.ccta.presets import fallback_color
 
 
 class _LabelRow(QWidget):

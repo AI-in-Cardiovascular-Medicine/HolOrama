@@ -8,10 +8,10 @@ from PyQt6.QtCore import Qt, QTimer, QUrl
 from PyQt6.QtGui import QDesktopServices, QKeySequence, QShortcut
 from PyQt6.QtWidgets import QApplication, QProgressDialog
 
-from domain.all_types import ContourType, SegmentationTool
-from domain.contour_presets import ContourPreset, active_preset, set_active_preset
-from domain.io_types import is_contour_key
-from domain.undo import FrameAnnotationSnapshot, PullbackContoursSnapshot, push_contour_snapshot
+from domain.intravascular.types import ContourType, SegmentationTool
+from domain.intravascular.contour_presets import ContourPreset, active_preset, set_active_preset
+from domain.intravascular.io_types import is_contour_key
+from domain.intravascular.undo import FrameAnnotationSnapshot, PullbackContoursSnapshot, push_contour_snapshot
 from gui import settings_io
 from input_output.input.image import read_image, read_nifti_mask
 from input_output.input.metadata import CctaMetadataWindow, MetadataWindow

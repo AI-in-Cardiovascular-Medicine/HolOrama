@@ -14,8 +14,8 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
 )
 
-from domain.all_types import ContourType
-from domain.contour_presets import active_preset
+from domain.intravascular.types import ContourType
+from domain.intravascular.contour_presets import active_preset
 from tools.geometry import Marker
 
 

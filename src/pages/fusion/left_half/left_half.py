@@ -3,7 +3,7 @@ from functools import partial
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QSplitter, QTabWidget, QVBoxLayout
 
-from domain.fusion_types import FusionScene
+from domain.fusion.types import FusionScene
 from pages.fusion.left_half.display_results import FusionViewer3D
 from pages.fusion.left_half.layer_tools.alignment_tools import AlignmentToolbar, IntravascularLoadedToolbar
 from pages.fusion.left_half.layer_tools.branch_tools import BranchEditorToolbar

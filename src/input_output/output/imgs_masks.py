@@ -7,9 +7,9 @@ import SimpleITK as sitk
 from PyQt6.QtWidgets import QApplication, QProgressDialog
 from scipy.interpolate import splev, splprep
 
-from domain.all_types import ContourType
-from domain.contour_presets import ContourPreset, ContourTypeDef, active_preset
-from domain.io_types import iter_sectors
+from domain.intravascular.types import ContourType
+from domain.intravascular.contour_presets import ContourPreset, ContourTypeDef, active_preset
+from domain.intravascular.io_types import iter_sectors
 from tools.angle import contains_angle, sector_from_points
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
@@ -378,7 +378,7 @@ def _scaled_frame_view(frame_data, factor: float):
 
     Only what the region masks read is filled in; the original frame is left untouched.
     """
-    from domain.io_types import Contour, FrameData
+    from domain.intravascular.io_types import Contour, FrameData
 
     def scaled(contour_obj):
         entries = []

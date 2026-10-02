@@ -19,7 +19,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from domain.io_types import MetaDataCCTA, MetaDataIntravascular, MetaDataFusion
+from domain.ccta.io_types import MetaDataCCTA
+from domain.fusion.io_types import MetaDataFusion
+from domain.intravascular.io_types import MetaDataIntravascular
 from gui.active_page import ActivePage
 from gui.shortcuts import init_ccta_shortcuts, init_menu, init_shortcuts
 from input_output.preset_library import CCTA, activate_configured_preset

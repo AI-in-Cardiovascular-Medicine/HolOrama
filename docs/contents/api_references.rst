@@ -15,8 +15,11 @@ All application code lives under ``src/``::
     ├── config.yaml          user-editable settings (see the Configuration page)
     ├── main.py              entry point: creates the QApplication and the Master window
     ├── version.py           __version__ and the contour-file version tag
-    ├── domain/              data classes: RuntimeData, FrameData, CctaRuntimeData,
-    │                        FusionRuntimeData, contour/tool enums, undo stack
+    ├── domain/              data classes and constants; shared ones (colours, UndoStack,
+    │   │                    PresetError) at the root
+    │   ├── intravascular/   RuntimeData, FrameData, contour types and presets, undo snapshots
+    │   ├── ccta/            CctaRuntimeData, VolumeGeometry, label presets, display constants
+    │   └── fusion/          FusionRuntimeData, FusionScene, display colours
     ├── gui/                 app-level wiring: Master window, page switching, menu bar,
     │                        keyboard shortcuts
     ├── input_output/

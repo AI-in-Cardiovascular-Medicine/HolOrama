@@ -1,4 +1,4 @@
-"""Tests for the CCTA label presets (domain.ccta_presets), their settings dialog, the mask
+"""Tests for the CCTA label presets (domain.ccta.presets), their settings dialog, the mask
 panel showing them, and the Switch default button."""
 
 import json
@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from domain.ccta_presets import (
+from domain.ccta.presets import (
     COLORFUL_PRESET_FILE,
     PUBLICATION_PRESET_FILE,
     CctaPreset,
@@ -16,7 +16,7 @@ from domain.ccta_presets import (
     set_active_ccta_preset,
 )
 from domain.colors import CATEGORICAL_PALETTE
-from domain.contour_presets import PresetError
+from domain.presets import PresetError
 from input_output import preset_library
 
 ANATOMIC_NAMES = [
@@ -160,7 +160,7 @@ class TestMaskPanel:
 
 class TestSwitchDefault:
     def _switch(self, active):
-        from domain.ccta_presets import switched_default
+        from domain.ccta.presets import switched_default
 
         return switched_default(active).name
 
@@ -178,21 +178,21 @@ class TestPresetForAMask:
     """Opening a mask whose labels the active preset does not all name offers a new preset."""
 
     def test_every_draft_colour_differs_past_the_palette(self):
-        from domain.ccta_presets import distinct_colors
+        from domain.ccta.presets import distinct_colors
 
         colors = distinct_colors(40)
         assert len(set(colors)) == 40
         assert colors[:14] == list(CATEGORICAL_PALETTE)
 
     def test_a_draft_has_a_row_per_mask_value_and_names_nothing(self):
-        from domain.ccta_presets import draft_for
+        from domain.ccta.presets import draft_for
 
         draft = draft_for('3 labels', [1, 2, 50])
         assert [(defn.label, defn.name) for defn in draft.labels] == [(1, 'Label 1'), (2, 'Label 2'), (50, 'Label 50')]
         assert len({defn.color for defn in draft.labels}) == 3
 
     def test_the_dialog_opens_on_the_draft_and_saves_it_only_on_ok(self, qt_app, user_dir):
-        from domain.ccta_presets import draft_for
+        from domain.ccta.presets import draft_for
         from pages.ccta.popup_windows.contour_settings_dialog import CctaContourSettingsDialog
 
         dialog = CctaContourSettingsDialog(active_name='Default 1 - Colorful', draft=draft_for('20 labels', [1, 2, 3]))
@@ -206,7 +206,7 @@ class TestPresetForAMask:
         assert [p.name for p in user_dir.iterdir()] == ['20_labels.json']
 
     def test_a_draft_name_another_preset_has_is_made_unique(self, qt_app, user_dir):
-        from domain.ccta_presets import draft_for
+        from domain.ccta.presets import draft_for
         from pages.ccta.popup_windows.contour_settings_dialog import CctaContourSettingsDialog
 
         dialog = CctaContourSettingsDialog(draft=draft_for('Default 1 - Colorful', [1]))

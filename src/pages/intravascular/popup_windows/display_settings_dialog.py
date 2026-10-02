@@ -42,7 +42,7 @@ _KEY_SECTIONS: dict[str, str] = {
     for key in DEFAULT_DISPLAY_SETTINGS
 }
 
-# Each contour type's colour belongs to the contour preset (see domain.contour_presets);
+# Each contour type's colour belongs to the contour preset (see domain.intravascular.contour_presets);
 # only the start/end knot markers, which every type shares, are set here.
 _COLOR_LABELS = {
     'color_start_point': 'Change Color Start Point',

@@ -16,7 +16,7 @@ import math
 import numpy as np
 import pytest
 
-from domain.io_types import Contour, FrameData
+from domain.intravascular.io_types import Contour, FrameData
 from input_output.output.imgs_masks import contours_to_mask, frame_region_metrics
 
 DIM = 240

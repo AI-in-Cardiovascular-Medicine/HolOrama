@@ -8,8 +8,9 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 
 from loguru import logger
 
-from domain.contour_presets import ContourPreset, PresetError, active_preset
-from domain.io_types import Contour, FrameData, Measure, Measurements, set_sector_points
+from domain.intravascular.contour_presets import ContourPreset, active_preset
+from domain.presets import PresetError
+from domain.intravascular.io_types import Contour, FrameData, Measure, Measurements, set_sector_points
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from version import version_file_str
 
@@ -18,7 +19,7 @@ _CONTOUR_FILENAME_RE = re.compile(r'_contours_(ho_)?(\d+)_(\d+)_(\d+)\.json$')
 # older files are migrated on load, see _build_frame_data.
 _FRAME_FLAGS_VERSION = (0, 11, 0)
 # What a saved frame holds besides its contours, each of which is a key of its own there
-# (see domain.io_types.frame_to_dict).
+# (see domain.intravascular.io_types.frame_to_dict).
 _FRAME_FIELDS = frozenset(f.name for f in fields(FrameData)) - {'contours'}
 # The angular sectors of a file that does not say which of its contour types are angles:
 # every one written before the contour presets were saved along with the contours.

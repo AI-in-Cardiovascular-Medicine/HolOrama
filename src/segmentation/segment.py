@@ -64,7 +64,7 @@ def mask_to_contours(main_window, masks, lower_limit, upper_limit, config=None):
     counter = 0
 
     if main_window is None:
-        from domain.io_types import FrameData
+        from domain.intravascular.io_types import FrameData
 
         data = {}
         for frame in range(lower_limit, upper_limit):

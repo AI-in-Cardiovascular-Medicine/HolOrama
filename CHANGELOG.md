@@ -20,6 +20,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **Contour files** save the contour types they were drawn with, and keep contours of types the active preset lacks.
 - Contour colours moved from `config.yaml` and **Display Settings** into the preset.
 - **CCTA labels** are named and coloured by their mask value after the active label preset, instead of by their position in the mask: label 7 is the Aorta whichever other labels the mask holds. The **Names** / **Colors** buttons are replaced by **Switch default** (Colorful ↔ Publication); names are no longer edited in the label list, and the names saved with a cut state are no longer restored. The label colours left **CCTA Settings** and `config.yaml`.
+- `src/domain/` is split by module into `intravascular/`, `ccta/` and `fusion/`; only what they share (`colors`, `UndoStack`, `PresetError`) stays at its root.
 
 ### Fixed
 - Angular sector handles no longer collapse onto the image centre when a pullback's resolution puts the 5 mm handle circle inside the catheter (e.g. a NIfTI header saying 1 mm per pixel): the circle stays at least 30% of the way out.

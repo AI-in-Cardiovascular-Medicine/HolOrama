@@ -22,7 +22,7 @@ from vtkmodules.vtkRenderingCore import (
     vtkRenderer,
 )
 
-from domain.ccta_presets import fallback_color
+from domain.ccta.presets import fallback_color
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from tools.lasso import Lasso2D, project_world_batch
 

@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from domain.all_types import OCT_QUALITY_LABELS
+from domain.intravascular.types import OCT_QUALITY_LABELS
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
 from pages.intravascular.right_half.common import LongitudinalSlot, build_lower_buttons
 from pages.intravascular.utils.oct_plot import OCTPlot

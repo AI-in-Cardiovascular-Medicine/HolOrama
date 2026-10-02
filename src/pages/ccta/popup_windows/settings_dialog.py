@@ -23,7 +23,7 @@ DEFAULT_CCTA_SETTINGS: dict[str, Any] = {
 
 # windowing/zoom sensitivity and the default mask alpha are shared across pages
 # (config.common). Each label's name and colour is its CCTA preset's (see
-# domain.ccta_presets), edited in CCTA Contour Settings. See gui/settings_io.py.
+# domain.ccta.presets), edited in CCTA Contour Settings. See gui/settings_io.py.
 _KEY_SECTIONS: dict[str, str] = {
     'windowing_sensitivity': 'common',
     'zoom_sensitivity': 'common',

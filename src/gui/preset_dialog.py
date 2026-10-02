@@ -39,7 +39,7 @@ from PyQt6.QtWidgets import (
 )
 
 from domain.colors import CATEGORICAL_PALETTE
-from domain.contour_presets import PresetError
+from domain.presets import PresetError
 from input_output.preset_library import PresetEntry, PresetKind, load_library, save_user_preset, write_preset
 
 

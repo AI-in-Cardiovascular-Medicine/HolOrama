@@ -25,14 +25,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from domain.ccta_presets import (
-    CctaPreset,
-    active_ccta_preset,
-    set_active_ccta_preset,
-    switched_default,
-)
-from domain.io_types import VolumeGeometry, geometry_from_spacing
-from domain.runtime_types import CctaRuntimeData
+from domain.ccta.presets import CctaPreset, active_ccta_preset, set_active_ccta_preset, switched_default
+from domain.ccta.io_types import VolumeGeometry, geometry_from_spacing
+from domain.ccta.runtime_types import CctaRuntimeData
 from gui import settings_io
 from gui.active_page import ActivePage
 from input_output.input.ccta_io import (

@@ -1,5 +1,5 @@
 """CCTA Contour Settings: the CCTA label presets, and the name and colour each gives a mask
-value (see domain.ccta_presets). The preset bar and the saving are those of every preset
+value (see domain.ccta.presets). The preset bar and the saving are those of every preset
 dialog (see gui.preset_dialog); a label is renamed here and nowhere else.
 """
 
@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 from PyQt6.QtWidgets import QMessageBox, QSpinBox, QWidget
 
-from domain.ccta_presets import MAX_LABEL, CctaLabelDef, CctaPreset, active_ccta_preset, draft_for
+from domain.ccta.presets import MAX_LABEL, CctaLabelDef, CctaPreset, active_ccta_preset, draft_for
 from gui.preset_dialog import PresetDialog, WorkingPreset
 from input_output.preset_library import CCTA
 

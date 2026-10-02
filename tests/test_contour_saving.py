@@ -12,9 +12,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from domain.io_types import FrameData
-from domain.runtime_types import RuntimeData
-from domain.undo import push_contour_snapshot
+from domain.intravascular.io_types import FrameData
+from domain.intravascular.runtime_types import RuntimeData
+from domain.intravascular.undo import push_contour_snapshot
 from input_output.input.contours import read_contours
 from input_output.output.contours import write_contours
 from version import CONTOURS_VERSION_TAG

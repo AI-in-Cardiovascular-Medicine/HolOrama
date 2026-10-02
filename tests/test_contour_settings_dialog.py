@@ -9,8 +9,14 @@ import json
 import pytest
 from PyQt6.QtWidgets import QComboBox, QLineEdit, QMessageBox, QPushButton, QSpinBox
 
-from domain.all_types import ContourType
-from domain.contour_presets import DEFAULT_PRESET_FILE, ToolSet, active_preset, load_preset, set_active_preset
+from domain.intravascular.types import ContourType
+from domain.intravascular.contour_presets import (
+    DEFAULT_PRESET_FILE,
+    ToolSet,
+    active_preset,
+    load_preset,
+    set_active_preset,
+)
 from input_output import preset_library
 from gui import preset_dialog as dialog_module
 from pages.intravascular.popup_windows.contour_settings_dialog import (

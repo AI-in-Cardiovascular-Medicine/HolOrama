@@ -1,7 +1,7 @@
 """CCTA label presets: the name and colour each value of a CCTA mask stands for.
 
 A CCTA mask arrives labelled already, so unlike the intravascular presets (see
-domain.contour_presets) there is nothing to draw or layer: a row is a mask value, a name
+domain.intravascular.contour_presets) there is nothing to draw or layer: a row is a mask value, a name
 and a colour. A value a mask holds that its preset lacks is shown as 'Label <value>' in a
 palette colour. Two presets are built in: Colorful and Publication, both with the
 anatomic names of a cardiac CCTA segmentation.
@@ -15,9 +15,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from domain.colors import CATEGORICAL_PALETTE, distinct_colors
-from domain.contour_presets import PRESET_FORMAT, PresetError
+from domain.presets import PRESET_FORMAT, PresetError
 
-BUILTIN_CCTA_PRESETS_DIR = Path(__file__).resolve().parent.parent / 'presets' / 'ccta'
+BUILTIN_CCTA_PRESETS_DIR = Path(__file__).resolve().parents[2] / 'presets' / 'ccta'
 COLORFUL_PRESET_FILE = BUILTIN_CCTA_PRESETS_DIR / 'colorful.json'
 PUBLICATION_PRESET_FILE = BUILTIN_CCTA_PRESETS_DIR / 'publication.json'
 

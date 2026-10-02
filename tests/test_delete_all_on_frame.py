@@ -10,8 +10,8 @@ from types import SimpleNamespace
 import pytest
 
 import pages.intravascular.utils.contours_gui as contours_gui
-from domain.all_types import ContourType
-from domain.io_types import (
+from domain.intravascular.types import ContourType
+from domain.intravascular.io_types import (
     FRAME_ANNOTATION_FIELDS,
     Contour,
     FrameData,
@@ -19,8 +19,8 @@ from domain.io_types import (
     Measurements,
     clear_frame_annotations,
 )
-from domain.runtime_types import RuntimeData
-from domain.undo import FrameAnnotationSnapshot, push_contour_snapshot
+from domain.intravascular.runtime_types import RuntimeData
+from domain.intravascular.undo import FrameAnnotationSnapshot, push_contour_snapshot
 from gui.shortcuts import undo_last_contour_edit
 from pages.intravascular.utils.contours_gui import delete_all_on_frame
 

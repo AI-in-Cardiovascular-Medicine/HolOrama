@@ -4,7 +4,7 @@ import math
 import numpy as np
 import pytest
 
-from domain.io_types import Contour, FrameData, frame_to_dict, iter_sectors, set_sector_points
+from domain.intravascular.io_types import Contour, FrameData, frame_to_dict, iter_sectors, set_sector_points
 from input_output.input.contours import _build_sector_contour
 from input_output.output.contours import _to_serializable
 from input_output.output.imgs_masks import _angle_sector_mask

@@ -1,7 +1,7 @@
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QComboBox, QDoubleSpinBox, QGroupBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
-from domain.fusion_types import FusionScene
+from domain.fusion.types import FusionScene
 from pages.fusion.left_half.layer_tools.base import SceneToolbar
 
 
