@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.14.0] - 2026-10-02
 
 ### Added
 - **Settings → Intravascular Contour Settings**: a table of the contour types (mask label, colour, name, tools, the type each lies inside, layer), with **+ Add contour type** and per-row move/remove. Lumen and EEM stay the first two rows.
