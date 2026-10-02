@@ -12,6 +12,8 @@ left of the window. Each keeps its own loaded data, so switching does not discar
 
    * - I want to…
      - Go to
+   * - Understand the generic mask setup
+     - :doc:`mask_definition`
    * - Draw contours on an IVUS or OCT pullback and export masks for model training
      - :doc:`intravascular`
    * - Find diastolic and systolic frames in an IVUS pullback without an ECG
@@ -26,6 +28,7 @@ left of the window. Each keeps its own loaded data, so switching does not discar
 .. toctree::
    :titlesonly:
 
+   mask_definition
    intravascular
    gating
    breathing
