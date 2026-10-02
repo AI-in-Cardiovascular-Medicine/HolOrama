@@ -1,0 +1,50 @@
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
+
+
+class FusionRuntimeData:
+    """Holds the multimodars objects produced while working through the fusion pipeline.
+
+    Fields are grouped by the right-half column that produces them: geometry/centerline
+    labeling (column 1), intravascular alignment (column 2), fusion/scaling/stitching
+    (column 3). Nothing here is serialized as-is -> each stage writes its own output file
+    (STL, VTP, JSON) via pipeline.py, and this container just keeps the in-memory objects
+    needed to feed the next stage and to redraw the 3D viewer.
+    """
+
+    def __init__(self):
+        self.case_dir: str | None = None  # last directory used for file/save dialogs
+
+        # -- Column 1: CCTA geometry + centerlines --------------------------------------
+        self.centerline_aorta: Any | None = None  # PyCenterline
+        self.centerline_rca: Any | None = None
+        self.centerline_lca: Any | None = None
+        self.results: dict | None = None  # multimodars "results" dict (mesh, *_points, ...)
+        self.vessel_tree: Any | None = None  # PyDiscretizedVesselTree
+        self.selected_rca_reference_index: int = 0  # index into vessel_tree.rca_references
+        self.selected_lca_reference_index: int = 0  # index into vessel_tree.lca_references — inspection-only
+
+        # -- Column 2: intravascular alignment -------------------------------------------
+        self.iv_geometry_pair: Any | None = None  # PyGeometryPair from from_file_singlepair
+        self.iv_align_logs: tuple | None = None
+        self.aligned: Any | None = None  # PyGeometryPair | PyGeometry from align_combined
+        self.resampled_centerline: Any | None = None  # aligned vessel (rca/lca), at align_combined's spacing_mm
+        self.resampled_centerline_aorta: Any | None = None  # centerline_aorta resampled to that same spacing_mm
+
+        # -- Column 3: fusion / scaling / stitching --------------------------------------
+        self.prox_scaling: float | None = None
+        self.distal_scaling: float | None = None
+        self.aortic_scaling: float | None = None
+        # Deep-copied snapshot of `results` right after Remove Labeled Points. Stitching
+        # always starts from a fresh copy of this (stitch_ccta_to_intravascular mutates the
+        # results dict + mesh in place), so Stitch can be re-run with different parameters.
+        self.results_points_removed: dict | None = None
+        self.stitched: dict | None = None  # result of stitch_ccta_to_intravascular
+        self.final_mesh: Any | None = None  # trimesh.Trimesh after remesh/smoothing
+        # Previous final_mesh vertex arrays (oldest first) for undoing smoothing steps
+        # smoothing never changes faces, so vertices alone restore a mesh. Reset whenever a
+        # new final_mesh topology arrives (Fix & Remesh) or the final mesh is dropped.
+        self.final_mesh_undo: list[np.ndarray] = []

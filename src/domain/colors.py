@@ -1,7 +1,5 @@
-"""Color primitives shared across ccta/intravascular/fusion — the single source of
-truth for values that used to be redefined independently in each module (see
-ccta_display_types.py, mask_types.py, and fusion_display_types.py for the
-domain-specific palettes built on top of these)."""
+"""Color primitives shared across ccta/intravascular/fusion (the module palettes in
+domain/<module>/ build on these)."""
 
 # Generic qualitative palette for indexed/categorical coloring (segmentation labels,
 # branch/side-branch coloring, ...). Index with `CATEGORICAL_PALETTE[i % len(CATEGORICAL_PALETTE)]`.
@@ -22,10 +20,26 @@ CATEGORICAL_PALETTE: tuple[tuple[int, int, int], ...] = (
     (140, 140, 255),  # lavender
 )
 
-# Shared default for mask/segmentation overlay opacity (0 = transparent, 1 = opaque).
+_GOLDEN_RATIO = 0.618033988749895
+
+
+def distinct_colors(count: int) -> list[tuple[int, int, int]]:
+    """`count` colours that all differ: the categorical palette first, then hues spread by
+    the golden ratio (each new one lands in the widest gap left), alternating in brightness."""
+    import colorsys
+
+    colors = list(CATEGORICAL_PALETTE[:count])
+    hue = 0.0
+    for i in range(count - len(colors)):
+        hue = (hue + _GOLDEN_RATIO) % 1.0
+        r, g, b = colorsys.hsv_to_rgb(hue, 0.75, 0.95 if i % 2 == 0 else 0.7)
+        colors.append((round(r * 255), round(g * 255), round(b * 255)))
+    return colors
+
+
 DEFAULT_MASK_ALPHA: float = 0.45
 
-# Canonical diastole/systole colors — shared by the intravascular page, its plots
+# shared by the intravascular page, its plots
 # (gating, longitudinal view, results plot), and the fusion viewer's aligned-geometry
 # rendering, so "diastole"/"systole" always mean the same colors app-wide.
 DIASTOLE_COLOR: tuple[int, int, int] = (39, 69, 219)

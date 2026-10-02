@@ -27,9 +27,9 @@ along the bottom: **Smooth** (+ Taubin lambda), **Reduce Mesh** (+ target reduct
 .. rubric:: Right column
 
 - **Mask opacity** slider.
-- **Labels**: one row per label with a visibility checkbox, a colour swatch, an editable
-  name and the numeric label value, plus an *All* toggle and the *Cardiac CCTA*
-  **Names** / **Colors** preset buttons.
+- **Labels**: one row per label with a visibility checkbox, its colour, its name and the
+  numeric label value, plus an *All* toggle and the **Switch default** button. The active
+  label preset is named underneath.
 - **Brush** controls: *Enable brush*, label selector, *Add* / *Erase*, radius.
 - **Aortic Root with Coronaries**: mask selectors, cut-plane buttons,
   **Build Cut Geometry**, outlet points, export format and **Extract & Export**.
@@ -58,7 +58,7 @@ Tutorial
 
 HolOrama then looks for a previously saved mask for this case
 (``<case>_ccta_seg_*.nii.gz``) and loads the most recent one automatically, along with any
-saved cut state (cut lines, label choices, outlet points and label names), rebuilding the
+saved cut state (cut lines, label choices and outlet points), rebuilding the
 cut geometry from them. Re-opening a case picks up where you left off.
 
 If no mask is found for a NIfTI volume, you are asked whether you want to load one. You can
@@ -77,10 +77,21 @@ blank multi-label mask, ready to paint.
 3. Organise the labels
 ~~~~~~~~~~~~~~~~~~~~~~
 
-In the **Labels** list you can hide or show each label, rename it, and toggle all at once.
-The **Cardiac CCTA** presets fill in standard anatomic **Names** and **Colors** in one
-click. Names and colours propagate everywhere immediately: the slice overlays, the brush
-selector, the 3D render and the cut-geometry dropdowns.
+In the **Labels** list you can hide or show each label, and toggle all at once. Each label
+is named and coloured by its value after the active **label preset**: label 1 is
+*Coronaries*, label 7 the *Aorta*, and so on, whichever labels a mask holds; a value the
+preset does not know shows as *Label <value>*. Names and colours propagate everywhere: the
+slice overlays, the brush selector, the 3D render and the cut-geometry dropdowns.
+
+Two presets are built in, both with the anatomic names: **Default 1 - Colorful** and
+**Default 2 - Publication**. **Switch default** toggles between them. To rename labels or
+change their colours, make your own preset in **Settings → CCTA Contour Settings…**:
+duplicate a built-in one, then edit, add or remove rows (mask value, colour, name). It works
+like the intravascular contour presets (see :doc:`../configuration`).
+
+When a mask holds labels the active preset does not name — a whole-body segmentation, say —
+HolOrama offers a new preset for it on opening: CCTA Contour Settings opens on an unsaved
+preset with one row per mask value, each in a colour of its own, for you to name and save.
 
 Use the **Mask opacity** slider to check a border against the underlying CT.
 

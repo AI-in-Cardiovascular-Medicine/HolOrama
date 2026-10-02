@@ -13,8 +13,8 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QPushButton, QSlider, QVBoxLayout, QWidget
 
 import pages.intravascular.right_half.right_half_oct as right_half_oct
-from domain.all_types import OCT_QUALITY_LABELS
-from domain.io_types import FrameData
+from domain.intravascular.types import OCT_QUALITY_LABELS
+from domain.intravascular.io_types import FrameData
 from pages.intravascular.right_half.right_half_oct import (
     OCT_FRAME_FLAGS,
     RightHalfOct,

@@ -4,7 +4,7 @@ from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtWidgets import QCheckBox, QPushButton, QSplitter, QTableWidget
 
 from domain.colors import DIASTOLE_COLOR, SYSTOLE_COLOR
-from domain.runtime_types import RuntimeData
+from domain.intravascular.runtime_types import RuntimeData
 from signal_processing.gating_plot import GatingPlot
 from input_output.output.contours import write_contours
 from pages.intravascular.brush_panel import BrushSettingsPopup

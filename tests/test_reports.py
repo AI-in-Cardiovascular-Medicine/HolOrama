@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from domain.io_types import Contour, FrameData, Measure, set_sector_points
+from domain.intravascular.io_types import Contour, FrameData, Measure, set_sector_points
 from input_output.output.reports import report
 from tools.angle import points_for_sector
 
@@ -119,10 +119,15 @@ class TestColumns:
             assert f'{plaque}_area' in data.columns
             assert f'{plaque}_angle' in data.columns
 
-    def test_blood_is_reported_but_the_wire_is_not(self, main_window):
+    def test_every_sector_type_is_reported_as_an_angle(self, main_window):
         data = _report(main_window)
         assert 'blood_angle' in data.columns
-        assert not [column for column in data.columns if 'wire' in column]
+        assert 'wire_angle' in data.columns
+
+    def test_a_side_branch_is_reported_like_a_plaque(self, main_window):
+        data = _report(main_window)
+        assert 'branch_area' in data.columns
+        assert 'branch_angle' in data.columns
 
     def test_the_measurements_and_the_pullback_parameters_come_last(self, main_window):
         data = _report(main_window)
@@ -144,7 +149,9 @@ class TestColumns:
 
 class TestPlaqueAreaAndAngle:
     def test_an_open_arc_spans_its_own_angle(self, main_window):
-        main_window.runtime_data.frame_data_dct[0].calcium = Contour(contours=[_arc(PLAQUE_R, 0, 90)], closed=[False])
+        main_window.runtime_data.frame_data_dct[0].contours['calcium'] = Contour(
+            contours=[_arc(PLAQUE_R, 0, 90)], closed=[False]
+        )
         data = _report(main_window)
 
         assert data['calcium_angle'].iloc[0] == pytest.approx(90, abs=4)
@@ -152,13 +159,15 @@ class TestPlaqueAreaAndAngle:
         assert data['calcium_area'].iloc[0] == pytest.approx(quarter_annulus * RESOLUTION**2, rel=0.15)
 
     def test_a_ring_around_the_lumen_spans_the_whole_circle(self, main_window):
-        main_window.runtime_data.frame_data_dct[0].calcium = Contour(contours=[_circle(PLAQUE_R)], closed=[True])
+        main_window.runtime_data.frame_data_dct[0].contours['calcium'] = Contour(
+            contours=[_circle(PLAQUE_R)], closed=[True]
+        )
         data = _report(main_window)
 
         assert data['calcium_angle'].iloc[0] == pytest.approx(360, abs=2)
 
     def test_two_arcs_of_the_same_type_count_their_overlap_once(self, main_window):
-        main_window.runtime_data.frame_data_dct[0].lipid = Contour(
+        main_window.runtime_data.frame_data_dct[0].contours['lipid'] = Contour(
             contours=[_arc(PLAQUE_R, 0, 90), _arc(PLAQUE_R, 45, 135)], closed=[False, False]
         )
         data = _report(main_window)
@@ -167,8 +176,8 @@ class TestPlaqueAreaAndAngle:
 
     def test_each_plaque_type_is_measured_on_its_own(self, main_window):
         frame_data = main_window.runtime_data.frame_data_dct[1]
-        frame_data.calcium = Contour(contours=[_arc(PLAQUE_R, 0, 60)], closed=[False])
-        frame_data.macrophage = Contour(contours=[_arc(PLAQUE_R, 180, 300)], closed=[False])
+        frame_data.contours['calcium'] = Contour(contours=[_arc(PLAQUE_R, 0, 60)], closed=[False])
+        frame_data.contours['macrophage'] = Contour(contours=[_arc(PLAQUE_R, 180, 300)], closed=[False])
         data = _report(main_window)
 
         assert data['calcium_angle'].iloc[1] == pytest.approx(60, abs=4)
@@ -184,13 +193,13 @@ class TestPlaqueAreaAndAngle:
 
 class TestBloodAngle:
     def test_one_sector_is_its_own_opening(self, main_window):
-        set_sector_points(main_window.runtime_data.frame_data_dct[0].blood, 0, _sector(10, 120))
+        set_sector_points(main_window.runtime_data.frame_data_dct[0].contour('blood'), 0, _sector(10, 120))
         data = _report(main_window)
 
         assert data['blood_angle'].iloc[0] == pytest.approx(120, abs=0.5)
 
     def test_two_sectors_are_combined(self, main_window):
-        blood = main_window.runtime_data.frame_data_dct[0].blood
+        blood = main_window.runtime_data.frame_data_dct[0].contour('blood')
         set_sector_points(blood, 0, _sector(0, 60))
         set_sector_points(blood, 1, _sector(180, 90))
         data = _report(main_window)
@@ -198,18 +207,19 @@ class TestBloodAngle:
         assert data['blood_angle'].iloc[0] == pytest.approx(150, abs=0.5)
 
     def test_overlapping_sectors_are_counted_once(self, main_window):
-        blood = main_window.runtime_data.frame_data_dct[0].blood
+        blood = main_window.runtime_data.frame_data_dct[0].contour('blood')
         set_sector_points(blood, 0, _sector(0, 90))
         set_sector_points(blood, 1, _sector(45, 90))
         data = _report(main_window)
 
         assert data['blood_angle'].iloc[0] == pytest.approx(135, abs=0.5)
 
-    def test_a_wire_on_the_frame_changes_nothing(self, main_window):
-        set_sector_points(main_window.runtime_data.frame_data_dct[0].wire, 0, _sector(0, 120))
+    def test_a_wire_is_reported_on_its_own_not_as_blood(self, main_window):
+        set_sector_points(main_window.runtime_data.frame_data_dct[0].contour('wire'), 0, _sector(0, 120))
         data = _report(main_window)
 
         assert data['blood_angle'].iloc[0] == 0.0
+        assert data['wire_angle'].iloc[0] == pytest.approx(120, abs=0.5)
 
     def test_a_frame_without_blood_reports_zero(self, main_window):
         assert list(_report(main_window)['blood_angle']) == [0.0] * N_FRAMES

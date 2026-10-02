@@ -1,11 +1,10 @@
 import json
 import math
-from dataclasses import asdict
 
 import numpy as np
 import pytest
 
-from domain.io_types import Contour, FrameData, iter_sectors, set_sector_points
+from domain.intravascular.io_types import Contour, FrameData, frame_to_dict, iter_sectors, set_sector_points
 from input_output.input.contours import _build_sector_contour
 from input_output.output.contours import _to_serializable
 from input_output.output.imgs_masks import _angle_sector_mask
@@ -102,12 +101,12 @@ class TestAngleSectorMask:
 
 
 class TestSectorRoundTrip:
-    def test_survives_asdict_json_and_reload(self):
-        fd = FrameData(wire=_build_sector_contour([[316.0, 318.0], [372.0, 298.0]]))
-        set_sector_points(fd.wire, 1, [(10.0, 20.0), (30.0, 40.0), (20.0, 30.0)])
-        set_sector_points(fd.blood, 0, [(1.0, 2.0), (3.0, 4.0), (2.0, 3.0)])
+    def test_survives_saving_json_and_reload(self):
+        fd = FrameData(contours={'wire': _build_sector_contour([[316.0, 318.0], [372.0, 298.0]])})
+        set_sector_points(fd.contour('wire'), 1, [(10.0, 20.0), (30.0, 40.0), (20.0, 30.0)])
+        set_sector_points(fd.contour('blood'), 0, [(1.0, 2.0), (3.0, 4.0), (2.0, 3.0)])
 
-        raw = json.loads(json.dumps(asdict(fd)))
+        raw = json.loads(json.dumps(frame_to_dict(fd)))
         assert iter_sectors(_build_sector_contour(raw['wire'])) == [
             [(316.0, 318.0), (372.0, 298.0)],
             [(10.0, 20.0), (30.0, 40.0), (20.0, 30.0)],

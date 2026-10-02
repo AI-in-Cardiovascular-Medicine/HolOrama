@@ -46,6 +46,8 @@ from signal_processing.breathing_pipeline import (
     register_phase,
 )
 from input_output.output.reports import report
+from domain.intravascular.types import ContourType
+from domain.intravascular.contour_presets import active_preset
 from tools.geometry import SplineGeometry
 
 N_STRIP = 5  # thumbnails per filmstrip (odd → current one centred)
@@ -76,7 +78,6 @@ class BreathingSortViewer(QMainWindow):
         cfg = main_window.config.intravascular
         self.image_size = cfg.image_size
         self.n_points_contour = cfg.n_points_contour
-        self.contour_color = getattr(cfg, 'color_contour', 'green')
         images = main_window.runtime_data.images
         self.image_width = images.shape[1] if images is not None else self.image_size
         self.scaling = self.image_size / self.image_width
@@ -590,7 +591,7 @@ class BreathingSortViewer(QMainWindow):
             path.lineTo(float(fx[i]), float(fy[i]))
         path.closeSubpath()
         item = QGraphicsPathItem(path)
-        pen = QPen(QColor(self.contour_color))
+        pen = QPen(QColor(active_preset()[ContourType.LUMEN].color))
         pen.setWidth(2)
         item.setPen(pen)
         scene.addItem(item)

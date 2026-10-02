@@ -3,11 +3,14 @@ import json
 import math
 import os
 import re
-from typing import Dict, List, Optional, Tuple
+from dataclasses import fields
+from typing import Dict, FrozenSet, List, Optional, Tuple
 
 from loguru import logger
 
-from domain.io_types import Contour, FrameData, Measure, Measurements, set_sector_points
+from domain.intravascular.contour_presets import ContourPreset, active_preset
+from domain.presets import PresetError
+from domain.intravascular.io_types import Contour, FrameData, Measure, Measurements, set_sector_points
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from version import version_file_str
 
@@ -15,6 +18,12 @@ _CONTOUR_FILENAME_RE = re.compile(r'_contours_(ho_)?(\d+)_(\d+)_(\d+)\.json$')
 # The frame flags (guiding catheter / unanalyzable / unlabeled) arrived in 0.11.0;
 # older files are migrated on load, see _build_frame_data.
 _FRAME_FLAGS_VERSION = (0, 11, 0)
+# What a saved frame holds besides its contours, each of which is a key of its own there
+# (see domain.intravascular.io_types.frame_to_dict).
+_FRAME_FIELDS = frozenset(f.name for f in fields(FrameData)) - {'contours'}
+# The angular sectors of a file that does not say which of its contour types are angles:
+# every one written before the contour presets were saved along with the contours.
+_LEGACY_SECTOR_KEYS = frozenset({'wire', 'blood'})
 
 
 def read_contours(main_window, file_name=None) -> bool:
@@ -50,13 +59,41 @@ def read_contours(main_window, file_name=None) -> bool:
         main_window.runtime_data.frame_data_dct = _build_frame_data_legacy(raw, num_frames, scaling_factor)
         main_window.runtime_data.gating_signal = raw.get('gating_signal', {})
     else:
-        main_window.runtime_data.frame_data_dct = _build_frame_data(raw, pre_flags)
+        main_window.runtime_data.frame_data_dct = _build_frame_data(raw, pre_flags, _sector_keys(raw))
         main_window.runtime_data.gating_signal = raw.get('gating_signal', {})
 
     main_window.contours_drawn = True
     main_window.hide_contours_box.setChecked(False)
     logger.info(f'Loaded {len(main_window.runtime_data.frame_data_dct)} frames from {newest}')
     return True
+
+
+def _file_preset(raw: dict) -> Optional[ContourPreset]:
+    """The contour preset a file was annotated with, if it carries one (see write_contours)."""
+    stored = raw.get('contour_types')
+    if not stored:
+        return None
+    try:
+        return ContourPreset.from_dict(stored)
+    except PresetError as exc:
+        logger.warning(f'Ignoring the contour types stored in the contour file: {exc}')
+        return None
+
+
+def _sector_keys(raw: dict) -> FrozenSet[str]:
+    """Which of a file's contour keys hold angular sectors rather than splines.
+
+    Those its own preset calls angles; a file without one predates saving the preset, so
+    its sectors are the ones every earlier version had. The active preset's angles count
+    either way. A file annotated with contour types the active preset lacks still loads
+    in full: every contour is kept by its id, and saved again as it came.
+    """
+    preset = _file_preset(raw)
+    active = active_preset()
+    if preset is not None and preset.to_dict()['types'] != active.to_dict()['types']:
+        logger.warning(f'Contours were drawn with the contour types of preset {preset.name!r}, not {active.name!r}')
+    stored = {defn.type.value for defn in preset.angle_types} if preset is not None else set(_LEGACY_SECTOR_KEYS)
+    return frozenset(stored | {defn.type.value for defn in active.angle_types})
 
 
 def _contour_file_sort_key(path: str) -> Tuple[bool, Tuple[int, int, int]]:
@@ -106,12 +143,10 @@ def _build_frame_data_legacy(raw: dict, num_frames: int, scaling_factor: float =
             phase=phases[i] if i < len(phases) else '-',
             # This format has no quality field at all, so no frame carries an assigned
             # label to keep and every one of them loads unlabeled (the FrameData default).
-            lumen=_build_contour_legacy(raw, 'lumen', i),
-            eem=_build_contour_legacy(raw, 'eem', i),
-            calcium=_build_contour_legacy(raw, 'calcium', i),
-            branch=_build_contour_legacy(raw, 'branch', i),
-            lipid=_build_contour_legacy(raw, 'lipid', i),
-            macrophage=_build_contour_legacy(raw, 'macrophage', i),
+            contours={
+                key: _build_contour_legacy(raw, key, i)
+                for key in ('lumen', 'eem', 'calcium', 'branch', 'lipid', 'macrophage')
+            },
             measurement_1=_build_measure(m1_raw, scaling_factor, ml1),
             measurement_2=_build_measure(m2_raw, scaling_factor, ml2),
             reference=reference[i] if i < len(reference) else None,
@@ -141,9 +176,13 @@ def _frame_label(frame_raw: dict, quality: str) -> Tuple[str, bool, bool, bool]:
     return '', False, False, True
 
 
-def _build_frame_data(raw: dict, pre_flags: bool = True) -> Dict[int, FrameData]:
-    """Convert current JSON format (produced by asdict) into Dict[int, FrameData].
-    Top-level non-integer keys (e.g. 'gating_signal') are skipped here.
+def _build_frame_data(
+    raw: dict, pre_flags: bool = True, sector_keys: FrozenSet[str] = _LEGACY_SECTOR_KEYS
+) -> Dict[int, FrameData]:
+    """Convert current JSON format (see frame_to_dict) into Dict[int, FrameData].
+    Top-level non-integer keys (e.g. 'gating_signal') are skipped here. Every key of a
+    frame that is not one of FrameData's fields is a contour, by type id; `sector_keys`
+    says which of those are angular sectors (see _sector_keys).
 
     `pre_flags` marks a file written before 0.11.0, when the frame flags did not exist and
     every frame carried a 'Very Good' quality whether it had been reviewed or not. Such a
@@ -166,17 +205,10 @@ def _build_frame_data(raw: dict, pre_flags: bool = True) -> Dict[int, FrameData]
             guiding_catheter=guiding_catheter,
             unanalyzable=unanalyzable,
             unlabeled=unlabeled,
-            lumen=_build_contour(frame_raw.get('lumen')),
-            eem=eem,
-            calcium=_build_contour(frame_raw.get('calcium')),
-            branch=_build_contour(frame_raw.get('branch')),
-            lipid=_build_contour(frame_raw.get('lipid')),
-            macrophage=_build_contour(frame_raw.get('macrophage')),
+            contours={**_build_frame_contours(frame_raw, sector_keys), 'eem': eem},
             measurement_1=_build_measure(frame_raw.get('measurement_1')),
             measurement_2=_build_measure(frame_raw.get('measurement_2')),
             reference=frame_raw.get('reference'),
-            wire=_build_sector_contour(frame_raw.get('wire')),
-            blood=_build_sector_contour(frame_raw.get('blood')),
             centroid=frame_raw.get('centroid'),
             closest_points=frame_raw.get('closest_points'),
             farthest_points=frame_raw.get('farthest_points'),
@@ -186,6 +218,21 @@ def _build_frame_data(raw: dict, pre_flags: bool = True) -> Dict[int, FrameData]
         if guiding_catheter and frames[i].phase == 'T':
             frames[i].phase = '-'
     return frames
+
+
+def _build_frame_contours(frame_raw: dict, sector_keys: FrozenSet[str]) -> Dict[str, Contour]:
+    """Every contour of one saved frame, by type id."""
+    contours: Dict[str, Contour] = {}
+    for key, value in frame_raw.items():
+        if key in _FRAME_FIELDS:
+            continue
+        if key in sector_keys:
+            contours[key] = _build_sector_contour(value)
+        elif value is None or isinstance(value, dict):
+            contours[key] = _build_contour(value)
+        else:
+            logger.debug(f'Skipping {key!r} in a saved frame: neither a field nor a contour')
+    return contours
 
 
 def _build_contour_legacy(raw: dict, key: str, i: int) -> Contour:

@@ -6,6 +6,7 @@ common:
 
 intravascular:
   image_size: 800
+  contour_preset: 'Default'            # the contour types to annotate with (Settings > Intravascular Contour Settings)
   gating_display_stretch: 1
   lview_display_stretch: 1
   n_interactive_points: 20  # lumen and eem use this; calcium, lipid, macrophage, branch use half
@@ -14,36 +15,16 @@ intravascular:
   point_thickness: 1
   point_radius: 10
   snap_radius_px: 5   # how close a click must land to grab a point or close a contour
-  color_contour: 'green'  # PyQt6 color name or hex (https://doc.qt.io/qt-6/qcolor.html)
-  color_eem: '#03b1fc'
-  color_calcium: 'white'
-  color_branch: '#146450'
-  color_start_point: 'yellow'
+  # Every contour type's colour is set in its contour preset (src/presets/intravascular).
+  color_start_point: 'yellow'  # PyQt6 color name or hex (https://doc.qt.io/qt-6/qcolor.html)
   color_end_point: 'red'
-  color_angle: '#ffa500'
-  color_blood: '#8b0000'
   angle_handle_radius_mm: 5.0  # how far from the image centre a wire/blood sector's handles and arc sit
   alpha_contour: 100  # 0-255
   catheter_diameter: 0.9  # mm, drawn in the OCT vessel schematic (0.9 = 2.7 F)
 
 ccta:
-  # Base mask-label palette, before any per-case "Colors" preset (right_half/mask_panel.py).
-  # Falls back to CATEGORICAL_PALETTE (domain/colors.py); override any subset of positions.
-  label_colors:
-    - [255, 60, 60]
-    - [60, 220, 60]
-    - [60, 60, 255]
-    - [255, 220, 0]
-    - [220, 60, 220]
-    - [0, 210, 210]
-    - [255, 140, 0]
-    - [160, 60, 255]
-    - [0, 180, 255]
-    - [255, 60, 140]
-    - [0, 200, 120]
-    - [180, 255, 0]
-    - [255, 180, 100]
-    - [140, 140, 255]
+  # The name and colour of each mask label (Settings > CCTA Contour Settings)
+  contour_preset: 'Default 1 - Colorful'
 
 fusion: {}  # no fusion settings yet; placeholder so config stays organized by module
 

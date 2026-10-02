@@ -14,6 +14,8 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
 )
 
+from domain.intravascular.types import ContourType
+from domain.intravascular.contour_presets import active_preset
 from tools.geometry import Marker
 
 
@@ -46,7 +48,6 @@ class LongitudinalView(QGraphicsView):
         self.oct_mode = False
         self.num_frames = 0
         self.image_height = 0
-        self.color = getattr(main_window.config.intravascular, "color_contour", "green")
 
         self._peak_btn = QPushButton('Peak', self)
         self._peak_btn.setCheckable(True)
@@ -215,7 +216,7 @@ class LongitudinalView(QGraphicsView):
         top_offset = self.image_height * self.MARGIN_TOP
         r = self.DOT_RADIUS
 
-        brush = QBrush(QColor(self.color))
+        brush = QBrush(QColor(active_preset()[ContourType.LUMEN].color))
         no_pen = QPen(Qt.PenStyle.NoPen)
 
         for frame, area in areas.items():

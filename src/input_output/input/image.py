@@ -13,13 +13,14 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QProgressDialog,
 )
-from skimage import measure as sk_measure
 
-from domain.all_types import ANGLE_TYPES, ContourType, SupportedType
-from domain.io_types import FrameData
-from domain.mask_types import MASK_SPECS
-from domain.oct_display_types import OCT_LUT
+from domain.intravascular.types import SupportedType
+from domain.intravascular.contour_presets import ContourPreset, active_preset, with_labels
+from domain.intravascular.io_types import Contour, FrameData
+from domain.intravascular.oct_display_types import OCT_LUT
+from domain.intravascular.undo import push_pullback_contours_snapshot
 from input_output.input.contours import read_contours
+from input_output.input.mask_contours import frame_contours, label_aliases
 from input_output.output.contours import write_contours
 from input_output.input.metadata import (
     MetaDataIntravascular,
@@ -30,8 +31,7 @@ from input_output.input.metadata import (
     populate_metadata_table,
 )
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage, WarningMessage
-from segmentation.segment import downsample
-from tools.geometry import SplineGeometry
+from pages.intravascular.utils.metrics import clear_lumen_measurements
 
 
 def read_image(main_window) -> None:
@@ -184,16 +184,17 @@ def read_image(main_window) -> None:
             read_nifti_mask(main_window)
 
 
-def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) -> None:
+def read_nifti_mask(main_window) -> None:
+    """Read a multi-label NIfTI mask over the whole pullback, replacing every frame's
+    contours with those read off it (see mask_contours) after the active contour preset.
+
+    Slice i of the mask is frame i of the pullback, so the two have to match in size. A
+    mask holding labels the preset does not define offers a new preset with a row for each
+    of them first. One Ctrl+Z undoes the whole import.
+    """
     if not main_window.image_displayed:
         ErrorMessage(main_window, 'Load an image before importing a mask')
         return
-
-    # Angular sectors are not spline contours (each entry holds the angles bounding it,
-    # see FrameData.wire), so a traced mask boundary cannot be imported into them.
-    if contour_type not in MASK_SPECS or contour_type in ANGLE_TYPES:
-        return
-    spec = MASK_SPECS[contour_type]
 
     file_name, _ = QFileDialog.getOpenFileName(
         main_window,
@@ -206,58 +207,107 @@ def read_nifti_mask(main_window, contour_type: ContourType = ContourType.LUMEN) 
 
     try:
         nft: nib.Nifti1Image = nib.load(file_name)  # type: ignore[assignment]
-        mask_arr = np.asarray(nft.dataobj).transpose(2, 1, 0).astype(np.uint8)
+        mask_arr = _drop_trailing_singletons(np.rint(np.asarray(nft.dataobj)).astype(np.int32))
+        mask_arr = mask_arr.transpose(2, 1, 0) if mask_arr.ndim == 3 else mask_arr.T
     except Exception:
         traceback.print_exc()
         ErrorMessage(main_window, 'Could not read NIfTI mask file')
         return
 
-    num_frames = min(mask_arr.shape[0], main_window.runtime_data.metadata['num_frames'])
-    field_name = contour_type.value
-    single_contour = contour_type in (ContourType.LUMEN, ContourType.EEM)
+    images = main_window.runtime_data.images
+    expected = tuple(images.shape[:3])
+    if mask_arr.ndim == 2:
+        mask_arr = mask_arr[np.newaxis]
+    if tuple(mask_arr.shape) != expected:
+        ErrorMessage(
+            main_window,
+            f'The mask holds {mask_arr.shape[0]} slices of {mask_arr.shape[2]}x{mask_arr.shape[1]} pixels, '
+            f'the pullback {expected[0]} frames of {expected[2]}x{expected[1]}.\n\n'
+            'A mask is read slice by slice onto the frames, so it has to cover the whole pullback.',
+        )
+        return
 
-    n_pts = main_window.display.n_interactive_points
-    n_pts_contour = main_window.display.n_points_contour
-    sf = main_window.display.scaling_factor
+    preset = _preset_for_mask(main_window, mask_arr)
+    if preset is None:
+        return
+
+    display = main_window.display
+    knots = display.n_interactive_points
+    handle_radius = display._angle_handle_radius() / display.scaling_factor
+    frame_data_dct = main_window.runtime_data.frame_data_dct
+    progress = QProgressDialog('Reading the mask...', 'Cancel', 0, len(mask_arr), main_window)
+    progress.setWindowTitle('Open Intravascular Mask')
+    progress.setMinimumDuration(0)
+    progress.setModal(True)
+    read: dict[int, tuple] = {}
     try:
-        for frame_idx in range(num_frames):
-            binary = spec.matches(mask_arr[frame_idx]).astype(np.uint8)
-            if not binary.any():
-                continue
-            found = sk_measure.find_contours(binary, 0.5)
-            if not found:
-                continue
-            if single_contour:
-                found = [max(found, key=len)]
-            if frame_idx not in main_window.runtime_data.frame_data_dct:
-                main_window.runtime_data.frame_data_dct[frame_idx] = FrameData()
-            contour_obj = getattr(main_window.runtime_data.frame_data_dct[frame_idx], field_name)
-            sparse_contours = []
-            for c in found:
-                xs_scaled = [float(col) * sf for col in c[:, 1]]
-                ys_scaled = [float(row) * sf for row in c[:, 0]]
-                geometry = SplineGeometry(xs_scaled, ys_scaled, n_pts_contour, None, None)
-                if geometry.full_contour[0] is None or len(geometry.full_contour[0]) == 0:
-                    continue
-                downsampled = downsample(
-                    ([list(geometry.full_contour[0])], [list(geometry.full_contour[1])]),
-                    n_pts,
-                )
-                sparse_contours.append([[x / sf for x in downsampled[0]], [y / sf for y in downsampled[1]]])
-            if not sparse_contours:
-                continue
-            contour_obj.contours = sparse_contours
-            contour_obj.closed = [True] * len(sparse_contours)
+        for frame in range(len(mask_arr)):
+            progress.setValue(frame)
+            QApplication.processEvents()
+            if progress.wasCanceled():
+                return  # nothing written yet
+            read[frame] = frame_contours(
+                mask_arr[frame], preset, lambda defn: knots if not defn.appendable else knots // 2, handle_radius
+            )
     except Exception:
         traceback.print_exc()
         ErrorMessage(main_window, 'Error converting mask to contours')
         return
+    finally:
+        progress.close()
+
+    push_pullback_contours_snapshot(main_window.runtime_data, display.frame)
+    for frame, (contours, centroid) in read.items():
+        frame_data = frame_data_dct.setdefault(frame, FrameData())
+        clear_lumen_measurements(frame_data)  # derived from the lumen being replaced
+        for defn in preset.types:
+            frame_data.contours[defn.type.value] = contours.get(defn.type.value, Contour())
+        frame_data.centroid = centroid
 
     main_window.segmentation = True
-    main_window.display.set_frame(main_window.display.frame)
-    if contour_type is ContourType.LUMEN:  # the overviews are built from lumen measurements
-        main_window.display.refresh_all_frame_metrics()
+    main_window.contours_drawn = True
+    display.set_frame(display.frame)
+    display.refresh_all_frame_metrics()
     write_contours(main_window, force=True)
+    main_window.status_bar.showMessage('Mask read into contours (Ctrl+Z undoes it)')
+
+
+def _preset_for_mask(main_window, mask_arr: np.ndarray) -> ContourPreset | None:
+    """The preset to read `mask_arr` after: the active one — or, when the mask holds labels
+    it does not define and the user takes up the offer, a new one with a row for each of
+    them, made in Intravascular Contour Settings. None to give up the import."""
+    preset = active_preset()
+    aliases = label_aliases(preset)  # read as another type, so not missing (the fibrous cap)
+    values = [int(value) for value in np.unique(mask_arr) if value != 0]
+    missing = [value for value in values if value not in aliases and all(defn.label != value for defn in preset.types)]
+    if not missing:
+        return preset
+
+    shown = ', '.join(str(value) for value in missing[:10]) + (', …' if len(missing) > 10 else '')
+    reply = QMessageBox.question(
+        main_window,
+        'Labels Without a Contour Type',
+        f'This mask holds {len(values)} labels, {len(missing)} of which the preset {preset.name!r} does not '
+        f'define ({shown}).\n\nCreate a new preset with a row for each of them? Otherwise they are left out.',
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+        QMessageBox.StandardButton.Yes,
+    )
+    if reply == QMessageBox.StandardButton.Cancel:
+        return None
+    if reply == QMessageBox.StandardButton.No:
+        return preset
+
+    # Imported here: the shortcuts module imports this one.
+    from gui.shortcuts import apply_contour_preset
+    from pages.intravascular.popup_windows.contour_settings_dialog import ContourSettingsDialog
+
+    draft = with_labels(preset, missing, f'{preset.name} + {len(missing)} labels')
+    dialog = ContourSettingsDialog(main_window, active_name=preset.name, draft=draft)
+    if not dialog.exec() or dialog.selected_preset() is None:
+        return None
+    chosen = dialog.selected_preset()
+    apply_contour_preset(main_window, getattr(main_window.window(), 'ccta_page', None), chosen)
+    return chosen
 
 
 def _make_prompt(main_window) -> PromptFn:
@@ -320,6 +370,7 @@ def _read_nifti(filename: str) -> tuple[np.ndarray, pd.DataFrame]:
             pixel_array = np.stack([raw[c].astype(np.float64) for c in raw.dtype.names], axis=-1)
         else:
             pixel_array = raw.astype(np.float64)
+    pixel_array = _drop_trailing_singletons(pixel_array)
     if pixel_array.ndim == 3:
         pixel_array = pixel_array.transpose(2, 1, 0)
     elif pixel_array.ndim == 4:
@@ -336,6 +387,18 @@ def _read_nifti(filename: str) -> tuple[np.ndarray, pd.DataFrame]:
             }
         )
     return pixel_array, pd.DataFrame(rows_nft)
+
+
+def _drop_trailing_singletons(array: np.ndarray) -> np.ndarray:
+    """`array` without the axes of length 1 past its third.
+
+    A 3-D volume is sometimes stored with a trailing axis of length 1 — a one-component
+    'vector' (x, y, z, 1), as some converters write it — which would otherwise be read as
+    a frame of (H, W, 1) instead of (H, W).
+    """
+    while array.ndim > 3 and array.shape[-1] == 1:
+        array = array[..., 0]
+    return array
 
 
 _DICOM_MODALITY_ALIASES: dict[str, str] = {

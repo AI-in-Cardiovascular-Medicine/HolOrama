@@ -22,7 +22,7 @@ from vtkmodules.vtkRenderingCore import (
     vtkRenderer,
 )
 
-from domain.fusion_types import FusionScene
+from domain.fusion.types import FusionScene
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from tools.lasso import Lasso2D, project_world_batch
 from tools.sphere_smooth import SphereBrush

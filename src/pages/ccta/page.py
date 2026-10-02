@@ -25,8 +25,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from domain.io_types import VolumeGeometry, geometry_from_spacing
-from domain.runtime_types import CctaRuntimeData
+from domain.ccta.presets import CctaPreset, active_ccta_preset, set_active_ccta_preset, switched_default
+from domain.ccta.io_types import VolumeGeometry, geometry_from_spacing
+from domain.ccta.runtime_types import CctaRuntimeData
+from gui import settings_io
 from gui.active_page import ActivePage
 from input_output.input.ccta_io import (
     read_ct_volume,
@@ -39,8 +41,8 @@ from pages.ccta.left_half.cut_geometry import state_io as cut_state_io
 from pages.ccta.left_half.cut_geometry.dialogs.centerline_smoothing_dialog import CenterlineSmoothingDialog
 from pages.ccta.utils.progress_worker import StdoutCapturingWorker
 from pages.ccta.left_half.left_half import LeftHalf
+from pages.ccta.popup_windows.contour_settings_dialog import CctaContourSettingsDialog, ask_for_draft
 from pages.ccta.right_half.right_half import RightHalf
-from pages.ccta.popup_windows.settings_dialog import resolve_label_colors
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from tools.sphere_smooth import local_remesh, local_smooth, local_smooth_region
 from version import version_file_str
@@ -89,11 +91,10 @@ class CctaPage(QWidget):
         windowing_sensitivity = common_cfg.windowing_sensitivity
         zoom_sensitivity = common_cfg.zoom_sensitivity
         mask_alpha = common_cfg.default_mask_alpha
-        label_colors = resolve_label_colors(config)
 
-        # Create left and right halves
-        self._left_half = LeftHalf(label_colors, mask_alpha, windowing_sensitivity, zoom_sensitivity)
-        self._right_half = RightHalf(label_colors, mask_alpha)
+        # Create left and right halves; the labels get their colours from apply_label_preset
+        self._left_half = LeftHalf(mask_alpha, windowing_sensitivity, zoom_sensitivity)
+        self._right_half = RightHalf(mask_alpha)
 
         # Extract references for signal connections
         self._axial = self._left_half.axial
@@ -121,9 +122,7 @@ class CctaPage(QWidget):
         # Wire up mask panel signals
         self._mask_tab.alpha_changed.connect(self._on_mask_alpha_changed)
         self._mask_tab.label_visibility_changed.connect(self._on_label_visibility_changed)
-        self._mask_tab.label_colors_changed.connect(self._on_label_colors_changed)
-        self._mask_tab.label_name_changed.connect(self._on_label_name_changed)
-        self._mask_tab.label_name_changed.connect(self._3d_viewer.update_label_name)
+        self._mask_tab.switch_default_requested.connect(self._on_switch_default)
 
         # Wire up brush panel signals
         self._brush_panel.brush_enabled_changed.connect(self._on_brush_enabled_changed)
@@ -316,6 +315,7 @@ class CctaPage(QWidget):
         self._apply_mask(mask, clear_undo=True)
         self.status_bar.showMessage(f'Mask auto-loaded: {os.path.basename(mask_path)}')
         self._try_load_cut_state()
+        self._offer_preset_for_mask_soon()
         return True
 
     def _try_load_cut_state(self) -> None:
@@ -344,13 +344,12 @@ class CctaPage(QWidget):
         self.status_bar.showMessage('Restored cut geometry from previous session.')
 
     def _restore_cut_state_onto_ui(self, state: dict) -> tuple[int, int, int] | None:
-        """Write a loaded cut-state dict's label names and cut lines onto the mask
-        panel / STL panel / overlays. Returns the (cor, aorta, lv) labels if they're
-        all still present in the current mask and the cut lines are complete enough
-        to rebuild the cut geometry from, else None."""
-        if state['label_names']:
-            self._mask_tab.set_label_names(state['label_names'])
+        """Write a loaded cut-state dict's cut lines onto the STL panel / overlays. Returns
+        the (cor, aorta, lv) labels if they're all still present in the current mask and
+        the cut lines are complete enough to rebuild the cut geometry from, else None.
 
+        The label names it holds are a record of what the labels were called when it was
+        saved; the names shown are always the active preset's (see apply_label_preset)."""
         self._cut_line_0 = state['cut_line_0']
         self._cut_line_1 = state['cut_line_1']
         self._aorta_cut_line = state['aorta_cut_line']
@@ -379,6 +378,58 @@ class CctaPage(QWidget):
         self._stl_panel.set_labels(self.data.labels, self._mask_tab.label_names())
         if self.data.voxel_spacing is not None:
             self._3d_viewer.set_mask(mask, self.data.labels, self.data.voxel_spacing)
+        self.apply_label_preset()
+
+    def apply_label_preset(self) -> None:
+        """Name and colour every label of the mask after the active CCTA preset — by mask
+        value, so a label means the same whichever others the mask holds."""
+        preset = active_ccta_preset()
+        labels = self.data.labels
+        names = {label: preset.name_of(label) for label in labels}
+        colors = {label: preset.color_of(label) for label in labels}
+        self._mask_tab.set_label_appearance(preset.name, names, colors)
+        by_position = [colors[label] for label in labels]  # the views take colours in label order
+        for display in (self._axial, self._coronal, self._sagittal):
+            display.set_label_colors(by_position)
+        self._3d_viewer.set_label_colors(by_position)
+        self._brush_panel.set_label_colors(by_position)
+        for label, name in names.items():
+            self._brush_panel.update_label_name(label, name)
+            self._stl_panel.update_label_name(label, name)
+            self._3d_viewer.update_label_name(label, name)
+
+    def set_label_preset(self, preset: CctaPreset) -> None:
+        """Make `preset` the active CCTA preset, remember it in the config, and show the
+        labels after it."""
+        set_active_ccta_preset(preset)
+        key_sections, values = {'contour_preset': 'ccta'}, {'contour_preset': preset.name}
+        settings_io.apply_values(self.config, key_sections, values)
+        settings_io.save_values(settings_io.resolve_config_path(self.config), key_sections, values)
+        self.apply_label_preset()
+        self._cut_state_dirty = True  # it records the label names
+
+    def open_label_presets(self, draft: CctaPreset | None = None) -> None:
+        """CCTA Contour Settings, on the active preset — or on `draft` as a new one — making
+        the preset chosen there the active one on OK."""
+        dialog = CctaContourSettingsDialog(self, active_name=active_ccta_preset().name, draft=draft)
+        if dialog.exec():
+            preset = dialog.selected_preset()
+            if preset is not None:
+                self.set_label_preset(preset)
+
+    def _offer_preset_for_mask_soon(self) -> None:
+        # Once the mask is on screen, so the question is asked over what it is about.
+        QTimer.singleShot(0, self._offer_preset_for_mask)
+
+    def _offer_preset_for_mask(self) -> None:
+        draft = ask_for_draft(self, self.data.labels)
+        if draft is not None:
+            self.open_label_presets(draft)
+
+    def _on_switch_default(self) -> None:
+        target = switched_default(active_ccta_preset())
+        self.set_label_preset(target)
+        self.status_bar.showMessage(f'Labels named and coloured after {target.name}')
 
     def open_mask(self) -> None:
         if self.data.volume is None:
@@ -402,6 +453,7 @@ class CctaPage(QWidget):
 
         self._apply_mask(mask, clear_undo=True)
         self.status_bar.showMessage(f'Mask loaded: {len(self.data.labels)} label(s) — {self.data.labels}')
+        self._offer_preset_for_mask_soon()
 
     def save_mask(self) -> None:
         if self.data.mask is None or self._source_path is None:
@@ -487,6 +539,7 @@ class CctaPage(QWidget):
         self._mask_tab.set_labels(self.data.labels)
         self._brush_panel.set_labels(self.data.labels)
         self._stl_panel.set_labels(self.data.labels, self._mask_tab.label_names())
+        self.apply_label_preset()
 
     def reset_to_neutral(self) -> None:
         """Return to neutral state: deactivate brush and cancel any active line draw."""
@@ -546,18 +599,11 @@ class CctaPage(QWidget):
             display.set_mask_alpha(alpha)
 
     def apply_ccta_settings(self, values: dict) -> None:
-        """Push updated sensitivity/mask-alpha/label-colors settings live into every
-        child display — called by settings_dialog.apply_and_save after the config has
-        already been updated."""
+        """Push updated sensitivity/mask-alpha settings live into every child display —
+        called by settings_dialog.apply_and_save after the config has already been
+        updated."""
         for display in (self._axial, self._coronal, self._sagittal):
             display.set_sensitivity(values['windowing_sensitivity'], values['zoom_sensitivity'])
-
-        label_colors = tuple(tuple(c) for c in values['label_colors'])
-        for display in (self._axial, self._coronal, self._sagittal):
-            display.set_base_label_colors(label_colors)
-        self._3d_viewer.set_base_label_colors(label_colors)
-        self._brush_panel.set_base_label_colors(label_colors)
-        self._mask_tab.set_base_label_colors(label_colors)
 
         # Triggers the mask panel's existing alpha_changed -> _on_mask_alpha_changed
         # wiring, which pushes the new alpha into all three displays live.
@@ -567,12 +613,6 @@ class CctaPage(QWidget):
         for display in (self._axial, self._coronal, self._sagittal):
             display.set_label_visible(label, visible)
         self._3d_viewer.set_label_visible(label, visible)
-
-    def _on_label_colors_changed(self, colors: list) -> None:
-        for display in (self._axial, self._coronal, self._sagittal):
-            display.set_label_colors(colors)
-        self._3d_viewer.set_label_colors(colors)
-        self._brush_panel.set_label_colors(colors)
 
     def _on_windowing_changed(self, level: int, width: int) -> None:
         for display in (self._axial, self._coronal, self._sagittal):
@@ -805,9 +845,6 @@ class CctaPage(QWidget):
         self.status_bar.showMessage('Cut geometry built.')
 
     def _on_outlet_points_changed(self, _category: str, _count: int) -> None:
-        self._cut_state_dirty = True
-
-    def _on_label_name_changed(self, _label: int, _name: str) -> None:
         self._cut_state_dirty = True
 
     def _on_outlet_point_mode_requested(self, category: str) -> None:

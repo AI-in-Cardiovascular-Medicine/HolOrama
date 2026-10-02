@@ -11,8 +11,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from domain.fusion_display_types import region_label
-from domain.fusion_types import FusionScene
+from domain.fusion.display_types import region_label
+from domain.fusion.types import FusionScene
 
 # Minimum height for the layer list's internal scroll area — below this a couple of rows
 # wouldn't even fit. The toolbar itself has no max height: it sits in a QSplitter (see

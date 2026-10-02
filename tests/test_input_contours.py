@@ -1,6 +1,6 @@
 import pytest
 
-from domain.io_types import Contour, iter_sectors, sector_points, set_sector_points
+from domain.intravascular.io_types import Contour, iter_sectors, sector_points, set_sector_points
 from input_output.input.contours import (
     _build_contour,
     _build_frame_data,

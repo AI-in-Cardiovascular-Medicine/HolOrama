@@ -6,7 +6,8 @@ from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import QGraphicsTextItem
 from shapely.geometry import Polygon
 
-from domain.io_types import FrameData, Measurements
+from domain.intravascular.contour_presets import active_preset
+from domain.intravascular.io_types import FrameData, Measurements
 from input_output.output.reports import (
     closest_points,
     compute_polygon_metrics,
@@ -229,7 +230,8 @@ class MetricsMixin:
         if old_text and old_text.scene() == self.graphics_scene:
             self.graphics_scene.removeItem(old_text)
 
-        text = active_type.value.upper()
+        defn = active_preset().get(active_type)
+        text = (defn.name if defn is not None else active_type.value).upper()
         self.active_contour_text = QGraphicsTextItem(text)
 
         if isinstance(config.color, str):

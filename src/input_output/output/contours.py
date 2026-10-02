@@ -4,11 +4,12 @@ import os
 import shutil
 import tempfile
 import threading
-from dataclasses import asdict
 
 import numpy as np
 from loguru import logger
 
+from domain.intravascular.contour_presets import active_preset
+from domain.intravascular.io_types import frame_to_dict
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from version import CONTOURS_VERSION_TAG
 
@@ -36,8 +37,11 @@ def write_contours(main_window, force: bool = True, blocking: bool | None = None
     out_path = f'{main_window.file_name}_contours_{CONTOURS_VERSION_TAG}.json'
 
     try:
-        serializable = {str(i): asdict(frame) for i, frame in main_window.runtime_data.frame_data_dct.items()}
+        serializable = {str(i): frame_to_dict(frame) for i, frame in main_window.runtime_data.frame_data_dct.items()}
         serializable['gating_signal'] = main_window.runtime_data.gating_signal
+        # The contour types the frames were drawn with travel along with them, so the file
+        # still says what each contour is when opened with another preset active.
+        serializable['contour_types'] = active_preset().to_dict()
         content = json.dumps(serializable, default=_to_serializable, indent=2)
     except Exception as e:
         logger.exception(f'Failed to serialize contours: {e}')

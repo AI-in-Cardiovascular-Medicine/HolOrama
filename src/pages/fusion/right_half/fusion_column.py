@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from domain.fusion_display_types import region_label
+from domain.fusion.display_types import region_label
 
 
 class FusionColumn(QWidget):

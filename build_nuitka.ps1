@@ -43,6 +43,9 @@ $nuitkaArgs = @(
     # config.yaml is loaded via Path(__file__).parent / 'config.yaml' in main.py,
     # so it must sit next to the executable.
     '--include-data-files=src\config.yaml=config.yaml',
+    # The built-in contour presets are read from presets/ next to the executable
+    # (domain/intravascular/contour_presets.py and domain/ccta/presets.py).
+    '--include-data-dir=src\presets=presets',
     # media/ holds the window icon (desktop_img.ico), the About video and the
     # bundled JetBrains Mono cuts in media/fonts (recursive, so fonts come along).
     '--include-data-dir=media=media',

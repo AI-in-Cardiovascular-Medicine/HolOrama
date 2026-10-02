@@ -30,14 +30,8 @@ DEFAULT_DISPLAY_SETTINGS: dict[str, Any] = {
     'point_thickness': 1,
     'point_radius': 10,
     'snap_radius_px': 10,
-    'color_contour': 'green',
-    'color_eem': '#03b1fc',
-    'color_calcium': 'white',
-    'color_branch': '#006400',
     'color_start_point': 'yellow',
     'color_end_point': 'red',
-    'color_angle': '#ffa500',
-    'color_blood': '#8b0000',
     'angle_handle_radius_mm': 5.0,
 }
 
@@ -48,15 +42,11 @@ _KEY_SECTIONS: dict[str, str] = {
     for key in DEFAULT_DISPLAY_SETTINGS
 }
 
+# Each contour type's colour belongs to the contour preset (see domain.intravascular.contour_presets);
+# only the start/end knot markers, which every type shares, are set here.
 _COLOR_LABELS = {
-    'color_contour': 'Change Color Contour',
-    'color_eem': 'Change Color EEM',
-    'color_calcium': 'Change Color Calcium',
-    'color_branch': 'Change Color Branch',
     'color_start_point': 'Change Color Start Point',
     'color_end_point': 'Change Color End Point',
-    'color_angle': 'Change Color Angle',
-    'color_blood': 'Change Color Blood',
 }
 
 # (label, slider_min, slider_max, to_slider, from_slider, value_fmt)
@@ -242,11 +232,6 @@ def apply_and_save(main_window, values: dict) -> None:
 
     main_window.display.apply_display_settings(values)
 
-    longitudinal_view = getattr(main_window, 'longitudinal_view', None)
-    if longitudinal_view is not None:
-        longitudinal_view.color = values['color_contour']
-        longitudinal_view.plot_areas()
-
     small_display = getattr(main_window, 'small_display', None)
     if small_display is not None:
         small_display.n_points_contour = values['n_points_contour']
@@ -257,7 +242,6 @@ def apply_and_save(main_window, values: dict) -> None:
     breathing_sort_viewer = getattr(main_window, 'breathing_sort_viewer', None)
     if breathing_sort_viewer is not None:
         breathing_sort_viewer.n_points_contour = values['n_points_contour']
-        breathing_sort_viewer.contour_color = values['color_contour']
 
     config_path = settings_io.resolve_config_path(main_window.config)
     settings_io.save_values(config_path, _KEY_SECTIONS, values)

@@ -61,6 +61,7 @@ jobs:
           pip install "pydicom==2.4.4" pylibjpeg pylibjpeg-libjpeg SimpleITK
           pip install opencv-python-headless
           pip install trimesh vtk
+          pip install pymeshlab
           pip install "PyQt6==6.10.2" pyqtdarktheme
           pip install pytest pytest-qt pytest-mock pytest-cov
 

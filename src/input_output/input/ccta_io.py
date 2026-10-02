@@ -6,7 +6,7 @@ import numpy as np
 import pydicom as dcm
 import SimpleITK as sitk
 
-from domain.io_types import CANONICAL_ORIENTATION, MetaDataCCTA, VolumeGeometry
+from domain.ccta.io_types import CANONICAL_ORIENTATION, MetaDataCCTA, VolumeGeometry
 
 
 def _canonicalize(img: sitk.Image) -> tuple[sitk.Image, VolumeGeometry]:

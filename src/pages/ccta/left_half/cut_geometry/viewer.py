@@ -32,7 +32,7 @@ from vtkmodules.vtkIOXML import vtkXMLPolyDataReader
 from vtkmodules.vtkInteractionStyle import vtkInteractorStyleTrackballCamera
 from vtkmodules.vtkRenderingCore import vtkActor, vtkLightKit, vtkPolyDataMapper, vtkRenderer
 
-from domain.ccta_display_types import (
+from domain.ccta.display_types import (
     CENTERLINE_AO_COLOR,
     CENTERLINE_LCA_COLOR,
     CENTERLINE_RCA_COLOR,

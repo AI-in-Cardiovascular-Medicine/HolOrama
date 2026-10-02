@@ -1,5 +1,5 @@
 """Tests for what a plaque contour means once rasterized
-(input_output.output.imgs_masks._plaque_mask, and the two callers that read it).
+(input_output.output.imgs_masks._contained_mask, and the two callers that read it).
 
 Every plaque contour marks the luminal side of the plaque, which then fills outwards to
 the EEM. An open arc can only ever mean that; a closed contour is normally the plaque
@@ -16,8 +16,7 @@ import math
 import numpy as np
 import pytest
 
-from domain.all_types import ContourType
-from domain.io_types import Contour, FrameData
+from domain.intravascular.io_types import Contour, FrameData
 from input_output.output.imgs_masks import contours_to_mask, frame_region_metrics
 
 DIM = 240
@@ -50,7 +49,7 @@ def _frame(calcium=None, closed=True, lumen_r=LUMEN_R, eem_r=EEM_R):
     if eem_r is not None:
         frame_data.eem = Contour(contours=[_circle(eem_r)], closed=[True])
     if calcium is not None:
-        frame_data.calcium = Contour(contours=[calcium], closed=[closed])
+        frame_data.contours['calcium'] = Contour(contours=[calcium], closed=[closed])
     frame_data.centroid = (CENTRE, CENTRE)
     return frame_data
 
@@ -162,7 +161,7 @@ class TestWithoutALumen:
     def test_a_ring_is_filled_as_drawn(self):
         frame_data = FrameData()
         frame_data.eem = Contour(contours=[_circle(EEM_R)], closed=[True])
-        frame_data.calcium = Contour(contours=[_circle(RING_R)], closed=[True])
+        frame_data.contours['calcium'] = Contour(contours=[_circle(RING_R)], closed=[True])
         frame_data.centroid = (CENTRE, CENTRE)
         mask = _mask(frame_data)
         # Nothing says the lumen is inside it, so the contour is taken at face value.
@@ -172,13 +171,15 @@ class TestWithoutALumen:
 class TestSeveralContours:
     def test_a_ring_and_a_wall_blob_are_read_one_by_one(self):
         frame_data = _frame()
-        frame_data.calcium = Contour(contours=[_circle(RING_R), _arc(RING_R, 180, 260)], closed=[True, False])
+        frame_data.contours['calcium'] = Contour(
+            contours=[_circle(RING_R), _arc(RING_R, 180, 260)], closed=[True, False]
+        )
         mask = _mask(frame_data)
         calcium = mask == LABELS['calcium']
         # The ring alone already covers the wall outside it; the arc adds nothing new
         # there, so the total stays that annulus rather than doubling up.
         assert calcium.sum() == pytest.approx(_annulus_px(RING_R, EEM_R), rel=0.05)
-        assert ContourType.CALCIUM.value in frame_region_metrics(frame_data, (DIM, DIM), RESOLUTION)
+        assert 'calcium' in frame_region_metrics(frame_data, (DIM, DIM), RESOLUTION)
 
 
 class TestPlaqueAngle:
@@ -211,7 +212,9 @@ class TestPlaqueAngle:
 
     def test_two_arcs_count_their_shared_degrees_once(self):
         frame_data = _frame()
-        frame_data.calcium = Contour(contours=[_arc(RING_R, 0, 90), _arc(RING_R, 45, 135)], closed=[False, False])
+        frame_data.contours['calcium'] = Contour(
+            contours=[_arc(RING_R, 0, 90), _arc(RING_R, 45, 135)], closed=[False, False]
+        )
         assert self._angle(frame_data) == pytest.approx(135, abs=5)
 
     def test_an_arc_across_the_wrap_point_is_not_split(self):

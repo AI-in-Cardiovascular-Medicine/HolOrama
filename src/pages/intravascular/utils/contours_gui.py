@@ -1,8 +1,9 @@
 from loguru import logger
 
-from domain.all_types import ALLOWED_TOOLS, ContourType, SegmentationTool
-from domain.io_types import clear_frame_annotations
-from domain.undo import push_frame_annotation_snapshot
+from domain.intravascular.types import ContourType, SegmentationTool
+from domain.intravascular.contour_presets import active_preset
+from domain.intravascular.io_types import clear_frame_annotations
+from domain.intravascular.undo import push_frame_annotation_snapshot
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
 
@@ -87,8 +88,10 @@ def set_tool(main_window, segmentation_tool: SegmentationTool):
             main_window.left_half.closed_spline_btn.setChecked(True)
             return
         active = main_window.display.active_contour_type
-        if SegmentationTool.BRUSH not in ALLOWED_TOOLS.get(active, set()):
-            ErrorMessage(main_window, f'The brush tool cannot be used for {active.value}')
+        preset = active_preset()
+        if SegmentationTool.BRUSH not in preset.allowed_tools(active):
+            defn = preset.get(active)
+            ErrorMessage(main_window, f'The brush tool cannot be used for {defn.name if defn else active.value}')
             main_window.left_half.closed_spline_btn.setChecked(True)
             return
         main_window.display.active_segmentation_tool = segmentation_tool

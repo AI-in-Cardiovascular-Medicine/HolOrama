@@ -14,8 +14,8 @@ import numpy as np
 import pytest
 import yaml
 
-from domain.io_types import FrameData
-from domain.runtime_types import RuntimeData
+from domain.intravascular.io_types import FrameData
+from domain.intravascular.runtime_types import RuntimeData
 from pages.intravascular.utils.metrics import clear_lumen_measurements
 
 DIM = 200  # frame is DIM x DIM pixels

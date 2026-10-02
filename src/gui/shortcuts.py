@@ -4,12 +4,15 @@ from functools import partial
 import cv2
 import numpy as np
 from loguru import logger
-from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtCore import Qt, QTimer, QUrl
 from PyQt6.QtGui import QDesktopServices, QKeySequence, QShortcut
 from PyQt6.QtWidgets import QApplication, QProgressDialog
 
-from domain.all_types import ContourType, SegmentationTool
-from domain.undo import FrameAnnotationSnapshot, push_contour_snapshot
+from domain.intravascular.types import ContourType, SegmentationTool
+from domain.intravascular.contour_presets import ContourPreset, active_preset, set_active_preset
+from domain.intravascular.io_types import is_contour_key
+from domain.intravascular.undo import FrameAnnotationSnapshot, PullbackContoursSnapshot, push_contour_snapshot
+from gui import settings_io
 from input_output.input.image import read_image, read_nifti_mask
 from input_output.input.metadata import CctaMetadataWindow, MetadataWindow
 from input_output.output.contours import write_contours
@@ -18,6 +21,7 @@ from input_output.output.other_fmt import save_gated_images
 from input_output.output.reports import report
 from pages.ccta.popup_windows.settings_dialog import CctaSettingsDialog
 from pages.ccta.popup_windows.settings_dialog import apply_and_save as apply_and_save_ccta
+from pages.intravascular.popup_windows.contour_settings_dialog import ContourSettingsDialog
 from pages.intravascular.popup_windows.display_settings_dialog import DisplaySettingsDialog, apply_and_save
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
@@ -127,49 +131,29 @@ def init_menu(main_window, ccta_page):
     exit_action.setShortcut('Ctrl+Q')
 
     edit_menu = main_window.menu_bar.addMenu('Edit')
-    manual_lumen_contour = edit_menu.addAction(
-        'Manual Lumen Contour', partial(_new_contour_synced, main_window, ContourType.LUMEN)
-    )
-    manual_lumen_contour.setShortcut('E')
-    manual_eem_contour = edit_menu.addAction(
-        'Manual EEM Contour', partial(_new_contour_synced, main_window, ContourType.EEM)
-    )
-    manual_eem_contour.setShortcut('Q')
-    spawn_eem_action = edit_menu.addAction('Spawn EEM from Lumen', partial(spawn_eem_from_lumen, main_window))
-    spawn_eem_action.setShortcut('Shift+Q')
-    manual_calc_contour = edit_menu.addAction(
-        'Manual Calcium Contour', partial(_new_contour_synced, main_window, ContourType.CALCIUM)
-    )
-    manual_calc_contour.setShortcut('7')
-    manual_branch_contour = edit_menu.addAction(
-        'Manual Branch Contour', partial(_new_contour_synced, main_window, ContourType.BRANCH)
-    )
-    manual_branch_contour.setShortcut('8')
-    manual_lipid_contour = edit_menu.addAction(
-        'Manual Lipid Contour', partial(_new_contour_synced, main_window, ContourType.LIPID)
-    )
-    manual_lipid_contour.setShortcut('9')
-    manual_macroph_contour = edit_menu.addAction(
-        'Manual Macrophage Contour', partial(_new_contour_synced, main_window, ContourType.MACROPHAGE)
-    )
-    manual_macroph_contour.setShortcut('0')
+    preset = active_preset()
+    for defn in preset.spline_types:
+        new_key, _ = preset.shortcuts(defn.type)
+        manual = edit_menu.addAction(
+            f'Manual {defn.name} Contour', partial(_new_contour_synced, main_window, defn.type)
+        )
+        if new_key:
+            manual.setShortcut(new_key)
+        if defn.type == ContourType.EEM:
+            spawn_eem_action = edit_menu.addAction(
+                f'Spawn {defn.name} from {preset[ContourType.LUMEN].name}', partial(spawn_eem_from_lumen, main_window)
+            )
+            spawn_eem_action.setShortcut('Shift+Q')
     edit_menu.addSeparator()
-    add_calc_contour = edit_menu.addAction(
-        'Add Calcium Contour', partial(_new_contour_append_synced, main_window, ContourType.CALCIUM)
-    )
-    add_calc_contour.setShortcut('Ctrl+7')
-    add_branch_contour = edit_menu.addAction(
-        'Add Branch Contour', partial(_new_contour_append_synced, main_window, ContourType.BRANCH)
-    )
-    add_branch_contour.setShortcut('Ctrl+8')
-    add_lipid_contour = edit_menu.addAction(
-        'Add Lipid Contour', partial(_new_contour_append_synced, main_window, ContourType.LIPID)
-    )
-    add_lipid_contour.setShortcut('Ctrl+9')
-    add_macroph_contour = edit_menu.addAction(
-        'Add Macrophage Contour', partial(_new_contour_append_synced, main_window, ContourType.MACROPHAGE)
-    )
-    add_macroph_contour.setShortcut('Ctrl+0')
+    for defn in preset.spline_types:
+        if not defn.appendable:
+            continue
+        _, add_key = preset.shortcuts(defn.type)
+        append = edit_menu.addAction(
+            f'Add {defn.name} Contour', partial(_new_contour_append_synced, main_window, defn.type)
+        )
+        if add_key:
+            append.setShortcut(add_key)
     edit_menu.addAction('Remove Contours', partial(remove_contours, main_window))
     edit_menu.addSeparator()
     edit_menu.addAction('Reset Phases', partial(reset_phases, main_window))
@@ -178,18 +162,14 @@ def init_menu(main_window, ccta_page):
     measure_1.setShortcut('1')
     measure_2 = edit_menu.addAction('Measurement 2', partial(new_measure, main_window, index=1))
     measure_2.setShortcut('2')
-    angle_wire = edit_menu.addAction('Angle Wire Shadow', partial(new_angle, main_window, ContourType.WIRE))
-    angle_wire.setShortcut('3')
-    add_angle_wire = edit_menu.addAction(
-        'Add Angle Wire Shadow', partial(new_angle, main_window, ContourType.WIRE, True)
-    )
-    add_angle_wire.setShortcut('Ctrl+3')
-    angle_blood = edit_menu.addAction('Angle Blood Sector', partial(new_angle, main_window, ContourType.BLOOD))
-    angle_blood.setShortcut('B')
-    add_angle_blood = edit_menu.addAction(
-        'Add Angle Blood Sector', partial(new_angle, main_window, ContourType.BLOOD, True)
-    )
-    add_angle_blood.setShortcut('Ctrl+B')
+    for defn in preset.angle_types:
+        new_key, add_key = preset.shortcuts(defn.type)
+        angle = edit_menu.addAction(f'Angle {defn.name}', partial(new_angle, main_window, defn.type))
+        if new_key:
+            angle.setShortcut(new_key)
+        add_angle = edit_menu.addAction(f'Add Angle {defn.name}', partial(new_angle, main_window, defn.type, True))
+        if add_key:
+            add_angle.setShortcut(add_key)
     closed_spline = edit_menu.addAction('Closed Spline', partial(set_tool, main_window, SegmentationTool.CLOSED_SPLINE))
     closed_spline.setShortcut('4')
     open_spline = edit_menu.addAction('Open Spline', partial(set_tool, main_window, SegmentationTool.OPEN_SPLINE))
@@ -217,7 +197,9 @@ def init_menu(main_window, ccta_page):
 
     settings_menu = main_window.menu_bar.addMenu('Settings')
     settings_menu.addAction('Display Settings...', partial(open_display_settings, main_window))
+    settings_menu.addAction('Intravascular Contour Settings...', partial(open_contour_settings, main_window, ccta_page))
     settings_menu.addAction('CCTA Settings...', partial(open_ccta_settings, ccta_page))
+    settings_menu.addAction('CCTA Contour Settings...', partial(open_ccta_contour_settings, ccta_page))
 
     help_menu = main_window.menu_bar.addMenu('Help')
     help_menu.addAction('GitHub Page', partial(open_url, main_window, description='github'))
@@ -238,14 +220,12 @@ def _copy_contour_from_frame(main_window, source_frame: int) -> None:
 
     fd_src = main_window.runtime_data.frame_data_dct.get(source_frame)
     fd_dst = main_window.runtime_data.frame_data_dct.get(current_frame)
-    if fd_src is None or fd_dst is None:
+    if fd_src is None or fd_dst is None or not is_contour_key(key):
         return
 
-    src_obj = getattr(fd_src, key, None)
-    dst_obj = getattr(fd_dst, key, None)
-    if src_obj is None or dst_obj is None:
-        return
-    if not hasattr(src_obj, 'contours') or not src_obj.contours or ci >= len(src_obj.contours):
+    src_obj = fd_src.contour(key)
+    dst_obj = fd_dst.contour(key)
+    if not src_obj.contours or ci >= len(src_obj.contours):
         return
 
     push_contour_snapshot(main_window.runtime_data, current_frame, key, ci)
@@ -333,14 +313,12 @@ def spawn_eem_from_lumen(main_window):
     if fd is None:
         return
 
-    eem_obj = getattr(fd, ContourType.EEM.value, None)
-    if eem_obj is None:
-        return
+    eem_obj = fd.eem
     if eem_obj.contours and eem_obj.contours[0] and eem_obj.contours[0][0]:
         return  # EEM already exists on this frame
 
-    lumen_obj = getattr(fd, ContourType.LUMEN.value, None)
-    if lumen_obj is None or not lumen_obj.contours or not lumen_obj.contours[0] or not lumen_obj.contours[0][0]:
+    lumen_obj = fd.lumen
+    if not lumen_obj.contours or not lumen_obj.contours[0] or not lumen_obj.contours[0][0]:
         return
 
     xs = list(lumen_obj.contours[0][0])
@@ -375,9 +353,8 @@ def remove_contours(main_window):
             for frame in range(lower_limit, upper_limit):
                 fd = main_window.runtime_data.frame_data_dct.get(frame)
                 if fd:
-                    contour_obj = getattr(fd, key, None)
-                    if contour_obj:
-                        contour_obj.contours = []
+                    if is_contour_key(key):
+                        fd.contour(key).contours = []
                     if is_lumen:
                         # the overviews plot these, so they must go with the contour
                         clear_lumen_measurements(fd)
@@ -570,9 +547,9 @@ def delete_contour(main_window):
         push_contour_snapshot(main_window.runtime_data, frame, key, c_idx)
 
         fd = main_window.runtime_data.frame_data_dct.get(frame)
-        if fd:
-            contour_obj = getattr(fd, key, None)
-            if contour_obj and c_idx < len(contour_obj.contours):
+        if fd and is_contour_key(key):
+            contour_obj = fd.contour(key)
+            if c_idx < len(contour_obj.contours):
                 del contour_obj.contours[c_idx]
                 if c_idx < len(contour_obj.start_coords):
                     del contour_obj.start_coords[c_idx]
@@ -610,6 +587,21 @@ def undo_last_contour_edit(main_window):
     if snap is None:
         return
 
+    if isinstance(snap, PullbackContoursSnapshot):  # a mask read over the whole pullback
+        for index, (contours, centroid) in snap.frames.items():
+            frame_data = main_window.runtime_data.frame_data_dct.get(index)
+            if frame_data is not None:
+                clear_lumen_measurements(frame_data)  # derived from the lumen being replaced
+                frame_data.contours, frame_data.centroid = contours, centroid
+        main_window.display.working_spline = None
+        main_window.display.refresh_all_frame_metrics()
+        main_window.display.update_display()
+        try:
+            main_window.longitudinal_view.plot_areas()
+        except Exception as e:
+            logger.debug(f"Could not update longitudinal view after undo: {e}")
+        return
+
     fd = main_window.runtime_data.frame_data_dct.get(snap.frame)
     if fd is None:
         return
@@ -620,7 +612,7 @@ def undo_last_contour_edit(main_window):
             setattr(fd, name, value)
         display.working_spline = None
     else:
-        setattr(fd, snap.key, snap.contour)
+        fd.contours[snap.key] = snap.contour
 
     if display.frame != snap.frame:
         main_window.display_slider.set_value(snap.frame)
@@ -656,6 +648,44 @@ def open_display_settings(main_window):
     dialog = DisplaySettingsDialog(main_window)
     if dialog.exec():
         apply_and_save(main_window, dialog.get_values())
+
+
+def open_contour_settings(main_window, ccta_page):
+    dialog = ContourSettingsDialog(main_window, active_name=active_preset().name)
+    if dialog.exec():
+        preset = dialog.selected_preset()
+        if preset is not None:
+            apply_contour_preset(main_window, ccta_page, preset)
+
+
+_CONTOUR_PRESET_KEY = {'contour_preset': 'intravascular'}
+
+
+def apply_contour_preset(main_window, ccta_page, preset: ContourPreset) -> None:
+    """Make `preset` the one the intravascular page annotates with: remember it in the
+    config, and rebuild everything that lists or draws the contour types."""
+    set_active_preset(preset)
+    values = {'contour_preset': preset.name}
+    settings_io.apply_values(main_window.config, _CONTOUR_PRESET_KEY, values)
+    settings_io.save_values(settings_io.resolve_config_path(main_window.config), _CONTOUR_PRESET_KEY, values)
+
+    main_window.display.refresh_contour_types()
+    main_window.left_half.refresh_contour_types()
+    # The Edit menu lists every type. It is rebuilt once the menu action that opened the
+    # dialog has returned, rather than from inside it.
+    if ccta_page is not None:
+        QTimer.singleShot(0, partial(_rebuild_menu, main_window, ccta_page))
+    if main_window.image_displayed:
+        main_window.save_contours_soon()  # the file records the contour types it was drawn with
+
+
+def _rebuild_menu(main_window, ccta_page) -> None:
+    main_window.menu_bar.clear()
+    init_menu(main_window, ccta_page)
+
+
+def open_ccta_contour_settings(ccta_page):
+    ccta_page.open_label_presets()
 
 
 def open_ccta_settings(ccta_page):
