@@ -1,5 +1,4 @@
-"""Color primitives shared across ccta/intravascular/fusion — the single source of
-truth for values that used to be redefined independently in each module (see
+"""Color primitives shared across ccta/intravascular/fusion (see
 ccta_display_types.py, contour_presets.py, and fusion_display_types.py for the
 domain-specific palettes built on top of these)."""
 
@@ -39,10 +38,9 @@ def distinct_colors(count: int) -> list[tuple[int, int, int]]:
     return colors
 
 
-# Shared default for mask/segmentation overlay opacity (0 = transparent, 1 = opaque).
 DEFAULT_MASK_ALPHA: float = 0.45
 
-# Canonical diastole/systole colors — shared by the intravascular page, its plots
+# shared by the intravascular page, its plots
 # (gating, longitudinal view, results plot), and the fusion viewer's aligned-geometry
 # rendering, so "diastole"/"systole" always mean the same colors app-wide.
 DIASTOLE_COLOR: tuple[int, int, int] = (39, 69, 219)

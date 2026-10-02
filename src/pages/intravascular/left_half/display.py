@@ -1,3 +1,6 @@
+""" This will need a refactor in the future... Handles now displaying and handling of the contours. pretty bulky :/
+"""
+
 import math
 from typing import List, Tuple
 
@@ -64,16 +67,15 @@ class Display(QGraphicsView, MetricsMixin):
         self.point_radius: int = config.intravascular.point_radius
         self.start_color: str = config.intravascular.color_start_point
         self.end_color: str = config.intravascular.color_end_point
-        # How far from the image centre every angular-sector handle sits (see tools.angle):
-        # far enough out to keep the vessel clear, and clamped to the image in
-        # _angle_handle_radius for pullbacks with a smaller field of view.
-        self.angle_handle_radius_mm: float = getattr(config.intravascular, 'angle_handle_radius_mm', 5.0)
+        self.angle_handle_radius_mm: float = getattr(
+            config.intravascular, 'angle_handle_radius_mm', 5.0
+        )  # How far from the image centre every angular-sector handle sits (see tools.angle)
         self.snap_radius_px: int = config.intravascular.snap_radius_px
 
         self.alpha_contour = getattr(config.intravascular, "alpha_contour", 255)  # config uses 0..255
-        # Every contour type's colour is the preset's (see domain.contour_presets); the
-        # reference point is not a contour, so it keeps its own.
-        self.color_reference: str = getattr(config.intravascular, "color_reference", "yellow")
+        self.color_reference: str = getattr(
+            config.intravascular, "color_reference", "yellow"
+        )  # since not a contour (otherwise presets)
 
         self.contour_configs = self._build_contour_configs()
 

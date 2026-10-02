@@ -121,7 +121,7 @@ class ContourSettingsDialog(PresetDialog):
         'The value the type is written into the exported mask as (1-255)',
         'The colour it is drawn and overlaid in',
         'Its name everywhere in the app',
-        'What it can be drawn with; the brush comes with every spline type',
+        'What it can be drawn with (brush comes with every spline type)',
         'The type it lies inside: it is clipped to that one (and kept out of the lumen), and an open '
         'contour of it fills outwards from the arc to that type\'s boundary',
         'Where it sits in the mask: wherever two regions overlap, the higher layer shows. A type '
@@ -192,9 +192,7 @@ class ContourSettingsDialog(PresetDialog):
         self._place(index, _COL_NAME, self._name_edit(row), editable)
 
         tools = QComboBox()
-        # A saved type keeps what it is — a spline type stays a spline type and an angle an
-        # angle — or contours already drawn with it would change their meaning.
-        if row.fixed:
+        if row.fixed:  # A saved type keeps what it is or contours already drawn with it would change their meaning.
             choices: tuple[ToolSet, ...] = (ToolSet.CLOSED,)
         elif row.id is None:
             choices = tuple(ToolSet)

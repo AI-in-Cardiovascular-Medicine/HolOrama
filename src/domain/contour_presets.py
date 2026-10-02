@@ -87,7 +87,7 @@ class ContourTypeDef:
     layer: int
     # The type this one lies within. Its region is clipped to that type's (and, unless that
     # type is the lumen itself, kept out of the lumen), and an open contour of it is filled
-    # outwards from the arc up to that type's boundary — the arc marks its luminal side.
+    # outwards from the arc up to that type's boundary (the arc marks its luminal side).
     inside: ContourType | None = None
 
     @property

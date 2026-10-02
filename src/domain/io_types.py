@@ -22,19 +22,13 @@ class Contour:
     contours: List[Tuple[List[float], List[float]]] = field(default_factory=list)
     measurements: Measurements = field(default_factory=Measurements)
     closed: List[bool] = field(default_factory=list)
-    # Each entry is a list of (x, y) tuples for that contour index.
-    # Open splines: always [(first_x, first_y)] / [(last_x, last_y)] (auto-set).
-    # Closed splines: [] initially, grows as user labels knot points.
+    # Per contour: an open spline's first/last point, or the knots the user labels on a closed one
     start_coords: List[List[Tuple[float, float]]] = field(default_factory=list)
     end_coords: List[List[Tuple[float, float]]] = field(default_factory=list)
 
 
 def sector_points(contour: Contour, index: int) -> List[Tuple[float, float]]:
-    """The (x, y) angle points of sector `index`, or [] if that sector does not exist.
-
-    See ContourPreset.angle_types in domain.contour_presets for what a sector is and tools.angle for how its
-    points describe it.
-    """
+    """The (x, y) angle points of sector `index`, or [] if it does not exist (see tools.angle)."""
     if index < 0 or index >= len(contour.contours):
         return []
     entry = contour.contours[index]
@@ -44,11 +38,7 @@ def sector_points(contour: Contour, index: int) -> List[Tuple[float, float]]:
 
 
 def iter_sectors(contour) -> List[List[Tuple[float, float]]]:
-    """Every angular sector on a frame, each as its list of (x, y) angle points.
-
-    Also accepts the pre-multi-wire shape (a single ((x, y), ...) tuple), so data
-    that has not been through the loader's migration still reads correctly.
-    """
+    """Every angular sector on a frame as its (x, y) points; also reads the legacy single-tuple shape."""
     if contour is None:
         return []
     if isinstance(contour, Contour):
@@ -58,8 +48,7 @@ def iter_sectors(contour) -> List[List[Tuple[float, float]]]:
 
 
 def set_sector_points(contour: Contour, index: int, points: Sequence[Tuple[float, float]]) -> None:
-    """Write `points` as sector `index`, growing the sector list and its aligned
-    per-contour lists as needed."""
+    """Write `points` as sector `index`, growing the per-contour lists as needed."""
     while len(contour.contours) <= index:
         contour.contours.append(([], []))
     while len(contour.closed) <= index:
@@ -80,24 +69,12 @@ class Measure:
 @dataclass
 class FrameData:
     phase: str = '-'
-    # OCT frame rating: one of OCT_QUALITY_LABELS, or '' while the frame is unrated.
-    quality: str = ''
+    quality: str = ''  # OCT rating (one of OCT_QUALITY_LABELS), '' while unrated
     guiding_catheter: bool = False
     unanalyzable: bool = False
-    # Mutually exclusive with `quality`: a frame is unlabeled until it gets a rating.
-    unlabeled: bool = True
-    # Every contour on the frame, by contour type id (see domain.contour_presets). Read and
-    # write them through contour(), which hands out an empty one for a type not drawn yet.
-    # Kept for any id rather than only the active preset's, so a file annotated with other
-    # types loses nothing on its way through.
-    #
-    # Angular sectors (a preset's angle types) are stored like any other multi-instance
-    # contour: one entry in Contour.contours per sector, holding that sector's 2-3 angle
-    # points as ([x, ...], [y, ...]) — the radial lines bounding it, plus the interior
-    # marker that says which of the two arcs between them is meant (see tools.angle). A
-    # frame can carry several of each. Read/write via iter_sectors / sector_points /
-    # set_sector_points.
-    contours: Dict[str, Contour] = field(default_factory=dict)
+    unlabeled: bool = True  # until the frame gets a quality rating
+    # By type id, for any preset's types; angle types hold one entry per sector (see iter_sectors)
+    contours: Dict[str, Contour] = field(default_factory=dict)  # access via contour()
     measurement_1: Optional[Measure] = None
     measurement_2: Optional[Measure] = None
     reference: Optional[Tuple[float, float]] = None
@@ -106,8 +83,7 @@ class FrameData:
     farthest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
 
     def contour(self, contour_type: ContourType | str) -> Contour:
-        """The frame's contour of `contour_type` (a ContourType or its id), created empty
-        on first use so that it can be written to like any other."""
+        """The frame's contour of `contour_type` (type or id), created empty on first use."""
         key = contour_type if isinstance(contour_type, str) else contour_type.value
         if key in NON_CONTOUR_KEYS:
             raise KeyError(f'{key} is not a contour type')
@@ -130,16 +106,12 @@ class FrameData:
         self.contours[ContourType.EEM.value] = contour
 
 
-# The annotations that are drawn but are not contours: the measurements and the reference
-# point, which sit outside the contour presets (see ContourType).
+# Drawn annotations that are not contours: the measurements and the reference point
 NON_CONTOUR_KEYS = frozenset(
     contour_type.value for contour_type in (ContourType.MEASUREMENT_1, ContourType.MEASUREMENT_2, ContourType.REFERENCE)
 )
 
-# Names a contour type id cannot take. A frame is saved with each contour as a key of its
-# own next to FrameData's other fields (see frame_to_dict), so it may not shadow one of
-# them; 'wall' is the vessel wall's key among a frame's measured regions (see
-# imgs_masks.frame_region_metrics).
+# Ids a contour type can't take: FrameData's fields (contours are saved next to them) and 'wall' (a region key)
 RESERVED_CONTOUR_IDS = frozenset(f.name for f in fields(FrameData)) | {'wall'}
 
 
@@ -149,9 +121,7 @@ def is_contour_key(key: str) -> bool:
 
 
 def frame_to_dict(frame_data: FrameData) -> dict:
-    """One frame as it is saved: its fields, with every contour as a key of its own in
-    place of the `contours` dict — the layout every earlier version wrote, so a file stays
-    readable by them and by anything else that parses it."""
+    """One frame as saved: its fields, with each contour as its own key (the layout earlier versions read)."""
     raw: dict = {}
     for key, value in asdict(frame_data).items():
         if key == 'contours':
@@ -161,9 +131,7 @@ def frame_to_dict(frame_data: FrameData) -> dict:
     return raw
 
 
-# Everything the user can draw on one image: every contour (which includes the angular
-# sectors), both measurements and the reference point, plus the values derived from the
-# lumen. Not the phase or the OCT label — those describe the frame, not the drawing.
+# Everything drawn on a frame and the values derived from the lumen; not the phase or OCT label
 FRAME_ANNOTATION_FIELDS = (
     'contours',
     'measurement_1',
@@ -177,7 +145,7 @@ FRAME_ANNOTATION_FIELDS = (
 
 def clear_frame_annotations(frame_data: FrameData) -> None:
     """Reset every annotation on `frame_data` to the state of a frame nobody has touched."""
-    blank = FrameData()  # one fresh instance hands out every default, contours included
+    blank = FrameData()  # fresh defaults, contours included
     for field_name in FRAME_ANNOTATION_FIELDS:
         setattr(frame_data, field_name, getattr(blank, field_name))
 
@@ -221,25 +189,16 @@ CANONICAL_DIRECTION: Tuple[float, ...] = (1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.
 
 @dataclass(frozen=True)
 class VolumeGeometry:
-    """Voxel-grid geometry of a loaded CCTA volume.
-
-    ``origin`` / ``spacing`` / ``direction`` describe the canonicalized grid the app works
-    in, so they can be attached to any array shaped like the loaded volume.
-    ``source_orientation`` is the orientation code the file was stored in, kept so a mask
-    drawn here can be written back the way the source image was laid out.
-    """
+    """Voxel-grid geometry of a loaded CCTA volume, in the app's canonical orientation."""
 
     origin: Tuple[float, float, float] = (0.0, 0.0, 0.0)
     spacing: Tuple[float, float, float] = (1.0, 1.0, 1.0)  # sitk order: (x, y, z)
     direction: Tuple[float, ...] = CANONICAL_DIRECTION
-    source_orientation: str = CANONICAL_ORIENTATION
+    source_orientation: str = CANONICAL_ORIENTATION  # the file's, so masks are written back the same way
 
 
 def geometry_from_spacing(voxel_spacing: Tuple[float, float, float]) -> VolumeGeometry:
-    """A canonical-orientation geometry carrying just `voxel_spacing` (dz, dy, dx).
-
-    Fallback for writing a mask when the source image's geometry is not at hand.
-    """
+    """Canonical geometry with only `voxel_spacing` (dz, dy, dx), for when the source's is unknown."""
     dz, dy, dx = voxel_spacing
     return VolumeGeometry(spacing=(dx, dy, dz))
 
