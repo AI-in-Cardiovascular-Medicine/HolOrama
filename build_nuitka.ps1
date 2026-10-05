@@ -72,7 +72,7 @@ $nuitkaArgs = @(
     'src\main.py'
 )
 
-Write-Host "Building HolOrama.exe with Nuitka $version ..." -ForegroundColor Cyan
+Write-Host "Building HolOrama.exe $version with Nuitka ..." -ForegroundColor Cyan
 & $python @nuitkaArgs
 if ($LASTEXITCODE -ne 0) { throw "Nuitka build failed with exit code $LASTEXITCODE" }
 
