@@ -920,7 +920,7 @@ class FusionPage(QWidget):
         )
         if result is None:
             return
-        self._apply_align_result(result, cl_main)
+        self._apply_align_result(result, cl_main, self._resolve_manual_ref_point(cl_main, ref_points[0], 0))
 
     def _on_run_align_manual(self) -> None:
         """Same preconditions as _on_run_align, but rotates by an explicit angle around a
@@ -960,7 +960,7 @@ class FusionPage(QWidget):
         )
         if result is None:
             return
-        self._apply_align_result(result, cl_main)
+        self._apply_align_result(result, cl_main, ref_point)
 
     def _resolve_manual_ref_point(
         self, cl_main, main_ref_pt: tuple[float, float, float], offset: int
@@ -990,32 +990,42 @@ class FusionPage(QWidget):
             )
         return points[index]
 
-    def _apply_align_result(self, result, source_centerline) -> None:
+    def _apply_align_result(self, result, source_centerline, ostium_point: tuple[float, float, float]) -> None:
         """`result` is align_combined/align_manual's (aligned_geometry, spacing_mm,
-        total_rotation_deg) — multimodars>=0.6.0 no longer hands back a resampled
-        centerline itself, just the spacing_mm it used internally, so we resample
-        `source_centerline` (the same single-branch RCA/LCA centerline that was passed into
-        align_combined/align_manual) ourselves to get the centerline shown alongside the
-        aligned geometry. centerline_aorta gets the same treatment — any frames-correlated
-        step downstream (label_anomalous_region, find_distal_and_proximal_scaling,
-        find_aorta_scaling) needs its centerline argument at this same spacing_mm to line up
-        with `frames`, not whatever spacing prepare_centerline originally left it at."""
-        self.data.aligned, spacing_mm, total_rotation_deg = result
-        self.data.resampled_centerline = source_centerline.resample(spacing_mm)
-        self.data.resampled_centerline_aorta = (
-            self.data.centerline_aorta.resample(spacing_mm) if self.data.centerline_aorta is not None else None
-        )
+        total_rotation_deg). `source_centerline` is the single-branch RCA/LCA centerline
+        that was passed into align_combined/align_manual, at whatever spacing
+        prepare_centerline left it (e.g. 0.5 mm) — it's kept as-is, not resampled to
+        spacing_mm. multimodars>=0.7.4 locates the reference point on exactly this
+        centerline and only resamples a private copy, anchored on that point, to place the
+        frames; re-resampling here from index 0 would put the shown centerline up to half a
+        spacing off the one actually used. The downstream steps (label_anomalous_region,
+        find_distal_and_proximal_scaling, find_aorta_scaling) only do nearest-point / radius
+        lookups on the centerline, so they don't need it at the frame spacing either.
+
+        `ostium_point` is the point of `source_centerline` the alignment anchored on — the
+        one closest to the selected vessel-tree reference (plus the manual offset, for
+        align_manual) — shown as a marker so it's visible where placement starts."""
+        self.data.aligned, _spacing_mm, total_rotation_deg = result
+        self.data.aligned_centerline = source_centerline
         # Prefill the Manual group with whatever angle this alignment landed on (automatic
         # search or a previous manual value round-tripped back) so nudging it further starts
         # from here instead of 0.
         self.right_half.intravascular_column.set_manual_rotation_angle(total_rotation_deg)
 
-        self.left_half.viewer.add_points(
+        viewer = self.left_half.viewer
+        viewer.add_points(
             FusionScene.INTRAVASCULAR_ALIGNED,
-            'resampled_centerline',
-            np.array(self.data.resampled_centerline.points_as_tuples()),
+            'aligned_centerline',
+            np.array(source_centerline.points_as_tuples()),
             color=(0, 200, 0),
             size=4.0,
+        )
+        viewer.add_points(
+            FusionScene.INTRAVASCULAR_ALIGNED,
+            'ostium_point',
+            np.array([ostium_point]),
+            color=colors.TREE_REF_COLORS[0],
+            size=14.0,
         )
         # For a pair, geom_a/geom_b are the two cardiac phases from from_file_singlepair's
         # `labels` (default aligned_dia/aligned_sys — see IntravascularColumn.load_plan),
@@ -1088,7 +1098,7 @@ class FusionPage(QWidget):
         if not self._require(frames is not None, 'Align the intravascular geometry first.'):
             return
         vessel = self.right_half.intravascular_column.reference_vessel()
-        centerline = self.data.resampled_centerline
+        centerline = self.data.aligned_centerline
         if not self._require(centerline is not None, 'Run label_geometry first.'):
             return
         results = self._run(
@@ -1111,7 +1121,7 @@ class FusionPage(QWidget):
         if not self._require(frames is not None, 'Align the intravascular geometry first.'):
             return
         vessel = self.right_half.intravascular_column.reference_vessel()
-        centerline = self.data.resampled_centerline
+        centerline = self.data.aligned_centerline
         if not self._require(centerline is not None, 'Run label_geometry first.'):
             return
         scalings = self._run(
@@ -1120,7 +1130,7 @@ class FusionPage(QWidget):
             pipeline.run_find_scalings,
             frames,
             centerline,
-            self.data.resampled_centerline_aorta,
+            self.data.centerline_aorta,
             self.data.results,
             vessel=vessel,
         )

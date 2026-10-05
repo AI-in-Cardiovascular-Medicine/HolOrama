@@ -12,8 +12,8 @@ class IntravascularLoadedToolbar(SceneToolbar):
 
 
 class AlignmentToolbar(SceneToolbar):
-    """Toolbar for the Intravascular Aligned scene: aligned-geometry / resampled-centerline
-    layer toggles."""
+    """Toolbar for the Intravascular Aligned scene: aligned-geometry / aligned-centerline /
+    ostium-point layer toggles."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(FusionScene.INTRAVASCULAR_ALIGNED, parent=parent)
