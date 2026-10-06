@@ -111,7 +111,7 @@ def _print_banner():
     print(f"  version  : {__version__}")
     print("  docs     : https://holorama.readthedocs.io")
     print("  license  : MIT")
-    print("  author   : Anselm W. Stark <anselm.stark@insel.ch>\n")
+    print("  author   : Anselm W. Stark <anselm.stark@pm.me>\n")
 
 
 if os.environ.get("AIVUS_SILENT", "0") == "0":
