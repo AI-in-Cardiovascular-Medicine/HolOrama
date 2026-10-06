@@ -58,11 +58,9 @@ class GeometryToolbar(SceneToolbar):
         smooth_layout.addLayout(params)
 
         super().__init__(FusionScene.CCTA_GEOMETRY, extra_rows=[smooth_box], show_lasso=True, parent=parent)
-        # Connected only now: a QWidget's own signals don't exist before its __init__.
         self.sphere_btn.toggled.connect(self._on_sphere_toggled)
         self.sphere_radius.valueChanged.connect(self.sphere_radius_changed.emit)
         self.undo_btn.clicked.connect(self.undo_requested.emit)
-        # Lasso and sphere brush both take over left-clicks in the view — only one at a time.
         self.lasso_btn.toggled.connect(self._on_lasso_checked)
 
     def _on_lasso_checked(self, checked: bool) -> None:

@@ -960,7 +960,9 @@ class FusionPage(QWidget):
         )
         if result is None:
             return
-        self._apply_align_result(result, cl_main, ref_point)
+        # Mark the unshifted reference (offset 0), not ref_point: the IV geometry is placed
+        # on ref_point, so marking it would move the dot along with the vessel.
+        self._apply_align_result(result, cl_main, self._resolve_manual_ref_point(cl_main, main_ref_pt, 0))
 
     def _resolve_manual_ref_point(
         self, cl_main, main_ref_pt: tuple[float, float, float], offset: int
@@ -1002,9 +1004,10 @@ class FusionPage(QWidget):
         find_distal_and_proximal_scaling, find_aorta_scaling) only do nearest-point / radius
         lookups on the centerline, so they don't need it at the frame spacing either.
 
-        `ostium_point` is the point of `source_centerline` the alignment anchored on — the
-        one closest to the selected vessel-tree reference (plus the manual offset, for
-        align_manual) — shown as a marker so it's visible where placement starts."""
+        `ostium_point` is the point of `source_centerline` closest to the selected
+        vessel-tree reference — without align_manual's ref. point offset — shown as a fixed
+        marker so a manual offset (or align_combined's index_range refinement) shows up as
+        the IV geometry shifting relative to it."""
         self.data.aligned, _spacing_mm, total_rotation_deg = result
         self.data.aligned_centerline = source_centerline
         # Prefill the Manual group with whatever angle this alignment landed on (automatic
