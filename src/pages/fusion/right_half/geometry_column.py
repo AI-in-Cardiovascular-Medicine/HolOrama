@@ -185,15 +185,6 @@ class GeometryColumn(QWidget):
         self._n_points_tree.setValue(100)
         layout.addLayout(_row('Points per contour:', self._n_points_tree))
 
-        self._b_spline = QCheckBox('B-spline smoothing')
-        self._b_spline.setChecked(True)
-        layout.addWidget(self._b_spline)
-
-        self._bspline_smoothing = QDoubleSpinBox()
-        self._bspline_smoothing.setRange(0.0, 1000.0)
-        self._bspline_smoothing.setValue(5.0)
-        layout.addLayout(_row('Smoothing factor:', self._bspline_smoothing))
-
         run_btn = QPushButton('Discretize Vessel Tree')
         run_btn.clicked.connect(self.run_discretize_tree_requested.emit)
         layout.addWidget(run_btn)
@@ -254,8 +245,6 @@ class GeometryColumn(QWidget):
         return {
             'step_size': self._step_size.value(),
             'n_points': self._n_points_tree.value(),
-            'b_spline': self._b_spline.isChecked(),
-            'bspline_smoothing': self._bspline_smoothing.value(),
         }
 
     def has_acute_takeoff(self, vessel: str = 'rca') -> bool:

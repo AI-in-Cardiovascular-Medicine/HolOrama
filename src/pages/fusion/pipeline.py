@@ -116,9 +116,6 @@ def run_discretize_vessel_tree(
     branch_id_lca: int = 0,
     step_size: float = 1.0,
     n_points: int = 100,
-    b_spline: bool = False,
-    bspline_smoothing: float = 100.0,
-    bspline_degree: int = 3,
 ) -> Any:
     return mm.discretize_vessel_tree(
         ao_cl,
@@ -129,9 +126,6 @@ def run_discretize_vessel_tree(
         branch_id_lca=branch_id_lca,
         step_size=step_size,
         n_points=n_points,
-        b_spline=b_spline,
-        bspline_smoothing=bspline_smoothing,
-        bspline_degree=bspline_degree,
         control_plot=False,
     )
 
