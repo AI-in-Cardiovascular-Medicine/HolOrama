@@ -21,7 +21,7 @@ class ContourSnapshot:
 
 @dataclass
 class FrameAnnotationSnapshot:
-    """Every annotation on one frame, for edits that clear the lot in one go."""
+    """One frame's annotations, for edits that clear them all."""
 
     frame: int
     fields: dict
@@ -29,15 +29,15 @@ class FrameAnnotationSnapshot:
 
 @dataclass
 class PullbackContoursSnapshot:
-    """Every frame's contours and lumen centroid, for edits that replace them all at once
-    (reading a mask). `frame` is where to go back to."""
+    """Contours and centroid of many frames, for mask import or delete on all frames.
+    Undo returns to `frame`."""
 
     frame: int
     frames: dict  # frame -> (contours, centroid)
 
 
 def push_pullback_contours_snapshot(runtime_data: RuntimeData, frame: int, frames: Iterable[int] | None = None) -> None:
-    """Record the contours of `frames` (every frame by default) before they are all replaced."""
+    """Save the contours of `frames` (default: all) before replacing them."""
     runtime_data.mark_unsaved()
     if runtime_data.frame_data_dct is None:
         return
@@ -57,9 +57,8 @@ def push_pullback_contours_snapshot(runtime_data: RuntimeData, frame: int, frame
 def push_frame_annotation_snapshot(runtime_data: RuntimeData, frame: int) -> None:
     """Record every contour, measurement and derived value on `frame` before it is wiped.
 
-    One entry rather than one per contour type: the stack keeps only the last few edits,
-    so ten separate snapshots would evict the rest of the history and still need ten
-    Ctrl+Z presses to walk back what the user did with a single click.
+    One entry, not one per contour type: the stack keeps only the last few edits, and
+    one click should take one Ctrl+Z to undo without evicting the rest of the history.
     """
     runtime_data.mark_unsaved()
     if runtime_data.frame_data_dct is None:
@@ -76,10 +75,9 @@ def push_frame_annotation_snapshot(runtime_data: RuntimeData, frame: int) -> Non
 
 
 def push_contour_snapshot(runtime_data: RuntimeData, frame: int, key: str, active_index: int) -> None:
-    """Record the current state of the contour `key` on `frame` before it gets mutated.
+    """Record the contour `key` on `frame` before it is mutated.
 
-    Taking a snapshot means an edit is about to happen, so this also flags the frame data
-    as unsaved — every caller is by definition a contour-changing operation.
+    Also flags the frame data as unsaved, since every caller is about to change a contour.
     """
     runtime_data.mark_unsaved()
     if runtime_data.frame_data_dct is None:

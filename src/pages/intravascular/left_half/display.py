@@ -1,5 +1,4 @@
-""" This will need a refactor in the future... Handles now displaying and handling of the contours. pretty bulky :/
-"""
+"""Displays and handles the contours. Bulky, needs a refactor."""
 
 import math
 from typing import List, Tuple
@@ -20,9 +19,12 @@ from PyQt6.QtWidgets import (
 from domain.intravascular.types import ContourConfig, ContourType, SegmentationTool
 from domain.colors import DEFAULT_MASK_ALPHA
 from domain.intravascular.contour_presets import active_preset
+from domain.intravascular.display_types import BRUSH_DEFAULT_RADIUS_PX, BRUSH_FOREIGN_COLOR
 from domain.intravascular.io_types import Contour, Measure, is_contour_key, sector_points, set_sector_points
+from domain.intravascular.knot_resampling import KnotHistory
 from domain.intravascular.undo import push_contour_snapshot
 from input_output.output.imgs_masks import contours_to_mask
+from pages.intravascular.utils.contours_gui import refresh_overviews, step_selected_contour_knots
 from pages.intravascular.utils.metrics import MetricsMixin
 from segmentation.segment import downsample
 from tools.angle import (
@@ -49,7 +51,7 @@ from tools.painting import BrushCursor
 
 class Display(QGraphicsView, MetricsMixin):
     """
-    Displays images and contours and allows the user to add and manipulate contours.
+    Shows images and contours and lets the user draw and edit them.
     """
 
     def __init__(self, main_window):
@@ -59,7 +61,7 @@ class Display(QGraphicsView, MetricsMixin):
 
         self.n_interactive_points: int = config.intravascular.n_interactive_points
         self.n_points_contour: int = config.intravascular.n_points_contour
-        self.image_size: int = config.intravascular.image_size  # image display in pixel (square)
+        self.image_size: int = config.intravascular.image_size  # display size in pixels (square)
         self.windowing_sensitivity: float = config.common.windowing_sensitivity
         self.zoom_sensitivity: float = config.common.zoom_sensitivity
         self.contour_thickness: int = config.intravascular.contour_thickness
@@ -67,19 +69,16 @@ class Display(QGraphicsView, MetricsMixin):
         self.point_radius: int = config.intravascular.point_radius
         self.start_color: str = config.intravascular.color_start_point
         self.end_color: str = config.intravascular.color_end_point
-        self.angle_handle_radius_mm: float = getattr(
-            config.intravascular, 'angle_handle_radius_mm', 5.0
-        )  # How far from the image centre every angular-sector handle sits (see tools.angle)
+        self.angle_handle_radius_mm: float = config.intravascular.angle_handle_radius_mm  # see tools.angle
         self.snap_radius_px: int = config.intravascular.snap_radius_px
-
-        self.alpha_contour = getattr(config.intravascular, "alpha_contour", 255)  # config uses 0..255
-        self.color_reference: str = getattr(
-            config.intravascular, "color_reference", "yellow"
-        )  # since not a contour (otherwise presets)
+        self.insert_point_radius_px: int = config.intravascular.insert_point_radius_px
+        fewest_knots, most_knots = config.intravascular.n_interactive_points_range
+        self.knot_count_range: tuple[int, int] = (fewest_knots, most_knots)
+        self.alpha_contour: int = config.intravascular.alpha_contour
+        self.color_reference: str = config.intravascular.color_reference
 
         self.contour_configs = self._build_contour_configs()
 
-        # scene data
         self.graphics_scene = QGraphicsScene(self)
         self.images: np.ndarray | None = None
         self.scaling_factor: float = 1.0
@@ -89,8 +88,8 @@ class Display(QGraphicsView, MetricsMixin):
         self.setScene(self.graphics_scene)
         self.setSceneRect(0, 0, self.image_size, self.image_size)
 
-        self.initial_window_level: int = 128  # window level is the center which determines the brightness of the image
-        self.initial_window_width: int = 256  # window width is the range of pixel values that are displayed
+        self.initial_window_level: int = config.intravascular.initial_window_level
+        self.initial_window_width: int = config.intravascular.initial_window_width
         self.window_level: int = self.initial_window_level
         self.window_width: int = self.initial_window_width
         self.mouse_x: float = 0.0
@@ -104,8 +103,8 @@ class Display(QGraphicsView, MetricsMixin):
         self.end_coords: Tuple[float, float] | None = None
         self.working_spline: Spline | None = None
         self.finalized_splines: dict[str, list[Spline | None] | None] = {}
+        self.knot_histories: dict[tuple[int, str, int], KnotHistory] = {}  # by (frame, type, index), see contours_gui
 
-        # flags and states
         self.active_contour_type: ContourType = ContourType.LUMEN
         self.active_contour_index: int = 0
         self.active_segmentation_tool: SegmentationTool = SegmentationTool.CLOSED_SPLINE
@@ -114,27 +113,26 @@ class Display(QGraphicsView, MetricsMixin):
         self._contour_close_committed: bool = False
         self.mask_mode: bool = False
         self.active_point: Point | None = None
-        self._active_start_end_idx: int | None = None  # index in start/end list of the dragged labeled point
+        self._active_start_end_idx: int | None = None  # start/end list index of the dragged labelled knot
 
         #####################################################################################################
         # legacy to be refactored
-        self.active_point_index: int | None = None  # wtf is this legacy crap
-        self.measure_index: int | None = None  # wtf is this legacy crap
-        self.pending_measure_points: list = [None, None]  # first-click-only state per measure index
+        self.active_point_index: int | None = None
+        self.measure_index: int | None = None
+        self.pending_measure_points: list = [None, None]  # pending first click per measure
         self.reference_mode: bool = False
         self._display_updating: bool = False
         #####################################################################################################
 
-        # Angular sectors (the preset's angle types) — placement, and dragging a boundary afterwards.
+        # Angular sectors (the preset's angle types): placing one, and dragging a boundary afterwards.
         self.angle_mode: bool = False
         self._angle_sectors: list[tuple[ContourType, int, AngleSector]] = []  # what is on screen
         self._angle_start: float | None = None  # boundary the sector being placed opens from
-        self._angle_sweep: float = 0.0  # how far it has opened so far, signed (see tools.angle)
-        self._angle_pointer: float = 0.0  # angle the pointer was last seen at
+        self._angle_sweep: float = 0.0  # signed opening so far (see tools.angle)
+        self._angle_pointer: float = 0.0  # last pointer angle
         self._angle_drag: tuple[ContourType, int, AngleSector, int] | None = None
-        self._angle_dragged: bool = False  # whether the grabbed handle actually moved
+        self._angle_dragged: bool = False  # whether the grabbed handle moved
 
-        # Brush tool state
         self._brush_active: bool = False
         self._brush_add: np.ndarray | None = None  # (H, W) bool – pixels to add
         self._brush_erase: np.ndarray | None = None  # (H, W) bool – pixels to erase
@@ -147,9 +145,8 @@ class Display(QGraphicsView, MetricsMixin):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)  # ensures keyPressEvent fires after a click
 
     def _build_contour_configs(self) -> dict:
-        """(Re)build contour_configs from the active preset and the current cached scalar
-        attrs: one entry per contour type, and one each for the measurements and the
-        reference point, which can be the active type too."""
+        """(Re)build `contour_configs` from the active preset and cached attrs: one per contour type, plus the
+        measurements and the reference point, which can be active too."""
         preset = active_preset()
         lumen_color = preset[ContourType.LUMEN].color
         colors = {defn.type: defn.color for defn in preset.types}
@@ -165,17 +162,19 @@ class Display(QGraphicsView, MetricsMixin):
                 point_thickness=self.point_thickness,
                 alpha=self.alpha_contour,
                 n_points_contour=self.n_points_contour,
-                n_interactive_points=(
-                    self.n_interactive_points
-                    if ct in (ContourType.LUMEN, ContourType.EEM)
-                    else self.n_interactive_points // 2
-                ),
+                n_interactive_points=self.knots_for(ct),
             )
         return configs
 
+    def knots_for(self, contour_type: ContourType) -> int:
+        """Knots a drawn contour of `contour_type` gets: n_interactive_points for the lumen and
+        EEM, half of it for the rest."""
+        if contour_type in (ContourType.LUMEN, ContourType.EEM):
+            return self.n_interactive_points
+        return self.n_interactive_points // 2
+
     def refresh_contour_types(self) -> None:
-        """Follow a change of the active preset: its colours, and its types — falling back
-        to the lumen when the type being worked on is gone."""
+        """Apply the active preset's new colours and types, falling back to the lumen if the active type is gone."""
         if self.images is not None:
             self._interrupt_drawing_mode()
         self.contour_configs = self._build_contour_configs()
@@ -188,7 +187,7 @@ class Display(QGraphicsView, MetricsMixin):
             self.update_display()
 
     def apply_display_settings(self, values: dict) -> None:
-        """Apply edited Display Settings (from DisplaySettingsDialog) live to this Display."""
+        """Apply edited settings from `DisplaySettingsDialog` live."""
         self.windowing_sensitivity = values['windowing_sensitivity']
         self.zoom_sensitivity = values['zoom_sensitivity']
         self.alpha_contour = values['alpha_contour']
@@ -207,7 +206,7 @@ class Display(QGraphicsView, MetricsMixin):
             self.update_display()
 
     def reset(self) -> None:
-        """Reset all per-image interaction state. Called before a new image is loaded."""
+        """Reset per-image state before a new image is loaded."""
         if self.working_spline is not None and self.working_spline.scene() is not None:
             self.graphics_scene.removeItem(self.working_spline)
         for point in self.points_to_draw:
@@ -243,10 +242,11 @@ class Display(QGraphicsView, MetricsMixin):
         self._brush_erase = None
         self._base_mask_cache = None
         self._base_mask_cache_frame = -1
+        self.knot_histories = {}
         self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def set_data(self, images):
-        """Initialize display data from main_window.runtime_data.frame_data_dct (Dict[int, FrameData])."""
+        """Set the image stack `images` and redraw the display."""
         self.images = images
         self.image_width = images.shape[1]
         self.scaling_factor = self.image_size / images.shape[1]
@@ -256,7 +256,7 @@ class Display(QGraphicsView, MetricsMixin):
         try:
             self.main_window.longitudinal_view.set_data(self.images)
         except Exception:
-            logger.warning('longitudinal_view.set_data failed; continuing without longitudinal update')
+            logger.warning('longitudinal_view.set_data failed, continuing without longitudinal update')
         self.display_image(update_image=True, update_contours=True, update_phase=True)
 
     def _draw_contours_frame(self):
@@ -283,8 +283,7 @@ class Display(QGraphicsView, MetricsMixin):
         contour_index: int = 0,
     ):
         """
-        Draw contour_data for the specified contour_type.
-        - If set_current is True, this spline becomes self.working_spline (editing target).
+        Draw `contour_data` as `contour_type`. `set_current` makes it the editing target (`working_spline`).
         """
         if not contour_data or not contour_data[0] or not contour_data[1]:
             return
@@ -301,7 +300,6 @@ class Display(QGraphicsView, MetricsMixin):
 
         contour_obj = self._frame_contour(ct)
 
-        # Read start/end as lists-of-tuples (new schema).
         raw_starts = (
             contour_obj.start_coords[contour_index]
             if (contour_obj and len(contour_obj.start_coords) > contour_index)
@@ -318,20 +316,19 @@ class Display(QGraphicsView, MetricsMixin):
         )
 
         if is_closed:
-            # Closed spline: start/end are user-labelled lists; geometry needs none.
+            # Closed spline: start/end are user labels, the geometry needs none.
             start_coords_list = [(x * sf, y * sf) for x, y in raw_starts]
             end_coords_list = [(x * sf, y * sf) for x, y in raw_ends]
 
             geometry = SplineGeometry(lumen_x, lumen_y, self.n_points_contour, None, None)
             spline_cls: type[Spline] = Spline
         else:
-            # Open spline: single auto start (first knot) / end (last knot).
-            start_coords = (
-                (raw_starts[0][0] * sf, raw_starts[0][1] * sf)
-                if raw_starts
-                else ((lumen_x[0], lumen_y[0]) if lumen_x else None)
-            )
-            end_coords = (raw_ends[0][0] * sf, raw_ends[0][1] * sf) if raw_ends else None
+            # Open spline: its start is its first knot and its end its last. Taken from the knots, not the
+            # stored coordinates, so knot edits need not carry the ends along. The stored ones are synced for the file.
+            if contour_obj is not None:
+                contour_obj.sync_open_ends(contour_index)
+            start_coords = (lumen_x[0], lumen_y[0])
+            end_coords = (lumen_x[-1], lumen_y[-1])
 
             geometry = OpenSplineGeometry(
                 knot_points_x=lumen_x,
@@ -363,16 +360,12 @@ class Display(QGraphicsView, MetricsMixin):
                                 knot_color = self.end_color
                                 brush = True
                                 break
-                else:
-                    if (
-                        start_coords
-                        and math.hypot(curr_x - start_coords[0], curr_y - start_coords[1]) < self.snap_radius_px
-                    ):
-                        knot_color = self.start_color
-                        brush = True
-                    if end_coords and math.hypot(curr_x - end_coords[0], curr_y - end_coords[1]) < self.snap_radius_px:
-                        knot_color = self.end_color
-                        brush = True
+                elif i == 0:  # by position in the arc, not by nearness: a knot next to an end is no end
+                    knot_color = self.start_color
+                    brush = True
+                elif i == len(geometry.knot_points_x) - 1:
+                    knot_color = self.end_color
+                    brush = True
 
                 knot_point = Point(
                     (curr_x, curr_y),
@@ -389,7 +382,7 @@ class Display(QGraphicsView, MetricsMixin):
                 self.graphics_scene.addItem(p)
             spline = spline_cls(geometry, color=color, line_thickness=thickness, transparency=alpha)
 
-            # Attach paired start/end coords to closed splines for dotted arc rendering.
+            # Closed splines draw a dotted arc between each start/end pair.
             if is_closed:
                 n_pairs = min(len(start_coords_list), len(end_coords_list))
                 spline.coord_pairs = list(zip(start_coords_list[:n_pairs], end_coords_list[:n_pairs]))
@@ -413,7 +406,7 @@ class Display(QGraphicsView, MetricsMixin):
     def set_frame(self, value):
         self.frame = value
         self.active_contour_index = 0
-        self._brush_add = None  # discard unpainted strokes on frame switch
+        self._brush_add = None  # discard uncommitted strokes
         self._brush_erase = None
         self._interrupt_drawing_mode()
         if self.measure_index is not None:
@@ -426,8 +419,7 @@ class Display(QGraphicsView, MetricsMixin):
 
     def get_full_contour_list(self, contour_type: ContourType | None = None, unscaled: bool = False) -> List | None:
         """
-        Return a list of length num_frames with interpolated contours (or None per frame).
-        Reads from main_window.runtime_data.frame_data_dct (Dict[int, FrameData]).
+        Interpolated first contour of `contour_type` per frame, None where a frame has none.
         """
         num_frames = self.images.shape[0] if self.images is not None else 0
         full_contours: list[tuple[np.ndarray, np.ndarray] | None] = [None] * num_frames
@@ -454,13 +446,12 @@ class Display(QGraphicsView, MetricsMixin):
         return full_contours
 
     def contour_key(self, contour_type: ContourType | None = None) -> str:
-        """Return the string key for the given contour type (defaults to active)."""
+        """String key of `contour_type` (default: active)."""
         return (contour_type or self.active_contour_type).value
 
     def _frame_contour(self, contour_type: ContourType | None = None, frame: int | None = None) -> Contour | None:
-        """The contour of `contour_type` (the active type by default) on `frame` (the one
-        on screen by default); None without data for that frame, or for a type that is no
-        contour (a measurement or the reference point, which can be the active type)."""
+        """The contour of `contour_type` (default: active) on `frame` (default: current). None if there is no
+        data or the type is no contour (e.g. an active measurement or reference point)."""
         key = self.contour_key(contour_type)
         fd = self.main_window.runtime_data.frame_data_dct.get(self.frame if frame is None else frame)
         if fd is None or not is_contour_key(key):
@@ -468,17 +459,16 @@ class Display(QGraphicsView, MetricsMixin):
         return fd.contour(key)
 
     def contour_color(self, contour_type: ContourType | None = None):
-        """Line colour of `contour_type` (the active type by default); the lumen's for a
-        type outside the active preset."""
+        """Line colour of `contour_type` (default: active), the lumen's if not in the preset."""
         cfg = self.contour_configs.get(contour_type or self.active_contour_type)
         return cfg.color if cfg else self.contour_configs[ContourType.LUMEN].color
 
     def get_current_spline(self):
-        """Returns the currently active spline based on self.active_contour_type."""
+        """Return the active spline (active type and index)."""
         return self.get_finalized_spline(self.active_contour_type, self.active_contour_index)
 
     def _ensure_finalized_list_for_key(self, key: str, length: int):
-        """Ensure finalized_splines[key] exists and has at least `length` entries."""
+        """Grow `finalized_splines[key]` to >= `length` entries."""
         lst = self.finalized_splines.get(key)
         if lst is None:
             lst = []
@@ -488,21 +478,19 @@ class Display(QGraphicsView, MetricsMixin):
         return lst
 
     def get_finalized_spline(self, contour_type: ContourType | None = None, index: int | None = None):
-        """Return the finalized spline for given contour type and index (or None)."""
+        """Finalized spline of `contour_type` at `index`, or None."""
         key = self.contour_key(contour_type)
         lst = self.finalized_splines.get(key, [])
         if not lst:
             return None
         idx = index if index is not None else self.active_contour_index
         if idx is None or idx >= len(lst):
-            # fallback to first contour if requested index missing
             return lst[0] if lst else None
         return lst[idx]
 
     def _get_contour_data(self, contour_type: ContourType | None = None, frame: int | None = None):
         """
-        Return (x_list, y_list) for the given contour type at the given frame,
-        or ([], []) if absent. Reads from main_window.runtime_data.frame_data_dct (Dict[int, FrameData]).
+        Return (x_list, y_list) of the first `contour_type` contour on `frame`, or ([], []) if absent.
         """
         contour_obj = self._frame_contour(contour_type, frame)
         if contour_obj is None or not contour_obj.contours or not contour_obj.contours[0]:
@@ -511,7 +499,7 @@ class Display(QGraphicsView, MetricsMixin):
         return (c[0] if c else []), (c[1] if len(c) > 1 else [])
 
     def set_active_contour_type(self, contour_type: ContourType):
-        """Set active contour type and refresh transient state for editing that contour."""
+        """Activate `contour_type` and reset transient editing state."""
         if contour_type == self.active_contour_type:
             return
         self.active_contour_type = contour_type
@@ -575,12 +563,8 @@ class Display(QGraphicsView, MetricsMixin):
                 self._draw_angle_sectors()
                 self._draw_open_spline_edge_lines()
 
-                # Read the splines only after _draw_contours_frame() has rebuilt them from
-                # frame_data_dct. Reading them first measured whatever was on screen before
-                # this call, which is right while a knot is dragged (the spline object is
-                # mutated in place) but wrong for every edit that *replaces* the frame's
-                # contour — copy from a neighbour, brush commit, undo, mask import — where
-                # the metrics then kept the previous frame's numbers, or none at all.
+                # Read the splines only after _draw_contours_frame() rebuilt them, or edits that replace the
+                # frame's contour (copy, brush commit, undo, mask import) would show stale metrics.
                 self._maybe_compute_metrics(
                     self._first_spline_contour(ContourType.LUMEN), self._first_spline_contour(ContourType.EEM)
                 )
@@ -592,8 +576,12 @@ class Display(QGraphicsView, MetricsMixin):
         if update_phase:
             self.update_phase_text()
 
+        lh = getattr(self.main_window, 'left_half', None)
+        if lh is not None:
+            lh.sync_knot_count()  # the selected contour, or its knots, may have changed
+
     def _first_spline_contour(self, contour_type: ContourType) -> Tuple[List[float], List[float]] | None:
-        """Unscaled (x, y) of the first finalized spline of *contour_type*, or None."""
+        """Unscaled (x, y) of *contour_type*'s first spline, or None."""
         entry = self.finalized_splines.get(self.contour_key(contour_type))
         spline: Spline | None = entry[0] if isinstance(entry, list) and entry else None
         if spline is None:
@@ -601,9 +589,9 @@ class Display(QGraphicsView, MetricsMixin):
         return spline.get_unscaled_contour(self.scaling_factor)
 
     def update_display(self):
-        """Syntax sugar method to update the entire display after changes to contours or image."""
+        """Save and redraw everything after contours or the image changed."""
         self.main_window.save_contours_soon()
-        self._base_mask_cache = None  # contours may have changed; stale cache must be dropped
+        self._base_mask_cache = None  # contours may have changed
         self.display_image(update_image=True, update_contours=True, update_phase=True)
 
     def _remove_non_image_items(self, image_types):
@@ -634,12 +622,11 @@ class Display(QGraphicsView, MetricsMixin):
 
     def _apply_colormap_if_enabled(self, img, width):
         if not getattr(self.main_window, "colormap_enabled", False):
-            # return unchanged + appropriate bpl/qfmt inferred by caller
             if img.ndim == 2:
                 return img, width, QImage.Format.Format_Grayscale8
             return img, img.shape[2] * width, QImage.Format.Format_RGB888
 
-        # colormap expects gray; handle RGB->gray then map; convert BGR->RGB for Qt
+        # applyColorMap needs gray input and returns BGR, Qt wants RGB
         if img.ndim == 3 and img.shape[2] == 3:
             gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
             cmap = cv2.applyColorMap(gray, cv2.COLORMAP_COOL)
@@ -649,23 +636,20 @@ class Display(QGraphicsView, MetricsMixin):
         return rgb, width * 3, QImage.Format.Format_RGB888
 
     def _contour_rgb(self, contour_type: ContourType) -> tuple[int, int, int]:
-        """RGB for contour_type's configured line color, so the mask fill and brush
-        cursor always match the contour outline instead of MaskSpec's fallback color."""
+        """RGB of `contour_type`'s line color, so mask fill and brush cursor match the outline, not
+        MaskSpec's fallback color."""
         return QColor(self.contour_color(contour_type)).getRgb()[:3]
 
     def _apply_mask_overlay(self, display_data, w):
         """
-        Alpha-blend per-label segmentation colours into the display image array.
-        Returns (rgb_array, bytes_per_line, QImage_format).
+        Alpha-blend per-label segmentation colours into the display image. Returns (rgb, bytes_per_line, format).
 
-        The contour-derived base mask is cached so brush painting (which calls
-        display_image many times per stroke) does not re-run contours_to_mask on
-        every mouse move.  The cache is invalidated by update_display().
+        While brushing, the contour-derived base mask is cached so mouse moves need not re-run `contours_to_mask`.
+        `update_display()` invalidates the cache.
         """
         try:
             assert self.images is not None
-            # Cache the contour-derived mask only while a brush stroke is in progress.
-            # At any other time (knot drag, contour edit, frame change) always recompute.
+            # Only reuse the cache mid-stroke. A knot drag, contour edit or frame change recomputes.
             if self._brush_active and self._base_mask_cache is not None and self._base_mask_cache_frame == self.frame:
                 frame_mask = self._base_mask_cache.copy()
             else:
@@ -678,7 +662,7 @@ class Display(QGraphicsView, MetricsMixin):
                     self._base_mask_cache = frame_mask.copy()
                     self._base_mask_cache_frame = self.frame
 
-            # Overlay live brush canvas on top of the contour-derived mask.
+            # Overlay the live brush canvas.
             if self._brush_add is not None:
                 defn = active_preset().get(self.active_contour_type)
                 if defn is not None:
@@ -692,7 +676,6 @@ class Display(QGraphicsView, MetricsMixin):
                 return display_data, w, QImage.Format.Format_Grayscale8
             return display_data, w * 3, QImage.Format.Format_RGB888
 
-        # Ensure RGB base
         if display_data.ndim == 2:
             rgb = np.stack([display_data, display_data, display_data], axis=-1).astype(np.float32)
         else:
@@ -715,37 +698,36 @@ class Display(QGraphicsView, MetricsMixin):
     def enable_brush(self) -> None:
         """Activate brush mode and update the cursor circle.
 
-        Interrupts any in-progress spline/measure/reference drawing first so
-        leftover graphics don't conflict with brush mouse handling.
+        Interrupts any drawing in progress first so its leftovers don't clash with the brush.
         """
-        self._interrupt_drawing_mode()  # safe no-op when nothing is in progress
+        self._interrupt_drawing_mode()  # no-op when nothing is in progress
         self._brush_active = True
         self._brush_add = None
         self._brush_erase = None
         self._update_brush_cursor()
 
     def disable_brush(self) -> None:
-        """Deactivate brush mode and restore the arrow cursor."""
+        """Exit brush mode and reset the cursor."""
         self._brush_active = False
         self._brush_add = None
         self._brush_erase = None
         self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def _update_brush_cursor(self) -> None:
-        """Rebuild the OS cursor circle to match current radius and contour-type colour."""
+        """Rebuild the cursor circle for the brush radius and colour."""
         if not self._brush_active:
             return
         popup = getattr(self.main_window, 'brush_settings_popup', None)
-        radius = popup.radius_px if popup is not None else 10
+        radius = popup.radius_px if popup is not None else BRUSH_DEFAULT_RADIUS_PX
         in_preset = self.active_contour_type in active_preset()
-        color = self._contour_rgb(self.active_contour_type) if in_preset else (255, 60, 60)
+        color = self._contour_rgb(self.active_contour_type) if in_preset else BRUSH_FOREIGN_COLOR
         self._brush_cursor._radius_px = radius
         self._brush_cursor._color = color
         view_scale = self.scaling_factor * self.transform().m11()
         self.setCursor(self._brush_cursor.make_cursor(view_scale))
 
     def _paint_brush(self, scene_pos: QPointF) -> None:
-        """Paint a disc on the add or erase canvas at *scene_pos* and refresh the image."""
+        """Paint a disc at *scene_pos* (add or erase) and redraw."""
         if self.images is None:
             return
         popup = getattr(self.main_window, 'brush_settings_popup', None)
@@ -762,7 +744,6 @@ class Display(QGraphicsView, MetricsMixin):
         row = int(scene_pos.y() / self.scaling_factor)
         col = int(scene_pos.x() / self.scaling_factor)
 
-        # Rasterise a filled disc at (row, col) with the given radius.
         r = radius
         row_lo = max(0, row - r)
         row_hi = min(H, row + r + 1)
@@ -777,15 +758,12 @@ class Display(QGraphicsView, MetricsMixin):
         else:
             self._brush_add[row_lo:row_hi, col_lo:col_hi][disc] = True
 
-        # Refresh image only (contours unchanged); the cached base mask is reused.
-        self.display_image(update_image=True)
+        self.display_image(update_image=True)  # contours unchanged, reuses the cached base mask
 
     def _commit_brush_stroke(self) -> None:
         """
-        Merge the brush canvas with the current contour-derived mask, extract a new
-        closed contour boundary with OpenCV, downsample to knot points, and save it.
-
-        After commit the canvas is cleared and the display is fully refreshed.
+        Merge the brush canvas into the contour-derived mask, extract the new closed boundary with OpenCV,
+        downsample it to knots and save it. Then clear the canvas and redraw.
         """
         has_paint = (self._brush_add is not None and self._brush_add.any()) or (
             self._brush_erase is not None and self._brush_erase.any()
@@ -798,8 +776,7 @@ class Display(QGraphicsView, MetricsMixin):
         ct = self.active_contour_type
         preset = active_preset()
         defn = preset.get(ct)
-        # A sector is stored as the angles bounding it, not as a paintable region — a
-        # brushed boundary cannot be turned back into one.
+        # A sector is stored as its bounding angles, which a brushed region cannot be turned back into.
         if defn is None or defn.is_angle:
             self._brush_add = None
             self._brush_erase = None
@@ -808,7 +785,7 @@ class Display(QGraphicsView, MetricsMixin):
         assert self.images is not None
         frame = self.frame
 
-        # 1. Generate fresh base mask (ignore cache – we need the authoritative version).
+        # 1. Fresh base mask, not the cache.
         base_mask = contours_to_mask(
             self.images[frame : frame + 1],
             [frame],
@@ -819,11 +796,9 @@ class Display(QGraphicsView, MetricsMixin):
         if self._brush_add is not None and self._brush_add.any():
             base_mask[self._brush_add] = defn.label
         if self._brush_erase is not None and self._brush_erase.any():
-            # Only erase pixels of this specific label, never pixels of other types.
-            base_mask[self._brush_erase & (base_mask == defn.label)] = 0
+            base_mask[self._brush_erase & (base_mask == defn.label)] = 0  # never erase other types
 
-        # 3. Extract binary region for this contour type, including whatever is painted
-        #    over it inside it — the EEM's contour wraps the lumen and the plaques too.
+        # 3. Binary region of this type plus whatever is painted inside it (the EEM wraps the lumen and plaques).
         binary = np.isin(base_mask, list(preset.mask_labels(ct))).astype(np.uint8)
 
         # 4. Find boundary with OpenCV.
@@ -850,9 +825,7 @@ class Display(QGraphicsView, MetricsMixin):
         y_dense: list[float] = pts[:, 1].tolist()
 
         # 5. Downsample to sparse knot points (same target counts as spline drawing).
-        n_knots = (
-            self.n_interactive_points if ct in (ContourType.LUMEN, ContourType.EEM) else self.n_interactive_points // 2
-        )
+        n_knots = self.knots_for(ct)
         result = downsample(([x_dense], [y_dense]), n_knots)
         x_sparse: list[float] = result[0] if result[0] else x_dense[:: max(1, len(x_dense) // n_knots)]
         y_sparse: list[float] = result[1] if result[1] else y_dense[:: max(1, len(y_dense) // n_knots)]
@@ -879,10 +852,7 @@ class Display(QGraphicsView, MetricsMixin):
         self._base_mask_cache = None
         self.update_display()
 
-        try:
-            self.main_window.longitudinal_view.plot_areas()
-        except Exception as e:
-            logger.debug(f'Could not update longitudinal view after brush commit: {e}')
+        refresh_overviews(self.main_window)
 
     def _add_center_marker(self, height):
         cx = int((self.image_width // 2) * self.scaling_factor)
@@ -893,7 +863,7 @@ class Display(QGraphicsView, MetricsMixin):
 
     # contour drawing and manipulation methods
     def cleanup_temporary_drawing(self):
-        """Safely removes un-finalized points and splines from the scene."""
+        """Discard unfinished drawing, exit drawing modes."""
         if hasattr(self, 'working_spline') and self.working_spline is not None:
             if self.working_spline.scene() is not None:
                 self.graphics_scene.removeItem(self.working_spline)
@@ -929,7 +899,7 @@ class Display(QGraphicsView, MetricsMixin):
             self.active_contour_type = ContourType.LUMEN
 
     def _interrupt_drawing_mode(self):
-        """Handles safe exit of drawing mode, returning to initial state."""
+        """Exit drawing mode safely and redraw."""
         self.cleanup_temporary_drawing()
         if self.measure_index is not None:
             self.pending_measure_points[self.measure_index] = None
@@ -944,11 +914,9 @@ class Display(QGraphicsView, MetricsMixin):
         append: bool = False,
     ):
         """
-        Start drawing a new contour of the specified type and with the specified tool.
+        Start drawing a new `contour_type` contour with `segmentation_tool`.
 
-        Sets the active contour type, clears previous data for this frame,
-        and switches to contour drawing mode (pushes a pre-edit snapshot for Ctrl+Z).
-        If append=True, existing contours are preserved and the new one will be appended.
+        Pushes an undo snapshot and clears the frame's contours of that type, unless `append` keeps them.
         """
         if contour_type is not None:
             self.set_active_contour_type(contour_type)
@@ -964,7 +932,6 @@ class Display(QGraphicsView, MetricsMixin):
 
         self.active_segmentation_tool = segmentation_tool if segmentation_tool else self.active_segmentation_tool
 
-        # Fall back to CLOSED_SPLINE if the active tool is not allowed for this contour type
         ct = contour_type or self.active_contour_type
         if self.active_segmentation_tool not in active_preset().allowed_tools(ct):
             self.active_segmentation_tool = SegmentationTool.CLOSED_SPLINE
@@ -987,24 +954,21 @@ class Display(QGraphicsView, MetricsMixin):
         self.display_image(update_contours=True)
 
     def add_contour(self, click_pos, segmentation_tool: SegmentationTool = SegmentationTool.CLOSED_SPLINE):
-        """Handles logic for adding a new point to a manual contour being drawn."""
-        # 1. Validation: Handle cases where the drawing state is corrupted
+        """Add a clicked point to the contour being drawn."""
         if not self._is_drawing_valid():
             self._interrupt_drawing_mode()
             return
 
         if segmentation_tool == SegmentationTool.CLOSED_SPLINE:
-            # 2. Closure Check: See if the user clicked near the start to finish the shape
+            # a click near the start closes the shape
             if self._should_close_contour(click_pos):
                 self._close_current_spline()
                 return
 
-            # 3. Point Placement: Create and store the new knot point
             new_point = self._create_knot_point(click_pos)
             self.points_to_draw.append(new_point)
             self.graphics_scene.addItem(new_point)
 
-            # 4. Spline Management: Draw or update the smooth curve
             if len(self.points_to_draw) >= 3:
                 self._update_or_create_spline()
 
@@ -1017,13 +981,13 @@ class Display(QGraphicsView, MetricsMixin):
                 self._update_or_create_spline(is_closed=False)
 
     def _is_drawing_valid(self) -> bool:
-        """Checks if the first point is valid; returns False if drawing was interrupted."""
+        """False if drawing was interrupted (first point invalid)."""
         if not self.points_to_draw:
             return True
         return self.points_to_draw[0].get_coords()[0] is not None
 
     def _create_knot_point(self, pos) -> Point:
-        """Helper to instantiate a Point with current config."""
+        """Knot `Point` in the active type's style."""
         ct = self.active_contour_type
         cfg = self.contour_configs.get(ct, None)
         color = self.contour_color(ct)
@@ -1038,7 +1002,7 @@ class Display(QGraphicsView, MetricsMixin):
         )
 
     def _update_or_create_spline(self, is_closed=True):
-        """Logic to draw the curve between knot points."""
+        """Create or update the drawn spline."""
         xs = [p.get_coords()[0] for p in self.points_to_draw]
         ys = [p.get_coords()[1] for p in self.points_to_draw]
 
@@ -1081,18 +1045,14 @@ class Display(QGraphicsView, MetricsMixin):
         return dist < self.snap_radius_px
 
     def _close_current_spline(self):
-        """Close the current contour and save it."""
+        """Close and save the contour."""
         if self.working_spline is not None:
             downsampled = downsample(
                 (
                     [self.working_spline.geometry.full_contour[0].tolist()],
                     [self.working_spline.geometry.full_contour[1].tolist()],
                 ),
-                (
-                    self.n_interactive_points
-                    if self.active_contour_type in (ContourType.LUMEN, ContourType.EEM)
-                    else self.n_interactive_points // 2
-                ),
+                self.knots_for(self.active_contour_type),
             )
             key = self.contour_key(self.active_contour_type)
             x_list = [point / self.scaling_factor for point in downsampled[0]]
@@ -1113,14 +1073,12 @@ class Display(QGraphicsView, MetricsMixin):
         self.stop_contour()
 
     def _finish_open_spline(self):
-        """Finish drawing an open spline on double-click and save it as open (closed=False).
+        """Finish an open spline on double-click and save it with closed=False.
 
-        Qt fires a mousePressEvent just before mouseDoubleClickEvent, so one extra point
-        is added at the double-click position. We discard that last *visual* Point here
-        but intentionally leave the knot in the geometry: stop_contour snaps
-        xs_sparse_origin[-1] to full_contour[-1], which is that spurious knot — i.e.
-        exactly the double-click position. Removing it from the geometry would shift
-        the saved end one knot earlier.
+        Qt sends a mousePressEvent before mouseDoubleClickEvent, which adds an extra point at the double-click.
+        Only its visual Point is removed here. The knot stays in the geometry because stop_contour snaps
+        xs_sparse_origin[-1] to full_contour[-1], i.e. the double-click position. Removing it would move the
+        saved end back one knot.
         """
         if self.points_to_draw:
             last_point = self.points_to_draw.pop()
@@ -1142,10 +1100,8 @@ class Display(QGraphicsView, MetricsMixin):
 
     def stop_contour(self):
         """
-        Stop contour drawing mode, finalize the contour for the current frame, and update the display.
-
-        This method exits contour drawing mode, resets the cursor, and refreshes the image display with the updated contour.
-        If a contour was drawn for the current frame, it also updates the longitudinal view with the new contour.
+        Leave drawing mode, save the drawn contour for the current frame, and refresh the display and the
+        longitudinal view.
         """
         if self.main_window.image_displayed:
             self.drawing_mode = False
@@ -1158,11 +1114,7 @@ class Display(QGraphicsView, MetricsMixin):
                         [self.working_spline.geometry.full_contour[0].tolist()],
                         [self.working_spline.geometry.full_contour[1].tolist()],
                     ),
-                    (
-                        self.n_interactive_points
-                        if key in (ContourType.LUMEN, ContourType.EEM)
-                        else self.n_interactive_points // 2
-                    ),
+                    self.knots_for(self.active_contour_type),
                 )
                 xs_sparse_origin = [x / self.scaling_factor for x in downsampled[0]]
                 ys_sparse_origin = [y / self.scaling_factor for y in downsampled[1]]
@@ -1175,7 +1127,7 @@ class Display(QGraphicsView, MetricsMixin):
                 if self.append_contour_mode:
                     if not self._contour_close_committed:
                         contour_obj.contours.append([xs_sparse_origin, ys_sparse_origin])
-                        # start/end already appended by _close_current_spline for closed splines
+                        # closed splines got start/end in _close_current_spline
                         if is_open:
                             contour_obj.start_coords.append([(xs_sparse_origin[0], ys_sparse_origin[0])])
                             contour_obj.end_coords.append([(xs_sparse_origin[-1], ys_sparse_origin[-1])])
@@ -1186,7 +1138,7 @@ class Display(QGraphicsView, MetricsMixin):
                         contour_obj.start_coords = [[(xs_sparse_origin[0], ys_sparse_origin[0])]]
                         contour_obj.end_coords = [[(xs_sparse_origin[-1], ys_sparse_origin[-1])]]
                     else:
-                        # closed: start/end already set in _close_current_spline
+                        # start/end already set by _close_current_spline
                         pass
                 lst = self._ensure_finalized_list_for_key(key, self.active_contour_index + 1)
                 lst[self.active_contour_index] = self.working_spline
@@ -1194,13 +1146,10 @@ class Display(QGraphicsView, MetricsMixin):
             self._interrupt_drawing_mode()
             self.main_window.save_contours_soon()
 
-            try:
-                self.main_window.longitudinal_view.plot_areas()
-            except Exception as e:
-                logger.debug(f"Could not update longitudinal view for frame {self.frame}: {e}")
+            refresh_overviews(self.main_window)
 
     ################################################################################################
-    # later to be refactored into contour manipulation methods (measure and reference point)
+    # measure and reference point, to be refactored into contour manipulation methods
     def _draw_measure(self):
         fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
         if fd is None:
@@ -1244,7 +1193,7 @@ class Display(QGraphicsView, MetricsMixin):
             length_text = QGraphicsTextItem(f'{length} mm')
             length_text.setPos(p2.x(), p2.y())
             self.graphics_scene.addItem(length_text)
-        # Draw any pending first-click-only points
+        # pending first clicks
         for index, pending in enumerate(self.pending_measure_points):
             if pending is not None:
                 px, py = pending
@@ -1272,10 +1221,8 @@ class Display(QGraphicsView, MetricsMixin):
             )
         )
         if self.pending_measure_points[index] is None:
-            # First click — store as pending
             self.pending_measure_points[index] = (orig_x, orig_y)
         else:
-            # Second click — complete the measure
             p1_orig = self.pending_measure_points[index]
             p1 = QPointF(p1_orig[0] * self.scaling_factor, p1_orig[1] * self.scaling_factor)
             p2 = QPointF(orig_x * self.scaling_factor, orig_y * self.scaling_factor)
@@ -1361,7 +1308,7 @@ class Display(QGraphicsView, MetricsMixin):
             self.main_window.left_half.closed_spline_btn.setChecked(True)
 
     def _handle_reference_placement(self, pos):
-        """Saves the reference point and exits reference mode."""
+        """Save the reference point, then exit."""
         self.main_window.runtime_data.frame_data_dct[self.frame].reference = (
             pos.x() / self.scaling_factor,
             pos.y() / self.scaling_factor,
@@ -1374,10 +1321,9 @@ class Display(QGraphicsView, MetricsMixin):
     ################################################################################################
 
     def start_angle(self, append: bool = False):
-        """Initializes placement of one angular sector of the active type (see ContourPreset.angle_types).
+        """Start placing one angular sector of the active type (see ContourPreset.angle_types).
 
-        append=False replaces every sector of that type on the frame; append=True adds
-        another one (a pullback can show more than one guide wire, or blood in two places).
+        Replaces the frame's sectors of that type unless `append` adds another (e.g. a second guide wire).
         """
         if self.drawing_mode:
             self.stop_contour()
@@ -1401,8 +1347,7 @@ class Display(QGraphicsView, MetricsMixin):
         if not append:
             fd.contours[key] = Contour()
         contour_obj = fd.contour(key)
-        # The new sector becomes the active instance, so Delete/Ctrl+Z act on it.
-        self.active_contour_index = len(contour_obj.contours)
+        self.active_contour_index = len(contour_obj.contours)  # new sector is active, so Delete/Ctrl+Z act on it
         self.display_image(update_contours=True)
         if self.active_segmentation_tool == SegmentationTool.OPEN_SPLINE:
             self.main_window.left_half.open_spline_btn.setChecked(True)
@@ -1412,19 +1357,16 @@ class Display(QGraphicsView, MetricsMixin):
             self.main_window.left_half.closed_spline_btn.setChecked(True)
 
     def _reset_angle_placement(self) -> None:
-        """Forget the sector being placed, without touching what is already stored."""
+        """Forget the sector being placed, keep stored data."""
         self._angle_start = None
         self._angle_sweep = 0.0
         self._angle_pointer = 0.0
 
     def _handle_angle_placement(self, pos: QPointF):
-        """The two clicks that define one sector: the first sets the boundary it opens
-        from, the second the boundary it opens to.
+        """The two clicks of a sector: the first sets the boundary it opens from, the second the one it opens to.
 
-        Between them the opening follows the pointer (_track_angle_opening), and it is
-        that accumulated opening rather than the two click positions that gets stored —
-        two boundaries on their own cannot say which way round a sector wider than 180
-        degrees was meant.
+        In between the opening follows the pointer (_track_angle_opening). That accumulated opening is stored,
+        not the clicks, as two boundaries cannot tell which way a sector over 180 degrees goes.
         """
         key = self.contour_key(self.active_contour_type)
         contour_obj = self.main_window.runtime_data.frame_data_dct[self.frame].contour(key)
@@ -1441,12 +1383,11 @@ class Display(QGraphicsView, MetricsMixin):
             self.display_image(update_contours=True)
             return
 
-        # Take the click as the last pointer position, so the sector ends up exactly where
-        # the user saw it even if the pointer never moved between the two clicks.
+        # The click counts as the last pointer position, in case the pointer never moved between clicks.
         self._angle_sweep = accumulate_sweep(self._angle_sweep, self._angle_pointer, angle)
         self._angle_pointer = angle
         if self._angle_sweep == 0.0:
-            return  # a second click on the first opens nothing; wait for one that does
+            return  # a second click on the first opens nothing, so wait
 
         start, sweep = signed_to_sector(self._angle_start, self._angle_sweep)
         set_sector_points(contour_obj, self.active_contour_index, self._image_points(start, sweep))
@@ -1458,7 +1399,7 @@ class Display(QGraphicsView, MetricsMixin):
         self.display_image(update_contours=True)
 
     def _track_angle_opening(self, pos: QPointF) -> None:
-        """Open the sector being placed to follow the pointer and redraw its preview."""
+        """Open the new sector to the pointer and redraw its preview."""
         if self._angle_start is None:
             return
         angle = self._scene_angle(pos)
@@ -1471,8 +1412,8 @@ class Display(QGraphicsView, MetricsMixin):
                 return
 
     def _discard_incomplete_sector(self):
-        """Drop the sector being placed if the user left angle mode after one click:
-        a single point defines no wedge and would only draw a stray line."""
+        """Drop the sector being placed if angle mode was left after one click, as one point draws only
+        a stray line."""
         if not active_preset().is_angle(self.active_contour_type):
             return
         contour_obj = self._frame_contour()
@@ -1487,29 +1428,25 @@ class Display(QGraphicsView, MetricsMixin):
             self.main_window.save_contours_soon()
 
     def _scene_angle(self, pos: QPointF) -> float:
-        """Direction of a scene position seen from the image centre."""
+        """Angle of `pos` around the image centre."""
         return angle_of((pos.x(), pos.y()), self._scene_centre())
 
     def _scene_centre(self) -> Tuple[float, float]:
-        """Image centre in scene coordinates — every sector is measured from it."""
+        """Scene-space image centre, origin of every sector."""
         half_size = self.image_size / 2
         return (half_size, half_size)
 
     def _image_centre(self) -> Tuple[float, float]:
-        """Image centre in original image coordinates, which is what gets stored."""
+        """Image centre in original (stored) image coordinates."""
         half_size = self.image_size / (2 * self.scaling_factor)
         return (half_size, half_size)
 
     def _angle_handle_radius(self) -> float:
         """Scene-pixel radius of the circle every sector handle sits on.
 
-        `angle_handle_radius_mm` from the centre, pulled back inside the image for
-        pullbacks whose field of view is smaller than that (as most are: a 10 mm wide
-        image only reaches 5 mm in the first place), and kept out of the catheter for a
-        resolution that would put it there (a NIfTI whose header says 1 mm per pixel
-        turns 5 mm into 5 pixels). Only the angle of a sector point means anything, so
-        putting them all on one circle costs nothing and makes a sector look the same in
-        every pullback.
+        `angle_handle_radius_mm`, clamped inside the image for small fields of view (a 10 mm image only reaches
+        5 mm) and out of the catheter for odd resolutions (a NIfTI at 1 mm per pixel makes 5 mm into 5 pixels).
+        Only a sector point's angle matters, so one shared circle costs nothing and looks the same everywhere.
         """
         limit = 0.9 * self.image_size / 2
         floor = 0.3 * self.image_size / 2
@@ -1520,22 +1457,20 @@ class Display(QGraphicsView, MetricsMixin):
         return min(max(self.angle_handle_radius_mm / float(resolution) * self.scaling_factor, floor), limit)
 
     def _image_point(self, angle: float) -> Tuple[float, float]:
-        """One sector boundary point, in stored image coordinates."""
+        """Sector boundary point in image coordinates."""
         return self._image_points(angle, 0.0)[0]
 
     def _image_points(self, start: float, sweep: float) -> List[Tuple[float, float]]:
         """The points storing the sector (`start`, `sweep`), in image coordinates.
 
-        Angles are the same in both spaces (the scene is the image scaled about the same
-        centre), so only the radius has to be converted.
+        The scene is the image scaled about its centre, so only the radius needs converting.
         """
         return points_for_sector(self._image_centre(), self._angle_handle_radius() / self.scaling_factor, start, sweep)
 
     def _draw_angle_sectors(self):
-        """Draw every angular sector on the frame, and the one being placed on top of them.
+        """Draw every angular sector on the frame and, dotted on top, the one being placed.
 
-        The sector being placed is the only dotted one: its second boundary is still
-        following the pointer.
+        Dotted because its second boundary still follows the pointer.
         """
         self._angle_sectors = []
         fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
@@ -1578,10 +1513,9 @@ class Display(QGraphicsView, MetricsMixin):
                 self._angle_sectors.append((contour_type, index, sector))
 
     def _grab_angle_handle(self, pos: QPointF) -> bool:
-        """Grab the sector boundary handle under `pos` for dragging, if there is one.
+        """Grab the sector boundary handle under `pos` for dragging, if any.
 
-        Returns True when one was grabbed, so the click does not also go to the spline
-        handling that normally follows it.
+        Returns True if grabbed, so the click skips the spline handling.
         """
         reach = max(self.snap_radius_px, self.point_radius)
         nearest = None
@@ -1597,8 +1531,8 @@ class Display(QGraphicsView, MetricsMixin):
 
         contour_type, index, _, _ = nearest
         if contour_type != self.active_contour_type or index != self.active_contour_index:
-            # Make the grabbed sector the active one (Delete/Ctrl+Z follow it) without
-            # redrawing, which would replace the very sector object being dragged.
+            # Activate the grabbed sector (for Delete/Ctrl+Z) without redrawing, which would replace
+            # the dragged sector object.
             self.active_contour_type = contour_type
             self.active_contour_index = index
             self.working_spline = None
@@ -1614,7 +1548,7 @@ class Display(QGraphicsView, MetricsMixin):
         return True
 
     def _drag_angle_handle(self, pos: QPointF) -> None:
-        """Turn the grabbed boundary to the pointer, keeping the other one where it is."""
+        """Turn the grabbed boundary to the pointer, the other stays."""
         assert self._angle_drag is not None
         _, _, sector, which = self._angle_drag
         angle = self._scene_angle(pos)
@@ -1629,7 +1563,7 @@ class Display(QGraphicsView, MetricsMixin):
         self._angle_dragged = True
 
     def _release_angle_handle(self) -> None:
-        """Store the sector as it now stands and let go of the handle."""
+        """Store the sector and release the handle."""
         assert self._angle_drag is not None
         contour_type, index, sector, _ = self._angle_drag
         dragged = self._angle_dragged
@@ -1646,12 +1580,12 @@ class Display(QGraphicsView, MetricsMixin):
         set_sector_points(contour_obj, index, self._image_points(sector.start, sector.sweep))
         self.main_window.save_contours_soon()
 
-        # A sector is part of the mask overlay, so that has to be rebuilt along with it.
+        # Sectors are part of the mask overlay, so rebuild that too.
         mask_active = getattr(self.main_window, 'mask_mode_box', None) and self.main_window.mask_mode_box.isChecked()
         self.display_image(update_image=bool(mask_active), update_contours=True)
 
     def _draw_open_spline_edge_lines(self):
-        """Draw lines from open spline start/end points to image edge, in direction away from contour centroid."""
+        """Extend lines from open spline ends to the image edge, away from the centroid."""
         fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
         if fd is None:
             return
@@ -1674,16 +1608,11 @@ class Display(QGraphicsView, MetricsMixin):
                 is_closed = contour_obj.closed[i] if len(contour_obj.closed) > i else True
                 if is_closed:
                     continue
-                raw_starts = contour_obj.start_coords[i] if len(contour_obj.start_coords) > i else []
-                raw_ends = contour_obj.end_coords[i] if len(contour_obj.end_coords) > i else []
-                raw_start = raw_starts[0] if raw_starts else None
-                raw_end = raw_ends[0] if raw_ends else None
-                if raw_start is None and raw_end is None:
+                xs, ys = contour_obj.contours[i][0], contour_obj.contours[i][1]
+                if not xs or not ys:
                     continue
 
-                for raw_coord in [raw_start, raw_end]:
-                    if raw_coord is None:
-                        continue
+                for raw_coord in [(xs[0], ys[0]), (xs[-1], ys[-1])]:  # its first knot and its last
                     endpoint = QPointF(raw_coord[0] * self.scaling_factor, raw_coord[1] * self.scaling_factor)
                     dx = endpoint.x() - centroid.x()
                     dy = endpoint.y() - centroid.y()
@@ -1719,7 +1648,7 @@ class Display(QGraphicsView, MetricsMixin):
                 self._pan_last_pos = event.pos()
                 self.setCursor(Qt.CursorShape.ClosedHandCursor)
                 return
-            # Brush mode takes priority over all other left-click interactions.
+            # brush mode takes priority over other left clicks
             if self._brush_active:
                 self._paint_brush(pos)
                 return
@@ -1732,17 +1661,15 @@ class Display(QGraphicsView, MetricsMixin):
             elif self.angle_mode:
                 self._handle_angle_placement(pos)
             else:
-                # A sector boundary handle takes the click before any contour does: it is
-                # drawn on top of them and is the only thing that can be dragged there.
+                # Sector handles are drawn on top of contours, so they get the click first.
                 if self._grab_angle_handle(pos):
                     return
-                # First, try to switch active contour if user clicked near another one.
-                # If a switch occurred the scene was redrawn; skip item interaction for this click.
+                # A click near another contour switches to it and redraws, so skip item interaction then.
                 if not self._attempt_contour_switch(pos):
                     self._handle_item_interaction(pos, event.pos())
 
         elif event.button() == Qt.MouseButton.RightButton:
-            # Check if we clicked on a knot point to delete it
+            # right click on a knot deletes it
             self._attempt_contour_switch(pos)
 
             items = self.items(event.pos())
@@ -1750,16 +1677,15 @@ class Display(QGraphicsView, MetricsMixin):
 
             if point_item and point_item in self.points_to_draw:
                 self._delete_point(point_item)
-                return  # Stop here so we don't trigger windowing/leveling drag
+                return  # no windowing drag
 
-            # Original windowing/leveling logic
+            # start of a windowing drag
             self.mouse_x = event.position().x()
             self.mouse_y = event.position().y()
         super().mousePressEvent(event)
 
     def _attempt_contour_switch(self, pos) -> bool:
-        """Switches active contour type or index if clicking near a different contour's knotpoint.
-        Returns True if a switch occurred, False otherwise."""
+        """Switch to another contour if `pos` is near one of its knots. Returns True if it switched."""
         if self.drawing_mode:
             return False
         min_dist = float('inf')
@@ -1798,7 +1724,7 @@ class Display(QGraphicsView, MetricsMixin):
         return False
 
     def _handle_item_interaction(self, scene_pos, view_pos):
-        """Handles clicking existing knotpoints or adding new ones to a spline."""
+        """Select a clicked knot or add one on the spline."""
         items = self.items(view_pos)
         point_item = next((i for i in items if isinstance(i, Point)), None)
         spline_item = next((i for i in items if isinstance(i, Spline)), None)
@@ -1819,8 +1745,7 @@ class Display(QGraphicsView, MetricsMixin):
         point_item.update_color()
         self.working_spline = self.get_current_spline()
 
-        # Record which index in the start/end list this labeled point corresponds to,
-        # so mouseReleaseEvent can update the correct entry after a drag.
+        # Which start/end list entry this labelled knot is, so mouseReleaseEvent can move it after a drag.
         self._active_start_end_idx = None
         if point_item.color in (self.start_color, self.end_color):
             contour_obj = self._frame_contour()
@@ -1854,8 +1779,8 @@ class Display(QGraphicsView, MetricsMixin):
         if not self.working_spline:
             return
 
-        path_index = self.working_spline.on_path(pos)
-        if path_index is None:  # Safety check: only add if we actually clicked the path
+        path_index = self.working_spline.on_path(pos, self.insert_point_radius_px)
+        if path_index is None:
             return
 
         self.main_window.display.setCursor(Qt.CursorShape.BlankCursor)
@@ -1873,7 +1798,7 @@ class Display(QGraphicsView, MetricsMixin):
         self.active_point.update_color()
 
     def _get_active_closed_flag(self) -> bool:
-        """Return True when the currently active contour index is a closed spline."""
+        """True if the active contour is a closed spline."""
         contour_obj = self._frame_contour()
         if contour_obj is None or not contour_obj.closed:
             return True
@@ -1881,11 +1806,9 @@ class Display(QGraphicsView, MetricsMixin):
         return contour_obj.closed[ci] if ci < len(contour_obj.closed) else True
 
     def _knot_labels(self, contour_obj, ci: int, kx: float, ky: float) -> Tuple[bool, bool]:
-        """Whether the knot at unscaled (kx, ky) is currently labelled start, and end.
+        """Whether the knot at unscaled (kx, ky) is labelled start, and end (at most one, none if unlabelled).
 
-        A knot carries one label at most, so at least one of the two is always False;
-        both False means it is unlabelled. A label is matched by position rather than by
-        knot index, because that is how it is stored (see Contour.start_coords).
+        Labels are matched by position, not knot index, as that is how they are stored (see Contour.start_coords).
         """
 
         def carries(coord_lists) -> bool:
@@ -1895,14 +1818,14 @@ class Display(QGraphicsView, MetricsMixin):
         return carries(contour_obj.start_coords), carries(contour_obj.end_coords)
 
     def _label_knot(self, coord_lists: list, ci: int, kx: float, ky: float) -> None:
-        """Record the knot at unscaled (kx, ky) in `coord_lists`, one of the contour's
-        start/end lists, growing it to reach contour `ci`."""
+        """Add the knot at unscaled (kx, ky) to `coord_lists` (start or end), growing it to reach
+        contour `ci`."""
         while len(coord_lists) <= ci:
             coord_lists.append([])
         coord_lists[ci].append((kx, ky))
 
     def _unlabel_knot(self, contour_obj, ci: int, kx: float, ky: float) -> None:
-        """Drop the knot at unscaled (kx, ky) from both of contour `ci`'s label lists."""
+        """Unlabel the unscaled knot (kx, ky) on contour `ci`."""
         for coord_lists in (contour_obj.start_coords, contour_obj.end_coords):
             if ci < len(coord_lists):
                 coord_lists[ci] = [
@@ -1912,7 +1835,7 @@ class Display(QGraphicsView, MetricsMixin):
                 ]
 
     def _show_knot_label_popup(self, knot_item: Point, view_pos):
-        """QMenu popup beside a knot point for labelling it as start, end, or neutral."""
+        """Popup menu to label a knot as start, end, or neutral."""
         contour_obj = self._frame_contour()
         if contour_obj is None:
             return
@@ -1932,9 +1855,8 @@ class Display(QGraphicsView, MetricsMixin):
         assert end_action is not None
         assert neutral_action is not None
 
-        # Whatever the knot is not already, it can become: a start switches straight to an
-        # end and back, without removing the label in between. Only the label it already
-        # carries is greyed out, and Remove Label only while it carries one at all.
+        # A label can switch straight to the other. Only the current label is greyed out, and Remove Label
+        # when there is none.
         start_action.setEnabled(not is_start)
         end_action.setEnabled(not is_end)
         neutral_action.setEnabled(is_start or is_end)
@@ -1943,8 +1865,7 @@ class Display(QGraphicsView, MetricsMixin):
         if action is None:
             return
 
-        # A knot carries one label at most, so every switch drops the old one first.
-        self._unlabel_knot(contour_obj, ci, kx, ky)
+        self._unlabel_knot(contour_obj, ci, kx, ky)  # one label per knot, so drop the old one first
         if action == start_action:
             self._label_knot(contour_obj.start_coords, ci, kx, ky)
         elif action == end_action:
@@ -1953,7 +1874,7 @@ class Display(QGraphicsView, MetricsMixin):
         self.update_display()
 
     def _delete_point(self, point_item: Point):
-        """Removes a knot point from the scene and the data model."""
+        """Remove a knot from the scene and the data."""
         try:
             idx = self.points_to_draw.index(point_item)
         except ValueError:
@@ -1970,7 +1891,7 @@ class Display(QGraphicsView, MetricsMixin):
                 if len(contour_obj.contours[ci]) > 1:
                     contour_obj.contours[ci][1].pop(idx)
 
-                # The knot is gone, so any start/end label sitting on it goes too.
+                # drop any start/end label on it too
                 self._unlabel_knot(
                     contour_obj,
                     ci,
@@ -1991,8 +1912,7 @@ class Display(QGraphicsView, MetricsMixin):
             pos = self.mapToScene(event.pos())
             self._paint_brush(pos)
             return
-        # Both of these move a sector boundary, so they come before the drag handling
-        # below (which would otherwise read the same movement as a zoom).
+        # Sector moves come before the drag handling below, which would read them as a zoom.
         if self.angle_mode and self._angle_start is not None:
             self._track_angle_opening(self.mapToScene(event.pos()))
             return
@@ -2021,7 +1941,7 @@ class Display(QGraphicsView, MetricsMixin):
 
         elif event.buttons() == Qt.MouseButton.RightButton:
             self.setMouseTracking(True)
-            # Right-click drag for adjusting window level and window width
+            # right drag adjusts window level and width
             self.window_level += (event.position().x() - self.mouse_x) * self.windowing_sensitivity
             self.window_width += (event.position().y() - self.mouse_y) * self.windowing_sensitivity
             self.display_image(update_image=True)
@@ -2074,15 +1994,18 @@ class Display(QGraphicsView, MetricsMixin):
                 self.display_image(update_image=mask_active, update_contours=True)
                 self.main_window.save_contours_soon()
                 self.active_point_index = None
-                try:
-                    self.main_window.longitudinal_view.plot_areas()
-                except Exception as e:
-                    logger.debug(f"Could not update longitudinal view for frame {self.frame}: {e}")
+                refresh_overviews(self.main_window)
         super().mouseReleaseEvent(event)
 
     def wheelEvent(self, event):
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             self._scale_active_contour(event.angleDelta().y())
+            event.accept()
+            return
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            delta = event.angleDelta().y() or event.angleDelta().x()  # some platforms send Shift+wheel as x
+            if delta:
+                step_selected_contour_knots(self.main_window, 1 if delta > 0 else -1)
             event.accept()
             return
         if event.angleDelta().y() > 0:
@@ -2091,9 +2014,9 @@ class Display(QGraphicsView, MetricsMixin):
             self.main_window.display_slider.last_frame()
 
     def _scale_active_contour(self, delta: int) -> None:
-        """Move all knot points of the active contour toward (delta<0) or away (delta>0) from their centroid."""
+        """Shrink (delta<0) or grow (delta>0) the active contour about its centroid."""
         if active_preset().is_angle(self.active_contour_type):
-            return  # a sector's points mark angles from the image centre; scaling them is meaningless
+            return  # sector points mark angles, so scaling them is meaningless
         key = self.contour_key(self.active_contour_type)
         contour_obj = self._frame_contour()
         ci = self.active_contour_index
@@ -2130,14 +2053,10 @@ class Display(QGraphicsView, MetricsMixin):
         contour_obj.contours[ci] = (new_xs, new_ys)
         self.main_window.save_contours_soon()
         self.display_image(update_contours=True)
-        try:
-            self.main_window.longitudinal_view.plot_areas()
-        except Exception as e:
-            logger.debug(f"Could not update longitudinal view after contour scale: {e}")
+        refresh_overviews(self.main_window)
 
     def keyPressEvent(self, event):
-        # The global Esc shortcut in shortcuts.py normally handles this first.
-        # This is a fallback for cases where the display has focus directly.
+        # Fallback for when the display has focus. The global Esc shortcut in shortcuts.py usually wins.
         if event.key() == Qt.Key.Key_Escape:
             from gui.shortcuts import stop_all
 
@@ -2148,12 +2067,11 @@ class Display(QGraphicsView, MetricsMixin):
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             if self.drawing_mode:
-                # Finish an open spline being drawn (unchanged behaviour).
                 if self.active_segmentation_tool == SegmentationTool.OPEN_SPLINE:
                     self._finish_open_spline()
                     return
             else:
-                # Double-click on a knot point of a closed spline → label popup.
+                # double-click on a closed spline's knot opens the label popup
                 items = self.items(event.pos())
                 knot_item = next((i for i in items if isinstance(i, Point) and i in self.points_to_draw), None)
                 if knot_item and self._get_active_closed_flag():

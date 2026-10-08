@@ -1,9 +1,8 @@
 """Tests for reading a mask back into contours (input_output.input.mask_contours).
 
-The bar is the round trip: contours drawn, painted into a mask, read back and painted again
-must give the same mask, label by label (intersection over union of at least MIN_IOU) —
-and every contour has to come back as what it was drawn as: an open arc as an open arc,
-a sector as a sector, the EEM as a smooth vessel wall rather than one dented by the wire.
+The bar is the round trip: contours painted into a mask, read back and painted again give
+the same mask per label (IoU at least MIN_IOU). Each contour also comes back as drawn: an
+open arc open, a sector a sector, the EEM a smooth vessel wall not dented by the wire.
 """
 
 import math
@@ -19,7 +18,7 @@ from input_output.output.imgs_masks import contours_to_mask
 from tools.angle import points_for_sector, sector_from_points
 
 DIM = 400
-CX, CY = 196.0, 204.0  # the lumen sits a little off the image centre, as it does
+CX, CY = 196.0, 204.0  # a lumen sits a little off the image centre
 CENTRE = (DIM / 2, DIM / 2)
 LUMEN_R, EEM_R = 50.0, 110.0
 MIN_IOU = 0.95
@@ -72,12 +71,8 @@ def _paint(frame_data, preset):
 N_KNOTS = 20  # n_interactive_points, which every type read off a mask gets
 
 
-def _knots_for(defn):
-    return N_KNOTS
-
-
 def _read(mask, preset):
-    contours, centroid = frame_contours(mask, preset, _knots_for, handle_radius=100.0)
+    contours, centroid = frame_contours(mask, preset, N_KNOTS, handle_radius=100.0)
     return FrameData(contours=contours, centroid=centroid)
 
 
@@ -202,8 +197,8 @@ def _lobed(radius, lobes, depth, n=200):
 
 @pytest.mark.parametrize('lobes, depth', [(3, 0.2), (4, 0.3), (7, 0.12)])
 def test_a_ragged_contour_comes_back_with_n_interactive_points_knots(lobes, depth):
-    """However much the outline bends, a contour read off a mask edits like a drawn one:
-    as many knots as its type gets, the spline fitted by where they go."""
+    """A contour read off a mask, however bent, edits like a drawn one: its type's knot
+    count, fitted to the outline."""
     frame_data = _vessel(lipid=_closed(_circle(14, cx=CX + 80, cy=CY)))
     frame_data.lumen = Contour(contours=[_lobed(LUMEN_R, lobes, depth)], closed=[True])
     first, read, second = _round_trip(frame_data)
@@ -296,7 +291,7 @@ def test_the_whole_import_is_one_undo_step():
 
 
 def test_a_volume_stored_with_a_trailing_axis_of_one_reads_as_frames(tmp_path):
-    """Some converters write a 3-D volume as (x, y, z, 1) — a one-component vector."""
+    """Some converters save a 3-D volume as (x, y, z, 1)."""
     import nibabel as nib
 
     from input_output.input.image import _read_nifti
@@ -309,7 +304,7 @@ def test_a_volume_stored_with_a_trailing_axis_of_one_reads_as_frames(tmp_path):
 
 
 class TestFibrousCap:
-    """OCT masks label the fibrous cap (6) on its own, between the lumen and the lipid."""
+    """OCT masks label the fibrous cap 6, between lumen and lipid."""
 
     def _capped_lipid_mask(self, preset):
         mask = _paint(_vessel(lipid=_open(_arc(LUMEN_R - 2, 40, 120))), preset)

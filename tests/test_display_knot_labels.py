@@ -1,9 +1,8 @@
-"""Tests for labelling a closed contour's knot points start / end (the double-click popup
-in pages.intravascular.left_half.display).
+"""Tests for labelling a closed contour's knots start / end (double-click popup in
+pages.intravascular.left_half.display).
 
-The pair delimits the uncertain arc of a contour, so a knot carries one label at most and
-switching one for the other has to drop the old one — otherwise the same knot ends up in
-both lists and the arc it delimits is read from itself to itself.
+The pair delimits a contour's uncertain arc, so a knot has at most one label and a switch
+drops the old one. Else it is in both lists and its arc runs from itself to itself.
 """
 
 import math
@@ -40,7 +39,7 @@ def _ring(radius=40.0, n=12):
 
 @pytest.fixture
 def display(qt_app):
-    """A real Display on a stub main_window, showing one closed lumen contour."""
+    """Real Display on a stub window with one closed lumen."""
     with open(CONFIG_PATH, encoding='utf-8') as f:
         config = _to_namespace(yaml.safe_load(f))
 
@@ -67,7 +66,7 @@ def display(qt_app):
         image_displayed=True,
         file_name='test',
         status_bar=SimpleNamespace(showMessage=lambda *args: None),
-        left_half=SimpleNamespace(set_active_contour_type_ui=lambda ct: None),
+        left_half=SimpleNamespace(set_active_contour_type_ui=lambda ct: None, sync_knot_count=lambda: None),
     )
     main_window.save_contours_soon = runtime.mark_unsaved
 
@@ -80,7 +79,7 @@ def display(qt_app):
 
 
 def _menu_state(widget, contour, kx, ky):
-    """What the popup would offer for this knot: (Mark as Start, Mark as End, Remove)."""
+    """Popup options for a knot (Mark as Start, Mark as End, Remove)."""
     is_start, is_end = widget._knot_labels(contour, 0, kx, ky)
     return (not is_start, not is_end, is_start or is_end)
 
@@ -115,7 +114,7 @@ class TestSwitchingALabel:
         contour = display.contour
         widget._label_knot(contour.start_coords, 0, display.knot, display.knot_y)
 
-        # What the popup does for "Mark as End": drop whatever it carried, then label it.
+        # The popup's "Mark as End": drop any label, then label it.
         widget._unlabel_knot(contour, 0, display.knot, display.knot_y)
         widget._label_knot(contour.end_coords, 0, display.knot, display.knot_y)
 

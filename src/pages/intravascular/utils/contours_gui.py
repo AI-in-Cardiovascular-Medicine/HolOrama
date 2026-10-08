@@ -4,7 +4,12 @@ from PyQt6.QtWidgets import QMessageBox
 from domain.intravascular.types import ContourType, SegmentationTool
 from domain.intravascular.contour_presets import active_preset
 from domain.intravascular.io_types import Contour, clear_frame_annotations, is_contour_key
-from domain.intravascular.undo import push_frame_annotation_snapshot, push_pullback_contours_snapshot
+from domain.intravascular.knot_resampling import KnotHistory, without_closing_repeat
+from domain.intravascular.undo import (
+    push_contour_snapshot,
+    push_frame_annotation_snapshot,
+    push_pullback_contours_snapshot,
+)
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from pages.intravascular.utils.metrics import clear_lumen_measurements
 
@@ -12,12 +17,10 @@ from pages.intravascular.utils.metrics import clear_lumen_measurements
 def delete_all_on_frame(main_window):
     """Clear every contour, measurement, reference and wire angle on the current frame.
 
-    A single undo entry covers the lot, so Ctrl+Z brings the whole frame back in one press.
-    The frame's phase and its OCT label describe the frame rather than the drawing on it,
-    so they are left alone.
+    One undo entry restores the whole frame. Phase and OCT label describe the frame, not the
+    drawing on it, so they stay.
     """
-    if not main_window.image_displayed:
-        ErrorMessage(main_window, 'Cannot delete contours before reading input file')
+    if not _require_image(main_window, 'delete contours'):
         return
 
     frame = main_window.display.frame
@@ -32,20 +35,15 @@ def delete_all_on_frame(main_window):
     main_window.display.active_contour_index = 0
     main_window.save_contours_soon()
     main_window.display.update_display()
-    try:  # both pullback overviews read these contours, so they have to follow
-        main_window.longitudinal_view.plot_areas()
-    except Exception as exc:
-        logger.debug(f'Could not refresh the pullback overviews after Delete All: {exc}')
+    refresh_overviews(main_window)
 
 
 def delete_active_contour_on_all_frames(main_window):
     """Clear the active contour type on every frame of the pullback.
 
-    The affected frames go into a single undo entry, so Ctrl+Z restores the whole pullback
-    in one press.
+    All affected frames share one undo entry.
     """
-    if not main_window.image_displayed:
-        ErrorMessage(main_window, 'Cannot delete contours before reading input file')
+    if not _require_image(main_window, 'delete contours'):
         return
 
     display = main_window.display
@@ -84,21 +82,85 @@ def delete_active_contour_on_all_frames(main_window):
     main_window.status_bar.showMessage(f'Deleted {name} on {len(frames)} frames (Ctrl+Z undoes it)')
 
 
+def set_selected_contour_knots(main_window, count: int):
+    """Resample the selected contour to `count` knots, keeping its shape (see knot_resampling).
+
+    Each count reached is remembered per contour, so stepping back restores the earlier knots
+    instead of resampling a thinned contour. A run of changes is one Ctrl+Z entry, or a mouse
+    wheel turn would fill the small undo stack.
+    """
+    selected = _selected_knots(main_window)
+    if selected is None:
+        return
+    contour, ci, xs, ys, closed = selected
+    display = main_window.display
+    key = display.contour_key()
+    history_key = (display.frame, key, ci)
+    history = display.knot_histories.get(history_key)
+    if history is None or history.closed != closed or not history.holds(xs, ys):
+        # First change, or edited elsewhere since: start from the current knots
+        pinned = [
+            point for labels in (contour.start_coords, contour.end_coords) if ci < len(labels) for point in labels[ci]
+        ]
+        try:
+            history = KnotHistory(xs, ys, closed, display.knot_count_range, pinned)
+        except Exception as exc:
+            logger.debug(f'Cannot resample the knots of {key} #{ci}: {exc}')
+            return
+        display.knot_histories[history_key] = history
+
+    new_xs, new_ys = history.knots(count)
+    if len(new_xs) == len(xs):
+        return  # already at the count asked for, or as far as it goes
+
+    if history.is_original(xs, ys):
+        push_contour_snapshot(main_window.runtime_data, display.frame, key, ci)
+    else:
+        main_window.runtime_data.mark_unsaved()
+    contour.contours[ci] = (new_xs, new_ys)
+
+    main_window.save_contours_soon()
+    display.display_image(update_contours=True)
+    refresh_overviews(main_window)  # the area of a lumen or EEM shifts a little with its knots
+    defn = active_preset().get(display.active_contour_type)
+    main_window.status_bar.showMessage(f'{defn.name if defn else key}: {len(new_xs)} points')
+
+
+def step_selected_contour_knots(main_window, step: int):
+    """Move the selected contour's knot count by `step` (Shift+Wheel)."""
+    count = selected_contour_knot_count(main_window)
+    if count is not None:
+        set_selected_contour_knots(main_window, count + step)
+
+
+def selected_contour_knot_count(main_window) -> int | None:
+    """Selected contour's knot count (None if not resamplable)."""
+    selected = _selected_knots(main_window)
+    return len(selected[2]) if selected else None
+
+
 def new_contour(main_window, contour_type: ContourType):
-    if not main_window.image_displayed:
-        ErrorMessage(main_window, 'Cannot create manual contour before reading input file')
+    if not _require_image(main_window, 'create manual contour'):
         return
 
     main_window.display.set_active_contour_type(contour_type)
-
     main_window.display.start_contour(contour_type=contour_type)
     main_window.hide_contours_box.setChecked(False)
     main_window.contours_drawn = True
 
 
+def new_contour_append(main_window, contour_type: ContourType):
+    if not _require_image(main_window, 'create manual contour'):
+        return
+
+    main_window.display.set_active_contour_type(contour_type)
+    main_window.display.start_contour(contour_type=contour_type, append=True)
+    main_window.hide_contours_box.setChecked(False)
+    main_window.contours_drawn = True
+
+
 def new_measure(main_window, index: int):
-    if not main_window.image_displayed:
-        ErrorMessage(main_window, 'Cannot create manual measure before reading input file')
+    if not _require_image(main_window, 'create manual measure'):
         return
 
     main_window.display.start_measure(index)
@@ -106,8 +168,7 @@ def new_measure(main_window, index: int):
 
 
 def new_reference(main_window):
-    if not main_window.image_displayed:
-        ErrorMessage(main_window, 'Cannot create manual reference before reading input file')
+    if not _require_image(main_window, 'create manual reference'):
         return
 
     main_window.display.set_active_contour_type(ContourType.REFERENCE)
@@ -116,8 +177,7 @@ def new_reference(main_window):
 
 
 def new_angle(main_window, contour_type: ContourType, append: bool = False):
-    if not main_window.image_displayed:
-        ErrorMessage(main_window, 'Cannot create manual angle before reading input file')
+    if not _require_image(main_window, 'create manual angle'):
         return
 
     main_window.display.set_active_contour_type(contour_type)
@@ -126,8 +186,7 @@ def new_angle(main_window, contour_type: ContourType, append: bool = False):
 
 
 def set_tool(main_window, segmentation_tool: SegmentationTool):
-    if not main_window.image_displayed:
-        ErrorMessage(main_window, 'Cannot set tool before reading input file')
+    if not _require_image(main_window, 'set tool'):
         return
 
     if segmentation_tool == SegmentationTool.BRUSH:
@@ -146,17 +205,37 @@ def set_tool(main_window, segmentation_tool: SegmentationTool):
         main_window.display.enable_brush()
         return
 
-    # Any other tool: deactivate brush if it was on.
     main_window.display.disable_brush()
     main_window.display.active_segmentation_tool = segmentation_tool
 
 
-def new_contour_append(main_window, contour_type: ContourType):
+def _require_image(main_window, action: str) -> bool:
+    """Whether an image is loaded, telling the user `action` needs one if not."""
     if not main_window.image_displayed:
-        ErrorMessage(main_window, 'Cannot create manual contour before reading input file')
-        return
+        ErrorMessage(main_window, f'Cannot {action} before reading input file')
+    return main_window.image_displayed
 
-    main_window.display.set_active_contour_type(contour_type)
-    main_window.display.start_contour(contour_type=contour_type, append=True)
-    main_window.hide_contours_box.setChecked(False)
-    main_window.contours_drawn = True
+
+def refresh_overviews(main_window) -> None:
+    """Redraw both pullback overviews after a contour edit. A failure is only logged, the edit stands."""
+    try:
+        main_window.longitudinal_view.plot_areas()
+    except Exception as exc:
+        logger.debug(f'Could not refresh the pullback overviews: {exc}')
+
+
+def _selected_knots(main_window):
+    """(contour, index, xs, ys, closed) of the selected contour, or None if it cannot be
+    resampled (sector, measurement, mid-draw or drag)."""
+    display = main_window.display
+    if not main_window.image_displayed or display.drawing_mode or display.active_point_index is not None:
+        return None
+    if active_preset().is_angle(display.active_contour_type):
+        return None  # a sector's points mark angles, not a shape
+    contour = display._frame_contour()
+    ci = display.active_contour_index
+    if contour is None or ci >= len(contour.contours) or not contour.contours[ci] or not contour.contours[ci][0]:
+        return None
+    closed = contour.closed[ci] if ci < len(contour.closed) else True
+    xs, ys = without_closing_repeat(contour.contours[ci][0], contour.contours[ci][1], closed)
+    return contour, ci, xs, ys, closed

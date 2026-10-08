@@ -9,7 +9,7 @@ the result, as a metrics report, as contour CSVs, or as image/mask NIfTI pairs r
 train a segmentation model.
 
 Both modalities share the same contouring tools. IVUS pullbacks additionally get
-:doc:`gating` and :doc:`breathing`; OCT pullbacks instead get frame *tagging* and a
+:doc:`gating` and :doc:`breathing`, while OCT pullbacks instead get frame *tagging* and a
 per-frame image-quality rating.
 
 The layout
@@ -21,10 +21,11 @@ The layout
   🟡 **Reference**, 📏 **Measurement 1**, 📏 **Measurement 2**, the 📐 **Angle** dropdown
   (Angle Wire / Angle Blood) and ➕📐 **Add Wire** / ➕📐 **Add Blood**, which follows
   whichever the dropdown shows.
-  Exactly one is active at a time; which ones are enabled depends on the selected contour
+  Exactly one is active at a time, and which ones are enabled depends on the selected contour
   type.
 - **Row 2, contour selector:** a dropdown (Lumen / EEM / Calcium / Branch / Lipid /
-  Macrophage) plus **New Contour** and **+ Add Contour**.
+  Macrophage) plus **New Contour**, **+ Add Contour**, **🗑️ Delete All On Frame**,
+  **🗑️ Delete Current Contour On All** and the **Points** box (see `7. Draw contours`_).
 - **The image**, with a frame slider, a play button and a frame counter underneath.
 - **Checkboxes:** *Hide Contours*, *Hide Metrics*, *Mask mode*.
 
@@ -67,7 +68,7 @@ is turned into contours after the active contour preset (see :doc:`../configurat
 value becomes the contour type with that label, on every frame, replacing the contours there. One
 :kbd:`Ctrl+Z` undoes the whole import. The mask needs one slice per frame of the pullback.
 
-The mask is painted bottom to top by layer, so parts of most types are hidden under others — the
+The mask is painted bottom to top by layer, so parts of most types are hidden under others: the
 EEM under the wire shadow, a side branch under the lumen. Those parts are bridged rather than
 traced, so the EEM comes back as a smooth vessel wall instead of following the lumen through the
 wire shadow. Angular sectors come back as sectors about the image centre. A type lying inside
@@ -76,21 +77,26 @@ nearly everywhere it spans, as a ring if it does so all the way round the lumen,
 otherwise. Components under 20 pixels are ignored. Labels the preset does not define are
 offered a new preset with a row for each of them, as on the CCTA page.
 
+Every contour read from the mask gets ``n_interactive_points`` knot points (see
+:doc:`../configuration`), plaques included. They are placed to follow the mask outline as
+closely as that count allows. To change the count of one contour afterwards, use the
+**Points** box (see `7. Draw contours`_).
+
 2. Set the window and zoom
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- Drag :kbd:`RMB` left/right and up/down to change window level and width; :kbd:`R` resets.
-- Drag :kbd:`LMB` up/down to zoom around the cursor; :kbd:`F` resets.
+- Drag :kbd:`RMB` left/right and up/down to change window level and width. :kbd:`R` resets.
+- Drag :kbd:`LMB` up/down to zoom around the cursor. :kbd:`F` resets.
 - Drag :kbd:`Ctrl`\ +\ :kbd:`LMB` to pan the image inside its widget.
 - :kbd:`C` toggles the colour map.
 
-Sensitivity of both windowing and zoom is configurable; see :doc:`../configuration`.
+Sensitivity of both windowing and zoom is configurable (see :doc:`../configuration`).
 
 3. Tagging / Gating Images
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The first step should be to only analyze frames of interest. This can either be done by
-tagging images in OCT or gating in IVUS; both matter because they let you export only the
+tagging images in OCT or gating in IVUS. Both matter because they let you export only the
 tagged / gated frames as nifti for training.
 
 .. note::
@@ -116,8 +122,8 @@ systole and diastole over a range.
 
 **OCT.** Mark frames with *Tagged Frame*, or use **Tag Frames by Distance** to tag frames
 a fixed distance apart (in mm or in frames) within a frame range. The spacing is counted
-out from the **frame on screen**, in both directions — on frame 375 of 380 with a step of
-4 you get 375, 379 and 371, 367, … back down — so the frame being looked at is always one
+out from the **frame on screen**, in both directions. On frame 375 of 380 with a step of
+4 you get 375, 379 and 371, 367, … back down, so the frame being looked at is always one
 of the tagged ones. Rating each frame is a step of its own, covered below.
 A frame labelled **Guiding Catheter** shows the catheter rather than the vessel, so it
 never also carries a tag: labelling one (or a whole **Catheter Range**) drops its tag, and
@@ -166,13 +172,13 @@ models as demonstrated in :ref:`fig-tagging`
 6. Classify frame
 ~~~~~~~~~~~~~~~~~
 
-*OCT only.* IVUS pullbacks carry no frame label; they mark diastole and systole instead
+*OCT only.* IVUS pullbacks carry no frame label. They mark diastole and systole instead
 (step 3).
 
 Every frame carries **exactly one** label, picked from the two rows above the schematic:
 the frame labels **Guiding Catheter**, **Unanalyzable** and **Unlabeled**, and the five
 **Frame Quality** ratings *Very Bad*, *Bad*, *Ok*, *Good* and *Very Good*. All eight are
-one choice, so picking any of them replaces whatever the frame carried before — a rating
+one choice, so picking any of them replaces whatever the frame carried before: a rating
 clears a flag, a flag clears a rating. The buttons always show the label of the frame on
 screen, and every frame starts out **Unlabeled**.
 
@@ -199,12 +205,12 @@ screen, and every frame starts out **Unlabeled**.
    one click labels the frame on screen and every frame proximal to it (see
    :ref:`fig-guiding-catheter`). **Clear Catheter Range** puts every frame carrying the
    label back to **Unlabeled** and is greyed out while none does. A guiding-catheter frame
-   cannot be tagged — its *Tagged Frame* checkbox is greyed out and an existing tag is
-   dropped — and the vessel schematic veils the whole stretch in grey.
+   cannot be tagged (its *Tagged Frame* checkbox is greyed out and an existing tag is
+   dropped), and the vessel schematic veils the whole stretch in grey.
 
 The label describes the frame rather than the drawing on it: it is saved in
 ``<case>_contours_ho_<version>.json`` and comes back when the case is reopened, and
-**Delete All On Frame** leaves it untouched. It is not one of the report's columns; the
+**Delete All On Frame** leaves it untouched. It is not one of the report's columns, since the
 report holds what was measured on each frame.
 
 7. Draw contours
@@ -243,11 +249,11 @@ then click in the image to place points.
      - Available tools
    * - Lumen
      - :kbd:`E`
-     - —
+     - n/a
      - ⭕closed spline, 🖌️ brush
    * - EEM
      - :kbd:`Q`
-     - —
+     - n/a
      - ⭕closed spline, 🖌️ brush
    * - Calcium
      - :kbd:`7`
@@ -278,35 +284,48 @@ then click in the image to place points.
   To return to a neutral state (no tool, Lumen as active contour), 
   press :kbd:`Esc`. To delete the currently clicked contour (also works for a single contour,
   when there are several of the same type), press :kbd:`Delete`. To delete all it's faster to
-  click the Button ``🗑️ Delete All On Frame``.
+  click the Button ``🗑️ Delete All On Frame``. ``🗑️ Delete Current Contour On All`` deletes
+  the type selected in the dropdown on every frame of the pullback, after a confirmation,
+  and one :kbd:`Ctrl+Z` brings all of them back.
 
 Drawing rules:
 
 - **Closed spline**: left-click to place knot points, then click the first point again to
   close the contour.
-- **Open spline**: left-click to place points; the contour stays open. For calcium, the
-  angle from the lumen centre to the start and end point is computed automatically.
+- **Open spline**: left-click to place points, and the contour stays open. Its first knot point
+  is its start (yellow) and its last its end (red), each with a line out to the image edge.
+  They stay so whatever you do to the points. Clicking on the very start or end of the
+  line adds a point just inside the contour, not a new end. For calcium, the angle from
+  the lumen centre to the start and end point is computed automatically.
 - A plaque contour (calcium, lipid, macrophage) marks the **luminal** side of the plaque,
-  which then fills outwards to the EEM in the mask. An open arc can only mean that; a
+  which then fills outwards to the EEM in the mask. An open arc can only mean that, but a
   closed contour drawn in the wall is the plaque itself, filled in. A closed contour drawn
-  right **around the lumen** — a circumferential calcification — is read as a luminal
+  right **around the lumen** (a circumferential calcification) is read as a luminal
   boundary too, so the wall outside it is what gets filled.
-- **Brush**: paint the structure directly. Requires *Mask mode* to be enabled; **hover the
+- **Brush**: paint the structure directly. Requires *Mask mode* to be enabled. **Hover the
   🖌️ button to get the radius popup**.
 - Drag an existing knot point. To move it, click on the contour line to insert a new point.
   :kbd:`RMB` on a knot point removes it.
 - :kbd:`Ctrl`\ +\ mouse wheel shrinks or expands the active contour. Every knot point
   moves one pixel per tick toward or away from the centroid.
+- The **Points** box sets how many knot points the selected contour has (3–40), and
+  :kbd:`Shift`\ +\ mouse wheel on the image does the same one point per tick. Only the
+  selected contour changes, also when a frame carries several of its type. Removing a
+  point drops the one the shape needs least, and an added one goes where the contour
+  strays furthest from its original shape, so the shape is kept as well as the count
+  allows. Every count passed is remembered: going down and back up gives the original
+  points back. An open spline's ends and labelled start/end points are never removed.
 - Clicking any drawn contour makes it the active one.
-- :kbd:`Esc` leaves drawing mode; :kbd:`Ctrl+Z` undoes the last contour edit (draw, delete,
-  drag, brush, scale or copy; the last five edits are kept).
+- :kbd:`Esc` leaves drawing mode, and :kbd:`Ctrl+Z` undoes the last contour edit (draw, delete,
+  drag, brush, scale, copy or point count, with the last five edits kept). A whole run of
+  point-count changes on one contour counts as one edit.
 
 Several shortcuts save a lot of clicking, but don't have a button representation:
 
 - :kbd:`Shift+Q` spawns an EEM contour from the existing lumen contour on the current
   frame, by expanding its knot points radially from the lumen centroid. It does nothing if
   an EEM contour already exists there.
-- :kbd:`Shift+A` / :kbd:`Shift+D` copy the active contour from the previous/next frame;
+- :kbd:`Shift+A` / :kbd:`Shift+D` copy the active contour from the previous/next frame, and
   :kbd:`Shift+S` / :kbd:`Shift+W` copy it from the previous/next gated or tagged frame
   (only when the current frame is itself gated/tagged).
 
@@ -369,7 +388,7 @@ Colours of the start/end markers are configurable (``color_start_point``,
 ``color_end_point``).
 
 .. tip::
-   Be consistent about *why* you mark a region uncertain across a study; that consistency
+   Be consistent about *why* you mark a region uncertain across a study. That consistency
    is what a model can actually learn from.
 
 Blood artefacts are common in OCT images, particularly in the ostial regions. In the most severe
@@ -398,19 +417,19 @@ where the blood impairs the visibility of structures, as in the example below:
   then **opens as you move the pointer**, its second boundary dotted and the opening shown
   in degrees. Click again to fix it, and the dotted boundary turns solid. Because the
   opening is tracked as you turn rather than derived from the two clicks, a sector can be
-  opened **past 180 degrees** — keep turning the same way — and turning back through the
+  opened **past 180 degrees** (keep turning the same way), and turning back through the
   first boundary opens it the other way instead. Either handle can be **dragged**
-  afterwards to re-aim that boundary; the other one stays put.
+  afterwards to re-aim that boundary, and the other one stays put.
 - 📐 **Angle Blood** marks a blood artefact the same way, in dark red (:kbd:`B`, and
-  :kbd:`Ctrl+B` to add). It is the same tool and the same shape — pick it from the 📐
+  :kbd:`Ctrl+B` to add). It is the same tool and the same shape, so pick it from the 📐
   dropdown, which also points ➕📐 **Add** at it.
 - ➕📐 **Add Wire** (:kbd:`Ctrl+3`) marks another sector of the selected type on the same
-  frame, keeping the ones already there; some pullbacks show more than one wire. Drawing
+  frame, keeping the ones already there, since some pullbacks show more than one wire. Drawing
   with **Angle Wire** instead replaces every wire on the frame. Sectors behave like the
   other multi-instance contours (calcification, lipid, …): each is stored separately, all
-  of them are exported to the mask (wire label 9, blood label 10 — blood sits at the
-  very back, so a wire shadow crossing it stays visible), and :kbd:`Ctrl+Z`
-  undoes the last edit — placing one, or dragging a boundary.
+  of them are exported to the mask (wire label 9, blood label 10, with blood at the
+  very back so a wire shadow crossing it stays visible), and :kbd:`Ctrl+Z`
+  undoes the last edit, whether placing one or dragging a boundary.
 - 🟡 **Reference** places a reference point on the frame. This point defines the rotational
   reference used when the pullback is later aligned in the :doc:`fusion` module.
 - :kbd:`G` hides the measurement overlays, :kbd:`H` hides all contours.

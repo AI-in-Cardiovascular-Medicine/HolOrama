@@ -3,7 +3,7 @@
 Keyboard & mouse reference
 ==========================
 
-Shortcuts cannot currently be remapped from the interface; changing them requires editing
+Shortcuts cannot currently be remapped from the interface. Changing them requires editing
 ``src/gui/shortcuts.py``.
 
 .. figure:: ../media/keyboard.webp
@@ -88,7 +88,7 @@ Drawing
      - New ``EEM`` contour
    * - :kbd:`Shift+Q`
      - Spawn an ``EEM`` contour from the existing ``lumen`` contour on this frame (radial
-       expansion from the lumen centroid); does nothing if an EEM already exists
+       expansion from the lumen centroid). Does nothing if an EEM already exists
    * - :kbd:`7` / :kbd:`Ctrl+7`
      - New / additional ``calcification`` contour
    * - :kbd:`8` / :kbd:`Ctrl+8`
@@ -108,7 +108,8 @@ Drawing
    * - :kbd:`Delete`
      - Delete the active contour
    * - :kbd:`Ctrl+Z`
-     - Undo the last contour edit (draw, delete, drag, brush, scale or copy; last 5 kept)
+     - Undo the last contour edit (draw, delete, drag, brush, scale, copy or point count,
+       last 5 kept)
    * - :kbd:`Esc`
      - Leave drawing mode, return to a neutral state
 
@@ -192,11 +193,14 @@ Mouse
    * - :kbd:`RMB` on a knot point
      - Remove that point
    * - :kbd:`RMB` drag
-     - Windowing (level and width); :kbd:`R` resets
+     - Windowing (level and width). :kbd:`R` resets
    * - :kbd:`LMB` drag (empty area)
-     - Zoom around the cursor; :kbd:`F` resets
+     - Zoom around the cursor. :kbd:`F` resets
    * - :kbd:`Ctrl` + :kbd:`LMB` drag
      - Move the whole image
+   * - :kbd:`Shift` + mouse wheel
+     - One knot point more (up) or fewer (down) on the selected contour, keeping its
+       shape. Same as the **Points** box
    * - :kbd:`Ctrl` + mouse wheel
      - Shrink or expand the active contour. Every knot point moves 1 px per tick toward
        or away from the centroid
@@ -233,7 +237,7 @@ Mouse, slice views:
    * - Action
      - Effect
    * - :kbd:`LMB` click
-     - Move the shared cursor; the other two views follow
+     - Move the shared cursor, and the other two views follow
    * - :kbd:`LMB` drag (brush enabled)
      - Paint or erase the selected label
    * - :kbd:`RMB` drag
