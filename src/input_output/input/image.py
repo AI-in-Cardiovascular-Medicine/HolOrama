@@ -232,7 +232,12 @@ def read_nifti_mask(main_window) -> None:
         return
 
     display = main_window.display
+    # Every type gets the full n_interactive_points (even plaque). Ensures sufficient quality at read in (reduce with button/shortcut)
     knots = display.n_interactive_points
+
+    def knots_for(defn):
+        return knots
+
     handle_radius = display._angle_handle_radius() / display.scaling_factor
     frame_data_dct = main_window.runtime_data.frame_data_dct
     progress = QProgressDialog('Reading the mask...', 'Cancel', 0, len(mask_arr), main_window)
@@ -246,9 +251,7 @@ def read_nifti_mask(main_window) -> None:
             QApplication.processEvents()
             if progress.wasCanceled():
                 return  # nothing written yet
-            read[frame] = frame_contours(
-                mask_arr[frame], preset, lambda defn: knots if not defn.appendable else knots // 2, handle_radius
-            )
+            read[frame] = frame_contours(mask_arr[frame], preset, knots_for, handle_radius)
     except Exception:
         traceback.print_exc()
         ErrorMessage(main_window, 'Error converting mask to contours')

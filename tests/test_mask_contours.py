@@ -69,8 +69,15 @@ def _paint(frame_data, preset):
     return contours_to_mask(np.zeros((1, DIM, DIM), dtype=np.uint8), [0], {0: frame_data}, preset)[0]
 
 
+N_KNOTS = 20  # n_interactive_points, which every type read off a mask gets
+
+
+def _knots_for(defn):
+    return N_KNOTS
+
+
 def _read(mask, preset):
-    contours, centroid = frame_contours(mask, preset, lambda d: 20 if not d.appendable else 10, handle_radius=100.0)
+    contours, centroid = frame_contours(mask, preset, _knots_for, handle_radius=100.0)
     return FrameData(contours=contours, centroid=centroid)
 
 
@@ -182,6 +189,28 @@ class TestWhatComesBack:
         frame_data.lumen = Contour(contours=[_circle(LUMEN_R)], closed=[True])
         _, read, second = _round_trip(frame_data)
         assert {key for key, contour in read.contours.items() if contour.contours} == {'lumen'}
+
+
+def _lobed(radius, lobes, depth, n=200):
+    angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    radii = radius * (1 + depth * np.sin(lobes * angles))
+    return (
+        [float(CX + r * math.cos(a)) for r, a in zip(radii, angles)],
+        [float(CY + r * math.sin(a)) for r, a in zip(radii, angles)],
+    )
+
+
+@pytest.mark.parametrize('lobes, depth', [(3, 0.2), (4, 0.3), (7, 0.12)])
+def test_a_ragged_contour_comes_back_with_n_interactive_points_knots(lobes, depth):
+    """However much the outline bends, a contour read off a mask edits like a drawn one:
+    as many knots as its type gets, the spline fitted by where they go."""
+    frame_data = _vessel(lipid=_closed(_circle(14, cx=CX + 80, cy=CY)))
+    frame_data.lumen = Contour(contours=[_lobed(LUMEN_R, lobes, depth)], closed=[True])
+    first, read, second = _round_trip(frame_data)
+    assert len(read.lumen.contours[0][0]) == N_KNOTS
+    assert len(read.eem.contours[0][0]) == N_KNOTS
+    assert len(read.contour('lipid').contours[0][0]) == N_KNOTS
+    assert _iou(first, second, LABELS['lumen']) >= MIN_IOU
 
 
 def test_a_thrombus_in_the_lumen_of_a_custom_preset():

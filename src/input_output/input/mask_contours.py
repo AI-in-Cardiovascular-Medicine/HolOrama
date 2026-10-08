@@ -192,30 +192,69 @@ def _boundary_knots(part: np.ndarray, frame: _Frame, defn: ContourTypeDef, n_kno
 
 
 def _fitted(line: np.ndarray, n_knots: int) -> list[Point] | None:
-    """Knots spread evenly along the closed (row, col) `line` — as many as `n_knots`, or
-    more, a quarter of that at a time, until the spline through them keeps 95% of the line
-    within the tolerance for its length (see FIT_TOLERANCE_PX). Never more than twice `n_knots`: past that a ragged mask edge
-    would only turn into a contour too dense to edit."""
+    """`n_knots` knots along the closed (row, col) `line` — exactly as many as a contour of
+    the type gets when drawn (n_interactive_points), so it edits like one.
+
+    The count is fixed, so the fit is won by where they go: spread evenly by length first,
+    then — while the spline through them strays from more than 5% of the line by more than
+    the tolerance for its length (see FIT_TOLERANCE_PX) — shifted along it and drawn
+    towards where it bends, keeping whichever placement fits best."""
     from input_output.output.imgs_masks import _smooth_contour  # the spline the mask is painted with
 
     if len(line) < 3:
         return None
+    count = min(max(n_knots, 3), len(line))
     # Distance along the line, so knots are spread by length and not by how many boundary
     # points a stretch happens to have; a hidden stretch left out of it is a jump in it.
     steps = np.hypot(*np.diff(line, axis=0).T)
-    along = np.concatenate([[0.0], np.cumsum(steps)])
-    total = along[-1] + float(np.hypot(*(line[0] - line[-1])))
+    closing = float(np.hypot(*(line[0] - line[-1])))
+    total = float(steps.sum()) + closing
     tolerance = float(np.clip(total * FIT_TOLERANCE_PER_PX, *FIT_TOLERANCE_PX))
-    step = max(n_knots // 4, 1)
-    picks: np.ndarray = np.arange(len(line))
-    for count in range(n_knots, 2 * n_knots + 1, step):
-        targets = np.linspace(0.0, total, min(count, len(line)), endpoint=False)
-        picks = np.unique(np.searchsorted(along, targets).clip(0, len(line) - 1))
+    lengths = np.append(steps, closing)  # from each point to the next, round the loop
+    bend = _bend(line)
+
+    def placement(weight: float, phase: float) -> np.ndarray:
+        # Each point's share of the line: its length, more of it where the line bends.
+        shares = lengths * (1.0 + weight * bend)
+        along = np.concatenate([[0.0], np.cumsum(shares)[:-1]])
+        targets = (np.arange(count) + phase) * (along[-1] + shares[-1]) / count
+        return np.unique(np.searchsorted(along, targets).clip(0, len(line) - 1))
+
+    def error(picks: np.ndarray) -> float:
         xs, ys = _smooth_contour(line[picks, 1], line[picks, 0], is_closed=True)
         distances, _ = cKDTree(np.column_stack([ys, xs])).query(line)
-        if np.percentile(distances, 95) <= tolerance:
+        return float(np.percentile(distances, 95))
+
+    best, best_error = None, np.inf
+    for weight, phase in _PLACEMENTS:
+        picks = placement(weight, phase)
+        if len(picks) < 3:
+            continue
+        fit = error(picks)
+        if fit < best_error:
+            best, best_error = picks, fit
+        if best_error <= tolerance:
             break
-    return [(float(line[i, 1]), float(line[i, 0])) for i in picks]
+    if best is None:
+        return None
+    return [(float(line[i, 1]), float(line[i, 0])) for i in best]
+
+
+# (bend weight, phase) of the knot placements _fitted tries, plain even spacing first
+_PLACEMENTS = ((0.0, 0.0), (0.0, 0.5), (1.0, 0.0), (1.0, 0.5), (3.0, 0.0), (3.0, 0.5))
+
+
+def _bend(line: np.ndarray) -> np.ndarray:
+    """Per point of the closed `line`, how sharply it turns there, 1 on average (0 for a
+    line that turns evenly). Measured over a few points either side, so the pixel
+    staircase of a mask edge does not count as bending."""
+    span = max(len(line) // 50, 2)
+    ahead = np.roll(line, -span, axis=0) - line
+    behind = line - np.roll(line, span, axis=0)
+    turn = np.abs(np.arctan2(*ahead.T) - np.arctan2(*behind.T))
+    turn = np.minimum(turn, 2 * np.pi - turn)
+    mean = turn.mean()
+    return turn / mean if mean > 0 else np.zeros(len(line))
 
 
 def _outer_line(part: np.ndarray) -> np.ndarray | None:
