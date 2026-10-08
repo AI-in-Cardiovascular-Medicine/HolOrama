@@ -24,8 +24,10 @@ class FusionRuntimeData:
         self.centerline_lca: Any | None = None
         self.results: dict | None = None  # multimodars "results" dict (mesh, *_points, ...)
         self.vessel_tree: Any | None = None  # PyDiscretizedVesselTree
-        self.selected_rca_reference_index: int = 0  # index into vessel_tree.rca_references
-        self.selected_lca_reference_index: int = 0  # index into vessel_tree.lca_references — inspection-only
+        # Per vessel ('rca'/'lca'): selected branch (0 = main, n = side branch n) and the
+        # index into that branch's reference list (see FusionPage._branch_references).
+        self.selected_branch: dict[str, int] = {'rca': 0, 'lca': 0}
+        self.selected_reference_index: dict[str, int] = {'rca': 0, 'lca': 0}
 
         # -- Column 2: intravascular alignment -------------------------------------------
         self.iv_geometry_pair: Any | None = None  # PyGeometryPair from from_file_singlepair

@@ -24,7 +24,7 @@ class IntravascularColumn(QWidget):
     run_load_requested = pyqtSignal()
     run_align_requested = pyqtSignal()
     run_align_manual_requested = pyqtSignal()
-    reference_vessel_changed = pyqtSignal(str)  # 'rca' or 'lca'
+    reference_centerline_changed = pyqtSignal(str, int)  # vessel ('rca'/'lca'), branch (0 = main)
     reference_index_changed = pyqtSignal(int)  # index chosen from the Reference combo
     run_label_anomalous_requested = pyqtSignal()
 
@@ -145,15 +145,21 @@ class IntravascularColumn(QWidget):
         layout = QVBoxLayout(box)
 
         self._ref_vessel_combo = QComboBox()
-        self._ref_vessel_combo.addItems(['RCA', 'LCA'])
-        self._ref_vessel_combo.setToolTip('Which coronary to align the pullback onto.')
+        self._ref_vessel_combo.setToolTip(
+            'Which coronary branch to align the pullback onto — the main vessel or one of its '
+            'side branches (listed once the vessel tree is discretized).'
+        )
+        self.set_centerline_choices([('RCA', 'rca', 0), ('LCA', 'lca', 0)], 'rca', 0)
         self._ref_vessel_combo.currentIndexChanged.connect(
-            lambda _: self.reference_vessel_changed.emit(self.reference_vessel())
+            lambda _: self.reference_centerline_changed.emit(self.reference_vessel(), self.reference_branch())
         )
         layout.addLayout(_row('Centerline:', self._ref_vessel_combo))
 
         self._ref_index_combo = QComboBox()
-        self._ref_index_combo.setToolTip('Same reference list as the Vessel Tree tab, for the centerline above.')
+        self._ref_index_combo.setToolTip(
+            'References reachable on the branch above (its ostium, then each branch leaving it) — '
+            'same list as the Vessel Tree tab.'
+        )
         self._ref_index_combo.currentIndexChanged.connect(self._on_ref_index_changed)
         layout.addLayout(_row('Reference:', self._ref_index_combo))
 
@@ -164,10 +170,6 @@ class IntravascularColumn(QWidget):
         }
         for lbl in self._ref_labels.values():
             layout.addWidget(lbl)
-        self._branch_index = QSpinBox()
-        self._branch_index.setRange(0, 20)
-        self._branch_index.setToolTip('centerline.get_branch(index) — alignment needs a single-branch centerline')
-        layout.addLayout(_row('Branch index:', self._branch_index))
         return box
 
     def _build_align_group(self) -> QGroupBox:
@@ -267,11 +269,33 @@ class IntravascularColumn(QWidget):
         self._ref_labels['inferior'].setText(f'Inferior: {_fmt_point(inferior)}')
 
     def reference_vessel(self) -> str:
-        return 'rca' if self._ref_vessel_combo.currentText() == 'RCA' else 'lca'
+        data = self._ref_vessel_combo.currentData()
+        return data.split(':')[0] if data else 'rca'
+
+    def reference_branch(self) -> int:
+        """0 for the main vessel, n for side branch n — the centerline.get_branch() id."""
+        data = self._ref_vessel_combo.currentData()
+        return int(data.split(':')[1]) if data else 0
+
+    def set_centerline_choices(self, choices: list[tuple[str, str, int]], vessel: str, branch: int) -> None:
+        """choices are (label, vessel, branch) triples; selects (vessel, branch) without emitting."""
+        combo = self._ref_vessel_combo
+        combo.blockSignals(True)
+        combo.clear()
+        for label, v, b in choices:
+            combo.addItem(label, f'{v}:{b}')
+        combo.blockSignals(False)
+        self.set_selected_centerline(vessel, branch)
+
+    def set_selected_centerline(self, vessel: str, branch: int) -> None:
+        combo = self._ref_vessel_combo
+        combo.blockSignals(True)
+        combo.setCurrentIndex(max(0, combo.findData(f'{vessel}:{branch}')))
+        combo.blockSignals(False)
 
     def set_reference_choices(self, labels: list[str]) -> None:
         """Repopulate the Reference dropdown — same label list as the Vessel Tree tab's
-        RCA/LCA dropdown for whichever vessel is currently selected above."""
+        reference dropdown for whichever vessel/branch is currently selected above."""
         self._ref_index_combo.blockSignals(True)
         self._ref_index_combo.clear()
         self._ref_index_combo.addItems(labels)
@@ -310,9 +334,6 @@ class IntravascularColumn(QWidget):
             'sys_label': self._label_sys_edit.text(),
             **common,
         }
-
-    def branch_index(self) -> int:
-        return self._branch_index.value()
 
     def align_kwargs(self) -> dict:
         return {
