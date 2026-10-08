@@ -1,17 +1,14 @@
 """Changing how many knots a contour has while keeping its shape.
 
-The shape kept is the contour as it was when the count was first changed: the spline the
-display draws through its original knots (the *reference*). Every count is reached one
-knot at a time from the one next to it, and remembered, so walking the count down and back
-up returns the very knots passed on the way — the original ones included — instead of
-resampling an already thinned contour and losing what was thinned away.
+The shape kept is the spline the display draws through the original knots (the
+*reference*). Each count is reached one knot at a time from its neighbour and remembered,
+so walking the count down and back up returns the same knots, originals included, instead
+of resampling an already thinned contour.
 
-* One knot fewer: whichever knot the spline through the rest strays least from the
-  reference without. Knots that must stay where they are — an open contour's ends, a knot
-  labelled start or end — are never taken.
+* One knot fewer: drop the knot whose removal leaves the spline closest to the reference.
+  Pinned knots (an open contour's ends, a knot labelled start or end) are never dropped.
 * One knot more: on the reference, where the spline through the current knots strays
-  furthest from it; where it strays nowhere, halfway along the longest stretch between two
-  knots.
+  furthest from it, or halfway along the longest stretch if it strays nowhere.
 """
 
 from __future__ import annotations
@@ -32,8 +29,8 @@ Knots = tuple[list[float], list[float]]
 
 
 def _fit(xs: Sequence[float], ys: Sequence[float], closed: bool):
-    """The spline the display draws through the knots (see SplineGeometry.interpolate):
-    its tck, and the parameter of each knot (without the closing repeat)."""
+    """Fit the display's spline (see SplineGeometry.interpolate): its tck and each knot's
+    parameter, closing repeat excluded."""
     xs, ys = list(xs), list(ys)
     if closed:
         xs, ys = xs + [xs[0]], ys + [ys[0]]
@@ -43,15 +40,15 @@ def _fit(xs: Sequence[float], ys: Sequence[float], closed: bool):
 
 
 def _curve(points: np.ndarray, closed: bool, samples: int) -> np.ndarray:
-    """`samples` points along the spline through `points` (n, 2)."""
+    """Points on the spline through `points` (n, 2)."""
     tck, _ = _fit(points[:, 0].tolist(), points[:, 1].tolist(), closed)
     xs, ys = splev(np.linspace(0.0, 1.0, samples, endpoint=not closed), tck)
     return np.column_stack([xs, ys])
 
 
 def without_closing_repeat(xs: Sequence[float], ys: Sequence[float], closed: bool) -> Knots:
-    """The knots of a contour, without the copy of the first a closed one may end on (see
-    SplineGeometry._ensure_closed) — as many as it has handles."""
+    """A contour's knots without the closing repeat of the first (see
+    SplineGeometry._ensure_closed), one per handle."""
     xs, ys = list(xs), list(ys)
     if closed and len(xs) > 1 and xs[0] == xs[-1] and ys[0] == ys[-1]:
         xs, ys = xs[:-1], ys[:-1]
@@ -59,7 +56,7 @@ def without_closing_repeat(xs: Sequence[float], ys: Sequence[float], closed: boo
 
 
 class KnotHistory:
-    """Every knot count one contour has been resampled to, from its original knots."""
+    """A contour's knots at every count reached from its originals."""
 
     def __init__(
         self,
@@ -100,7 +97,7 @@ class KnotHistory:
         return max(MAX_KNOTS, self.original_count)
 
     def knots(self, count: int) -> Knots:
-        """The contour with `count` knots (clamped to what it can have)."""
+        """The contour at `count` knots, clamped."""
         count = int(np.clip(count, self.min_count, self.max_count))
         while count < min(self._states):
             fewest = min(self._states)
@@ -118,8 +115,8 @@ class KnotHistory:
         return [float(x) for x in xs], [float(y) for y in ys]
 
     def holds(self, xs: Sequence[float], ys: Sequence[float], tolerance: float = 1e-4) -> bool:
-        """Whether `xs`, `ys` are one of the contours this history has handed out — so
-        the contour has not been edited in some other way since."""
+        """Whether `xs`, `ys` is a contour this history handed out, so not edited
+        otherwise since."""
         xs, ys = without_closing_repeat(xs, ys, self.closed)
         if len(xs) not in self._states:
             return False
@@ -136,7 +133,7 @@ class KnotHistory:
         return np.column_stack(splev(params, self._tck))
 
     def _deviation(self, params: np.ndarray) -> np.ndarray:
-        """Per reference sample, how far the spline through the knots at `params` is."""
+        """Per reference sample, distance to the spline at `params`."""
         curve = _curve(self._points(params), self.closed, 2 * _SAMPLES)
         distances, _ = cKDTree(curve).query(self._reference)
         return distances
@@ -149,7 +146,7 @@ class KnotHistory:
             candidate = np.delete(params, i)
             try:
                 error = float(np.mean(self._deviation(candidate) ** 2))
-            except Exception:  # a spline through what is left could not be fitted
+            except Exception:  # no spline fits what is left
                 continue
             if error < best_error:
                 best, best_error = candidate, error
@@ -163,8 +160,8 @@ class KnotHistory:
         return np.sort(np.append(params, new))
 
     def _middle_of_longest_stretch(self, params: np.ndarray) -> float:
-        """Halfway between the two knots furthest apart along the reference (a closed
-        contour's last stretch runs on round to its first knot)."""
+        """Midpoint of the longest knot gap along the reference (closed: the last
+        gap wraps to the first knot)."""
         ends = np.append(params[1:], params[0] + 1.0) if self.closed else params[1:]
         lengths = ends - params[: len(ends)]
         longest = int(lengths.argmax())

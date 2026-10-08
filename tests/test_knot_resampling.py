@@ -1,8 +1,8 @@
-"""Tests for changing how many knots a contour has (domain.intravascular.knot_resampling)
-and the Points control / Shift+Wheel that drive it (pages.intravascular.utils.contours_gui).
+"""Tests for changing a contour's knot count (domain.intravascular.knot_resampling) and its
+Points control / Shift+Wheel (pages.intravascular.utils.contours_gui).
 
-The bar: the shape survives, a count once reached comes back exactly — down and up again
-loses nothing — and only the selected contour changes, undone by one Ctrl+Z.
+The shape survives, a count once reached returns exactly, and only the selected contour
+changes (one Ctrl+Z).
 """
 
 import math
@@ -39,7 +39,7 @@ def _arc(n=12):
 
 
 def _curve(xs, ys, closed, samples=2000):
-    """The spline the display draws through the knots, densely."""
+    """The drawn spline through the knots, densely."""
     xs, ys = list(xs), list(ys)
     if closed:
         xs, ys = xs + [xs[0]], ys + [ys[0]]
@@ -48,7 +48,7 @@ def _curve(xs, ys, closed, samples=2000):
 
 
 def _strays(knots, reference_knots, closed=True) -> float:
-    """How far (px, at most) the spline through `knots` strays from that through `reference_knots`."""
+    """Max gap (px) between the splines through `knots` and `reference_knots`."""
     distances, _ = cKDTree(_curve(*knots, closed)).query(_curve(*reference_knots, closed))
     return float(distances.max())
 
@@ -133,7 +133,7 @@ class TestKnotHistory:
 
 @pytest.fixture
 def main_window():
-    """Stub main_window on frame 0: a lumen and two calcium contours, the second selected."""
+    """Stub window: a lumen and two calcium contours, second selected."""
     runtime_data = RuntimeData()
     frame_data = FrameData()
     frame_data.lumen = Contour(contours=[_lobed()], closed=[True], start_coords=[[]], end_coords=[[]])

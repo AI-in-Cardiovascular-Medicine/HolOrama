@@ -68,7 +68,7 @@ analysis outputs are unaffected and are still written next to the file you opene
    * - ``angle_handle_radius_mm``
      - How far from the image centre an angular sector's two handles and its arc are
        drawn (default 5 mm). Only the *direction* of a sector's points means anything,
-       so this is purely where they are shown; it is pulled inside the image for
+       so this is purely where they are shown. It is pulled inside the image for
        pullbacks whose field of view does not reach that far.
    * - ``alpha_contour``
      - Contour fill transparency, 0–255 (higher is more opaque).
@@ -92,10 +92,10 @@ Parameters of the image-based gating and breathing algorithms. See
      - Heart-rate search range in Hz for cardiac-frequency detection. The defaults
        (0.75-3.33 Hz) cover roughly 45-200 bpm, i.e. rest through stress.
    * - ``bandpass_lo_frac``
-     - Lower bandpass cutoff as a fraction of the detected cardiac frequency; removes the
+     - Lower bandpass cutoff as a fraction of the detected cardiac frequency. It removes the
        slow pullback trend (sub-cardiac drift).
    * - ``bandpass_hi_frac``
-     - Upper bandpass cutoff as a fraction of the detected cardiac frequency; passes the
+     - Upper bandpass cutoff as a fraction of the detected cardiac frequency. It passes the
        2nd harmonic while removing speckle noise.
    * - ``breathing_bins``
      - Number of bins per breathing half-cycle used by the *Filtered* (breathing-corrected)
@@ -216,8 +216,8 @@ Which contour types the intravascular page offers is set by a **contour preset**
        wire shadow sits just below it.
 
 The lumen and the EEM are always the first two rows. The keyboard shortcuts go to the rows
-in order (``E``, ``Q``, ``7``-``0`` for spline types, ``3`` and ``B`` for angles); further
-rows have none. The built-in **Default** preset is read-only — duplicate it to change it.
+in order (``E``, ``Q``, ``7``-``0`` for spline types, ``3`` and ``B`` for angles), and further
+rows have none. The built-in **Default** preset is read-only, so duplicate it to change it.
 
 Each preset is one JSON file, so it can be exported and shared. User presets are kept in
 ``%LOCALAPPDATA%\HolOrama\presets\intravascular`` (Windows installer) or

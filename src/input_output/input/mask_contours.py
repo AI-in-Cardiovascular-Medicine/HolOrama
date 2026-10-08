@@ -1,25 +1,21 @@
 """Reading a multi-label intravascular mask back into contours, after the contour preset
-that says what each label is — the inverse of imgs_masks.contours_to_mask.
+naming each label: the inverse of imgs_masks.contours_to_mask.
 
-The mask is painted bottom to top by layer, so every type is partly hidden by whatever is
-painted over it: the EEM by the wire shadow and a side branch, a plaque by the lumen it is
-clipped out of, a side branch by the lumen. Where a type's region ends against one of
-those, its contour goes on underneath, somewhere unknown — that stretch of the boundary is
-*occluded*. Every type is read the same way: its region (its own label and those of what
-lies inside it, see ContourPreset.mask_labels) is traced, the occluded stretches are left
-out, and a closed spline through what is left bridges them. That is what keeps the EEM
-from following the lumen through the wire shadow.
+The mask is painted bottom to top by layer, so each type is partly hidden by what lies over
+it: the EEM by the wire shadow and a side branch, a plaque by the lumen it is clipped out
+of, a side branch by the lumen. Boundary stretches against those are *occluded*: the
+contour goes on unseen underneath. Each type's region (its label plus those inside it, see
+ContourPreset.mask_labels) is traced, occluded stretches are dropped, and a closed spline
+bridges them. This keeps the EEM out of the wire shadow.
 
-Two kinds of type need more than that:
+Two kinds of type need more:
 
-* angular sectors (wire, blood) are wedges about the image centre, so each boundary has a
-  single unknown, its angle: a sector is a run of directions its label is seen in, and a
-  direction where it would be hidden whatever it held does not break the run;
-* a type lying inside another (a plaque in the EEM) may have been drawn open: an open arc
-  fills outwards to its container's boundary, so a region reaching that boundary over
-  nearly all the directions it spans was an arc — its luminal edge. One that reaches it all
-  the way round was a ring around the lumen (see imgs_masks._contained_mask). Anything else
-  was drawn closed.
+* angular sectors (wire, blood) are wedges about the image centre. A sector is a run of
+  directions its label is seen in, not broken where it would be hidden anyway.
+* a contained type (a plaque in the EEM) may have been drawn open. An open arc fills out to
+  its container's boundary, so a region reaching it over nearly all its directions was an
+  arc (its luminal edge), one reaching it all round was a ring around the lumen (see
+  imgs_masks._contained_mask), and anything else was closed.
 """
 
 from __future__ import annotations
@@ -37,22 +33,21 @@ from domain.intravascular.contour_presets import ContourPreset, ContourTypeDef
 from domain.intravascular.io_types import Contour, set_sector_points
 from tools.angle import MIN_SWEEP, TWO_PI, points_for_sector
 
-MIN_COMPONENT_PX = 20  # anything smaller is noise, not a structure
-OPEN_FRACTION = 0.85  # of its directions a region reaches its container's boundary in, to be an arc
+MIN_COMPONENT_PX = 20  # anything smaller is noise
+OPEN_FRACTION = 0.85  # share of its directions a region must reach its container's boundary in to be an arc
 TOUCH_TOLERANCE_PX = 2.0  # how close to the container's boundary counts as reaching it
-RING_GAP_DEG = 10.0  # a region whose widest gap in direction is narrower goes all the way round
+RING_GAP_DEG = 10.0  # a region whose widest direction gap is narrower is a ring
 MAX_MERGE_GAP_DEG = 90.0  # widest hidden gap two pieces of one arc are bridged across
-# How far a closed contour's spline may stray from (most of) its boundary: a pixel along a
-# long outline, half of one around something small, where a pixel is a share of its area.
+# How far a closed contour's spline may stray from (most of) its boundary: half a pixel
+# around something small, up to a pixel along a long outline.
 FIT_TOLERANCE_PX = (0.5, 1.0)
 FIT_TOLERANCE_PER_PX = 1 / 300  # of the outline's length
 _BINS = 360  # one per degree
 
-# The fibrous cap of OCT segmentations: the tissue between the lumen and a lipid pool, which
-# such masks label on its own. It is no contour of its own but vessel wall, so it is read as
-# the EEM's — and the lipid's luminal edge, the arc it is drawn as, then runs along the cap's
-# far side, where the pool begins, as a real boundary rather than one hidden under the cap.
-# Only while the preset has a lipid type and gives this label no type of its own.
+# The fibrous cap OCT segmentations label separately (tissue between the lumen and a lipid
+# pool) is vessel wall, so it is read as the EEM. The lipid's luminal edge then runs along
+# the cap's far side as a real boundary, not one hidden under the cap. Only while the preset
+# has a lipid type and no type of its own for this label.
 FIBROUS_CAP_LABEL = 6
 LIPID_ID = 'lipid'
 
@@ -61,7 +56,7 @@ Point = tuple[float, float]  # (x, y) in image pixels
 
 @dataclass(frozen=True)
 class _Frame:
-    """One frame's mask and what every contour of it is read against."""
+    """A frame's mask and its reading context."""
 
     mask: np.ndarray
     preset: ContourPreset
@@ -69,7 +64,7 @@ class _Frame:
 
     @property
     def centre(self) -> Point:
-        """The image centre, which every angular sector is a wedge about."""
+        """Image centre: the apex of every angular sector."""
         height, width = self.mask.shape
         return width / 2.0, height / 2.0
 
@@ -77,20 +72,20 @@ class _Frame:
         return np.isin(self.mask, list(self.preset.mask_labels(defn.type)))
 
     def occluders(self, defn: ContourTypeDef) -> np.ndarray:
-        """The labels that can hide `defn`: those painted over it that do not lie inside it."""
+        """Labels that can hide `defn`: painted over it but not inside it."""
         order = self.preset.paint_order()
         own = self.preset.mask_labels(defn.type)
         above = order[order.index(defn) + 1 :]
         return np.array([other.label for other in above if other.label not in own])
 
     def below(self, defn: ContourTypeDef) -> np.ndarray:
-        """Background, and the labels painted under `defn`: where it would show if it were there."""
+        """Background and labels under `defn`: where it would show if present."""
         order = self.preset.paint_order()
         return np.array([0] + [other.label for other in order[: order.index(defn)]])
 
 
 def label_aliases(preset: ContourPreset) -> dict[int, int]:
-    """Mask values read as another type's label (see FIBROUS_CAP_LABEL)."""
+    """Mask labels read as another (see FIBROUS_CAP_LABEL)."""
     lipid = preset.get(LIPID_ID)
     if lipid is None or lipid.is_angle or any(defn.label == FIBROUS_CAP_LABEL for defn in preset.types):
         return {}
@@ -103,11 +98,11 @@ def frame_contours(
     knots_for: Callable[[ContourTypeDef], int],
     handle_radius: float,
 ) -> tuple[dict[str, Contour], Point | None]:
-    """Every contour type of `preset` read off one frame's mask, by id, and the lumen
-    centroid the open contours among them were read about (None without a lumen).
+    """The contours of `preset` read off one frame's mask, by type id, and the lumen centroid
+    for open contours (None without a lumen).
 
-    `knots_for` says how many knots a contour of a type gets; `handle_radius` is where an
-    angular sector's stored points go (only their direction means anything).
+    `knots_for` gives a type's knot count. `handle_radius` places angular sector points
+    (only their direction matters).
     """
     for alias, label in label_aliases(preset).items():
         frame_mask = np.where(frame_mask == alias, label, frame_mask)
@@ -139,9 +134,8 @@ def frame_contours(
 
 
 def _components(region: np.ndarray, frame_mask: np.ndarray, defn: ContourTypeDef) -> list[np.ndarray]:
-    """The connected parts of `region` holding at least MIN_COMPONENT_PX pixels of `defn`'s
-    own label — a part made only of what lies inside it (a lumen without an EEM around it,
-    say) is not one of it."""
+    """Connected parts of `region` with at least MIN_COMPONENT_PX pixels of `defn`'s own
+    label: a part only of what lies inside (a lumen without EEM) is skipped."""
     labelled = sk_measure.label(region, connectivity=2)
     own = frame_mask == defn.label
     parts = []
@@ -157,7 +151,7 @@ def _largest(parts: list[np.ndarray]) -> np.ndarray | None:
 
 
 def _single(defn: ContourTypeDef) -> bool:
-    """A frame holds one lumen and one EEM; of any other type, as many as it shows."""
+    """One lumen and one EEM per frame, any number of other types."""
     return not defn.appendable
 
 
@@ -178,34 +172,30 @@ def _closed_contours(frame: _Frame, defn: ContourTypeDef, n_knots: int) -> Conto
 
 
 def _boundary_knots(part: np.ndarray, frame: _Frame, defn: ContourTypeDef, n_knots: int) -> list[Point] | None:
-    """`n_knots` knots for the closed contour around `part`, taken from the stretches of its
-    boundary that are its own (see the module docstring); the gaps the occluded ones leave
-    are for the spline to bridge."""
+    """`n_knots` knots for the closed contour around `part`, from the unoccluded stretches of
+    its boundary (see the module docstring). The spline bridges the gaps."""
     line = _outer_line(part)
     if line is None:
         return None
     genuine = ~_occluded(line, part, frame.mask, frame.occluders(defn))
-    # Bridging only works across gaps; a boundary mostly hidden is kept whole instead (the
-    # region it encloses is all that can be told about it).
+    # Bridging needs gaps: a mostly hidden boundary is kept whole (its region is all there is).
     kept = line[genuine] if np.count_nonzero(genuine) >= 0.5 * len(line) else line
     return _fitted(kept, n_knots)
 
 
 def _fitted(line: np.ndarray, n_knots: int) -> list[Point] | None:
-    """`n_knots` knots along the closed (row, col) `line` — exactly as many as a contour of
-    the type gets when drawn (n_interactive_points), so it edits like one.
+    """`n_knots` knots along the closed (row, col) `line`, as many as a drawn contour of the
+    type gets (n_interactive_points), so it edits like one.
 
-    The count is fixed, so the fit is won by where they go: spread evenly by length first,
-    then — while the spline through them strays from more than 5% of the line by more than
-    the tolerance for its length (see FIT_TOLERANCE_PX) — shifted along it and drawn
-    towards where it bends, keeping whichever placement fits best."""
+    With the count fixed, the fit depends on placement: evenly by length first, then, while
+    the spline strays from over 5% of the line by more than FIT_TOLERANCE_PX, shifted along
+    it and drawn towards bends, keeping the best fit."""
     from input_output.output.imgs_masks import _smooth_contour  # the spline the mask is painted with
 
     if len(line) < 3:
         return None
     count = min(max(n_knots, 3), len(line))
-    # Distance along the line, so knots are spread by length and not by how many boundary
-    # points a stretch happens to have; a hidden stretch left out of it is a jump in it.
+    # Knots are spread by length, not point count. A hidden stretch left out is a jump in it.
     steps = np.hypot(*np.diff(line, axis=0).T)
     closing = float(np.hypot(*(line[0] - line[-1])))
     total = float(steps.sum()) + closing
@@ -214,8 +204,7 @@ def _fitted(line: np.ndarray, n_knots: int) -> list[Point] | None:
     bend = _bend(line)
 
     def placement(weight: float, phase: float) -> np.ndarray:
-        # Each point's share of the line: its length, more of it where the line bends.
-        shares = lengths * (1.0 + weight * bend)
+        shares = lengths * (1.0 + weight * bend)  # each point's share: its length, more where the line bends
         along = np.concatenate([[0.0], np.cumsum(shares)[:-1]])
         targets = (np.arange(count) + phase) * (along[-1] + shares[-1]) / count
         return np.unique(np.searchsorted(along, targets).clip(0, len(line) - 1))
@@ -245,9 +234,8 @@ _PLACEMENTS = ((0.0, 0.0), (0.0, 0.5), (1.0, 0.0), (1.0, 0.5), (3.0, 0.0), (3.0,
 
 
 def _bend(line: np.ndarray) -> np.ndarray:
-    """Per point of the closed `line`, how sharply it turns there, 1 on average (0 for a
-    line that turns evenly). Measured over a few points either side, so the pixel
-    staircase of a mask edge does not count as bending."""
+    """How sharply the closed `line` turns at each point, 1 on average (0 if it turns
+    evenly). Measured over a few points either side to ignore the pixel staircase."""
     span = max(len(line) // 50, 2)
     ahead = np.roll(line, -span, axis=0) - line
     behind = line - np.roll(line, span, axis=0)
@@ -258,8 +246,8 @@ def _bend(line: np.ndarray) -> np.ndarray:
 
 
 def _outer_line(part: np.ndarray) -> np.ndarray | None:
-    """The outer boundary of `part` as (row, col) points, on the half-pixel line between
-    its pixels and the rest, so the polygon through it covers exactly its pixel centres."""
+    """Outer boundary of `part` as (row, col) points on the half-pixel line around it, so its
+    polygon covers exactly the pixel centres."""
     rows, cols = np.nonzero(part)
     if len(rows) == 0:
         return None
@@ -273,7 +261,7 @@ def _outer_line(part: np.ndarray) -> np.ndarray | None:
 
 
 def _occluded(line: np.ndarray, part: np.ndarray, frame_mask: np.ndarray, occluders: np.ndarray) -> np.ndarray:
-    """Per boundary point, whether a pixel just outside `part` next to it holds an occluder."""
+    """Per boundary point, whether it borders an occluder outside `part`."""
     if len(occluders) == 0:
         return np.zeros(len(line), dtype=bool)
     height, width = frame_mask.shape
@@ -289,7 +277,7 @@ def _occluded(line: np.ndarray, part: np.ndarray, frame_mask: np.ndarray, occlud
 
 
 def _evenly(line: np.ndarray, n_knots: int) -> list[Point] | None:
-    """`n_knots` (row, col) points spread evenly along `line`, as (x, y)."""
+    """`n_knots` even (x, y) picks of (row, col) `line`."""
     if len(line) < 3:
         return None
     count = min(n_knots, len(line))
@@ -312,9 +300,8 @@ def _append(contour: Contour, knots: list[Point], closed: bool) -> None:
 
 
 def _sectors(frame: _Frame, defn: ContourTypeDef, handle_radius: float) -> Contour:
-    """Every sector of `defn` on the frame: each run of directions about the image centre
-    its label is seen in. A direction where it would be hidden at every distance by what is
-    painted over it says nothing, so it neither ends a run nor starts one."""
+    """Each sector of `defn`: a run of directions about the image centre its label is seen in.
+    Directions where it would be hidden at every distance neither end nor start a run."""
     height, width = frame.mask.shape
     cx, cy = frame.centre
     rows, cols = np.mgrid[0:height, 0:width]
@@ -332,8 +319,8 @@ def _sectors(frame: _Frame, defn: ContourTypeDef, handle_radius: float) -> Conto
         in_run = np.isin(bins, run) & own
         if np.count_nonzero(in_run) < MIN_COMPONENT_PX:
             continue
-        # Sub-degree boundaries: the extreme directions of the pixels themselves, measured
-        # from the start of the run so a run across the -pi/pi seam stays in one piece.
+        # Sub-degree bounds from the pixels' own directions, measured from the run start so a
+        # run across the -pi/pi seam stays whole.
         reference = math.radians(run[0])
         relative = (angles[in_run] - reference) % TWO_PI
         start = reference + float(relative.min())
@@ -345,14 +332,13 @@ def _sectors(frame: _Frame, defn: ContourTypeDef, handle_radius: float) -> Conto
 
 
 def _runs(present: np.ndarray, unknown: np.ndarray) -> list[list[int]]:
-    """The circular runs of `present` bins, bridging bins that are `unknown`, each as its
-    bins in order. A run can wrap past bin 359 to bin 0."""
+    """Circular runs of `present` bins, bridging `unknown` ones, as ordered bins (may wrap
+    past 359)."""
     passable = present | unknown
     if passable.all():
         if not present.any():
             return []
-        # The whole circle: start where the widest stretch of unknown bins ends, if any.
-        start = _after_widest(unknown) if unknown.any() else 0
+        start = _after_widest(unknown) if unknown.any() else 0  # whole circle: start after the widest unknown stretch
         order = [(start + i) % _BINS for i in range(_BINS)]
         return [_trim(order, present)]
     first_gap = int(np.argmin(passable))  # begin scanning just after a bin that is neither
@@ -371,13 +357,13 @@ def _runs(present: np.ndarray, unknown: np.ndarray) -> list[list[int]]:
 
 
 def _trim(run: list[int], present: np.ndarray) -> list[int]:
-    """`run` without the unknown bins at either end: only those in between were bridged."""
+    """`run` minus its unknown end bins (only inner ones are bridged)."""
     marks = [i for i, b in enumerate(run) if present[b]]
     return run[marks[0] : marks[-1] + 1] if marks else []
 
 
 def _after_widest(flags: np.ndarray) -> int:
-    """The bin just after the widest circular stretch of set `flags`."""
+    """Bin after the widest circular run of set `flags`."""
     best_end, best_len, length = 0, -1, 0
     for i in range(2 * _BINS):
         if flags[i % _BINS]:
@@ -394,14 +380,13 @@ def _after_widest(flags: np.ndarray) -> int:
 
 @dataclass
 class _Arc:
-    points: list[Point]  # its luminal edge, in order of increasing angle
+    points: list[Point]  # its luminal edge, by increasing angle
     start: float  # angle of the first point about the centroid
     end: float  # angle of the last
 
 
 def _contained_contours(frame: _Frame, defn: ContourTypeDef, n_knots: int) -> Contour:
-    """Each part of a type lying inside another, as the arc, ring or closed contour it was
-    drawn as (see the module docstring)."""
+    """Each part of a contained type, read as an arc, ring or closed contour (see module docstring)."""
     assert defn.inside is not None
     container = frame.preset[defn.inside]
     container_reach = _reach(frame.region(container), frame.centroid)
@@ -437,7 +422,7 @@ def _contained_contours(frame: _Frame, defn: ContourTypeDef, n_knots: int) -> Co
 
 
 def _reach(region: np.ndarray, centroid: Point) -> np.ndarray:
-    """Per direction about `centroid`, how far out `region` reaches (-inf where it does not)."""
+    """`region`'s max radius per direction about `centroid` (-inf if none)."""
     rows, cols = np.nonzero(region)
     cx, cy = centroid
     bins = np.floor(np.degrees(np.arctan2(rows - cy, cols - cx))).astype(int) % _BINS
@@ -447,8 +432,8 @@ def _reach(region: np.ndarray, centroid: Point) -> np.ndarray:
 
 
 def _inner_edge(theta, radius, bins, centroid: Point, order: list[int] | None = None) -> list[Point]:
-    """Per direction (in `order`, or all of them by angle), the point half a pixel inside
-    the region's pixel nearest `centroid` — its luminal edge."""
+    """Luminal edge: per direction (in `order`, else all by angle), half a pixel inside the
+    pixel nearest `centroid`."""
     cx, cy = centroid
     points = []
     for b in order if order is not None else sorted(set(bins.tolist())):
@@ -462,7 +447,7 @@ def _inner_edge(theta, radius, bins, centroid: Point, order: list[int] | None = 
 
 
 def _widest_gap(theta: np.ndarray) -> tuple[float, float]:
-    """(where it ends, how wide) the widest circular gap between the directions `theta` is."""
+    """(end, width) of the widest circular gap in directions `theta`."""
     ordered = np.sort(theta)
     gaps = np.diff(np.append(ordered, ordered[0] + TWO_PI))
     widest = int(np.argmax(gaps))
@@ -470,11 +455,10 @@ def _widest_gap(theta: np.ndarray) -> tuple[float, float]:
 
 
 def _arc(theta, radius, bins, centroid: Point) -> _Arc:
-    """The luminal edge of a part drawn as an open arc, from one end of its span to the other.
+    """The luminal edge of a part drawn as an open arc, end to end of its span.
 
-    The span is everything but the widest gap between the directions of its pixels: at the
-    small radius of a plaque by the lumen, its pixels do not reach every one-degree bin, so
-    runs of bins would cut it up."""
+    The span is all but the widest gap between its pixel directions. Near the lumen a
+    plaque's pixels miss some one-degree bins, so runs of bins would cut it up."""
     start, _ = _widest_gap(theta)
     first = int(math.floor(math.degrees(start))) % _BINS
     present = set(bins.tolist())
@@ -489,8 +473,8 @@ def _arc(theta, radius, bins, centroid: Point) -> _Arc:
 
 
 def _merge_arcs(arcs: list[_Arc], frame: _Frame, defn: ContourTypeDef) -> list[_Arc]:
-    """Join the pieces of one arc that something painted over it (the wire shadow) cut apart:
-    two arcs whose gap is hidden all the way across, at the radius they meet at, are one."""
+    """Join arc pieces cut apart by an occluder (the wire shadow): arcs whose gap is hidden
+    all the way across at their meeting radius are one."""
     occluders = frame.occluders(defn)
     if len(arcs) < 2 or len(occluders) == 0:
         return arcs
@@ -528,7 +512,7 @@ def _hidden_between(first: _Arc, second: _Arc, frame: _Frame, occluders: np.ndar
 
 
 def _arc_knots(points: list[Point], n_knots: int) -> list[Point] | None:
-    """`n_knots` knots along an open arc, its two ends among them."""
+    """`n_knots` knots along an open arc, ends kept."""
     if len(points) < 2:
         return None
     count = min(max(n_knots, 2), len(points))

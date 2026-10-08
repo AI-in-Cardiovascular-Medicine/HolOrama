@@ -61,7 +61,7 @@ def read_image(main_window) -> None:
     progress.setModal(True)
     progress.setValue(0)
     QApplication.processEvents()
-    QApplication.processEvents()  # second flush processes the paint event queued by show
+    QApplication.processEvents()  # second flush handles the paint event queued by show
 
     _gray_oct_warning = False
     try:
@@ -86,9 +86,8 @@ def read_image(main_window) -> None:
             pixel_array_parsed, is_oct = _parse_pixel_array(pixel_array, is_oct)
             md = parse_metadata_nifti(metadata_df, pixel_array_parsed.shape[0], is_oct, prompt)
             if is_oct and pixel_array.ndim == 4 and pixel_array.shape[-1] == 3:
-                # 4-D RGB NIfTI — use colour channels directly (same guard as DICOM path)
                 main_window.runtime_data.images_rgb = pixel_array.clip(0, 255).astype(np.uint8)
-            # 3D grayscale OCT: images_rgb stays None → _convert_gray_to_oct runs below
+            # grayscale OCT leaves images_rgb None, so it is false-coloured below
         else:
             try:
                 pixel_array, metadata_df = _read_dicom(file_name)
@@ -153,9 +152,7 @@ def read_image(main_window) -> None:
         main_window.image_displayed = True
 
         if success:
-            # scaling_factor is now set; batch-compute areas for all contoured frames
-            # so the pullback overviews are fully populated without requiring navigation.
-            main_window.display.refresh_all_frame_metrics()
+            main_window.display.refresh_all_frame_metrics()  # fill pullback overviews without visiting frames
 
         main_window.display_slider.setValue(num_frames - 1)
         main_window.right_half.update_for_modality()
@@ -188,9 +185,8 @@ def read_nifti_mask(main_window) -> None:
     """Read a multi-label NIfTI mask over the whole pullback, replacing every frame's
     contours with those read off it (see mask_contours) after the active contour preset.
 
-    Slice i of the mask is frame i of the pullback, so the two have to match in size. A
-    mask holding labels the preset does not define offers a new preset with a row for each
-    of them first. One Ctrl+Z undoes the whole import.
+    Slice i is frame i, so sizes must match. Labels the preset lacks prompt a new preset
+    with a row for each. One Ctrl+Z undoes the import.
     """
     if not main_window.image_displayed:
         ErrorMessage(main_window, 'Load an image before importing a mask')
@@ -232,7 +228,7 @@ def read_nifti_mask(main_window) -> None:
         return
 
     display = main_window.display
-    # Every type gets the full n_interactive_points (even plaque). Ensures sufficient quality at read in (reduce with button/shortcut)
+    # Full n_interactive_points for every type (plaque too) for read-in quality. Reduce later with button/shortcut.
     knots = display.n_interactive_points
 
     def knots_for(defn):
@@ -276,9 +272,8 @@ def read_nifti_mask(main_window) -> None:
 
 
 def _preset_for_mask(main_window, mask_arr: np.ndarray) -> ContourPreset | None:
-    """The preset to read `mask_arr` after: the active one — or, when the mask holds labels
-    it does not define and the user takes up the offer, a new one with a row for each of
-    them, made in Intravascular Contour Settings. None to give up the import."""
+    """The preset to read `mask_arr` after: the active one, or, if the user accepts, a new one
+    with a row for each label it lacks, made in Intravascular Contour Settings. None aborts."""
     preset = active_preset()
     aliases = label_aliases(preset)  # read as another type, so not missing (the fibrous cap)
     values = [int(value) for value in np.unique(mask_arr) if value != 0]
@@ -300,7 +295,7 @@ def _preset_for_mask(main_window, mask_arr: np.ndarray) -> ContourPreset | None:
     if reply == QMessageBox.StandardButton.No:
         return preset
 
-    # Imported here: the shortcuts module imports this one.
+    # Local import: gui.shortcuts imports this module.
     from gui.shortcuts import apply_contour_preset
     from pages.intravascular.popup_windows.contour_settings_dialog import ContourSettingsDialog
 
@@ -366,8 +361,7 @@ def _read_nifti(filename: str) -> tuple[np.ndarray, pd.DataFrame]:
     try:
         pixel_array = nft.get_fdata()
     except Exception:
-        # DT_RGB24 and other structured dtypes can't be cast to float by get_fdata().
-        # Read raw bytes and unpack the named fields (R, G, B) into a trailing channel axis.
+        # get_fdata() cannot cast structured dtypes (DT_RGB24): unpack their fields into a channel axis.
         raw = np.asarray(nft.dataobj)
         if raw.dtype.names:
             pixel_array = np.stack([raw[c].astype(np.float64) for c in raw.dtype.names], axis=-1)
@@ -395,9 +389,8 @@ def _read_nifti(filename: str) -> tuple[np.ndarray, pd.DataFrame]:
 def _drop_trailing_singletons(array: np.ndarray) -> np.ndarray:
     """`array` without the axes of length 1 past its third.
 
-    A 3-D volume is sometimes stored with a trailing axis of length 1 — a one-component
-    'vector' (x, y, z, 1), as some converters write it — which would otherwise be read as
-    a frame of (H, W, 1) instead of (H, W).
+    Some converters store a 3-D volume as a one-component vector (x, y, z, 1), which would
+    otherwise give (H, W, 1) frames instead of (H, W).
     """
     while array.ndim > 3 and array.shape[-1] == 1:
         array = array[..., 0]
@@ -437,8 +430,7 @@ def _check_integrity(metadata: pd.DataFrame) -> tuple[bool, Optional[str]]:
 
 def _parse_pixel_array(pixel_array: np.ndarray, is_oct: bool | None = None) -> tuple[np.ndarray, bool]:
     if is_oct is None:
-        # NIfTI path: auto-detect from shape (3D NIfTI OCT left for future work)
-        is_oct = pixel_array.ndim == 4 and pixel_array.shape[-1] == 3
+        is_oct = pixel_array.ndim == 4 and pixel_array.shape[-1] == 3  # NIfTI: from shape (3-D OCT not detected)
     if pixel_array.ndim == 4 and pixel_array.shape[-1] == 3:
         return _convert_oct_to_gray(pixel_array), is_oct
     return pixel_array, is_oct
@@ -452,8 +444,7 @@ def _convert_oct_to_gray(oct_array: np.ndarray) -> np.ndarray:
 def _convert_gray_to_oct(gray_array: np.ndarray) -> np.ndarray:
     """
     Convert (N, H, W) grayscale → (N, H, W, 3) uint8 with the OCT false-colour LUT.
-    Normalises the full volume to [0, 255] before LUT lookup so the result is
-    correct regardless of whether the input is float [0,1], raw HU, or uint8.
+    Normalises the whole volume to [0, 255] first, so any input range works.
     """
     arr = gray_array.astype(np.float32)
     lo, hi = float(arr.min()), float(arr.max())

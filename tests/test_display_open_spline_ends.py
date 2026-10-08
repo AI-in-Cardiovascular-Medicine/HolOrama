@@ -1,9 +1,8 @@
 """Tests for the two ends of an open contour in pages.intravascular.left_half.display.
 
-An open contour (a calcium arc) runs from its first knot, its start (yellow, with a line
-out to the image edge), to its last, its end (red, with one too). Whatever is done to its
-knots — dragged, added, deleted, scaled — that has to stay so: a start shown anywhere but
-on the first knot, or an end missing, misreads where the arc begins and ends.
+An open contour (a calcium arc) runs from its first knot, the start (yellow, with a line to
+the image edge), to its last, the end (red, likewise). Dragging, adding, deleting or scaling
+knots must keep it so, or the arc's extent is misread.
 """
 
 import math
@@ -39,7 +38,7 @@ def _arc(n=8, radius=50.0, from_deg=200.0, to_deg=320.0):
 
 @pytest.fixture
 def display(qt_app):
-    """A real Display on a stub main_window with one open calcium arc on frame 0, selected."""
+    """Real Display on a stub window, an open calcium arc selected."""
     with open(CONFIG_PATH, encoding='utf-8') as f:
         config = _to_namespace(yaml.safe_load(f))
 
@@ -87,8 +86,8 @@ def _knots(arc):
 
 
 def _assert_ends_shown(display):
-    """The first knot alone is yellow, the last alone red, each with its line to the edge,
-    and the stored start and end are those two knots."""
+    """First knot alone yellow, last alone red, each with its edge line, and those are the
+    stored start and end."""
     widget, arc = display.widget, display.arc
     xs, ys = _knots(arc)
     colours = [point.color for point in widget.points_to_draw]
@@ -116,7 +115,7 @@ def test_a_fresh_arc_shows_both_ends(display):
 
 def test_a_knot_next_to_the_start_is_not_a_second_start(display):
     xs, ys = _knots(display.arc)
-    # One knot a couple of pixels from the start, inside the snap radius
+    # A knot inside the start's snap radius
     xs.insert(1, xs[0] + 0.5)
     ys.insert(1, ys[0] + 0.5)
     display.widget.display_image(update_contours=True)

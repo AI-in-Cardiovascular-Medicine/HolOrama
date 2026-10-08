@@ -17,9 +17,8 @@ from pages.intravascular.utils.metrics import clear_lumen_measurements
 def delete_all_on_frame(main_window):
     """Clear every contour, measurement, reference and wire angle on the current frame.
 
-    A single undo entry covers the lot, so Ctrl+Z brings the whole frame back in one press.
-    The frame's phase and its OCT label describe the frame rather than the drawing on it,
-    so they are left alone.
+    One undo entry restores the whole frame. Phase and OCT label describe the frame, not the
+    drawing on it, so they stay.
     """
     if not main_window.image_displayed:
         ErrorMessage(main_window, 'Cannot delete contours before reading input file')
@@ -37,7 +36,7 @@ def delete_all_on_frame(main_window):
     main_window.display.active_contour_index = 0
     main_window.save_contours_soon()
     main_window.display.update_display()
-    try:  # both pullback overviews read these contours, so they have to follow
+    try:  # the pullback overviews read these contours
         main_window.longitudinal_view.plot_areas()
     except Exception as exc:
         logger.debug(f'Could not refresh the pullback overviews after Delete All: {exc}')
@@ -46,8 +45,7 @@ def delete_all_on_frame(main_window):
 def delete_active_contour_on_all_frames(main_window):
     """Clear the active contour type on every frame of the pullback.
 
-    The affected frames go into a single undo entry, so Ctrl+Z restores the whole pullback
-    in one press.
+    All affected frames share one undo entry.
     """
     if not main_window.image_displayed:
         ErrorMessage(main_window, 'Cannot delete contours before reading input file')
@@ -90,8 +88,8 @@ def delete_active_contour_on_all_frames(main_window):
 
 
 def _selected_knots(main_window):
-    """(contour, index, xs, ys, closed) of the selected contour, or None while there is
-    none whose knots can be resampled (a sector, a measurement, one being drawn or dragged)."""
+    """(contour, index, xs, ys, closed) of the selected contour, or None if it cannot be
+    resampled (sector, measurement, mid-draw or drag)."""
     display = main_window.display
     if not main_window.image_displayed or display.drawing_mode or display.active_point_index is not None:
         return None
@@ -107,7 +105,7 @@ def _selected_knots(main_window):
 
 
 def selected_contour_knot_count(main_window) -> int | None:
-    """How many knots the selected contour has; None without one to resample."""
+    """Selected contour's knot count (None if not resamplable)."""
     selected = _selected_knots(main_window)
     return len(selected[2]) if selected else None
 
@@ -115,10 +113,9 @@ def selected_contour_knot_count(main_window) -> int | None:
 def set_selected_contour_knots(main_window, count: int):
     """Resample the selected contour to `count` knots, keeping its shape (see knot_resampling).
 
-    Every count reached is remembered per contour, so going back down or up returns the
-    knots it had before rather than resampling a thinned contour again. A whole run of
-    changes from the contour as it was is one Ctrl+Z entry: the undo stack holds only a
-    few, and a turn of the mouse wheel would otherwise fill it.
+    Each count reached is remembered per contour, so stepping back restores the earlier knots
+    instead of resampling a thinned contour. A run of changes is one Ctrl+Z entry, or a mouse
+    wheel turn would fill the small undo stack.
     """
     selected = _selected_knots(main_window)
     if selected is None:
@@ -129,7 +126,7 @@ def set_selected_contour_knots(main_window, count: int):
     history_key = (display.frame, key, ci)
     history = display.knot_histories.get(history_key)
     if history is None or history.closed != closed or not history.holds(xs, ys):
-        # First change, or the contour was edited some other way since: start from it as it is now
+        # First change, or edited elsewhere since: start from the current knots
         pinned = [
             point for labels in (contour.start_coords, contour.end_coords) if ci < len(labels) for point in labels[ci]
         ]
@@ -161,7 +158,7 @@ def set_selected_contour_knots(main_window, count: int):
 
 
 def step_selected_contour_knots(main_window, step: int):
-    """One knot more (step > 0) or fewer on the selected contour (Shift + mouse wheel)."""
+    """Move the selected contour's knot count by `step` (Shift+Wheel)."""
     count = selected_contour_knot_count(main_window)
     if count is not None:
         set_selected_contour_knots(main_window, count + step)
@@ -229,7 +226,6 @@ def set_tool(main_window, segmentation_tool: SegmentationTool):
         main_window.display.enable_brush()
         return
 
-    # Any other tool: deactivate brush if it was on.
     main_window.display.disable_brush()
     main_window.display.active_segmentation_tool = segmentation_tool
 

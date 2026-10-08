@@ -1,10 +1,9 @@
-"""Tests for placing and editing an angular sector on the display (the guide-wire
-shadow and the blood artefact, see tools.angle).
+"""Tests for placing and editing an angular sector (guide-wire shadow, blood artefact,
+see tools.angle) on the display.
 
-What is worth pinning down here is the interaction rather than the maths (that lives in
-test_tools_angle.py): one click sets the boundary the sector opens from, the pointer
-opens it — past 180 degrees, which the two clicks alone could never express — the second
-click fixes it, and both boundaries stay draggable afterwards.
+Pins the interaction, not the maths (test_tools_angle.py): one click sets the start
+boundary, the pointer opens the sector (past 180 degrees, which two clicks alone cannot
+express), the second click fixes it, and both boundaries stay draggable.
 """
 
 import math
@@ -24,7 +23,7 @@ from tools.angle import angle_of, sector_from_points
 
 DIM = 200  # frame is DIM x DIM pixels
 N_FRAMES = 4
-RESOLUTION = 0.1  # mm/pixel — a 20 mm frame, so the 5 mm handle circle fits inside it
+RESOLUTION = 0.1  # mm/pixel: a 20 mm frame, so the 5 mm handle circle fits inside it
 CONFIG_PATH = Path(__file__).resolve().parents[1] / 'src' / 'config.yaml'
 # The default preset's two sector types, and one of its spline types.
 WIRE = ContourType('wire')
@@ -40,7 +39,7 @@ def _to_namespace(obj):
 
 @pytest.fixture
 def display(qt_app):
-    """A real Display on a stub main_window, sitting on frame 0 with nothing drawn."""
+    """A real Display on a stub main_window, empty frame 0."""
     with open(CONFIG_PATH, encoding='utf-8') as f:
         config = _to_namespace(yaml.safe_load(f))
 
@@ -87,17 +86,16 @@ def display(qt_app):
 
 
 def _at(widget, degrees, radius=120.0):
-    """A scene position `degrees` round from the image centre."""
+    """Scene point `degrees` round the centre."""
     centre = widget._scene_centre()
     angle = math.radians(degrees)
     return QPointF(centre[0] + radius * math.cos(angle), centre[1] + radius * math.sin(angle))
 
 
 def _place(widget, from_deg, to_deg, step=10):
-    """Place one sector: click, turn the pointer round to `to_deg`, click again.
+    """Place one sector: click, turn the pointer to `to_deg`, click again.
 
-    The pointer is moved in small steps, as a real one would be — that is what lets the
-    opening pass 180 degrees.
+    Small pointer steps, like a real one's, let the opening pass 180 degrees.
     """
     widget._handle_angle_placement(_at(widget, from_deg))
     total = to_deg - from_deg
@@ -108,14 +106,14 @@ def _place(widget, from_deg, to_deg, step=10):
 
 
 def _stored_sector(widget, frame_data, contour_type, index=0):
-    """The (start, sweep) that was written for one sector, in scene angles."""
+    """Stored (start, sweep) of one sector, in scene angles."""
     contour_obj = frame_data.contour(contour_type)
     points = [(x * widget.scaling_factor, y * widget.scaling_factor) for x, y in sector_points(contour_obj, index)]
     return sector_from_points(points, widget._scene_centre())
 
 
 def _preview(widget):
-    """The one sector currently drawn for the active type and index."""
+    """The sector drawn for the active type and index."""
     for contour_type, index, sector in widget._angle_sectors:
         if contour_type == widget.active_contour_type and index == widget.active_contour_index:
             return sector
@@ -357,7 +355,7 @@ class TestDragging:
 
 class TestLegacyData:
     def test_a_two_point_wire_from_an_old_file_is_drawn_and_draggable(self, display):
-        """Files written before the interior marker keep meaning the smaller wedge."""
+        """Pre-interior-marker files still mean the smaller wedge."""
         widget = display.widget
         centre = widget._image_centre()
         radius = 40.0
@@ -373,7 +371,7 @@ class TestLegacyData:
         drawn = next(sector for contour_type, _, sector in widget._angle_sectors if contour_type == WIRE)
         assert math.degrees(drawn.sweep) == pytest.approx(90, abs=1)
 
-        # Dragging it rewrites it in the current shape, keeping the wedge it described.
+        # A drag rewrites it in the current format, keeping its wedge.
         widget._grab_angle_handle(QPointF(*drawn.handle_positions()[1]))
         widget._drag_angle_handle(_at(widget, 120))
         widget._release_angle_handle()
@@ -427,7 +425,7 @@ class TestSectorsInTheMask:
 
 
 def test_angle_points_are_measured_from_the_image_centre(display):
-    """The stored points are directions, so only their angle about the centre matters."""
+    """Stored points matter only by their angle about the centre."""
     widget = display.widget
     widget.set_active_contour_type(WIRE)
     widget.start_angle()
@@ -439,7 +437,7 @@ def test_angle_points_are_measured_from_the_image_centre(display):
 
 @pytest.fixture
 def angle_controls(display):
-    """The real LeftHalf on the same stub window, for the two angle controls it owns."""
+    """Real LeftHalf on the same stub window, for its angle controls."""
     from PyQt6.QtWidgets import QApplication, QCheckBox, QSlider
 
     main_window = display.widget.main_window
@@ -459,7 +457,7 @@ def angle_controls(display):
 
 
 class TestAngleControls:
-    """The drop-down that picks the sector type, and the ➕📐 Add button that follows it."""
+    """The sector-type drop-down and the ➕📐 Add button that follows it."""
 
     def test_it_starts_on_the_wire(self, angle_controls):
         left_half = angle_controls.left_half
@@ -551,7 +549,7 @@ class TestNothingToGrab:
 
 
 class TestPresetChange:
-    """What the page does when another contour preset becomes active (see shortcuts.apply_contour_preset)."""
+    """Switching to another contour preset (see shortcuts.apply_contour_preset)."""
 
     @pytest.fixture
     def no_sectors(self):
