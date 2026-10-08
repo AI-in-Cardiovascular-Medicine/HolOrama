@@ -24,7 +24,8 @@ The layout
   Exactly one is active at a time; which ones are enabled depends on the selected contour
   type.
 - **Row 2, contour selector:** a dropdown (Lumen / EEM / Calcium / Branch / Lipid /
-  Macrophage) plus **New Contour** and **+ Add Contour**.
+  Macrophage) plus **New Contour**, **+ Add Contour**, **🗑️ Delete All On Frame**,
+  **🗑️ Delete Current Contour On All** and the **Points** box (see `7. Draw contours`_).
 - **The image**, with a frame slider, a play button and a frame counter underneath.
 - **Checkboxes:** *Hide Contours*, *Hide Metrics*, *Mask mode*.
 
@@ -75,6 +76,11 @@ another (a plaque in the EEM) comes back as an open arc if it reaches its contai
 nearly everywhere it spans, as a ring if it does so all the way round the lumen, and closed
 otherwise. Components under 20 pixels are ignored. Labels the preset does not define are
 offered a new preset with a row for each of them, as on the CCTA page.
+
+Every contour read from the mask gets ``n_interactive_points`` knot points (see
+:doc:`../configuration`), plaques included. They are placed to follow the mask outline as
+closely as that count allows. To change the count of one contour afterwards, use the
+**Points** box (see `7. Draw contours`_).
 
 2. Set the window and zoom
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -278,14 +284,19 @@ then click in the image to place points.
   To return to a neutral state (no tool, Lumen as active contour), 
   press :kbd:`Esc`. To delete the currently clicked contour (also works for a single contour,
   when there are several of the same type), press :kbd:`Delete`. To delete all it's faster to
-  click the Button ``🗑️ Delete All On Frame``.
+  click the Button ``🗑️ Delete All On Frame``. ``🗑️ Delete Current Contour On All`` deletes
+  the type selected in the dropdown on every frame of the pullback, after a confirmation;
+  one :kbd:`Ctrl+Z` brings all of them back.
 
 Drawing rules:
 
 - **Closed spline**: left-click to place knot points, then click the first point again to
   close the contour.
-- **Open spline**: left-click to place points; the contour stays open. For calcium, the
-  angle from the lumen centre to the start and end point is computed automatically.
+- **Open spline**: left-click to place points; the contour stays open. Its first knot point
+  is its start (yellow) and its last its end (red), each with a line out to the image edge;
+  they stay so whatever you do to the points. Clicking on the very start or end of the
+  line adds a point just inside the contour, not a new end. For calcium, the angle from
+  the lumen centre to the start and end point is computed automatically.
 - A plaque contour (calcium, lipid, macrophage) marks the **luminal** side of the plaque,
   which then fills outwards to the EEM in the mask. An open arc can only mean that; a
   closed contour drawn in the wall is the plaque itself, filled in. A closed contour drawn
@@ -297,9 +308,17 @@ Drawing rules:
   :kbd:`RMB` on a knot point removes it.
 - :kbd:`Ctrl`\ +\ mouse wheel shrinks or expands the active contour. Every knot point
   moves one pixel per tick toward or away from the centroid.
+- The **Points** box sets how many knot points the selected contour has (3–40);
+  :kbd:`Shift`\ +\ mouse wheel on the image does the same one point per tick. Only the
+  selected contour changes, also when a frame carries several of its type. Removing a
+  point drops the one the shape needs least, and an added one goes where the contour
+  strays furthest from its original shape, so the shape is kept as well as the count
+  allows. Every count passed is remembered: going down and back up gives the original
+  points back. An open spline's ends and labelled start/end points are never removed.
 - Clicking any drawn contour makes it the active one.
 - :kbd:`Esc` leaves drawing mode; :kbd:`Ctrl+Z` undoes the last contour edit (draw, delete,
-  drag, brush, scale or copy; the last five edits are kept).
+  drag, brush, scale, copy or point count; the last five edits are kept). A whole run of
+  point-count changes on one contour counts as one edit.
 
 Several shortcuts save a lot of clicking, but don't have a button representation:
 

@@ -108,7 +108,8 @@ Drawing
    * - :kbd:`Delete`
      - Delete the active contour
    * - :kbd:`Ctrl+Z`
-     - Undo the last contour edit (draw, delete, drag, brush, scale or copy; last 5 kept)
+     - Undo the last contour edit (draw, delete, drag, brush, scale, copy or point count;
+       last 5 kept)
    * - :kbd:`Esc`
      - Leave drawing mode, return to a neutral state
 
@@ -197,6 +198,9 @@ Mouse
      - Zoom around the cursor; :kbd:`F` resets
    * - :kbd:`Ctrl` + :kbd:`LMB` drag
      - Move the whole image
+   * - :kbd:`Shift` + mouse wheel
+     - One knot point more (up) or fewer (down) on the selected contour, keeping its
+       shape; same as the **Points** box
    * - :kbd:`Ctrl` + mouse wheel
      - Shrink or expand the active contour. Every knot point moves 1 px per tick toward
        or away from the centroid

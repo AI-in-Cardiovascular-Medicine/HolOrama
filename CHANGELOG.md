@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **🗑️ Delete Current Contour On All**: deletes the contour type selected in the dropdown on every frame of the pullback, after a confirmation. One Ctrl+Z restores all of them.
+- **Points** box next to the delete buttons, and **Shift + mouse wheel** on the image: sets the number of knot points of the selected contour (3–40), only that one even when a frame carries several of its type. Removing a point drops the one the shape needs least; an added one goes where the contour strays furthest from its original shape. Every count passed is remembered, so going down and back up gives the original points back. An open contour's ends and labelled start/end points stay. A whole run of changes on one contour is one Ctrl+Z entry.
+
+### Changed
+- **Open Intravascular Mask** gives every contour `n_interactive_points` knot points (20 by default), plaques included, instead of up to twice that for the lumen and EEM and half of it for the rest. The points are placed to follow the mask outline as closely as that count allows, so large calcium plaques keep their shape.
+
+### Fixed
+- The yellow start and red end point of an **open spline** stay on its first and last knot point. A knot point added next to an end no longer takes over the end when dragged. Deleting a knot point next to an end no longer drops that end's point and edge line. Ctrl + mouse wheel scaling no longer leaves the ends behind. A click on the very start or end of the line adds a point just inside the contour, not a new end beyond it.
+
 ## [0.14.0] - 2026-10-02
 
 ### Added

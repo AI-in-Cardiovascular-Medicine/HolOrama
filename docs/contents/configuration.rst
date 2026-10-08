@@ -52,8 +52,9 @@ analysis outputs are unaffected and are still written next to the file you opene
      - Fraction of zoom applied per pixel dragged. Below 0.005 is slower, above is faster.
    * - ``n_interactive_points``
      - Number of draggable knot points on a new contour. Calcium, lipid, macrophage and
-       branch contours default to half of this. Extra points can always be added by
-       clicking on the contour line.
+       branch contours default to half of this. Contours read from a mask get the full
+       number, whatever their type. Extra points can always be added by clicking on the
+       contour line, or the count changed with the **Points** box.
    * - ``n_points_contour``
      - Number of points used to represent the interpolated contour outline. Ideally a
        multiple of 100 (used when computing closest points).
