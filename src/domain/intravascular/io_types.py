@@ -47,6 +47,24 @@ def iter_sectors(contour) -> List[List[Tuple[float, float]]]:
     return [legacy] if legacy else []
 
 
+def sync_open_ends(contour: Contour, index: int) -> None:
+    """Store open contour `index`'s first knot as its start and its last as its end — which
+    is what they are, whatever has since been done to its knots (moved, added, deleted,
+    scaled, resampled). Nothing for a closed contour, whose start/end are labels the user
+    puts on knots of their choosing."""
+    if index >= len(contour.contours) or (contour.closed[index] if index < len(contour.closed) else True):
+        return
+    entry = contour.contours[index]
+    if not entry or not entry[0] or len(entry) < 2 or not entry[1]:
+        return
+    while len(contour.start_coords) <= index:
+        contour.start_coords.append([])
+    while len(contour.end_coords) <= index:
+        contour.end_coords.append([])
+    contour.start_coords[index] = [(float(entry[0][0]), float(entry[1][0]))]
+    contour.end_coords[index] = [(float(entry[0][-1]), float(entry[1][-1]))]
+
+
 def set_sector_points(contour: Contour, index: int, points: Sequence[Tuple[float, float]]) -> None:
     """Write `points` as sector `index`, growing the per-contour lists as needed."""
     while len(contour.contours) <= index:

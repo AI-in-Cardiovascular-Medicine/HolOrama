@@ -182,6 +182,10 @@ class SplineGeometry:
 
         # Use bisect to find where the new path_index fits among the knot indices
         insertion_idx = bisect.bisect_left(knot_path_indices, path_index)
+        if not self.is_closed and len(knot_path_indices) >= 2:
+            # An open spline's first and last knots are its ends: a click at (or past) either
+            # end of the path adds a knot just inside it, not a new end beyond it.
+            insertion_idx = min(max(insertion_idx, 1), len(knot_path_indices) - 1)
         return insertion_idx
 
     def scale(self, factor: float) -> 'SplineGeometry':

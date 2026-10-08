@@ -457,7 +457,7 @@ class OCTPlot(QWidget):
             painter.drawText(
                 self.rect(),
                 int(Qt.AlignmentFlag.AlignCenter),
-                'Vessel overview — draw or segment a lumen contour to populate',
+                'Vessel overview: draw or segment a lumen contour to populate',
             )
             painter.end()
             return

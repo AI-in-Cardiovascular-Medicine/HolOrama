@@ -20,7 +20,14 @@ from PyQt6.QtWidgets import (
 from domain.intravascular.types import ContourConfig, ContourType, SegmentationTool
 from domain.colors import DEFAULT_MASK_ALPHA
 from domain.intravascular.contour_presets import active_preset
-from domain.intravascular.io_types import Contour, Measure, is_contour_key, sector_points, set_sector_points
+from domain.intravascular.io_types import (
+    Contour,
+    Measure,
+    is_contour_key,
+    sector_points,
+    set_sector_points,
+    sync_open_ends,
+)
 from domain.intravascular.knot_resampling import KnotHistory
 from domain.intravascular.undo import push_contour_snapshot
 from input_output.output.imgs_masks import contours_to_mask
@@ -330,13 +337,15 @@ class Display(QGraphicsView, MetricsMixin):
             geometry = SplineGeometry(lumen_x, lumen_y, self.n_points_contour, None, None)
             spline_cls: type[Spline] = Spline
         else:
-            # Open spline: single auto start (first knot) / end (last knot).
-            start_coords = (
-                (raw_starts[0][0] * sf, raw_starts[0][1] * sf)
-                if raw_starts
-                else ((lumen_x[0], lumen_y[0]) if lumen_x else None)
-            )
-            end_coords = (raw_ends[0][0] * sf, raw_ends[0][1] * sf) if raw_ends else None
+            # Open spline: its start is its first knot and its end its last, by definition.
+            # Taken from the knots rather than the stored coordinates, which every edit of
+            # the knots would otherwise have to carry along (and some did not: a scaled or
+            # trimmed arc lost an end, a knot dragged near the start took the start along);
+            # the stored ones are brought back in line for the file.
+            if contour_obj is not None:
+                sync_open_ends(contour_obj, contour_index)
+            start_coords = (lumen_x[0], lumen_y[0])
+            end_coords = (lumen_x[-1], lumen_y[-1])
 
             geometry = OpenSplineGeometry(
                 knot_points_x=lumen_x,
@@ -368,16 +377,12 @@ class Display(QGraphicsView, MetricsMixin):
                                 knot_color = self.end_color
                                 brush = True
                                 break
-                else:
-                    if (
-                        start_coords
-                        and math.hypot(curr_x - start_coords[0], curr_y - start_coords[1]) < self.snap_radius_px
-                    ):
-                        knot_color = self.start_color
-                        brush = True
-                    if end_coords and math.hypot(curr_x - end_coords[0], curr_y - end_coords[1]) < self.snap_radius_px:
-                        knot_color = self.end_color
-                        brush = True
+                elif i == 0:  # by position in the arc, not by nearness: a knot next to an end is no end
+                    knot_color = self.start_color
+                    brush = True
+                elif i == len(geometry.knot_points_x) - 1:
+                    knot_color = self.end_color
+                    brush = True
 
                 knot_point = Point(
                     (curr_x, curr_y),
@@ -1683,16 +1688,11 @@ class Display(QGraphicsView, MetricsMixin):
                 is_closed = contour_obj.closed[i] if len(contour_obj.closed) > i else True
                 if is_closed:
                     continue
-                raw_starts = contour_obj.start_coords[i] if len(contour_obj.start_coords) > i else []
-                raw_ends = contour_obj.end_coords[i] if len(contour_obj.end_coords) > i else []
-                raw_start = raw_starts[0] if raw_starts else None
-                raw_end = raw_ends[0] if raw_ends else None
-                if raw_start is None and raw_end is None:
+                xs, ys = contour_obj.contours[i][0], contour_obj.contours[i][1]
+                if not xs or not ys:
                     continue
 
-                for raw_coord in [raw_start, raw_end]:
-                    if raw_coord is None:
-                        continue
+                for raw_coord in [(xs[0], ys[0]), (xs[-1], ys[-1])]:  # its first knot and its last
                     endpoint = QPointF(raw_coord[0] * self.scaling_factor, raw_coord[1] * self.scaling_factor)
                     dx = endpoint.x() - centroid.x()
                     dy = endpoint.y() - centroid.y()
