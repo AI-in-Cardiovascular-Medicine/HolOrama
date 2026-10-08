@@ -4,7 +4,12 @@ from PyQt6.QtWidgets import QMessageBox
 from domain.intravascular.types import ContourType, SegmentationTool
 from domain.intravascular.contour_presets import active_preset
 from domain.intravascular.io_types import Contour, clear_frame_annotations, is_contour_key
-from domain.intravascular.undo import push_frame_annotation_snapshot, push_pullback_contours_snapshot
+from domain.intravascular.knot_resampling import KnotHistory, without_closing_repeat
+from domain.intravascular.undo import (
+    push_contour_snapshot,
+    push_frame_annotation_snapshot,
+    push_pullback_contours_snapshot,
+)
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from pages.intravascular.utils.metrics import clear_lumen_measurements
 
@@ -82,6 +87,84 @@ def delete_active_contour_on_all_frames(main_window):
     display.update_display()
     display.refresh_all_frame_metrics()  # also redraws both pullback overviews
     main_window.status_bar.showMessage(f'Deleted {name} on {len(frames)} frames (Ctrl+Z undoes it)')
+
+
+def _selected_knots(main_window):
+    """(contour, index, xs, ys, closed) of the selected contour, or None while there is
+    none whose knots can be resampled (a sector, a measurement, one being drawn or dragged)."""
+    display = main_window.display
+    if not main_window.image_displayed or display.drawing_mode or display.active_point_index is not None:
+        return None
+    if active_preset().is_angle(display.active_contour_type):
+        return None  # a sector's points mark angles, not a shape
+    contour = display._frame_contour()
+    ci = display.active_contour_index
+    if contour is None or ci >= len(contour.contours) or not contour.contours[ci] or not contour.contours[ci][0]:
+        return None
+    closed = contour.closed[ci] if ci < len(contour.closed) else True
+    xs, ys = without_closing_repeat(contour.contours[ci][0], contour.contours[ci][1], closed)
+    return contour, ci, xs, ys, closed
+
+
+def selected_contour_knot_count(main_window) -> int | None:
+    """How many knots the selected contour has; None without one to resample."""
+    selected = _selected_knots(main_window)
+    return len(selected[2]) if selected else None
+
+
+def set_selected_contour_knots(main_window, count: int):
+    """Resample the selected contour to `count` knots, keeping its shape (see knot_resampling).
+
+    Every count reached is remembered per contour, so going back down or up returns the
+    knots it had before rather than resampling a thinned contour again. A whole run of
+    changes from the contour as it was is one Ctrl+Z entry: the undo stack holds only a
+    few, and a turn of the mouse wheel would otherwise fill it.
+    """
+    selected = _selected_knots(main_window)
+    if selected is None:
+        return
+    contour, ci, xs, ys, closed = selected
+    display = main_window.display
+    key = display.contour_key()
+    history_key = (display.frame, key, ci)
+    history = display.knot_histories.get(history_key)
+    if history is None or history.closed != closed or not history.holds(xs, ys):
+        # First change, or the contour was edited some other way since: start from it as it is now
+        pinned = [
+            point for labels in (contour.start_coords, contour.end_coords) if ci < len(labels) for point in labels[ci]
+        ]
+        try:
+            history = KnotHistory(xs, ys, closed, pinned)
+        except Exception as exc:
+            logger.debug(f'Cannot resample the knots of {key} #{ci}: {exc}')
+            return
+        display.knot_histories[history_key] = history
+
+    new_xs, new_ys = history.knots(count)
+    if len(new_xs) == len(xs):
+        return  # already at the count asked for, or as far as it goes
+
+    if history.is_original(xs, ys):
+        push_contour_snapshot(main_window.runtime_data, display.frame, key, ci)
+    else:
+        main_window.runtime_data.mark_unsaved()
+    contour.contours[ci] = (new_xs, new_ys)
+
+    main_window.save_contours_soon()
+    display.display_image(update_contours=True)
+    try:  # the area of a lumen or EEM shifts a little with its knots
+        main_window.longitudinal_view.plot_areas()
+    except Exception as exc:
+        logger.debug(f'Could not refresh the pullback overviews after resampling: {exc}')
+    defn = active_preset().get(display.active_contour_type)
+    main_window.status_bar.showMessage(f'{defn.name if defn else key}: {len(new_xs)} points')
+
+
+def step_selected_contour_knots(main_window, step: int):
+    """One knot more (step > 0) or fewer on the selected contour (Shift + mouse wheel)."""
+    count = selected_contour_knot_count(main_window)
+    if count is not None:
+        set_selected_contour_knots(main_window, count + step)
 
 
 def new_contour(main_window, contour_type: ContourType):

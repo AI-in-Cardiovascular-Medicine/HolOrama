@@ -13,12 +13,14 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLayout,
     QPushButton,
+    QSpinBox,
     QStyle,
     QVBoxLayout,
 )
 
 from domain.intravascular.types import ContourType, SegmentationTool
 from domain.intravascular.contour_presets import ContourPreset, active_preset
+from domain.intravascular.knot_resampling import MAX_KNOTS, MIN_KNOTS
 from pages.intravascular.brush_panel import HoverButton
 from pages.intravascular.utils.contours_gui import (
     delete_active_contour_on_all_frames,
@@ -28,6 +30,8 @@ from pages.intravascular.utils.contours_gui import (
     new_contour_append,
     new_measure,
     new_reference,
+    selected_contour_knot_count,
+    set_selected_contour_knots,
     set_tool,
 )
 from pages.intravascular.utils.helpers import SplitterPane
@@ -161,8 +165,20 @@ class LeftHalf:
         self.delete_all_frames_btn.setStyleSheet('background: darkred')
         self.delete_all_frames_btn.setToolTip("Deletes the selected contour type on every frame (Ctrl+Z undoes it)")
 
+        # Knots of the selected contour; set to the count of whichever is selected (sync_knot_count)
+        self.knot_count_box = QSpinBox()
+        self.knot_count_box.setPrefix('Points: ')
+        self.knot_count_box.setRange(MIN_KNOTS, MAX_KNOTS)
+        self.knot_count_box.setKeyboardTracking(False)  # typing 15 is not a stop at 1 first
+        self.knot_count_box.setToolTip(
+            "Number of points on the selected contour, its shape kept (Shift+Wheel on the image; Ctrl+Z undoes it)"
+        )
+        self.knot_count_box.valueChanged[int].connect(self._on_knot_count_changed)
+        self.knot_count_box.setEnabled(False)
+
         contour_row_hbox.addWidget(self.delete_all_btn)
         contour_row_hbox.addWidget(self.delete_all_frames_btn)
+        contour_row_hbox.addWidget(self.knot_count_box)
         left_vbox.addLayout(contour_row_hbox)
 
         self.refresh_contour_types()  # fill both drop-downs, and set tooltips and button state
@@ -337,6 +353,19 @@ class LeftHalf:
 
     def _on_delete_all_frames(self):
         delete_active_contour_on_all_frames(self.main_window)
+
+    def _on_knot_count_changed(self, count: int):
+        set_selected_contour_knots(self.main_window, count)
+
+    def sync_knot_count(self) -> None:
+        """Show the selected contour's number of knots; disabled while none is selected."""
+        count = selected_contour_knot_count(self.main_window)
+        self.knot_count_box.blockSignals(True)
+        self.knot_count_box.setEnabled(count is not None)
+        if count is not None:
+            self.knot_count_box.setMaximum(max(MAX_KNOTS, count))  # an imported contour may have more
+            self.knot_count_box.setValue(count)
+        self.knot_count_box.blockSignals(False)
 
     def _on_angle_type_changed(self, index: int):
         """Point both angle controls, and the display, at the newly selected sector type."""

@@ -70,6 +70,7 @@ def display(qt_app):
         status_bar=SimpleNamespace(showMessage=lambda *args: None),
         left_half=SimpleNamespace(
             set_active_contour_type_ui=ui_syncs.append,
+            sync_knot_count=lambda: None,
             closed_spline_btn=SimpleNamespace(setChecked=lambda checked: None),
             open_spline_btn=SimpleNamespace(setChecked=lambda checked: None),
             brush_btn=SimpleNamespace(setChecked=lambda checked: None),

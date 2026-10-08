@@ -21,8 +21,10 @@ from domain.intravascular.types import ContourConfig, ContourType, SegmentationT
 from domain.colors import DEFAULT_MASK_ALPHA
 from domain.intravascular.contour_presets import active_preset
 from domain.intravascular.io_types import Contour, Measure, is_contour_key, sector_points, set_sector_points
+from domain.intravascular.knot_resampling import KnotHistory
 from domain.intravascular.undo import push_contour_snapshot
 from input_output.output.imgs_masks import contours_to_mask
+from pages.intravascular.utils.contours_gui import step_selected_contour_knots
 from pages.intravascular.utils.metrics import MetricsMixin
 from segmentation.segment import downsample
 from tools.angle import (
@@ -104,6 +106,8 @@ class Display(QGraphicsView, MetricsMixin):
         self.end_coords: Tuple[float, float] | None = None
         self.working_spline: Spline | None = None
         self.finalized_splines: dict[str, list[Spline | None] | None] = {}
+        # Every knot count a contour was resampled to, by (frame, type, index); see contours_gui
+        self.knot_histories: dict[tuple[int, str, int], KnotHistory] = {}
 
         # flags and states
         self.active_contour_type: ContourType = ContourType.LUMEN
@@ -243,6 +247,7 @@ class Display(QGraphicsView, MetricsMixin):
         self._brush_erase = None
         self._base_mask_cache = None
         self._base_mask_cache_frame = -1
+        self.knot_histories = {}
         self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def set_data(self, images):
@@ -591,6 +596,10 @@ class Display(QGraphicsView, MetricsMixin):
 
         if update_phase:
             self.update_phase_text()
+
+        lh = getattr(self.main_window, 'left_half', None)
+        if lh is not None:
+            lh.sync_knot_count()  # the selected contour, or its knots, may have changed
 
     def _first_spline_contour(self, contour_type: ContourType) -> Tuple[List[float], List[float]] | None:
         """Unscaled (x, y) of the first finalized spline of *contour_type*, or None."""
@@ -2083,6 +2092,13 @@ class Display(QGraphicsView, MetricsMixin):
     def wheelEvent(self, event):
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             self._scale_active_contour(event.angleDelta().y())
+            event.accept()
+            return
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            # Some platforms turn a Shift+wheel into a horizontal scroll
+            delta = event.angleDelta().y() or event.angleDelta().x()
+            if delta:
+                step_selected_contour_knots(self.main_window, 1 if delta > 0 else -1)
             event.accept()
             return
         if event.angleDelta().y() > 0:

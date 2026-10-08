@@ -67,7 +67,7 @@ def display(qt_app):
         image_displayed=True,
         file_name='test',
         status_bar=SimpleNamespace(showMessage=lambda *args: None),
-        left_half=SimpleNamespace(set_active_contour_type_ui=lambda ct: None),
+        left_half=SimpleNamespace(set_active_contour_type_ui=lambda ct: None, sync_knot_count=lambda: None),
     )
     main_window.save_contours_soon = runtime.mark_unsaved
 
