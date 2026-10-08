@@ -149,11 +149,21 @@ class IntravascularColumn(QWidget):
             'Which coronary branch to align the pullback onto — the main vessel or one of its '
             'side branches (listed once the vessel tree is discretized).'
         )
+        self._with_parents_check = QCheckBox('Include parent vessel')
+        self._with_parents_check.setToolTip(
+            'Side branches only: align onto the path from the vessel ostium through the parent\n'
+            'branches to this branch\'s tip, so frames running proximally past the side\n'
+            'branch\'s ostium are placed on the parent instead of being left unaligned.\n'
+            'Needs multimodars >= 0.7.8.'
+        )
         self.set_centerline_choices([('RCA', 'rca', 0), ('LCA', 'lca', 0)], 'rca', 0)
+        self._ref_vessel_combo.currentIndexChanged.connect(self._sync_with_parents_enabled)
         self._ref_vessel_combo.currentIndexChanged.connect(
             lambda _: self.reference_centerline_changed.emit(self.reference_vessel(), self.reference_branch())
         )
-        layout.addLayout(_row('Centerline:', self._ref_vessel_combo))
+        centerline_row = _row('Centerline:', self._ref_vessel_combo)
+        centerline_row.addWidget(self._with_parents_check)
+        layout.addLayout(centerline_row)
 
         self._ref_index_combo = QComboBox()
         self._ref_index_combo.setToolTip(
@@ -292,6 +302,15 @@ class IntravascularColumn(QWidget):
         combo.blockSignals(True)
         combo.setCurrentIndex(max(0, combo.findData(f'{vessel}:{branch}')))
         combo.blockSignals(False)
+        self._sync_with_parents_enabled()
+
+    def _sync_with_parents_enabled(self, *_) -> None:
+        # The main vessel starts at the ostium — it has no parent to extend into.
+        self._with_parents_check.setEnabled(self.reference_branch() != 0)
+
+    def align_with_parents(self) -> bool:
+        """Whether to align onto get_branch(branch, with_parents=True) — side branches only."""
+        return self.reference_branch() != 0 and self._with_parents_check.isChecked()
 
     def set_reference_choices(self, labels: list[str]) -> None:
         """Repopulate the Reference dropdown — same label list as the Vessel Tree tab's

@@ -925,8 +925,8 @@ class FusionPage(QWidget):
 
         try:
             ref_points = references[selected_index]
-            cl_main = centerline.get_branch(branch)
-        except (IndexError, AttributeError, ValueError) as e:
+            cl_main = self._alignment_branch(centerline, branch)
+        except (IndexError, AttributeError, ValueError, TypeError) as e:
             ErrorMessage(self, f'Could not resolve reference points / branch: {e}')
             return
         # A side branch is scored against its own surface points (label_branches_pair's
@@ -948,7 +948,9 @@ class FusionPage(QWidget):
         )
         if result is None:
             return
-        self._apply_align_result(result, cl_main, self._resolve_manual_ref_point(cl_main, ref_points[0], 0))
+        self._apply_align_result(
+            result, vessel, centerline, cl_main, self._resolve_manual_ref_point(cl_main, ref_points[0], 0)
+        )
 
     def _on_run_align_manual(self) -> None:
         """Same preconditions as _on_run_align, but rotates by an explicit angle around a
@@ -967,8 +969,8 @@ class FusionPage(QWidget):
 
         try:
             main_ref_pt = references[selected_index][0]
-            cl_main = centerline.get_branch(branch)
-        except (IndexError, AttributeError, ValueError) as e:
+            cl_main = self._alignment_branch(centerline, branch)
+        except (IndexError, AttributeError, ValueError, TypeError) as e:
             ErrorMessage(self, f'Could not resolve reference point / branch: {e}')
             return
         ref_point = self._resolve_manual_ref_point(cl_main, main_ref_pt, ic.manual_ref_point_offset())
@@ -988,7 +990,20 @@ class FusionPage(QWidget):
             return
         # Mark the unshifted reference (offset 0), not ref_point: the IV geometry is placed
         # on ref_point, so marking it would move the dot along with the vessel.
-        self._apply_align_result(result, cl_main, self._resolve_manual_ref_point(cl_main, main_ref_pt, 0))
+        self._apply_align_result(
+            result, vessel, centerline, cl_main, self._resolve_manual_ref_point(cl_main, main_ref_pt, 0)
+        )
+
+    def _alignment_branch(self, centerline, branch: int):
+        """The single-branch centerline the pullback is aligned onto. With "Include parent
+        vessel" checked (side branches only), get_branch(with_parents=True) returns the
+        path from the vessel ostium through the parent branches to the side branch's tip,
+        so frames running proximally past the side branch's ostium land on the parent
+        instead of being left unaligned. with_parents needs multimodars>=0.7.8; it's only
+        passed when checked, so older versions keep working with the box unchecked."""
+        if self.right_half.intravascular_column.align_with_parents():
+            return centerline.get_branch(branch, with_parents=True)
+        return centerline.get_branch(branch)
 
     def _resolve_manual_ref_point(
         self, cl_main, main_ref_pt: tuple[float, float, float], offset: int
@@ -1001,7 +1016,9 @@ class FusionPage(QWidget):
 
         prepare_centerline's orient_to_reference(aorta) orients every branch (main and side
         branches alike) so point index 0 is its proximal/ostium end, regardless of which reference is currently
-        selected — so -N always walks towards the ostium and +N away from it. Clamped to
+        selected — so -N always walks towards the ostium and +N away from it. With "Include
+        parent vessel", index 0 is the vessel's ostium and -N walks on into the parent
+        branches past the side branch's own ostium. Clamped to
         [0, len(points)-1]: if the closest point is already index 0 (e.g. the 'ostium'
         reference itself is selected), negative offsets have nowhere to go and clamp back
         to it — there's nothing more proximal than the ostium to walk to."""
@@ -1018,7 +1035,9 @@ class FusionPage(QWidget):
             )
         return points[index]
 
-    def _apply_align_result(self, result, source_centerline, ostium_point: tuple[float, float, float]) -> None:
+    def _apply_align_result(
+        self, result, vessel: str, vessel_centerline, source_centerline, ostium_point: tuple[float, float, float]
+    ) -> None:
         """`result` is align_combined/align_manual's (aligned_geometry, spacing_mm,
         total_rotation_deg). `source_centerline` is the single-branch RCA/LCA centerline
         that was passed into align_combined/align_manual, at whatever spacing
@@ -1027,8 +1046,12 @@ class FusionPage(QWidget):
         centerline and only resamples a private copy, anchored on that point, to place the
         frames; re-resampling here from index 0 would put the shown centerline up to half a
         spacing off the one actually used. The downstream steps (label_anomalous_region,
-        find_distal_and_proximal_scaling, find_aorta_scaling) only do nearest-point / radius
-        lookups on the centerline, so they don't need it at the frame spacing either.
+        find_distal_and_proximal_scaling) only do nearest-point lookups on the centerline,
+        so they don't need it at the frame spacing either.
+
+        `vessel_centerline` is the whole prepared `vessel` centerline (all branches) that
+        `source_centerline` was taken from — label_anomalous_region needs that one, see
+        _on_run_label_anomalous.
 
         `ostium_point` is the point of `source_centerline` closest to the selected
         vessel-tree reference — without align_manual's ref. point offset — shown as a fixed
@@ -1036,6 +1059,8 @@ class FusionPage(QWidget):
         the IV geometry shifting relative to it."""
         self.data.aligned, _spacing_mm, total_rotation_deg = result
         self.data.aligned_centerline = source_centerline
+        self.data.aligned_vessel = vessel
+        self.data.aligned_vessel_centerline = vessel_centerline
         # Prefill the Manual group with whatever angle this alignment landed on (automatic
         # search or a previous manual value round-tripped back) so nudging it further starts
         # from here instead of 0.
@@ -1120,15 +1145,20 @@ class FusionPage(QWidget):
 
     def _on_run_label_anomalous(self) -> None:
         """Label Overlap Region: partitions whichever coronary the pullback was actually
-        aligned onto (see the Centerline: RCA/LCA selector in column 2) into proximal/
-        overlap/distal sub-regions — must match the alignment vessel, not always the RCA,
-        or centerline and results_key end up describing two different vessels."""
+        aligned onto into proximal/overlap/distal sub-regions — the vessel stored at
+        alignment time, not the column 2 selector's current value, so centerline, frames
+        and results_key can't end up describing two different vessels.
+
+        Gets the whole vessel centerline (every branch), not the single aligned branch:
+        label_anomalous_region measures along the path to the pullback branch and places
+        each side-branch vertex where its branch leaves that path. Given one branch, it
+        snaps every vertex of the vessel onto it."""
         frames = self._aligned_frames()
         if not self._require(frames is not None, 'Align the intravascular geometry first.'):
             return
-        vessel = self.right_half.intravascular_column.reference_vessel()
-        centerline = self.data.aligned_centerline
-        if not self._require(centerline is not None, 'Run label_geometry first.'):
+        vessel = self.data.aligned_vessel
+        centerline = self.data.aligned_vessel_centerline
+        if not self._require(centerline is not None and vessel is not None, 'Run label_geometry first.'):
             return
         results = self._run(
             'Labeling overlap region…',
@@ -1150,6 +1180,10 @@ class FusionPage(QWidget):
         if not self._require(frames is not None, 'Align the intravascular geometry first.'):
             return
         vessel = self.right_half.intravascular_column.reference_vessel()
+        # The aligned branch, not the whole vessel: find_distal_and_proximal_scaling only
+        # morphs anomalous_points, which lie on the pullback path, radially away from their
+        # nearest centerline point. With every branch present, wall vertices near a
+        # junction could pick the other branch's centerline and be pushed sideways.
         centerline = self.data.aligned_centerline
         if not self._require(centerline is not None, 'Run label_geometry first.'):
             return
@@ -1173,6 +1207,9 @@ class FusionPage(QWidget):
     def _on_run_apply_scaling(self) -> None:
         vessel = self.right_half.intravascular_column.reference_vessel()
         opposite_vessel = 'lca' if vessel == 'rca' else 'rca'
+        # The whole vessel, not aligned_centerline: proximal/distal_points include the side
+        # branches (and, for a side-branch pullback, the parent vessel), which must each be
+        # morphed around their own branch's centerline.
         centerline = self.data.centerline_rca if vessel == 'rca' else self.data.centerline_lca
         opposite_centerline = self.data.centerline_lca if vessel == 'rca' else self.data.centerline_rca
         if not self._require(
