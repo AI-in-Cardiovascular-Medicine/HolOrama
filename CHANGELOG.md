@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.15.0] - 2026-10-08
 
 ### Added
 - **🗑️ Delete Current Contour On All**: deletes the contour type selected in the dropdown on every frame of the pullback, after a confirmation. One Ctrl+Z restores all of them.
