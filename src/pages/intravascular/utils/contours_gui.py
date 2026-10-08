@@ -1,10 +1,12 @@
 from loguru import logger
+from PyQt6.QtWidgets import QMessageBox
 
 from domain.intravascular.types import ContourType, SegmentationTool
 from domain.intravascular.contour_presets import active_preset
-from domain.intravascular.io_types import clear_frame_annotations
-from domain.intravascular.undo import push_frame_annotation_snapshot
+from domain.intravascular.io_types import Contour, clear_frame_annotations, is_contour_key
+from domain.intravascular.undo import push_frame_annotation_snapshot, push_pullback_contours_snapshot
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
+from pages.intravascular.utils.metrics import clear_lumen_measurements
 
 
 def delete_all_on_frame(main_window):
@@ -34,6 +36,52 @@ def delete_all_on_frame(main_window):
         main_window.longitudinal_view.plot_areas()
     except Exception as exc:
         logger.debug(f'Could not refresh the pullback overviews after Delete All: {exc}')
+
+
+def delete_active_contour_on_all_frames(main_window):
+    """Clear the active contour type on every frame of the pullback.
+
+    The affected frames go into a single undo entry, so Ctrl+Z restores the whole pullback
+    in one press.
+    """
+    if not main_window.image_displayed:
+        ErrorMessage(main_window, 'Cannot delete contours before reading input file')
+        return
+
+    display = main_window.display
+    key = display.contour_key()
+    if not is_contour_key(key):
+        ErrorMessage(main_window, 'Select a contour type to delete it on all frames')
+        return
+
+    frame_data_dct = main_window.runtime_data.frame_data_dct or {}
+    frames = [index for index, fd in frame_data_dct.items() if fd.contours.get(key) and fd.contours[key].contours]
+    defn = active_preset().get(display.active_contour_type)
+    name = defn.name if defn else key
+    if not frames:
+        main_window.status_bar.showMessage(f'No {name} contours to delete')
+        return
+
+    reply = QMessageBox.question(
+        main_window,
+        'Delete On All Frames',
+        f'Delete the {name} contour on all {len(frames)} frames that have one?\n(Ctrl+Z undoes it)',
+    )
+    if reply != QMessageBox.StandardButton.Yes:
+        return
+
+    push_pullback_contours_snapshot(main_window.runtime_data, display.frame, frames)
+    for index in frames:
+        frame_data = frame_data_dct[index]
+        if key == ContourType.LUMEN.value:
+            clear_lumen_measurements(frame_data)  # derived from the lumen being deleted
+        frame_data.contours[key] = Contour()
+
+    display.working_spline = None
+    display.active_contour_index = 0
+    display.update_display()
+    display.refresh_all_frame_metrics()  # also redraws both pullback overviews
+    main_window.status_bar.showMessage(f'Deleted {name} on {len(frames)} frames (Ctrl+Z undoes it)')
 
 
 def new_contour(main_window, contour_type: ContourType):

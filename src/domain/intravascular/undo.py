@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable
 
 from domain.intravascular.io_types import FRAME_ANNOTATION_FIELDS, is_contour_key
 
@@ -36,15 +36,19 @@ class PullbackContoursSnapshot:
     frames: dict  # frame -> (contours, centroid)
 
 
-def push_pullback_contours_snapshot(runtime_data: RuntimeData, frame: int) -> None:
+def push_pullback_contours_snapshot(runtime_data: RuntimeData, frame: int, frames: Iterable[int] | None = None) -> None:
+    """Record the contours of `frames` (every frame by default) before they are all replaced."""
     runtime_data.mark_unsaved()
     if runtime_data.frame_data_dct is None:
         return
+    indices = runtime_data.frame_data_dct.keys() if frames is None else frames
     runtime_data.contour_undo.push(
         PullbackContoursSnapshot(
             frame=frame,
             frames={
-                index: (copy.deepcopy(fd.contours), fd.centroid) for index, fd in runtime_data.frame_data_dct.items()
+                index: (copy.deepcopy(fd.contours), fd.centroid)
+                for index in indices
+                if (fd := runtime_data.frame_data_dct.get(index)) is not None
             },
         )
     )

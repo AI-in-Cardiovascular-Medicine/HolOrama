@@ -21,6 +21,7 @@ from domain.intravascular.types import ContourType, SegmentationTool
 from domain.intravascular.contour_presets import ContourPreset, active_preset
 from pages.intravascular.brush_panel import HoverButton
 from pages.intravascular.utils.contours_gui import (
+    delete_active_contour_on_all_frames,
     delete_all_on_frame,
     new_angle,
     new_contour,
@@ -155,7 +156,13 @@ class LeftHalf:
         contour_row_hbox.addWidget(self.contour_type_combo)
         contour_row_hbox.addWidget(self.new_contour_btn)
         contour_row_hbox.addWidget(self.add_contour_btn)
+        self.delete_all_frames_btn = QPushButton('🗑️ Delete Current Contour On All')
+        self.delete_all_frames_btn.clicked.connect(self._on_delete_all_frames)
+        self.delete_all_frames_btn.setStyleSheet('background: darkred')
+        self.delete_all_frames_btn.setToolTip("Deletes the selected contour type on every frame (Ctrl+Z undoes it)")
+
         contour_row_hbox.addWidget(self.delete_all_btn)
+        contour_row_hbox.addWidget(self.delete_all_frames_btn)
         left_vbox.addLayout(contour_row_hbox)
 
         self.refresh_contour_types()  # fill both drop-downs, and set tooltips and button state
@@ -327,6 +334,9 @@ class LeftHalf:
 
     def _on_delete_all(self):
         delete_all_on_frame(self.main_window)
+
+    def _on_delete_all_frames(self):
+        delete_active_contour_on_all_frames(self.main_window)
 
     def _on_angle_type_changed(self, index: int):
         """Point both angle controls, and the display, at the newly selected sector type."""
