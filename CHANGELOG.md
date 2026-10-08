@@ -11,9 +11,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 - **Open Intravascular Mask** gives every contour `n_interactive_points` knot points (20 by default), plaques included, instead of up to twice that for the lumen and EEM and half of it for the rest. The points are placed to follow the mask outline as closely as that count allows, so large calcium plaques keep their shape.
+- New `config.yaml` settings for values that were fixed in the code: `n_interactive_points_range` (the Points range, default 3–40), `insert_point_radius_px` (how close a click must be to a contour line to insert a point, default 20), `initial_window_level` / `initial_window_width` (default 128 / 256) and `color_reference` (default yellow). Existing user configs get them added on the next start.
 
 ### Fixed
 - The yellow start and red end point of an **open spline** stay on its first and last knot point. A knot point added next to an end no longer takes over the end when dragged. Deleting a knot point next to an end no longer drops that end's point and edge line. Ctrl + mouse wheel scaling no longer leaves the ends behind. A click on the very start or end of the line adds a point just inside the contour, not a new end beyond it.
+- A lumen or EEM drawn with a spline gets `n_interactive_points` knot points again. It got half of them, like a plaque.
 
 ## [0.14.0] - 2026-10-02
 

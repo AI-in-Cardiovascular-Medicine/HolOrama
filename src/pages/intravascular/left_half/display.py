@@ -19,18 +19,12 @@ from PyQt6.QtWidgets import (
 from domain.intravascular.types import ContourConfig, ContourType, SegmentationTool
 from domain.colors import DEFAULT_MASK_ALPHA
 from domain.intravascular.contour_presets import active_preset
-from domain.intravascular.io_types import (
-    Contour,
-    Measure,
-    is_contour_key,
-    sector_points,
-    set_sector_points,
-    sync_open_ends,
-)
+from domain.intravascular.display_types import BRUSH_DEFAULT_RADIUS_PX, BRUSH_FOREIGN_COLOR
+from domain.intravascular.io_types import Contour, Measure, is_contour_key, sector_points, set_sector_points
 from domain.intravascular.knot_resampling import KnotHistory
 from domain.intravascular.undo import push_contour_snapshot
 from input_output.output.imgs_masks import contours_to_mask
-from pages.intravascular.utils.contours_gui import step_selected_contour_knots
+from pages.intravascular.utils.contours_gui import refresh_overviews, step_selected_contour_knots
 from pages.intravascular.utils.metrics import MetricsMixin
 from segmentation.segment import downsample
 from tools.angle import (
@@ -75,15 +69,13 @@ class Display(QGraphicsView, MetricsMixin):
         self.point_radius: int = config.intravascular.point_radius
         self.start_color: str = config.intravascular.color_start_point
         self.end_color: str = config.intravascular.color_end_point
-        self.angle_handle_radius_mm: float = getattr(
-            config.intravascular, 'angle_handle_radius_mm', 5.0
-        )  # distance of the sector handles from the image centre (see tools.angle)
+        self.angle_handle_radius_mm: float = config.intravascular.angle_handle_radius_mm  # see tools.angle
         self.snap_radius_px: int = config.intravascular.snap_radius_px
-
-        self.alpha_contour = getattr(config.intravascular, "alpha_contour", 255)  # config uses 0..255
-        self.color_reference: str = getattr(
-            config.intravascular, "color_reference", "yellow"
-        )  # not a contour, so not in the presets
+        self.insert_point_radius_px: int = config.intravascular.insert_point_radius_px
+        fewest_knots, most_knots = config.intravascular.n_interactive_points_range
+        self.knot_count_range: tuple[int, int] = (fewest_knots, most_knots)
+        self.alpha_contour: int = config.intravascular.alpha_contour
+        self.color_reference: str = config.intravascular.color_reference
 
         self.contour_configs = self._build_contour_configs()
 
@@ -96,8 +88,8 @@ class Display(QGraphicsView, MetricsMixin):
         self.setScene(self.graphics_scene)
         self.setSceneRect(0, 0, self.image_size, self.image_size)
 
-        self.initial_window_level: int = 128  # centre of the displayed intensity range (brightness)
-        self.initial_window_width: int = 256  # width of the displayed intensity range (contrast)
+        self.initial_window_level: int = config.intravascular.initial_window_level
+        self.initial_window_width: int = config.intravascular.initial_window_width
         self.window_level: int = self.initial_window_level
         self.window_width: int = self.initial_window_width
         self.mouse_x: float = 0.0
@@ -170,13 +162,16 @@ class Display(QGraphicsView, MetricsMixin):
                 point_thickness=self.point_thickness,
                 alpha=self.alpha_contour,
                 n_points_contour=self.n_points_contour,
-                n_interactive_points=(
-                    self.n_interactive_points
-                    if ct in (ContourType.LUMEN, ContourType.EEM)
-                    else self.n_interactive_points // 2
-                ),
+                n_interactive_points=self.knots_for(ct),
             )
         return configs
+
+    def knots_for(self, contour_type: ContourType) -> int:
+        """Knots a drawn contour of `contour_type` gets: n_interactive_points for the lumen and
+        EEM, half of it for the rest."""
+        if contour_type in (ContourType.LUMEN, ContourType.EEM):
+            return self.n_interactive_points
+        return self.n_interactive_points // 2
 
     def refresh_contour_types(self) -> None:
         """Apply the active preset's new colours and types, falling back to the lumen if the active type is gone."""
@@ -331,7 +326,7 @@ class Display(QGraphicsView, MetricsMixin):
             # Open spline: its start is its first knot and its end its last. Taken from the knots, not the
             # stored coordinates, so knot edits need not carry the ends along. The stored ones are synced for the file.
             if contour_obj is not None:
-                sync_open_ends(contour_obj, contour_index)
+                contour_obj.sync_open_ends(contour_index)
             start_coords = (lumen_x[0], lumen_y[0])
             end_coords = (lumen_x[-1], lumen_y[-1])
 
@@ -723,9 +718,9 @@ class Display(QGraphicsView, MetricsMixin):
         if not self._brush_active:
             return
         popup = getattr(self.main_window, 'brush_settings_popup', None)
-        radius = popup.radius_px if popup is not None else 10
+        radius = popup.radius_px if popup is not None else BRUSH_DEFAULT_RADIUS_PX
         in_preset = self.active_contour_type in active_preset()
-        color = self._contour_rgb(self.active_contour_type) if in_preset else (255, 60, 60)
+        color = self._contour_rgb(self.active_contour_type) if in_preset else BRUSH_FOREIGN_COLOR
         self._brush_cursor._radius_px = radius
         self._brush_cursor._color = color
         view_scale = self.scaling_factor * self.transform().m11()
@@ -830,9 +825,7 @@ class Display(QGraphicsView, MetricsMixin):
         y_dense: list[float] = pts[:, 1].tolist()
 
         # 5. Downsample to sparse knot points (same target counts as spline drawing).
-        n_knots = (
-            self.n_interactive_points if ct in (ContourType.LUMEN, ContourType.EEM) else self.n_interactive_points // 2
-        )
+        n_knots = self.knots_for(ct)
         result = downsample(([x_dense], [y_dense]), n_knots)
         x_sparse: list[float] = result[0] if result[0] else x_dense[:: max(1, len(x_dense) // n_knots)]
         y_sparse: list[float] = result[1] if result[1] else y_dense[:: max(1, len(y_dense) // n_knots)]
@@ -859,10 +852,7 @@ class Display(QGraphicsView, MetricsMixin):
         self._base_mask_cache = None
         self.update_display()
 
-        try:
-            self.main_window.longitudinal_view.plot_areas()
-        except Exception as e:
-            logger.debug(f'Could not update longitudinal view after brush commit: {e}')
+        refresh_overviews(self.main_window)
 
     def _add_center_marker(self, height):
         cx = int((self.image_width // 2) * self.scaling_factor)
@@ -1062,11 +1052,7 @@ class Display(QGraphicsView, MetricsMixin):
                     [self.working_spline.geometry.full_contour[0].tolist()],
                     [self.working_spline.geometry.full_contour[1].tolist()],
                 ),
-                (
-                    self.n_interactive_points
-                    if self.active_contour_type in (ContourType.LUMEN, ContourType.EEM)
-                    else self.n_interactive_points // 2
-                ),
+                self.knots_for(self.active_contour_type),
             )
             key = self.contour_key(self.active_contour_type)
             x_list = [point / self.scaling_factor for point in downsampled[0]]
@@ -1128,11 +1114,7 @@ class Display(QGraphicsView, MetricsMixin):
                         [self.working_spline.geometry.full_contour[0].tolist()],
                         [self.working_spline.geometry.full_contour[1].tolist()],
                     ),
-                    (
-                        self.n_interactive_points
-                        if key in (ContourType.LUMEN, ContourType.EEM)
-                        else self.n_interactive_points // 2
-                    ),
+                    self.knots_for(self.active_contour_type),
                 )
                 xs_sparse_origin = [x / self.scaling_factor for x in downsampled[0]]
                 ys_sparse_origin = [y / self.scaling_factor for y in downsampled[1]]
@@ -1164,10 +1146,7 @@ class Display(QGraphicsView, MetricsMixin):
             self._interrupt_drawing_mode()
             self.main_window.save_contours_soon()
 
-            try:
-                self.main_window.longitudinal_view.plot_areas()
-            except Exception as e:
-                logger.debug(f"Could not update longitudinal view for frame {self.frame}: {e}")
+            refresh_overviews(self.main_window)
 
     ################################################################################################
     # measure and reference point, to be refactored into contour manipulation methods
@@ -1800,7 +1779,7 @@ class Display(QGraphicsView, MetricsMixin):
         if not self.working_spline:
             return
 
-        path_index = self.working_spline.on_path(pos)
+        path_index = self.working_spline.on_path(pos, self.insert_point_radius_px)
         if path_index is None:
             return
 
@@ -2015,10 +1994,7 @@ class Display(QGraphicsView, MetricsMixin):
                 self.display_image(update_image=mask_active, update_contours=True)
                 self.main_window.save_contours_soon()
                 self.active_point_index = None
-                try:
-                    self.main_window.longitudinal_view.plot_areas()
-                except Exception as e:
-                    logger.debug(f"Could not update longitudinal view for frame {self.frame}: {e}")
+                refresh_overviews(self.main_window)
         super().mouseReleaseEvent(event)
 
     def wheelEvent(self, event):
@@ -2077,10 +2053,7 @@ class Display(QGraphicsView, MetricsMixin):
         contour_obj.contours[ci] = (new_xs, new_ys)
         self.main_window.save_contours_soon()
         self.display_image(update_contours=True)
-        try:
-            self.main_window.longitudinal_view.plot_areas()
-        except Exception as e:
-            logger.debug(f"Could not update longitudinal view after contour scale: {e}")
+        refresh_overviews(self.main_window)
 
     def keyPressEvent(self, event):
         # Fallback for when the display has focus. The global Esc shortcut in shortcuts.py usually wins.

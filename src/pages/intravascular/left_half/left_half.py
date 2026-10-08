@@ -20,7 +20,6 @@ from PyQt6.QtWidgets import (
 
 from domain.intravascular.types import ContourType, SegmentationTool
 from domain.intravascular.contour_presets import ContourPreset, active_preset
-from domain.intravascular.knot_resampling import MAX_KNOTS, MIN_KNOTS
 from pages.intravascular.brush_panel import HoverButton
 from pages.intravascular.utils.contours_gui import (
     delete_active_contour_on_all_frames,
@@ -163,7 +162,7 @@ class LeftHalf:
         # Shows the selected contour's knot count, kept in step by sync_knot_count.
         self.knot_count_box = QSpinBox()
         self.knot_count_box.setPrefix('Points: ')
-        self.knot_count_box.setRange(MIN_KNOTS, MAX_KNOTS)
+        self.knot_count_box.setRange(*main_window.display.knot_count_range)
         self.knot_count_box.setKeyboardTracking(False)  # typing 15 is not a stop at 1 first
         self.knot_count_box.setToolTip(
             "Number of points on the selected contour, its shape kept (Shift+Wheel on the image, Ctrl+Z undoes it)"
@@ -357,7 +356,9 @@ class LeftHalf:
         self.knot_count_box.blockSignals(True)
         self.knot_count_box.setEnabled(count is not None)
         if count is not None:
-            self.knot_count_box.setMaximum(max(MAX_KNOTS, count))  # an imported contour may have more
+            self.knot_count_box.setMaximum(
+                max(self.main_window.display.knot_count_range[1], count)
+            )  # an imported contour may have more
             self.knot_count_box.setValue(count)
         self.knot_count_box.blockSignals(False)
 

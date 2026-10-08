@@ -15,7 +15,7 @@ from scipy.spatial import cKDTree
 
 from domain.intravascular.types import ContourType
 from domain.intravascular.io_types import Contour, FrameData
-from domain.intravascular.knot_resampling import MAX_KNOTS, MIN_KNOTS, KnotHistory
+from domain.intravascular.knot_resampling import KnotHistory
 from domain.intravascular.runtime_types import RuntimeData
 from gui.shortcuts import undo_last_contour_edit
 from pages.intravascular.utils.contours_gui import (
@@ -23,6 +23,8 @@ from pages.intravascular.utils.contours_gui import (
     set_selected_contour_knots,
     step_selected_contour_knots,
 )
+
+MIN_KNOTS, MAX_KNOTS = 3, 40  # config: n_interactive_points_range
 
 
 def _lobed(n=20, radius=50.0, lobes=4, depth=0.25, cx=200.0, cy=200.0):
@@ -56,20 +58,20 @@ def _strays(knots, reference_knots, closed=True) -> float:
 class TestKnotHistory:
     def test_the_original_count_gives_the_original_knots(self):
         xs, ys = _lobed()
-        assert KnotHistory(xs, ys, True).knots(20) == (xs, ys)
+        assert KnotHistory(xs, ys, True, (MIN_KNOTS, MAX_KNOTS)).knots(20) == (xs, ys)
 
     @pytest.mark.parametrize('count', [3, 7, 12, 19, 21, 33, 40])
     def test_every_count_has_that_many_knots(self, count):
-        assert len(KnotHistory(*_lobed(), True).knots(count)[0]) == count
+        assert len(KnotHistory(*_lobed(), True, (MIN_KNOTS, MAX_KNOTS)).knots(count)[0]) == count
 
     def test_counts_stay_between_the_limits(self):
-        history = KnotHistory(*_lobed(), True)
+        history = KnotHistory(*_lobed(), True, (MIN_KNOTS, MAX_KNOTS))
         assert len(history.knots(1)[0]) == MIN_KNOTS
         assert len(history.knots(99)[0]) == MAX_KNOTS
 
     def test_down_and_up_again_loses_nothing(self):
         original = _lobed()
-        history = KnotHistory(*original, True)
+        history = KnotHistory(*original, True, (MIN_KNOTS, MAX_KNOTS))
         on_the_way_down = {count: history.knots(count) for count in range(19, 2, -1)}
         on_the_way_up = {count: history.knots(count) for count in range(3, 41)}
         assert history.knots(20) == original
@@ -78,7 +80,7 @@ class TestKnotHistory:
 
     def test_thinning_keeps_the_shape(self):
         original = _lobed()
-        history = KnotHistory(*original, True)
+        history = KnotHistory(*original, True, (MIN_KNOTS, MAX_KNOTS))
         assert _strays(history.knots(16), original) < 1.0
         assert _strays(history.knots(12), original) < 4.0
 
@@ -87,21 +89,21 @@ class TestKnotHistory:
         angles = np.linspace(0, 2 * np.pi, 24, endpoint=False)
         radii = 50 - 20 * np.exp(-(((angles - np.pi) / 0.35) ** 2))
         original = list(200 + radii * np.cos(angles)), list(200 + radii * np.sin(angles))
-        thinned = KnotHistory(*original, True).knots(10)
+        thinned = KnotHistory(*original, True, (MIN_KNOTS, MAX_KNOTS)).knots(10)
         dense = _curve(*original, True, samples=1000)
         evenly = list(dense[::100, 0]), list(dense[::100, 1])
         assert _strays(thinned, original) < _strays(evenly, original)
 
     def test_added_knots_lie_on_the_shape(self):
         original = _lobed()
-        thickened = KnotHistory(*original, True).knots(30)
+        thickened = KnotHistory(*original, True, (MIN_KNOTS, MAX_KNOTS)).knots(30)
         assert _strays(thickened, original) < 0.5
         distances, _ = cKDTree(_curve(*original, True)).query(np.column_stack(thickened))
         assert distances.max() < 0.25  # every knot, the new ones too, on the original spline
 
     def test_an_open_contour_keeps_its_ends(self):
         xs, ys = _arc()
-        history = KnotHistory(xs, ys, False)
+        history = KnotHistory(xs, ys, False, (MIN_KNOTS, MAX_KNOTS))
         for count in (3, 6, 25):
             new_xs, new_ys = history.knots(count)
             assert (new_xs[0], new_ys[0]) == pytest.approx((xs[0], ys[0]))
@@ -109,19 +111,19 @@ class TestKnotHistory:
 
     def test_labelled_knots_stay(self):
         xs, ys = _lobed()
-        history = KnotHistory(xs, ys, True, pinned=[(xs[5], ys[5]), (xs[11], ys[11])])
+        history = KnotHistory(xs, ys, True, (MIN_KNOTS, MAX_KNOTS), pinned=[(xs[5], ys[5]), (xs[11], ys[11])])
         new_xs, new_ys = history.knots(3)
         for i in (5, 11):
             assert any(math.hypot(x - xs[i], y - ys[i]) < 1e-6 for x, y in zip(new_xs, new_ys)), i
 
     def test_a_closing_repeat_is_not_a_knot(self):
         xs, ys = _lobed()
-        history = KnotHistory(xs + [xs[0]], ys + [ys[0]], True)
+        history = KnotHistory(xs + [xs[0]], ys + [ys[0]], True, (MIN_KNOTS, MAX_KNOTS))
         assert history.original_count == 20
         assert history.is_original(xs + [xs[0]], ys + [ys[0]])
 
     def test_it_knows_the_contours_it_handed_out(self):
-        history = KnotHistory(*_lobed(), True)
+        history = KnotHistory(*_lobed(), True, (MIN_KNOTS, MAX_KNOTS))
         thinned = history.knots(10)
         assert history.holds(*thinned)
         moved = ([thinned[0][0] + 3.0] + thinned[0][1:], thinned[1])
@@ -152,6 +154,7 @@ def main_window():
         active_point_index=None,
         working_spline=None,
         knot_histories={},
+        knot_count_range=(MIN_KNOTS, MAX_KNOTS),
         redraws=0,
     )
     display.contour_key = lambda contour_type=None: (contour_type or display.active_contour_type).value

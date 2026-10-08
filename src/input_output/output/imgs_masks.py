@@ -5,12 +5,12 @@ from functools import lru_cache
 import numpy as np
 import SimpleITK as sitk
 from PyQt6.QtWidgets import QApplication, QProgressDialog
-from scipy.interpolate import splev, splprep
 
 from domain.intravascular.types import ContourType
 from domain.intravascular.contour_presets import ContourPreset, ContourTypeDef, active_preset
 from domain.intravascular.io_types import iter_sectors
 from tools.angle import contains_angle, sector_from_points
+from tools.spline import sample_spline
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
 
@@ -114,20 +114,10 @@ def _smooth_contour(xs, ys, is_closed=True):
     _N_INTERP densely-sampled (x, y) arrays for a smooth polygon boundary.
     Falls back to the original arrays on failure.
     """
-    xs, ys = list(xs), list(ys)
-    # Mirror SplineGeometry._ensure_closed(): add closing duplicate only when absent,
-    # so the mask spline is computed identically to the interactive display spline.
-    if is_closed and len(xs) > 1 and (xs[0] != xs[-1] or ys[0] != ys[-1]):
-        xs = xs + [xs[0]]
-        ys = ys + [ys[0]]
-    n = len(xs)
-    if n < 2:
+    if len(xs) < 2:
         return np.array(xs), np.array(ys)
-    k = min(3, n - 1)
     try:
-        tck, u = splprep(np.array([xs, ys]), s=0.0, k=k, per=int(is_closed))
-        x_new, y_new = splev(np.linspace(u.min(), u.max(), _N_INTERP), tck)
-        return x_new, y_new
+        return sample_spline(xs, ys, is_closed, _N_INTERP)  # the display's spline, so the mask matches it
     except Exception:
         return np.array(xs), np.array(ys)
 

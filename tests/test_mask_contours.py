@@ -71,12 +71,8 @@ def _paint(frame_data, preset):
 N_KNOTS = 20  # n_interactive_points, which every type read off a mask gets
 
 
-def _knots_for(defn):
-    return N_KNOTS
-
-
 def _read(mask, preset):
-    contours, centroid = frame_contours(mask, preset, _knots_for, handle_radius=100.0)
+    contours, centroid = frame_contours(mask, preset, N_KNOTS, handle_radius=100.0)
     return FrameData(contours=contours, centroid=centroid)
 
 

@@ -14,9 +14,8 @@ from PyQt6.QtWidgets import (
     QGraphicsScene,
     QGraphicsTextItem,
 )
-from scipy.interpolate import splev, splprep
-
 from tools.angle import edge_point, point_at
+from tools.spline import sample_spline
 
 
 @dataclass
@@ -109,19 +108,13 @@ class SplineGeometry:
         On failure, returns the raw knots.
         """
         try:
-            n_points = len(self.knot_points_x)
-            if n_points < 2:
+            if len(self.knot_points_x) < 2:
                 logger.warning(f"Not enough points for spline interpolation: {len(self.knot_points_x)}")
                 return np.array(self.knot_points_x), np.array(self.knot_points_y)
 
-            k = min(3, n_points - 1)  # cubic, but the degree must stay below the knot count
-
-            points_array = np.array([self.knot_points_x, self.knot_points_y])
-
-            tck, u = splprep(points_array, u=None, s=0.0, k=k, per=int(self.is_closed))
-
-            u_new = np.linspace(u.min(), u.max(), self.n_interpolated_points)
-            x_new, y_new = splev(u_new, tck, der=0)
+            x_new, y_new = sample_spline(
+                self.knot_points_x, self.knot_points_y, self.is_closed, self.n_interpolated_points
+            )
             self.full_contour = (x_new, y_new)
 
             return x_new, y_new
@@ -147,7 +140,7 @@ class SplineGeometry:
 
         return insert_idx
 
-    def get_closest_contour_index(self, x: float, y: float, threshold: float = 20.0) -> Optional[int]:
+    def get_closest_contour_index(self, x: float, y: float, threshold: float) -> Optional[int]:
         """
         Index of the `full_contour` point closest to (x, y), or None if none is within `threshold`.
         """
@@ -451,9 +444,9 @@ class Spline(QGraphicsPathItem):
             self._rebuild_path()
             return index
 
-    def on_path(self, pos: QPointF) -> Optional[int]:
-        """Contour index near `pos`"""
-        return self.geometry.get_closest_contour_index(pos.x(), pos.y())
+    def on_path(self, pos: QPointF, threshold: float) -> Optional[int]:
+        """Contour index within `threshold` of `pos`"""
+        return self.geometry.get_closest_contour_index(pos.x(), pos.y(), threshold)
 
     def get_unscaled_contour(self, scaling_factor: float):
         """Compat wrapper"""

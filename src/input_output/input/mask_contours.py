@@ -22,36 +22,31 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Callable
-
 import numpy as np
 from scipy.spatial import cKDTree
 from skimage import measure as sk_measure
 
+from domain.intravascular.contour_fitting_types import (
+    FIBROUS_CAP_LABEL,
+    FIT_SAMPLES,
+    FIT_TOLERANCE_PER_PX,
+    FIT_TOLERANCE_PX,
+    KNOT_PLACEMENTS,
+    LIPID_ID,
+    MAX_MERGE_GAP_DEG,
+    MIN_COMPONENT_PX,
+    OPEN_FRACTION,
+    RING_GAP_DEG,
+    TOUCH_TOLERANCE_PX,
+)
 from domain.intravascular.types import ContourType
 from domain.intravascular.contour_presets import ContourPreset, ContourTypeDef
 from domain.intravascular.io_types import Contour, set_sector_points
 from tools.angle import MIN_SWEEP, TWO_PI, points_for_sector
-
-MIN_COMPONENT_PX = 20  # anything smaller is noise
-OPEN_FRACTION = 0.85  # share of its directions a region must reach its container's boundary in to be an arc
-TOUCH_TOLERANCE_PX = 2.0  # how close to the container's boundary counts as reaching it
-RING_GAP_DEG = 10.0  # a region whose widest direction gap is narrower is a ring
-MAX_MERGE_GAP_DEG = 90.0  # widest hidden gap two pieces of one arc are bridged across
-# How far a closed contour's spline may stray from (most of) its boundary: half a pixel
-# around something small, up to a pixel along a long outline.
-FIT_TOLERANCE_PX = (0.5, 1.0)
-FIT_TOLERANCE_PER_PX = 1 / 300  # of the outline's length
-_BINS = 360  # one per degree
-
-# The fibrous cap OCT segmentations label separately (tissue between the lumen and a lipid
-# pool) is vessel wall, so it is read as the EEM. The lipid's luminal edge then runs along
-# the cap's far side as a real boundary, not one hidden under the cap. Only while the preset
-# has a lipid type and no type of its own for this label.
-FIBROUS_CAP_LABEL = 6
-LIPID_ID = 'lipid'
+from tools.spline import sample_spline
 
 Point = tuple[float, float]  # (x, y) in image pixels
+_BINS = 360  # directions are binned one per degree
 
 
 @dataclass(frozen=True)
@@ -84,25 +79,24 @@ class _Frame:
         return np.array([0] + [other.label for other in order[: order.index(defn)]])
 
 
-def label_aliases(preset: ContourPreset) -> dict[int, int]:
-    """Mask labels read as another (see FIBROUS_CAP_LABEL)."""
-    lipid = preset.get(LIPID_ID)
-    if lipid is None or lipid.is_angle or any(defn.label == FIBROUS_CAP_LABEL for defn in preset.types):
-        return {}
-    return {FIBROUS_CAP_LABEL: preset[ContourType.EEM].label}
+@dataclass
+class _Arc:
+    points: list[Point]  # its luminal edge, by increasing angle
+    start: float  # angle of the first point about the centroid
+    end: float  # angle of the last
 
 
 def frame_contours(
     frame_mask: np.ndarray,
     preset: ContourPreset,
-    knots_for: Callable[[ContourTypeDef], int],
+    n_knots: int,
     handle_radius: float,
 ) -> tuple[dict[str, Contour], Point | None]:
     """The contours of `preset` read off one frame's mask, by type id, and the lumen centroid
     for open contours (None without a lumen).
 
-    `knots_for` gives a type's knot count. `handle_radius` places angular sector points
-    (only their direction matters).
+    Every contour gets `n_knots` knots (n_interactive_points, plaques too, so a large one keeps
+    its shape). `handle_radius` places angular sector points (only their direction matters).
     """
     for alias, label in label_aliases(preset).items():
         frame_mask = np.where(frame_mask == alias, label, frame_mask)
@@ -122,15 +116,20 @@ def frame_contours(
         if defn.is_angle:
             contour = _sectors(frame, defn, handle_radius)
         elif defn.inside is None:
-            contour = _closed_contours(frame, defn, knots_for(defn))
+            contour = _closed_contours(frame, defn, n_knots)
         else:
-            contour = _contained_contours(frame, defn, knots_for(defn))
+            contour = _contained_contours(frame, defn, n_knots)
         if contour.contours:
             contours[defn.type.value] = contour
     return contours, centroid
 
 
-# -- regions -------------------------------------------------------------------------------
+def label_aliases(preset: ContourPreset) -> dict[int, int]:
+    """Mask labels read as another (see FIBROUS_CAP_LABEL)."""
+    lipid = preset.get(LIPID_ID)
+    if lipid is None or lipid.is_angle or any(defn.label == FIBROUS_CAP_LABEL for defn in preset.types):
+        return {}
+    return {FIBROUS_CAP_LABEL: preset[ContourType.EEM].label}
 
 
 def _components(region: np.ndarray, frame_mask: np.ndarray, defn: ContourTypeDef) -> list[np.ndarray]:
@@ -148,152 +147,6 @@ def _components(region: np.ndarray, frame_mask: np.ndarray, defn: ContourTypeDef
 
 def _largest(parts: list[np.ndarray]) -> np.ndarray | None:
     return max(parts, key=np.count_nonzero) if parts else None
-
-
-def _single(defn: ContourTypeDef) -> bool:
-    """One lumen and one EEM per frame, any number of other types."""
-    return not defn.appendable
-
-
-# -- closed contours -----------------------------------------------------------------------
-
-
-def _closed_contours(frame: _Frame, defn: ContourTypeDef, n_knots: int) -> Contour:
-    parts = _components(frame.region(defn), frame.mask, defn)
-    if _single(defn):
-        largest = _largest(parts)
-        parts = [largest] if largest is not None else []
-    contour = Contour()
-    for part in parts:
-        knots = _boundary_knots(part, frame, defn, n_knots)
-        if knots is not None:
-            _append(contour, knots, closed=True)
-    return contour
-
-
-def _boundary_knots(part: np.ndarray, frame: _Frame, defn: ContourTypeDef, n_knots: int) -> list[Point] | None:
-    """`n_knots` knots for the closed contour around `part`, from the unoccluded stretches of
-    its boundary (see the module docstring). The spline bridges the gaps."""
-    line = _outer_line(part)
-    if line is None:
-        return None
-    genuine = ~_occluded(line, part, frame.mask, frame.occluders(defn))
-    # Bridging needs gaps: a mostly hidden boundary is kept whole (its region is all there is).
-    kept = line[genuine] if np.count_nonzero(genuine) >= 0.5 * len(line) else line
-    return _fitted(kept, n_knots)
-
-
-def _fitted(line: np.ndarray, n_knots: int) -> list[Point] | None:
-    """`n_knots` knots along the closed (row, col) `line`, as many as a drawn contour of the
-    type gets (n_interactive_points), so it edits like one.
-
-    With the count fixed, the fit depends on placement: evenly by length first, then, while
-    the spline strays from over 5% of the line by more than FIT_TOLERANCE_PX, shifted along
-    it and drawn towards bends, keeping the best fit."""
-    from input_output.output.imgs_masks import _smooth_contour  # the spline the mask is painted with
-
-    if len(line) < 3:
-        return None
-    count = min(max(n_knots, 3), len(line))
-    # Knots are spread by length, not point count. A hidden stretch left out is a jump in it.
-    steps = np.hypot(*np.diff(line, axis=0).T)
-    closing = float(np.hypot(*(line[0] - line[-1])))
-    total = float(steps.sum()) + closing
-    tolerance = float(np.clip(total * FIT_TOLERANCE_PER_PX, *FIT_TOLERANCE_PX))
-    lengths = np.append(steps, closing)  # from each point to the next, round the loop
-    bend = _bend(line)
-
-    def placement(weight: float, phase: float) -> np.ndarray:
-        shares = lengths * (1.0 + weight * bend)  # each point's share: its length, more where the line bends
-        along = np.concatenate([[0.0], np.cumsum(shares)[:-1]])
-        targets = (np.arange(count) + phase) * (along[-1] + shares[-1]) / count
-        return np.unique(np.searchsorted(along, targets).clip(0, len(line) - 1))
-
-    def error(picks: np.ndarray) -> float:
-        xs, ys = _smooth_contour(line[picks, 1], line[picks, 0], is_closed=True)
-        distances, _ = cKDTree(np.column_stack([ys, xs])).query(line)
-        return float(np.percentile(distances, 95))
-
-    best, best_error = None, np.inf
-    for weight, phase in _PLACEMENTS:
-        picks = placement(weight, phase)
-        if len(picks) < 3:
-            continue
-        fit = error(picks)
-        if fit < best_error:
-            best, best_error = picks, fit
-        if best_error <= tolerance:
-            break
-    if best is None:
-        return None
-    return [(float(line[i, 1]), float(line[i, 0])) for i in best]
-
-
-# (bend weight, phase) of the knot placements _fitted tries, plain even spacing first
-_PLACEMENTS = ((0.0, 0.0), (0.0, 0.5), (1.0, 0.0), (1.0, 0.5), (3.0, 0.0), (3.0, 0.5))
-
-
-def _bend(line: np.ndarray) -> np.ndarray:
-    """How sharply the closed `line` turns at each point, 1 on average (0 if it turns
-    evenly). Measured over a few points either side to ignore the pixel staircase."""
-    span = max(len(line) // 50, 2)
-    ahead = np.roll(line, -span, axis=0) - line
-    behind = line - np.roll(line, span, axis=0)
-    turn = np.abs(np.arctan2(*ahead.T) - np.arctan2(*behind.T))
-    turn = np.minimum(turn, 2 * np.pi - turn)
-    mean = turn.mean()
-    return turn / mean if mean > 0 else np.zeros(len(line))
-
-
-def _outer_line(part: np.ndarray) -> np.ndarray | None:
-    """Outer boundary of `part` as (row, col) points on the half-pixel line around it, so its
-    polygon covers exactly the pixel centres."""
-    rows, cols = np.nonzero(part)
-    if len(rows) == 0:
-        return None
-    top, left = rows.min(), cols.min()
-    crop = part[top : rows.max() + 1, left : cols.max() + 1]
-    lines = sk_measure.find_contours(np.pad(crop, 1).astype(float), 0.5)
-    if not lines:
-        return None
-    line = max(lines, key=len)
-    return line + np.array([top - 1, left - 1])
-
-
-def _occluded(line: np.ndarray, part: np.ndarray, frame_mask: np.ndarray, occluders: np.ndarray) -> np.ndarray:
-    """Per boundary point, whether it borders an occluder outside `part`."""
-    if len(occluders) == 0:
-        return np.zeros(len(line), dtype=bool)
-    height, width = frame_mask.shape
-    hidden = np.zeros(len(line), dtype=bool)
-    base_rows = np.floor(line[:, 0]).astype(int)
-    base_cols = np.floor(line[:, 1]).astype(int)
-    for d_row in (0, 1):
-        for d_col in (0, 1):
-            rows = np.clip(base_rows + d_row, 0, height - 1)
-            cols = np.clip(base_cols + d_col, 0, width - 1)
-            hidden |= ~part[rows, cols] & np.isin(frame_mask[rows, cols], occluders)
-    return hidden
-
-
-def _evenly(line: np.ndarray, n_knots: int) -> list[Point] | None:
-    """`n_knots` even (x, y) picks of (row, col) `line`."""
-    if len(line) < 3:
-        return None
-    count = min(n_knots, len(line))
-    picks = np.linspace(0, len(line), count, endpoint=False).astype(int)
-    return [(float(line[i, 1]), float(line[i, 0])) for i in picks]
-
-
-def _append(contour: Contour, knots: list[Point], closed: bool) -> None:
-    contour.contours.append(([x for x, _ in knots], [y for _, y in knots]))
-    contour.closed.append(closed)
-    if closed:
-        contour.start_coords.append([])
-        contour.end_coords.append([])
-    else:
-        contour.start_coords.append([knots[0]])
-        contour.end_coords.append([knots[-1]])
 
 
 # -- angular sectors -----------------------------------------------------------------------
@@ -356,12 +209,6 @@ def _runs(present: np.ndarray, unknown: np.ndarray) -> list[list[int]]:
     return [trimmed for trimmed in (_trim(run, present) for run in runs) if trimmed]
 
 
-def _trim(run: list[int], present: np.ndarray) -> list[int]:
-    """`run` minus its unknown end bins (only inner ones are bridged)."""
-    marks = [i for i, b in enumerate(run) if present[b]]
-    return run[marks[0] : marks[-1] + 1] if marks else []
-
-
 def _after_widest(flags: np.ndarray) -> int:
     """Bin after the widest circular run of set `flags`."""
     best_end, best_len, length = 0, -1, 0
@@ -375,14 +222,133 @@ def _after_widest(flags: np.ndarray) -> int:
     return (best_end + 1) % _BINS
 
 
+def _trim(run: list[int], present: np.ndarray) -> list[int]:
+    """`run` minus its unknown end bins (only inner ones are bridged)."""
+    marks = [i for i, b in enumerate(run) if present[b]]
+    return run[marks[0] : marks[-1] + 1] if marks else []
+
+
+# -- closed contours -----------------------------------------------------------------------
+
+
+def _closed_contours(frame: _Frame, defn: ContourTypeDef, n_knots: int) -> Contour:
+    parts = _components(frame.region(defn), frame.mask, defn)
+    if _single(defn):
+        largest = _largest(parts)
+        parts = [largest] if largest is not None else []
+    contour = Contour()
+    for part in parts:
+        knots = _boundary_knots(part, frame, defn, n_knots)
+        if knots is not None:
+            contour.add(knots, closed=True)
+    return contour
+
+
+def _single(defn: ContourTypeDef) -> bool:
+    """One lumen and one EEM per frame, any number of other types."""
+    return not defn.appendable
+
+
+def _boundary_knots(part: np.ndarray, frame: _Frame, defn: ContourTypeDef, n_knots: int) -> list[Point] | None:
+    """`n_knots` knots for the closed contour around `part`, from the unoccluded stretches of
+    its boundary (see the module docstring). The spline bridges the gaps."""
+    line = _outer_line(part)
+    if line is None:
+        return None
+    genuine = ~_occluded(line, part, frame.mask, frame.occluders(defn))
+    # Bridging needs gaps: a mostly hidden boundary is kept whole (its region is all there is).
+    kept = line[genuine] if np.count_nonzero(genuine) >= 0.5 * len(line) else line
+    return _fitted(kept, n_knots)
+
+
+def _outer_line(part: np.ndarray) -> np.ndarray | None:
+    """Outer boundary of `part` as (row, col) points on the half-pixel line around it, so its
+    polygon covers exactly the pixel centres."""
+    rows, cols = np.nonzero(part)
+    if len(rows) == 0:
+        return None
+    top, left = rows.min(), cols.min()
+    crop = part[top : rows.max() + 1, left : cols.max() + 1]
+    lines = sk_measure.find_contours(np.pad(crop, 1).astype(float), 0.5)
+    if not lines:
+        return None
+    line = max(lines, key=len)
+    return line + np.array([top - 1, left - 1])
+
+
+def _occluded(line: np.ndarray, part: np.ndarray, frame_mask: np.ndarray, occluders: np.ndarray) -> np.ndarray:
+    """Per boundary point, whether it borders an occluder outside `part`."""
+    if len(occluders) == 0:
+        return np.zeros(len(line), dtype=bool)
+    height, width = frame_mask.shape
+    hidden = np.zeros(len(line), dtype=bool)
+    base_rows = np.floor(line[:, 0]).astype(int)
+    base_cols = np.floor(line[:, 1]).astype(int)
+    for d_row in (0, 1):
+        for d_col in (0, 1):
+            rows = np.clip(base_rows + d_row, 0, height - 1)
+            cols = np.clip(base_cols + d_col, 0, width - 1)
+            hidden |= ~part[rows, cols] & np.isin(frame_mask[rows, cols], occluders)
+    return hidden
+
+
+def _fitted(line: np.ndarray, n_knots: int) -> list[Point] | None:
+    """`n_knots` knots along the closed (row, col) `line`, as many as a drawn contour of the
+    type gets (n_interactive_points), so it edits like one.
+
+    With the count fixed, the fit depends on placement: evenly by length first, then, while
+    the spline strays from over 5% of the line by more than FIT_TOLERANCE_PX, shifted along
+    it and drawn towards bends, keeping the best fit."""
+    if len(line) < 3:
+        return None
+    count = min(max(n_knots, 3), len(line))
+    # Knots are spread by length, not point count. A hidden stretch left out is a jump in it.
+    steps = np.hypot(*np.diff(line, axis=0).T)
+    closing = float(np.hypot(*(line[0] - line[-1])))
+    total = float(steps.sum()) + closing
+    tolerance = float(np.clip(total * FIT_TOLERANCE_PER_PX, *FIT_TOLERANCE_PX))
+    lengths = np.append(steps, closing)  # from each point to the next, round the loop
+    bend = _bend(line)
+
+    def placement(weight: float, phase: float) -> np.ndarray:
+        shares = lengths * (1.0 + weight * bend)  # each point's share: its length, more where the line bends
+        along = np.concatenate([[0.0], np.cumsum(shares)[:-1]])
+        targets = (np.arange(count) + phase) * (along[-1] + shares[-1]) / count
+        return np.unique(np.searchsorted(along, targets).clip(0, len(line) - 1))
+
+    def error(picks: np.ndarray) -> float:
+        xs, ys = sample_spline(line[picks, 1], line[picks, 0], True, FIT_SAMPLES)  # the spline the mask is painted with
+        distances, _ = cKDTree(np.column_stack([ys, xs])).query(line)
+        return float(np.percentile(distances, 95))
+
+    best, best_error = None, np.inf
+    for weight, phase in KNOT_PLACEMENTS:
+        picks = placement(weight, phase)
+        if len(picks) < 3:
+            continue
+        fit = error(picks)
+        if fit < best_error:
+            best, best_error = picks, fit
+        if best_error <= tolerance:
+            break
+    if best is None:
+        return None
+    return [(float(line[i, 1]), float(line[i, 0])) for i in best]
+
+
+def _bend(line: np.ndarray) -> np.ndarray:
+    """How sharply the closed `line` turns at each point, 1 on average (0 if it turns
+    evenly). Measured over a few points either side to ignore the pixel staircase."""
+    span = max(len(line) // 50, 2)
+    ahead = np.roll(line, -span, axis=0) - line
+    behind = line - np.roll(line, span, axis=0)
+    turn = np.abs(np.arctan2(*ahead.T) - np.arctan2(*behind.T))
+    turn = np.minimum(turn, 2 * np.pi - turn)
+    mean = turn.mean()
+    return turn / mean if mean > 0 else np.zeros(len(line))
+
+
 # -- types lying inside another ------------------------------------------------------------
-
-
-@dataclass
-class _Arc:
-    points: list[Point]  # its luminal edge, by increasing angle
-    start: float  # angle of the first point about the centroid
-    end: float  # angle of the last
 
 
 def _contained_contours(frame: _Frame, defn: ContourTypeDef, n_knots: int) -> Contour:
@@ -405,19 +371,19 @@ def _contained_contours(frame: _Frame, defn: ContourTypeDef, n_knots: int) -> Co
         if np.mean(touching) < OPEN_FRACTION:
             knots = _boundary_knots(part, frame, defn, n_knots)
             if knots is not None:
-                _append(contour, knots, closed=True)
+                contour.add(knots, closed=True)
         elif _widest_gap(theta)[1] < math.radians(RING_GAP_DEG):
             ring = _inner_edge(theta, radius, bins, frame.centroid)
             knots = _evenly(np.array([(y, x) for x, y in ring]), n_knots)
             if knots is not None:
-                _append(contour, knots, closed=True)
+                contour.add(knots, closed=True)
         else:
             arcs.append(_arc(theta, radius, bins, frame.centroid))
 
     for arc in _merge_arcs(arcs, frame, defn):
         knots = _arc_knots(arc.points, n_knots)
         if knots is not None:
-            _append(contour, knots, closed=False)
+            contour.add(knots, closed=False)
     return contour
 
 
@@ -429,6 +395,14 @@ def _reach(region: np.ndarray, centroid: Point) -> np.ndarray:
     reach = np.full(_BINS, -np.inf)
     np.maximum.at(reach, bins, np.hypot(cols - cx, rows - cy))
     return reach
+
+
+def _widest_gap(theta: np.ndarray) -> tuple[float, float]:
+    """(end, width) of the widest circular gap in directions `theta`."""
+    ordered = np.sort(theta)
+    gaps = np.diff(np.append(ordered, ordered[0] + TWO_PI))
+    widest = int(np.argmax(gaps))
+    return float(ordered[(widest + 1) % len(ordered)]), float(gaps[widest])
 
 
 def _inner_edge(theta, radius, bins, centroid: Point, order: list[int] | None = None) -> list[Point]:
@@ -446,12 +420,13 @@ def _inner_edge(theta, radius, bins, centroid: Point, order: list[int] | None = 
     return points
 
 
-def _widest_gap(theta: np.ndarray) -> tuple[float, float]:
-    """(end, width) of the widest circular gap in directions `theta`."""
-    ordered = np.sort(theta)
-    gaps = np.diff(np.append(ordered, ordered[0] + TWO_PI))
-    widest = int(np.argmax(gaps))
-    return float(ordered[(widest + 1) % len(ordered)]), float(gaps[widest])
+def _evenly(line: np.ndarray, n_knots: int) -> list[Point] | None:
+    """`n_knots` even (x, y) picks of (row, col) `line`."""
+    if len(line) < 3:
+        return None
+    count = min(n_knots, len(line))
+    picks = np.linspace(0, len(line), count, endpoint=False).astype(int)
+    return [(float(line[i, 1]), float(line[i, 0])) for i in picks]
 
 
 def _arc(theta, radius, bins, centroid: Point) -> _Arc:

@@ -9,15 +9,20 @@ intravascular:
   contour_preset: 'Default'            # the contour types to annotate with (Settings > Intravascular Contour Settings)
   gating_display_stretch: 1
   lview_display_stretch: 1
-  n_interactive_points: 20  # lumen and eem use this; calcium, lipid, macrophage, branch use half
+  n_interactive_points: 20  # a drawn lumen or EEM gets this many, other drawn types half, contours read from a mask all of it
+  n_interactive_points_range: [3, 40]  # what the Points box and Shift+Wheel keep a contour's knot count within
   n_points_contour: 200  # ideally a multiple of 100 (closest-point maths)
   contour_thickness: 2
   point_thickness: 1
   point_radius: 10
   snap_radius_px: 5   # how close a click must land to grab a point or close a contour
+  insert_point_radius_px: 20  # how close to a contour line a click must land to insert a point there
+  initial_window_level: 128  # centre of the displayed intensity range (brightness), what R resets to
+  initial_window_width: 256  # width of the displayed intensity range (contrast), what R resets to
   # Every contour type's colour is set in its contour preset (src/presets/intravascular).
   color_start_point: 'yellow'  # PyQt6 color name or hex (https://doc.qt.io/qt-6/qcolor.html)
   color_end_point: 'red'
+  color_reference: 'yellow'  # the reference point (not a contour type, so not in the presets)
   angle_handle_radius_mm: 5.0  # how far from the image centre a wire/blood sector's handles and arc sit
   alpha_contour: 100  # 0-255
   catheter_diameter: 0.9  # mm, drawn in the OCT vessel schematic (0.9 = 2.7 F)

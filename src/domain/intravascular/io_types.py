@@ -26,6 +26,37 @@ class Contour:
     start_coords: List[List[Tuple[float, float]]] = field(default_factory=list)
     end_coords: List[List[Tuple[float, float]]] = field(default_factory=list)
 
+    def add(self, knots: Sequence[Tuple[float, float]], closed: bool) -> None:
+        """Append a contour through (x, y) `knots`. An open one gets its first and last knot as start and end."""
+        index = len(self.contours)
+        self.reserve(index)
+        self.contours[index] = ([float(x) for x, _ in knots], [float(y) for _, y in knots])
+        self.closed[index] = closed
+        self.sync_open_ends(index)
+
+    def sync_open_ends(self, index: int) -> None:
+        """Store open contour `index`'s first and last knot as its start and end, whatever has
+        since been done to its knots. No-op for a closed contour, whose start/end are user labels."""
+        if index >= len(self.contours) or (self.closed[index] if index < len(self.closed) else True):
+            return
+        xs, ys = self.contours[index][0], self.contours[index][1]
+        if not xs or not ys:
+            return
+        self.reserve(index)
+        self.start_coords[index] = [(float(xs[0]), float(ys[0]))]
+        self.end_coords[index] = [(float(xs[-1]), float(ys[-1]))]
+
+    def reserve(self, index: int, closed: bool = True) -> None:
+        """Grow the per-contour lists to hold contour `index`, new entries empty and `closed`."""
+        while len(self.contours) <= index:
+            self.contours.append(([], []))
+        while len(self.closed) <= index:
+            self.closed.append(closed)
+        while len(self.start_coords) <= index:
+            self.start_coords.append([])
+        while len(self.end_coords) <= index:
+            self.end_coords.append([])
+
 
 def sector_points(contour: Contour, index: int) -> List[Tuple[float, float]]:
     """(x, y) points of sector `index`, or [] if missing (see tools.angle)."""
@@ -47,32 +78,9 @@ def iter_sectors(contour) -> List[List[Tuple[float, float]]]:
     return [legacy] if legacy else []
 
 
-def sync_open_ends(contour: Contour, index: int) -> None:
-    """Store open contour `index`'s first and last knot as its start and end, whatever has
-    since been done to its knots. No-op for a closed contour, whose start/end are user labels."""
-    if index >= len(contour.contours) or (contour.closed[index] if index < len(contour.closed) else True):
-        return
-    entry = contour.contours[index]
-    if not entry or not entry[0] or len(entry) < 2 or not entry[1]:
-        return
-    while len(contour.start_coords) <= index:
-        contour.start_coords.append([])
-    while len(contour.end_coords) <= index:
-        contour.end_coords.append([])
-    contour.start_coords[index] = [(float(entry[0][0]), float(entry[1][0]))]
-    contour.end_coords[index] = [(float(entry[0][-1]), float(entry[1][-1]))]
-
-
 def set_sector_points(contour: Contour, index: int, points: Sequence[Tuple[float, float]]) -> None:
     """Store `points` as sector `index`, growing lists as needed."""
-    while len(contour.contours) <= index:
-        contour.contours.append(([], []))
-    while len(contour.closed) <= index:
-        contour.closed.append(False)
-    while len(contour.start_coords) <= index:
-        contour.start_coords.append([])
-    while len(contour.end_coords) <= index:
-        contour.end_coords.append([])
+    contour.reserve(index, closed=False)
     contour.contours[index] = ([float(p[0]) for p in points], [float(p[1]) for p in points])
 
 
@@ -164,6 +172,15 @@ def clear_frame_annotations(frame_data: FrameData) -> None:
     blank = FrameData()
     for field_name in FRAME_ANNOTATION_FIELDS:
         setattr(frame_data, field_name, getattr(blank, field_name))
+
+
+DICOM_PRIVATE_TAGS: dict[int, str] = {
+    0x000B1001: 'BostonPullbackRate',  # Boston Scientific pullback rate (mm/s)
+}
+DICOM_MODALITY_ALIASES: dict[str, str] = {
+    'US': 'IVUS',  # standard DICOM ultrasound
+    'OPT': 'OCT',  # standard DICOM ophthalmic tomography
+}
 
 
 @dataclass

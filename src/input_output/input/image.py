@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
 
 from domain.intravascular.types import SupportedType
 from domain.intravascular.contour_presets import ContourPreset, active_preset, with_labels
-from domain.intravascular.io_types import Contour, FrameData
+from domain.intravascular.io_types import DICOM_MODALITY_ALIASES, DICOM_PRIVATE_TAGS, Contour, FrameData
 from domain.intravascular.oct_display_types import OCT_LUT
 from domain.intravascular.undo import push_pullback_contours_snapshot
 from input_output.input.contours import read_contours
@@ -228,12 +228,6 @@ def read_nifti_mask(main_window) -> None:
         return
 
     display = main_window.display
-    # Full n_interactive_points for every type (plaque too) for read-in quality. Reduce later with button/shortcut.
-    knots = display.n_interactive_points
-
-    def knots_for(defn):
-        return knots
-
     handle_radius = display._angle_handle_radius() / display.scaling_factor
     frame_data_dct = main_window.runtime_data.frame_data_dct
     progress = QProgressDialog('Reading the mask...', 'Cancel', 0, len(mask_arr), main_window)
@@ -247,7 +241,7 @@ def read_nifti_mask(main_window) -> None:
             QApplication.processEvents()
             if progress.wasCanceled():
                 return  # nothing written yet
-            read[frame] = frame_contours(mask_arr[frame], preset, knots_for, handle_radius)
+            read[frame] = frame_contours(mask_arr[frame], preset, display.n_interactive_points, handle_radius)
     except Exception:
         traceback.print_exc()
         ErrorMessage(main_window, 'Error converting mask to contours')
@@ -329,11 +323,6 @@ def _store_metadata(main_window, md: MetaDataIntravascular, num_frames: int) -> 
     main_window.runtime_data.metadata['num_frames'] = num_frames
 
 
-_PRIVATE_TAGS = {
-    0x000B1001: 'BostonPullbackRate',  # Boston Scientific pullback rate (mm/s)
-}
-
-
 def _read_dicom(filename: str) -> tuple[np.ndarray, pd.DataFrame]:
     dicom = dcm.dcmread(filename, force=True, defer_size=256)
     pixel_array = dicom.pixel_array
@@ -343,7 +332,7 @@ def _read_dicom(filename: str) -> tuple[np.ndarray, pd.DataFrame]:
         if elem.name == 'Pixel Data':
             continue
         rows.append({'Tag': str(elem.tag), 'VR': elem.VR, 'Description': elem.name, 'Value': elem.value})
-    for tag, name in _PRIVATE_TAGS.items():
+    for tag, name in DICOM_PRIVATE_TAGS.items():
         if tag in dicom:
             rows.append(
                 {
@@ -397,17 +386,11 @@ def _drop_trailing_singletons(array: np.ndarray) -> np.ndarray:
     return array
 
 
-_DICOM_MODALITY_ALIASES: dict[str, str] = {
-    'US': 'IVUS',  # standard DICOM ultrasound
-    'OPT': 'OCT',  # standard DICOM ophthalmic tomography
-}
-
-
 def _check_integrity(metadata: pd.DataFrame) -> tuple[bool, Optional[str]]:
     is_dicom = not metadata[metadata['Description'] == 'Modality'].empty
     if is_dicom:
         modality = metadata[metadata['Description'] == 'Modality']['Value']
-        _accepted = {t.value for t in SupportedType} | set(_DICOM_MODALITY_ALIASES.keys())
+        _accepted = {t.value for t in SupportedType} | set(DICOM_MODALITY_ALIASES.keys())
         if modality.empty or not modality.isin(_accepted).any():
             return False, None
         num_frames = metadata[metadata['Description'] == 'Number of Frames']['Value']
