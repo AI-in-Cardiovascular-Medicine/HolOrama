@@ -98,10 +98,13 @@ def run_label_geometry(
 
 
 def run_label_branches_pair(rca_cl, lca_cl, results: dict) -> dict:
-    """Project rca_cl/lca_cl's branch structure onto results' labelled surface points.
+    """Project rca_cl/lca_cl's branch structure onto results' labelled surface points:
+    results['rca_branches'] / results['lca_branches'], a dict from every branch id to its
+    vertices (multimodars>=0.8.0).
 
-    Call after any manual split_branch/merge_branches edit to the centerlines so the
-    surface-point branch labels (consumed by discretize_vessel_tree) reflect the edit."""
+    Call after any manual split_branch/merge_branches edit to the centerlines (those
+    reassign branch ids) so the branch labels, consumed by discretize_vessel_tree and
+    label_anomalous_region, reflect the edit."""
     # multimodars>=0.6.0 API — see the note in load_centerline() above.
     return mm.label_branches_pair(rca_cl, lca_cl, results, control_plot=False)  # type: ignore[attr-defined]
 
@@ -112,8 +115,6 @@ def run_discretize_vessel_tree(
     lca_cl,
     results: dict,
     *,
-    branch_id_rca: int = 0,
-    branch_id_lca: int = 0,
     step_size: float = 1.0,
     n_points: int = 100,
 ) -> Any:
@@ -122,8 +123,6 @@ def run_discretize_vessel_tree(
         rca_cl,
         lca_cl,
         results,
-        branch_id_rca=branch_id_rca,
-        branch_id_lca=branch_id_lca,
         step_size=step_size,
         n_points=n_points,
         control_plot=False,
@@ -326,9 +325,12 @@ def frames_to_mesh(geometry, contour_type: str | None = None) -> trimesh.Trimesh
     return mesh
 
 
-def run_label_anomalous_region(centerline, frames, results: dict, *, results_key: str = 'rca_points') -> dict:
+def run_label_anomalous_region(centerline, frames, results: dict, *, branch_id: int = 0) -> dict:
+    """`centerline` is the whole vessel the branches were labelled with; `branch_id` the
+    branch the frames were aligned onto. Only that branch's pullback path is split into
+    proximal/anomalous/distal; the vessel's other vertices go to 'off_path_points'."""
     return mm.label_anomalous_region(
-        centerline=centerline, frames=frames, results=results, results_key=results_key, debug_plot=False
+        centerline=centerline, frames=frames, results=results, branch_id=branch_id, debug_plot=False
     )
 
 
@@ -351,6 +353,11 @@ def run_find_scalings(
     aortic_results = (
         results if vessel == 'rca' else {**results, 'rca_removed_points': results.get('lca_removed_points', [])}
     )
+    if not aortic_results.get('rca_removed_points'):
+        # No occluded points (no acute takeoff, e.g. a side-branch pullback): upstream's
+        # search then never beats its f64::MAX start and returns that as the scaling.
+        logger.warning(f'No {vessel.upper()} removed points — defaulting aortic_scaling to 0.0')
+        return {'proximal_scaling': prox, 'distal_scaling': distal, 'aortic_scaling': 0.0}
     try:
         # mm.find_aorta_scaling raises ValueError when none of `frames` carries the
         # aortic_thickness/"Wall" extras it needs (e.g. not an anomalous-takeoff case,
@@ -395,7 +402,11 @@ def run_stitch(
     fillet_layers: int = 2,
     seam_points_a: int = 2,
     seam_points_b: int = 4,
+    tree: Any | None = None,
 ) -> dict:
+    """`tree` is the discretized vessel tree of the mesh before removal; with it, side
+    branches leaving the removed segment (off_path_points) are reconnected to the
+    intravascular wall instead of being left loose."""
     return mm.stitch_ccta_to_intravascular(
         iv_mesh,
         mesh,
@@ -407,6 +418,7 @@ def run_stitch(
         fillet_layers=fillet_layers,
         seam_points_a=seam_points_a,
         seam_points_b=seam_points_b,
+        tree=tree,
     )
 
 

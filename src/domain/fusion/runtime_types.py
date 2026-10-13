@@ -34,10 +34,11 @@ class FusionRuntimeData:
         self.iv_align_logs: tuple | None = None
         self.aligned: Any | None = None  # PyGeometryPair | PyGeometry from align_combined
         self.aligned_centerline: Any | None = None  # single-branch rca/lca centerline passed into the alignment
-        # The whole prepared vessel (all branches) the pullback was aligned onto, and which
-        # one ('rca'/'lca') — label_anomalous_region needs every branch, not just
-        # aligned_centerline, to place side-branch vertices through the branch tree.
+        # The whole prepared vessel (all branches) the pullback was aligned onto, which one
+        # ('rca'/'lca') and which branch id — label_anomalous_region needs every branch plus
+        # the pullback branch id, not just aligned_centerline.
         self.aligned_vessel: str | None = None
+        self.aligned_branch: int = 0
         self.aligned_vessel_centerline: Any | None = None
 
         # -- Column 3: fusion / scaling / stitching --------------------------------------

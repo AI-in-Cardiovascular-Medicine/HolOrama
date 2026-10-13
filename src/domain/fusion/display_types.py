@@ -25,9 +25,9 @@ __all__ = [
     'SYSTOLE_COLOR',
 ]
 
-# results dict point-cloud keys -> RGB, from plot_results_key(). Region keys not listed
-# here (rca_points_main/side_N, boundary_points, prox/dist_boundary_points) aren't part
-# of the documented legend and aren't visualized yet.
+# results dict point-cloud keys -> RGB, from plot_results_key(). Results entries not listed
+# here (the per-branch rca_branches/lca_branches dicts, boundary_points,
+# prox/dist_boundary_points) aren't part of the documented legend and aren't visualized yet.
 REGION_COLORS: dict[str, tuple[int, int, int]] = {
     'aorta_points': (255, 255, 0),  # yellow
     'rca_points': (0, 0, 255),  # blue
@@ -37,6 +37,9 @@ REGION_COLORS: dict[str, tuple[int, int, int]] = {
     'proximal_points': (0, 255, 255),  # cyan
     'distal_points': (255, 0, 255),  # magenta
     'anomalous_points': (255, 165, 0),  # orange
+    # The vessel's vertices off the pullback path (its other branches), from
+    # label_anomalous_region; neither scaled nor removed.
+    'off_path_points': (128, 0, 128),  # purple
 }
 
 # boundary_points_1, boundary_points_2, ... (the rims left by Remove Labeled Points),
