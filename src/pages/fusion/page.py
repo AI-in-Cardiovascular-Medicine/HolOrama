@@ -111,6 +111,7 @@ class FusionPage(QWidget):
     def _connect_signals(self) -> None:
         gc = self.right_half.geometry_column
         gc.run_label_geometry_requested.connect(self._on_run_label_geometry)
+        gc.run_label_branches_requested.connect(self._on_run_label_branches)
         gc.prepare_centerlines_requested.connect(self._on_run_prepare_centerlines)
         gc.run_discretize_tree_requested.connect(self._on_run_discretize_tree)
         gc.geometry_files_changed.connect(self._on_geometry_preview)
@@ -122,10 +123,12 @@ class FusionPage(QWidget):
         self.left_half.branch_toolbar.merge_requested.connect(self._on_merge_branches_requested)
         self.left_half.viewer.point_picked.connect(self._on_point_picked)
         self.left_half.geometry_toolbar.lasso_mode_toggled.connect(self._on_lasso_mode_toggled)
+        self.left_half.branch_labels_toolbar.lasso_mode_toggled.connect(self._on_branch_lasso_mode_toggled)
         self.left_half.viewer.lasso_closed.connect(self._on_lasso_closed)
         for toolbar in (
             self.left_half.geometry_toolbar,
             self.left_half.branch_toolbar,
+            self.left_half.branch_labels_toolbar,
             self.left_half.intravascular_loaded_toolbar,
             self.left_half.alignment_toolbar,
             self.left_half.tree_toolbar,
@@ -277,30 +280,85 @@ class FusionPage(QWidget):
         self.left_half.show_scene(FusionScene.CCTA_GEOMETRY)
         self._run_label_branches_pair()
 
-    def _run_label_branches_pair(self) -> None:
-        """Project the current RCA/LCA branch structure onto label_geometry's labelled
-        surface points. No button of its own — called right after label_geometry, and
-        again after every split_branch/merge_branches edit, since both change the branch
-        structure this needs to reflect. No-op until label_geometry has actually run."""
-        if None in (self.data.results, self.data.centerline_rca, self.data.centerline_lca):
+    def _on_run_label_branches(self) -> None:
+        if not self._require(
+            None not in (self.data.results, self.data.centerline_rca, self.data.centerline_lca),
+            'Run Label Geometry first.',
+        ):
             return
+        if self._run_label_branches_pair():
+            self.left_half.show_scene(FusionScene.BRANCH_LABELS)
+
+    def _run_label_branches_pair(self) -> bool:
+        """Project the current RCA/LCA branch structure onto label_geometry's labelled
+        surface points (results['rca_branches'] / ['lca_branches']). Runs from the Label
+        Branches button, right after label_geometry, and again after every
+        split_branch/merge_branches edit, since both reassign the branch ids these labels
+        refer to — which discards manual lasso edits on the Branch Labels tab. No-op until
+        label_geometry has actually run. Returns whether the labels were updated."""
+        if None in (self.data.results, self.data.centerline_rca, self.data.centerline_lca):
+            return False
         results = self._run(
             'Labeling branches…',
-            'Branches labeled.',
+            'Branches labeled — adjust them with the Lasso on the Branch Labels tab.',
             pipeline.run_label_branches_pair,
             self.data.centerline_rca,
             self.data.centerline_lca,
             self.data.results,
+            **self.right_half.geometry_column.label_branches_kwargs(),
         )
         if results is None:
-            return
+            return False
         self.data.results = results
+        self._refresh_branch_labels_scene()
+        return True
+
+    def _branch_label_layers(self) -> dict[str, tuple[str, int]]:
+        """Branch Labels scene layer key -> (vessel, branch id), for every labelled branch."""
+        results = self.data.results or {}
+        return {
+            f'{vessel}_branch_{branch}': (vessel, branch)
+            for vessel in ('rca', 'lca')
+            for branch in sorted(results.get(f'{vessel}_branches', {}))
+        }
+
+    def _refresh_branch_labels_scene(self) -> None:
+        """One point cloud per labelled branch over the translucent mesh, colored like the
+        same branch in the Centerline Branches scene (palette index = position among the
+        vessel's sorted branch ids there too). Rebuilt from scratch, since branch ids can
+        disappear (split/merge), keeping each surviving layer's visibility."""
+        viewer = self.left_half.viewer
+        scene = FusionScene.BRANCH_LABELS
+        saved_states = viewer.layer_states(scene)
+        viewer.clear_scene(scene)
+        results = self.data.results or {}
+        if 'mesh' in results:
+            viewer.add_mesh(scene, 'mesh', results['mesh'], color=(200, 200, 200), opacity=0.3)
+        palettes = {'rca': colors.BRANCH_COLORS_RCA, 'lca': colors.BRANCH_COLORS_LCA}
+        for key, (vessel, branch) in self._branch_label_layers().items():
+            points = results[f'{vessel}_branches'][branch]
+            if not points:
+                continue
+            palette = palettes[vessel]
+            index = sorted(results[f'{vessel}_branches']).index(branch)
+            viewer.add_points(scene, key, np.array(points), color=palette[index % len(palette)])
+        for key, (visible, opacity, _color) in saved_states.items():
+            viewer.set_layer_visible(scene, key, visible)
+            viewer.set_layer_opacity(scene, key, opacity)
+        self.left_half.refresh_toolbar(scene)
 
     def _on_run_discretize_tree(self) -> None:
         gc = self.right_half.geometry_column
         if not self._require(
             self.data.centerline_aorta is not None and self.data.results is not None,
-            'Prepare centerlines, run Label Geometry, and Label Branches (Pair) first.',
+            'Prepare centerlines, run Label Geometry, and Label Branches first.',
+        ):
+            return
+        results = self.data.results
+        assert results is not None
+        if not self._require(
+            'rca_branches' in results and 'lca_branches' in results,
+            'Run Label Branches first.',
         ):
             return
         tree = self._run(
@@ -517,6 +575,9 @@ class FusionPage(QWidget):
         except here there's no single voxel array to flip: each region is its own list of
         (x, y, z) tuples (see colors.REGION_COLORS), so "reclassify" means popping the
         enclosed tuples out of the source list and appending them to the destination list."""
+        if self.left_half.branch_labels_toolbar.lasso_btn.isChecked():
+            self._on_branch_lasso_closed()
+            return
         viewer = self.left_half.viewer
         results = self.data.results
         if results is None:
@@ -562,17 +623,104 @@ class FusionPage(QWidget):
         moved = [tuple(p) for p in points[inside]]
         results[source] = [tuple(p) for p in points[~inside]]
         results[dest] = list(results.get(dest) or []) + moved
-        # rca_branches/lca_branches partition rca_points/lca_points and are what
-        # discretize_vessel_tree and label_anomalous_region read, so relabel the branches
-        # whenever a vessel's point set changed.
-        if {source, dest} & {'rca_points', 'lca_points'}:
-            self._run_label_branches_pair()
+        self._sync_branch_labels(moved, source, dest)
 
         self._refresh_geometry_scene()
         self.status_bar.showMessage(
             f'Reclassified {len(moved)} point(s): {colors.region_label(source)} → {colors.region_label(dest)}.'
         )
         self.left_half.geometry_toolbar.lasso_btn.setChecked(False)  # ends lasso mode, clears overlay
+
+    def _sync_branch_labels(self, moved: list, source: str, dest: str) -> None:
+        """Keep rca_branches/lca_branches partitioning rca_points/lca_points after a CCTA
+        Geometry lasso moved `moved` from region `source` to `dest`: drop them from the
+        source vessel's branches, and give points that joined a vessel the branch of their
+        nearest centerline point. Done in place rather than re-running label_branches, so
+        manual edits on the Branch Labels tab survive."""
+        results = self.data.results
+        if results is None:
+            return
+        vessel_keys = {'rca_points': 'rca', 'lca_points': 'lca'}
+        moved_set = set(moved)
+        if source in vessel_keys and f'{vessel_keys[source]}_branches' in results:
+            key = f'{vessel_keys[source]}_branches'
+            results[key] = {b: [p for p in pts if p not in moved_set] for b, pts in results[key].items()}
+        if dest in vessel_keys and f'{vessel_keys[dest]}_branches' in results:
+            vessel = vessel_keys[dest]
+            centerline = self.data.centerline_rca if vessel == 'rca' else self.data.centerline_lca
+            if centerline is None:
+                return
+            cl_points = np.array(centerline.points_as_tuples())
+            cl_branch = np.array([p.branch_id for p in centerline.points])
+            branches = {b: list(pts) for b, pts in results[f'{vessel}_branches'].items()}
+            for point in moved:
+                nearest = int(np.argmin(np.linalg.norm(cl_points - np.array(point), axis=1)))
+                branches.setdefault(int(cl_branch[nearest]), []).append(point)
+            results[f'{vessel}_branches'] = branches
+        self._refresh_branch_labels_scene()
+
+    def _on_branch_lasso_mode_toggled(self, enabled: bool) -> None:
+        """Same guard-then-toggle as _on_lasso_mode_toggled, for the Branch Labels tab."""
+        if enabled and not self._branch_label_layers():
+            ErrorMessage(self, 'Run Label Branches first — no branch labels to adjust.')
+            self.left_half.branch_labels_toolbar.lasso_btn.setChecked(False)
+            return
+        self.left_half.viewer.set_lasso_mode(enabled)
+
+    def _on_branch_lasso_closed(self) -> None:
+        """Move the vertices of one branch enclosed by the lasso to another branch of the
+        same vessel. The branches partition the vessel's vertices, so this never moves a
+        vertex between RCA and LCA (use the CCTA Geometry lasso on rca/lca_points for that)."""
+        viewer = self.left_half.viewer
+        toolbar = self.left_half.branch_labels_toolbar
+        results = self.data.results
+        layers = {
+            key: vb
+            for key, vb in self._branch_label_layers().items()
+            if results and results[f'{vb[0]}_branches'][vb[1]]
+        }
+        if results is None or not layers:
+            ErrorMessage(self, 'No branch labels available to adjust.')
+            toolbar.lasso_btn.setChecked(False)
+            return
+
+        def name(vessel: str, branch: int) -> str:
+            return f'{vessel.upper()} main' if branch == 0 else f'{vessel.upper()} branch {branch}'
+
+        sources = list(layers.values())
+        source_labels = [name(*vb) for vb in sources]
+        label, ok = QInputDialog.getItem(self, 'Adjust branch labels', 'Move vertices of:', source_labels, 0, False)
+        if not ok:
+            return
+        vessel, source = sources[source_labels.index(label)]
+        branches = results[f'{vessel}_branches']
+        dest_choices = [b for b in sorted(branches) if b != source]
+        if not dest_choices:
+            ErrorMessage(self, f'{vessel.upper()} has no other branch to move them to.')
+            return
+        dest_labels = [name(vessel, b) for b in dest_choices]
+        label, ok = QInputDialog.getItem(
+            self, 'Adjust branch labels', f'Move selected "{name(vessel, source)}" vertices to:', dest_labels, 0, False
+        )
+        if not ok:
+            return
+        dest = dest_choices[dest_labels.index(label)]
+
+        points = np.array(branches[source])
+        inside = viewer.points_inside_lasso(points)
+        if not inside.any():
+            ErrorMessage(self, 'No vertices fell inside the lasso.')
+            return
+        moved = [tuple(p) for p in points[inside]]
+        branches[source] = [tuple(p) for p in points[~inside]]
+        branches[dest] = list(branches.get(dest) or []) + moved
+
+        self._refresh_branch_labels_scene()
+        stale = ' Re-run Discretize Vessel Tree to use them.' if self.data.vessel_tree is not None else ''
+        self.status_bar.showMessage(
+            f'Moved {len(moved)} vertices: {name(vessel, source)} → {name(vessel, dest)}.{stale}'
+        )
+        toolbar.lasso_btn.setChecked(False)  # ends lasso mode, clears overlay
 
     def _refresh_branch_scene(self) -> None:
         """Recreate multimodars' plot_centerline_branches/plot_centerline_edges as native

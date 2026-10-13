@@ -97,16 +97,26 @@ def run_label_geometry(
     )
 
 
-def run_label_branches_pair(rca_cl, lca_cl, results: dict) -> dict:
+def run_label_branches_pair(
+    rca_cl,
+    lca_cl,
+    results: dict,
+    *,
+    bounding_sphere_radius_mm_rca: float = 3.0,
+    bounding_sphere_radius_mm_lca: float = 3.0,
+) -> dict:
     """Project rca_cl/lca_cl's branch structure onto results' labelled surface points:
     results['rca_branches'] / results['lca_branches'], a dict from every branch id to its
     vertices (multimodars>=0.8.0).
 
+    mm.label_branches_pair always uses the default sphere radius, so this calls
+    mm.label_branches per vessel instead, to expose the radius.
+
     Call after any manual split_branch/merge_branches edit to the centerlines (those
     reassign branch ids) so the branch labels, consumed by discretize_vessel_tree and
     label_anomalous_region, reflect the edit."""
-    # multimodars>=0.6.0 API — see the note in load_centerline() above.
-    return mm.label_branches_pair(rca_cl, lca_cl, results, control_plot=False)  # type: ignore[attr-defined]
+    results = mm.label_branches(rca_cl, results, vessel='rca', bounding_sphere_radius_mm=bounding_sphere_radius_mm_rca)
+    return mm.label_branches(lca_cl, results, vessel='lca', bounding_sphere_radius_mm=bounding_sphere_radius_mm_lca)
 
 
 def run_discretize_vessel_tree(

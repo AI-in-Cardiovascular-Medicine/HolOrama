@@ -16,12 +16,14 @@ from PyQt6.QtWidgets import (
 
 class GeometryColumn(QWidget):
     """Column 1: load the CCTA mesh + centerlines, prepare the centerlines, run
-    label_geometry, then discretize_vessel_tree. label_branches_pair has no button of its
-    own — FusionPage runs it automatically right after label_geometry and after every
-    split/merge edit on the Centerline Branches tab. See pages/fusion/pipeline.py for the
-    multimodars calls each button triggers."""
+    label_geometry, label the branches, then discretize_vessel_tree. Label Branches also
+    runs automatically right after label_geometry and after every split/merge edit on the
+    Centerline Branches tab (those reassign branch ids); its own button re-runs it, e.g.
+    with other sphere radii. See pages/fusion/pipeline.py for the multimodars calls each
+    button triggers."""
 
     run_label_geometry_requested = pyqtSignal()
+    run_label_branches_requested = pyqtSignal()
     prepare_centerlines_requested = pyqtSignal()
     run_discretize_tree_requested = pyqtSignal()
     geometry_files_changed = pyqtSignal()  # mesh and/or centerline path(s) changed
@@ -44,6 +46,7 @@ class GeometryColumn(QWidget):
         root.addWidget(self._build_centerline_group())
         root.addWidget(self._build_prepare_centerline_group())
         root.addWidget(self._build_label_geometry_group())
+        root.addWidget(self._build_label_branches_group())
         root.addWidget(self._build_vessel_tree_group())
         root.addStretch(1)
 
@@ -161,12 +164,34 @@ class GeometryColumn(QWidget):
         layout.addLayout(_row('LCA takeoff range (mm):', self._range_mm_takeoff_lca))
 
         run_btn = QPushButton('Run Label Geometry')
-        run_btn.setToolTip(
-            'Also projects the RCA/LCA branch structure onto the labelled surface points '
-            '(label_branches_pair) — redone automatically after every split/merge edit on '
-            'the Centerline Branches tab.'
-        )
+        run_btn.setToolTip('Also runs Label Branches below.')
         run_btn.clicked.connect(self.run_label_geometry_requested.emit)
+        layout.addWidget(run_btn)
+        return box
+
+    def _build_label_branches_group(self) -> QGroupBox:
+        box = QGroupBox('Label Branches')
+        layout = QVBoxLayout(box)
+
+        self._branch_sphere_radius: dict[str, QDoubleSpinBox] = {}
+        for vessel in ('rca', 'lca'):
+            spin = QDoubleSpinBox()
+            spin.setRange(0.1, 50.0)
+            spin.setSingleStep(0.5)
+            spin.setValue(3.0)
+            spin.setToolTip(
+                'Radius of the sphere rolled along each centerline branch to collect its vertices.\n'
+                'Vertices several branches collect go to the one nearest the main vessel.'
+            )
+            self._branch_sphere_radius[vessel] = spin
+            layout.addLayout(_row(f'{vessel.upper()} sphere (mm):', spin))
+
+        run_btn = QPushButton('Run Label Branches')
+        run_btn.setToolTip(
+            'Assign every RCA/LCA vertex to a centerline branch (label_branches). Adjust the\n'
+            'result with the Lasso on the Branch Labels tab. Re-running discards those edits.'
+        )
+        run_btn.clicked.connect(self.run_label_branches_requested.emit)
         layout.addWidget(run_btn)
         return box
 
@@ -239,6 +264,12 @@ class GeometryColumn(QWidget):
             'step_size_mm': self._step_size_labeling.value(),
             'bounding_sphere_radius_mm_rca': self._bounding_sphere_radius_rca.value(),
             'bounding_sphere_radius_mm_lca': self._bounding_sphere_radius_lca.value(),
+        }
+
+    def label_branches_kwargs(self) -> dict:
+        return {
+            'bounding_sphere_radius_mm_rca': self._branch_sphere_radius['rca'].value(),
+            'bounding_sphere_radius_mm_lca': self._branch_sphere_radius['lca'].value(),
         }
 
     def discretize_tree_kwargs(self) -> dict:
