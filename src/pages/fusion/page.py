@@ -124,6 +124,8 @@ class FusionPage(QWidget):
         self.left_half.viewer.point_picked.connect(self._on_point_picked)
         self.left_half.geometry_toolbar.lasso_mode_toggled.connect(self._on_lasso_mode_toggled)
         self.left_half.branch_labels_toolbar.lasso_mode_toggled.connect(self._on_branch_lasso_mode_toggled)
+        self.left_half.branch_labels_toolbar.rename_requested.connect(self._on_rename_branch_requested)
+        self.left_half.branch_labels_toolbar.delete_requested.connect(self._on_delete_branch_requested)
         self.left_half.viewer.lasso_closed.connect(self._on_lasso_closed)
         for toolbar in (
             self.left_half.geometry_toolbar,
@@ -245,6 +247,7 @@ class FusionPage(QWidget):
         if result is None:
             return
         self.data.centerline_aorta, self.data.centerline_rca, self.data.centerline_lca = result
+        self.data.branch_names = {'rca': {}, 'lca': {}}  # new centerlines, new branch ids
         self._refresh_geometry_scene()
         self._refresh_branch_scene()
         self.left_half.show_scene(FusionScene.CENTERLINE_BRANCHES)
@@ -323,10 +326,12 @@ class FusionPage(QWidget):
         }
 
     def _refresh_branch_labels_scene(self) -> None:
-        """One point cloud per labelled branch over the translucent mesh, colored like the
-        same branch in the Centerline Branches scene (palette index = position among the
-        vessel's sorted branch ids there too). Rebuilt from scratch, since branch ids can
-        disappear (split/merge), keeping each surviving layer's visibility."""
+        """Per labelled branch, its vertices over the translucent mesh, colored like the same
+        branch in the Centerline Branches scene (palette index = position among the
+        centerline's sorted branch ids there too) and named after the branch
+        (_branch_name — the same name its centerline gets on that tab). Rebuilt from
+        scratch, since branch ids can disappear (split/merge/delete), keeping each
+        surviving layer's visibility."""
         viewer = self.left_half.viewer
         scene = FusionScene.BRANCH_LABELS
         saved_states = viewer.layer_states(scene)
@@ -335,16 +340,29 @@ class FusionPage(QWidget):
         if 'mesh' in results:
             viewer.add_mesh(scene, 'mesh', results['mesh'], color=(200, 200, 200), opacity=0.3)
         palettes = {'rca': colors.BRANCH_COLORS_RCA, 'lca': colors.BRANCH_COLORS_LCA}
+        layer_labels: dict[str, str] = {}
         for key, (vessel, branch) in self._branch_label_layers().items():
-            points = results[f'{vessel}_branches'][branch]
-            if not points:
-                continue
+            centerline = self.data.centerline_rca if vessel == 'rca' else self.data.centerline_lca
+            cl_ids = sorted({p.branch_id for p in centerline.points}) if centerline is not None else []
+            ids = cl_ids if branch in cl_ids else sorted(results[f'{vessel}_branches'])
             palette = palettes[vessel]
-            index = sorted(results[f'{vessel}_branches']).index(branch)
-            viewer.add_points(scene, key, np.array(points), color=palette[index % len(palette)])
+            color = palette[ids.index(branch) % len(palette)]
+            name = self._branch_name(vessel, branch)
+            points = results[f'{vessel}_branches'][branch]
+            if points:
+                viewer.add_points(scene, key, np.array(points), color=color)
+                layer_labels[key] = name
         for key, (visible, opacity, _color) in saved_states.items():
             viewer.set_layer_visible(scene, key, visible)
             viewer.set_layer_opacity(scene, key, opacity)
+        toolbar = self.left_half.branch_labels_toolbar
+        toolbar.set_layer_labels(layer_labels)
+        toolbar.set_branches(
+            [
+                (self._branch_name(vessel, branch), vessel, branch)
+                for vessel, branch in self._branch_label_layers().values()
+            ]
+        )
         self.left_half.refresh_toolbar(scene)
 
     def _on_run_discretize_tree(self) -> None:
@@ -423,23 +441,27 @@ class FusionPage(QWidget):
             return [0]
         return [b for b in sorted(self._tree_branches(vessel)) if self._branch_reference_entries(vessel, b)]
 
+    def _branch_name(self, vessel: str, branch: int) -> str:
+        """The branch's user-given name (Branch Labels tab), else 'RCA main' / 'RCA branch 2'.
+        One name for its centerline and its labelled vertices, wherever they're listed."""
+        default = f'{vessel.upper()} main' if branch == 0 else f'{vessel.upper()} branch {branch}'
+        return self.data.branch_names[vessel].get(branch) or default
+
     def _branch_choices(self, vessel: str) -> list[tuple[str, int]]:
-        return [('Main' if b == 0 else f'Branch {b}', b) for b in self._branch_ids(vessel)]
+        return [(self._branch_name(vessel, b), b) for b in self._branch_ids(vessel)]
 
     def _centerline_choices(self) -> list[tuple[str, str, int]]:
         """(label, vessel, branch) for the Intravascular Alignment column's Centerline combo."""
         return [
-            (vessel.upper() if b == 0 else f'{vessel.upper()} branch {b}', vessel, b)
-            for vessel in ('rca', 'lca')
-            for b in self._branch_ids(vessel)
+            (self._branch_name(vessel, b), vessel, b) for vessel in ('rca', 'lca') for b in self._branch_ids(vessel)
         ]
 
     def _reference_labels(self, vessel: str, branch: int) -> list[str]:
         """Labels for _branch_references(vessel, branch) — shared by the Vessel Tree tab and
         the Intravascular Alignment column's Reference dropdown."""
-        name = vessel.upper() if branch == 0 else f'{vessel.upper()} branch {branch}'
+        name = self._branch_name(vessel, branch)
         return [
-            f'{name} ostium' if child is None else f'Takeoff of branch {child}'
+            f'{name} ostium' if child is None else f'Takeoff of {self._branch_name(vessel, child)}'
             for child, _triplet in self._branch_reference_entries(vessel, branch)
         ]
 
@@ -684,8 +706,7 @@ class FusionPage(QWidget):
             toolbar.lasso_btn.setChecked(False)
             return
 
-        def name(vessel: str, branch: int) -> str:
-            return f'{vessel.upper()} main' if branch == 0 else f'{vessel.upper()} branch {branch}'
+        name = self._branch_name
 
         sources = list(layers.values())
         source_labels = [name(*vb) for vb in sources]
@@ -721,6 +742,110 @@ class FusionPage(QWidget):
             f'Moved {len(moved)} vertices: {name(vessel, source)} → {name(vessel, dest)}.{stale}'
         )
         toolbar.lasso_btn.setChecked(False)  # ends lasso mode, clears overlay
+
+    def _centerline_branch_layer_labels(self) -> dict[str, str]:
+        """Centerline Branches layer key -> branch name plus its id, which the split/merge
+        controls there refer to."""
+        labels = {}
+        for vessel, centerline in (('rca', self.data.centerline_rca), ('lca', self.data.centerline_lca)):
+            if centerline is None:
+                continue
+            for branch in sorted({p.branch_id for p in centerline.points}):
+                labels[f'{vessel}_branch_{branch}'] = f'{self._branch_name(vessel, branch)} ({branch})'
+        return labels
+
+    def _on_rename_branch_requested(self, vessel: str, branch: int) -> None:
+        """One name for the branch's centerline and its vertices; empty restores the default."""
+        current = self._branch_name(vessel, branch)
+        name, ok = QInputDialog.getText(
+            self, 'Rename branch', f'New name for {current} (empty = default):', text=current
+        )
+        if not ok:
+            return
+        name = name.strip()
+        names = self.data.branch_names[vessel]
+        if name:
+            names[branch] = name
+        else:
+            names.pop(branch, None)
+        self._refresh_branch_name_displays()
+        self.status_bar.showMessage(f'Renamed {current} to {self._branch_name(vessel, branch)}.')
+
+    def _refresh_branch_name_displays(self) -> None:
+        """Re-label every list a branch name shows up in, without recomputing anything."""
+        self._refresh_branch_labels_scene()
+        self.left_half.branch_toolbar.set_layer_labels(self._centerline_branch_layer_labels())
+        self.left_half.refresh_toolbar(FusionScene.CENTERLINE_BRANCHES)
+        if self.data.vessel_tree is None:
+            return
+        ic = self.right_half.intravascular_column
+        ic.set_centerline_choices(self._centerline_choices(), ic.reference_vessel(), ic.reference_branch())
+        for vessel in ('rca', 'lca'):
+            branch = self.data.selected_branch[vessel]
+            self.left_half.tree_toolbar.set_branches(vessel, self._branch_choices(vessel), branch)
+            self._select_branch(vessel, branch, self.data.selected_reference_index[vessel])
+
+    def _on_delete_branch_requested(self, vessel: str, branch: int, fill_hole: bool) -> None:
+        """Cut a side branch (and every branch growing out of it) off the mesh and the
+        vessel centerline with multimodars' remove_branch. The other branches keep their
+        ids and names. The vessel tree was discretized on the old mesh and still holds the
+        deleted branches, so it's dropped and has to be discretized again."""
+        centerline = self.data.centerline_rca if vessel == 'rca' else self.data.centerline_lca
+        results = self.data.results
+        if not self._require(results is not None and centerline is not None, 'Run Label Branches first.'):
+            return
+        assert results is not None and centerline is not None
+        name = self._branch_name(vessel, branch)
+        reply = QMessageBox.question(
+            self,
+            'Delete branch',
+            f'Delete {name}, and every branch growing out of it, from the mesh and the '
+            f'{vessel.upper()} centerline?' + (' The ostium is closed with a patch.' if fill_hole else ''),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        out = self._run(
+            f'Deleting {name}…',
+            f'Deleted {name}.',
+            pipeline.run_remove_branch,
+            results,
+            centerline,
+            branch,
+            fill_hole=fill_hole,
+        )
+        if out is None:
+            return
+        new_results, new_centerline = out
+        removed = sorted(set(centerline.branch_ids()) - set(new_centerline.branch_ids()))
+        removed_names = ', '.join(self._branch_name(vessel, b) for b in removed)
+        setattr(self.data, f'centerline_{vessel}', new_centerline)
+        self.data.results = new_results
+        self.data.results_points_removed = None  # stale: the mesh changed
+        names = self.data.branch_names[vessel]
+        self.data.branch_names[vessel] = {b: n for b, n in names.items() if b not in removed}
+        had_tree = self.data.vessel_tree is not None
+        self._drop_vessel_tree()
+
+        self._refresh_geometry_scene()
+        self._refresh_branch_scene()
+        self._refresh_branch_labels_scene()
+        self._refresh_aligned_ccta_mesh()
+        again = ' Discretize the vessel tree again.' if had_tree else ''
+        self.status_bar.showMessage(f'Deleted {removed_names}.{again}')
+
+    def _drop_vessel_tree(self) -> None:
+        """Forget the discretized tree and everything listing its branches/references."""
+        self.data.vessel_tree = None
+        self.left_half.viewer.clear_scene(FusionScene.VESSEL_TREE)
+        self.left_half.refresh_toolbar(FusionScene.VESSEL_TREE)
+        for vessel in ('rca', 'lca'):
+            self.left_half.tree_toolbar.set_branches(vessel, [], 0)
+            self.left_half.tree_toolbar.set_references(vessel, [], -1)
+        ic = self.right_half.intravascular_column
+        ic.set_centerline_choices([('RCA', 'rca', 0), ('LCA', 'lca', 0)], 'rca', 0)
+        ic.set_reference_choices([])
 
     def _refresh_branch_scene(self) -> None:
         """Recreate multimodars' plot_centerline_branches/plot_centerline_edges as native
@@ -825,6 +950,7 @@ class FusionPage(QWidget):
             viewer.set_layer_opacity(FusionScene.CENTERLINE_BRANCHES, key, opacity)
 
         self.left_half.branch_toolbar.set_branch_choices(branch_ids_by_cl['rca'], branch_ids_by_cl['lca'])
+        self.left_half.branch_toolbar.set_layer_labels(self._centerline_branch_layer_labels())
         self.left_half.refresh_toolbar(FusionScene.CENTERLINE_BRANCHES)
 
         # find_sharp_angles only decides which points get a numbered marker in the scene —
@@ -871,6 +997,7 @@ class FusionPage(QWidget):
             ErrorMessage(self, str(e))
             return
         setattr(self.data, cl_attr, new_cl)
+        self.data.branch_names[marker['centerline']] = {}  # split reassigns every branch id
         self.status_bar.showMessage(
             f"Split {marker['centerline'].upper()} branch {marker['branch_id']} at point {marker['point_index']}."
         )
@@ -889,6 +1016,7 @@ class FusionPage(QWidget):
             ErrorMessage(self, str(e))
             return
         setattr(self.data, cl_attr, new_cl)
+        self.data.branch_names[cl_name] = {}  # merge reassigns every branch id
         self.status_bar.showMessage(f'Merged {cl_name.upper()} branches {branch_id_a} and {branch_id_b}.')
         self._refresh_branch_scene()
         self._run_label_branches_pair()

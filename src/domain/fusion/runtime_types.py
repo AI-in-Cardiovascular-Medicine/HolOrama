@@ -28,6 +28,10 @@ class FusionRuntimeData:
         # index into that branch's reference list (see FusionPage._branch_references).
         self.selected_branch: dict[str, int] = {'rca': 0, 'lca': 0}
         self.selected_reference_index: dict[str, int] = {'rca': 0, 'lca': 0}
+        # User-given branch names per vessel, by branch id (missing = default 'RCA branch 2').
+        # One name for a branch's centerline and its labelled vertices. Branch ids survive
+        # remove_branch but not split/merge, which reset that vessel's names.
+        self.branch_names: dict[str, dict[int, str]] = {'rca': {}, 'lca': {}}
 
         # -- Column 2: intravascular alignment -------------------------------------------
         self.iv_geometry_pair: Any | None = None  # PyGeometryPair from from_file_singlepair

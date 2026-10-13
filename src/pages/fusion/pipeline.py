@@ -119,6 +119,13 @@ def run_label_branches_pair(
     return mm.label_branches(lca_cl, results, vessel='lca', bounding_sphere_radius_mm=bounding_sphere_radius_mm_lca)
 
 
+def run_remove_branch(results: dict, centerline, branch_id: int, *, fill_hole: bool = True) -> tuple[dict, Any]:
+    """Cut side branch `branch_id`, and every branch growing out of it, off the mesh and
+    `centerline` (the whole vessel it belongs to), optionally closing the ostium. Returns
+    (results, centerline); the other branches keep their ids."""
+    return mm.remove_branch(results, centerline, branch_id, fill_hole=fill_hole)
+
+
 def run_discretize_vessel_tree(
     ao_cl,
     rca_cl,

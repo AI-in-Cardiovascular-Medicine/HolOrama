@@ -60,6 +60,7 @@ class SceneToolbar(QWidget):
         self.scene = scene
         self._show_layers = show_layers
         self._show_color_swatch = show_color_swatch
+        self._layer_labels: dict[str, str] = {}
 
         root = QHBoxLayout(self)
         root.setContentsMargins(6, 4, 6, 4)
@@ -118,6 +119,11 @@ class SceneToolbar(QWidget):
         self.lasso_btn.setText('Cancel Lasso' if checked else 'Lasso')
         self.lasso_mode_toggled.emit(checked)
 
+    def set_layer_labels(self, labels: dict[str, str]) -> None:
+        """Display names for layer keys (e.g. user-named branches), used by the next refresh()
+        instead of the title-cased key."""
+        self._layer_labels = dict(labels)
+
     def refresh(self, layer_states: dict[str, tuple[bool, float, tuple[int, int, int]]]) -> None:
         """Rebuild the layer visibility rows for the current set of layers, initializing
         each checkbox (and slider/swatch) to that layer's actual (visible, opacity, color)
@@ -132,7 +138,7 @@ class SceneToolbar(QWidget):
             row = QHBoxLayout()
             # region_label so the overlap region reads 'Overlap Points' rather than
             # multimodars' internal 'Anomalous Points' key (see REGION_LABELS).
-            box = QCheckBox(region_label(key).replace('_', ' ').title())
+            box = QCheckBox(self._layer_labels.get(key) or region_label(key).replace('_', ' ').title())
             box.setChecked(visible)
             box.toggled.connect(lambda checked, k=key: self.layer_visibility_changed.emit(k, checked))
             row.addWidget(box)
