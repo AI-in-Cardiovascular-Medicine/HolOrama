@@ -1524,11 +1524,11 @@ class FusionPage(QWidget):
         # Read live from the spinboxes, not self.data.*_scaling — the user may have
         # edited them by hand after Compute Scaling Factors filled in the defaults.
         scaling = self.right_half.fusion_column.scaling_values()
-        opposite_scaling = scaling['opposite_vessel_scaling']
+        remaining_scaling = scaling['remaining_vessels_scaling']
         if not self._require(
-            opposite_scaling == 0.0 or opposite_centerline is not None,
-            f'Missing {opposite_vessel.upper()} centerline for the opposite-vessel scaling — '
-            'run Label Geometry first, or set Opposite vessel (mm) back to 0.',
+            remaining_scaling == 0.0 or opposite_centerline is not None,
+            f'Missing {opposite_vessel.upper()} centerline for the remaining-vessels scaling — '
+            'run Label Geometry first, or set Remaining vessels (mm) back to 0.',
         ):
             return
 
@@ -1554,14 +1554,22 @@ class FusionPage(QWidget):
             results = pipeline.run_sync_results_to_mesh(results, mesh, scaled)
             mesh = results['mesh']
 
-            # Manual-only: no intravascular data for the opposite coronary, so this is
-            # skipped entirely (not scaled by 0, just left untouched) unless set by hand.
-            if opposite_scaling != 0.0:
+            # Manual-only: no intravascular data for the vessels the pullback doesn't cover,
+            # so this is skipped entirely (not scaled by 0, just left untouched) unless set
+            # by hand. Each part is morphed around its own vessel's centerline: the opposite
+            # coronary, and this coronary's off-path branches (label_anomalous_region's
+            # off_path_points — none until Label Overlap Region has run).
+            if remaining_scaling != 0.0:
                 assert opposite_centerline is not None
-                scaled = pipeline.run_scale_region(
-                    mesh, results[f'{opposite_vessel}_points'], opposite_centerline, opposite_scaling
-                )
-                results = pipeline.run_sync_results_to_mesh(results, mesh, scaled)
+                for region, region_centerline in (
+                    (results[f'{opposite_vessel}_points'], opposite_centerline),
+                    (results.get('off_path_points', []), centerline),
+                ):
+                    if not region:
+                        continue
+                    scaled = pipeline.run_scale_region(mesh, region, region_centerline, remaining_scaling)
+                    results = pipeline.run_sync_results_to_mesh(results, mesh, scaled)
+                    mesh = results['mesh']
             return results
 
         results_out = self._run('Applying scaling to mesh…', 'Scaling applied.', _run)

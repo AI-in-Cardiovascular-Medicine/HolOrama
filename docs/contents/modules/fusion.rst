@@ -321,11 +321,14 @@ Stage 3: fusion
 proximal, distal and aortic values are filled in and remain editable: they are a starting
 point, not a verdict.
 
-*Opposite vessel (mm)* is never computed: there is no pullback for the other coronary. Set
-it by hand if that vessel also needs scaling, or leave it at 0 to skip it entirely.
+*Remaining vessels (mm)* is never computed: no pullback covers those vessels. It applies to
+the other coronary and to the aligned coronary's off-path branches (the branches that are not
+on the pullback path, see Label Overlap Region). Set it by hand if they also need scaling, or
+leave it at 0 to skip it entirely.
 
 Click **Apply Scaling to Mesh**. The distal, aortic, proximal and, if non-zero,
-opposite-vessel regions are morphed along their centerlines in that order.
+remaining-vessel regions are morphed along their centerlines in that order, each remaining
+vessel around its own centerline.
 
 **11. Remove the overlapping points.** In *Remove Labeled Points*, tick which regions to
 drop (``overlap_points`` and ``proximal_points`` by default) and click **Remove**. These

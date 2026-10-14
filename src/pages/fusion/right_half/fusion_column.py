@@ -75,23 +75,24 @@ class FusionColumn(QWidget):
         layout.addWidget(compute_btn)
 
         # Below Compute, not above with the other three: this one is never auto-filled —
-        # there's no intravascular pullback for the opposite coronary to compute it from,
-        # so it's manual-only. Scales that vessel's whole region on Apply, not just a
-        # proximal/distal boundary.
-        opposite_spin = QDoubleSpinBox()
-        opposite_spin.setRange(-20.0, 20.0)
-        opposite_spin.setDecimals(2)
-        opposite_spin.setSingleStep(0.1)
-        opposite_spin.setToolTip(
-            'Manual only — not computed. Scales the whole opposite-vessel region (the coronary '
-            'not selected as Centerline in column 2) when applying. Leave at 0 to skip it.'
+        # no intravascular pullback covers these vessels, so it's manual-only. Scales the
+        # remaining vessels as a whole on Apply, not just a proximal/distal boundary.
+        remaining_spin = QDoubleSpinBox()
+        remaining_spin.setRange(-20.0, 20.0)
+        remaining_spin.setDecimals(2)
+        remaining_spin.setSingleStep(0.1)
+        remaining_spin.setToolTip(
+            'Manual only — not computed. Scales every vessel the pullback does not cover when\n'
+            'applying: the opposite coronary (the one not selected as Centerline in column 2)\n'
+            "and the aligned coronary's off-path branches (off_path_points from Label Overlap\n"
+            'Region), each around its own centerline. Leave at 0 to skip it.'
         )
-        self._scaling_spinboxes['opposite_vessel_scaling'] = opposite_spin
-        layout.addLayout(_row('Opposite vessel (mm):', opposite_spin))
+        self._scaling_spinboxes['remaining_vessels_scaling'] = remaining_spin
+        layout.addLayout(_row('Remaining vessels (mm):', remaining_spin))
 
         apply_btn = QPushButton('Apply Scaling to Mesh')
         apply_btn.setToolTip(
-            'Morphs the distal, aortic, proximal, and (if non-zero) opposite-vessel regions '
+            'Morphs the distal, aortic, proximal, and (if non-zero) remaining-vessel regions '
             'along their centerlines in sequence'
         )
         apply_btn.clicked.connect(self.run_apply_scaling_requested.emit)
