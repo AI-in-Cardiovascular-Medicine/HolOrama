@@ -174,9 +174,9 @@ class IntravascularColumn(QWidget):
         layout.addLayout(_row('Reference:', self._ref_index_combo))
 
         self._ref_labels = {
-            'aortic': QLabel('Aortic: —'),
-            'superior': QLabel('Superior: —'),
-            'inferior': QLabel('Inferior: —'),
+            'main': QLabel('Main: —'),
+            'rotation_1': QLabel('Rotation 1: —'),
+            'rotation_2': QLabel('Rotation 2: —'),
         }
         for lbl in self._ref_labels.values():
             layout.addWidget(lbl)
@@ -273,10 +273,10 @@ class IntravascularColumn(QWidget):
     def set_manual_rotation_angle(self, degrees: float) -> None:
         self._manual_rotation_angle.setValue(degrees)
 
-    def set_reference_points(self, aortic, superior, inferior) -> None:
-        self._ref_labels['aortic'].setText(f'Aortic: {_fmt_point(aortic)}')
-        self._ref_labels['superior'].setText(f'Superior: {_fmt_point(superior)}')
-        self._ref_labels['inferior'].setText(f'Inferior: {_fmt_point(inferior)}')
+    def set_reference_points(self, main, rotation_1, rotation_2) -> None:
+        self._ref_labels['main'].setText(f'Main: {_fmt_point(main)}')
+        self._ref_labels['rotation_1'].setText(f'Rotation 1: {_fmt_point(rotation_1)}')
+        self._ref_labels['rotation_2'].setText(f'Rotation 2: {_fmt_point(rotation_2)}')
 
     def reference_vessel(self) -> str:
         data = self._ref_vessel_combo.currentData()

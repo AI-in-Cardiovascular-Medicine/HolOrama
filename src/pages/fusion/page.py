@@ -524,8 +524,8 @@ class FusionPage(QWidget):
         self._sync_intravascular_reference_ui(vessel, index, triplet)
 
     def _sync_intravascular_reference_ui(self, vessel: str, index: int, triplet) -> None:
-        """Keep the Intravascular Alignment column's Reference dropdown and Aortic/Superior/
-        Inferior display in step with whichever reference was just selected — but only when
+        """Keep the Intravascular Alignment column's Reference dropdown and reference-point
+        display in step with whichever reference was just selected — but only when
         that column currently has this same vessel chosen, so selecting an LCA reference in
         the Vessel Tree tab doesn't clobber an in-progress RCA alignment setup (and vice
         versa)."""
@@ -1099,8 +1099,7 @@ class FusionPage(QWidget):
                 size=5.0,
             )
 
-        # Reference triplets (main/ostium + 2 off-axis points used to fix rotation —> see
-        # colors.TREE_REF_COLORS for why we don't label them CW/CCW). One layer per triplet
+        # Reference triplets (main/ostium + 2 points that fix rotation). One layer per triplet
         # slot, pooling the references of every RCA + LCA branch, rather than one layer per
         # triplet, because otherwise a tree with many side branches would flood the toolbar with
         # tiny 1-point layers.

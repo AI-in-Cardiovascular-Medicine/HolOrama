@@ -307,8 +307,8 @@ wrong, this tab tells you whether it was already wrong before centerline alignme
 **7. Choose the reference.** In *Reference Points (from Vessel Tree)* pick the
 **Centerline** the pullback belongs to: the RCA or LCA main vessel or one of their side
 branches, listed by name. Then pick the **Reference**: the branch's ostium or the takeoff of
-one of its side branches. The three reference points (aortic, superior, inferior) are shown
-as coordinates. For a side branch, *Include parent vessel* aligns onto the path from the
+one of its side branches. The three reference points (the main point, plus two that fix the
+rotation) are shown as coordinates. For a side branch, *Include parent vessel* aligns onto the path from the
 vessel ostium through the parent branches, so frames running proximally past the side
 branch's ostium land on the parent instead of being left unaligned.
 

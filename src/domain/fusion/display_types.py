@@ -73,23 +73,16 @@ TREE_AORTA_COLOR = (192, 192, 192)  # silver
 TREE_RCA_MAIN_COLOR = (70, 130, 180)  # steel-blue
 TREE_LCA_MAIN_COLOR = (255, 127, 80)  # coral
 TREE_CENTROID_COLOR = (255, 255, 0)  # yellow
-# Reference-triplet colors. multimodars' own plotting code and this app's alignment code
-# both treat position 0 as the main/ostium reference; positions 1-2 as off-axis references
-# used only to fix rotation, not because their CW/CCW handedness is guaranteed — the
-# Rust->Python binding and every Python consumer disagree on which is which. Don't read
-# these two colors as authoritative clock/counterclock; they're just visually distinct.
+# Reference-triplet colors, by position: main/ostium reference, then the two points that fix rotation.
 TREE_REF_COLORS: tuple[tuple[int, int, int], ...] = (
-    (255, 0, 0),  # main/ostium ref — red
-    (255, 165, 0),  # secondary ref — orange
-    (255, 0, 255),  # tertiary ref — magenta
+    (255, 0, 0),  # main/ostium ref (red)
+    (255, 165, 0),  # secondary ref (orange)
+    (255, 0, 255),  # tertiary ref (magenta)
 )
 
 
 # Centerline Branches scene, from plot_centerline_branches()/plot_centerline_edges().
-# Drawn from the app's shared categorical palette (interleaved so RCA/LCA — both shown
-# in the same scene — never land on the same color) rather than two separately hand-picked
-# 5-color sets, which also gives each vessel more distinct branch colors before any ramp
-# shading has to repeat.
+# Drawn from the app's shared categorical palette (every second with shifted start)
 BRANCH_COLORS_RCA: tuple[tuple[int, int, int], ...] = CATEGORICAL_PALETTE[0::2]
 BRANCH_COLORS_LCA: tuple[tuple[int, int, int], ...] = CATEGORICAL_PALETTE[1::2]
 SHARP_ANGLE_COLOR: tuple[int, int, int] = (255, 0, 0)
