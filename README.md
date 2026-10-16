@@ -228,6 +228,16 @@ This application is designed for IVUS, OCT and CCTA images in DICOM or NIfTi for
 - Draw cut lines on the axial/coronal views to define the LVOT and aortic root, then extract the coronaries/aorta/LV as a combined **NIfTi mask** or **STL mesh**
 - **Auto-save** of the mask enabled by default with user-definable interval, with versioned mask files and auto-reload of the latest mask on reopening a volume
 
+### Fusion (IVUS/OCT + CCTA)
+
+- Load the CCTA mesh and the aorta, RCA and LCA centerlines (`.vtp`), and fix the branch structure by **splitting and merging** centerline branches
+- **Label the geometry** into aorta, RCA, LCA and their branches, correct mislabelled vertices with a **lasso**, and **rename or delete side branches** (the ostium is closed with a patch on the parent wall)
+- **Discretize the vessel tree** into cross-sections with reference points at every ostium and bifurcation
+- **Align** an IVUS or OCT pullback onto any coronary branch automatically, or manually for elliptic anomalous vessels
+- **Scale** the CCTA to the intravascular calibre, replace the overlapping segment and **stitch** the two into one surface, reconnecting side branches that leave it
+- **Remesh and smooth** the result, also locally with a sphere brush
+- **Cut inlets and outlets** flat at any slice of the vessel tree, capped and ready for CFD, and export the cut mesh, every cap and the cut centerlines
+
 ## Configuration
 
 Make sure to quickly check the **src/config.yaml** file and configure everything to your needs.

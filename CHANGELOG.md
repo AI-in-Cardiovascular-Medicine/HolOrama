@@ -3,6 +3,28 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.16.0] - 2026-10-08
+
+### Added
+- **Inlets & Outlets** tab (Fusion): cut the geometry flat at any slice of the vessel tree and close each cut with a planar cap, e.g. for CFD. Choose the mesh to cut (final, stitched or CCTA; any works, only the slice planes come from the tree, so nothing has to be labelled again after remeshing), click near a slice with **Pick Point** and step along the branch with ◀ ▶, choose the side that stays (larger, proximal or distal) and name the cap. Branches leaving the dropped part go with it, from the mesh and the centerline. The cuts are listed in order and can be renamed or removed. They are replayed whenever the mesh they cut changed (smoothed, remeshed, stitched again), so they never have to be redone; one that no longer fits is marked ⚠.
+- **Export Cut Geometry (STL + caps + VTP)…** (Fusion column): the cut mesh, watertight with its caps, plus one STL per cap and the cut aorta, RCA and LCA centerlines as VTP, next to the chosen file.
+- **Branch Labels** tab (Fusion): the RCA and LCA surface vertices coloured by the branch they belong to. **Lasso** moves vertices to another branch of the same vessel, **Rename…** gives a branch a name used everywhere it is listed, and **Delete** cuts a side branch, and every branch growing out of it, off the mesh and the centerline, closing its ostium with a patch on the parent wall (*Fill hole*).
+- **Label Branches** (Fusion, column 1): projects the centerline branches onto the labelled vertices, with its own RCA/LCA sphere radius. Runs automatically after Label Geometry and after every split or merge.
+- **Include parent vessel** (Fusion alignment): a side branch is aligned onto the path from the vessel ostium through its parent branches, so frames running proximally past its ostium land on the parent.
+- **Remaining vessels (mm)** (Fusion scaling, manual only): scales every vessel the pullback does not cover: the opposite coronary and the aligned coronary's off-path branches, each around its own centerline. Replaces *Opposite vessel*.
+
+### Changed
+- Fusion needs **multimodars 0.9.0**.
+- Branches are referred to by the ids from Label Branches everywhere: the alignment's *Centerline* lists every branch by name, *Reference* lists its ostium and the takeoffs of its side branches.
+- **Label Overlap Region** splits the whole vessel the pullback was aligned onto, not just the aligned branch. Every vertex off the pullback path becomes `off_path_points` and is left alone by point removal. The vessel's own region is unchecked in the view so the new sub-regions show.
+- **Stitch** reconnects side branches leaving the removed overlap segment to the intravascular wall, using the vessel tree.
+- **Deleting a branch** keeps the vessel tree, only without the deleted branches, so it doesn't have to be discretized again and the overlap labels stay. A stitched and a final mesh that already exist lose the branch too: the final mesh gets the branch labels from the stitched one by nearest vertex. Smoothing undo starts over afterwards.
+- **Export Final Mesh…** is now **Export Final Mesh (STL)…**, next to the new cut export.
+- The Fusion page splits 50/50 between the 3D view and the columns, and every scene toolbar 50/50 between its layer list and its controls. Split and Merge on *Centerline Branches* are two rows each.
+
+### Fixed
+- The *Branch Labels* scene showed the old mesh after **Apply Scaling** and **Remove Labeled Points**.
+
 ## [0.15.0] - 2026-10-08
 
 ### Added

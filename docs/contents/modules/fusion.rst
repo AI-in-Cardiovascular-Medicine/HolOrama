@@ -58,6 +58,9 @@ and **Clear All Data**.
        centerlines, and later the stitched and final meshes.
    * - **Centerline Branches**
      - The RCA and LCA coloured per branch, with numbered sharp-angle markers.
+   * - **Branch Labels**
+     - The RCA and LCA surface vertices coloured by the branch they belong to, in the same
+       colours as *Centerline Branches*.
    * - **Intravascular Loaded**
      - The pullback straight after loading, before any centerline alignment.
    * - **Intravascular Aligned**
@@ -207,7 +210,23 @@ point cloud per region.
      - Length of the proximal segment treated as the take-off region (default 45).
 
 The branch structure is projected onto the labelled points automatically, and again after
-every split or merge.
+every split or merge. **Label Branches** (with its own *RCA / LCA sphere (mm)*) re-runs it.
+
+*Branch labels.* The *Branch Labels* tab shows which branch every RCA and LCA vertex belongs
+to. Its toolbar works on these labels:
+
+- **Lasso**: move the vertices inside the lasso from one branch to another branch of the
+  same vessel.
+- **Rename…**: give a branch a name, e.g. ``LAD``. It is used everywhere the branch is
+  listed: the layer lists, the *Vessel Tree* and alignment choices, and the cap names on the
+  *Inlets & Outlets* tab.
+- **Delete**: cut the branch, and every branch growing out of it, off the mesh and the
+  centerline. With *Fill hole* the ostium is closed with a patch following the parent
+  vessel's wall. The main vessel cannot be deleted. The other branches keep their ids, so
+  nothing has to be run again: the vessel tree only loses the deleted branches, the overlap
+  labels stay, and a stitched or final mesh that already exists loses the branch too (the
+  final mesh gets the branch labels from the stitched one by nearest vertex). The patch on
+  the final mesh is not remeshed; run **Fix & Remesh** again if it should be.
 
 *Correcting a mislabelled region:* click **Lasso** in the *CCTA Geometry* toolbar, draw a
 closed lasso around the offending points, and choose which region they come from and which
@@ -286,10 +305,12 @@ wrong, this tab tells you whether it was already wrong before centerline alignme
   However, leaving the default settings should work for almost all cases.
 
 **7. Choose the reference.** In *Reference Points (from Vessel Tree)* pick the
-**Centerline** (RCA or LCA) the pullback belongs to, then the **Reference**: the ostium or
-one of the side branches. The three reference points (aortic, superior, inferior) are shown
-as coordinates. *Branch index* selects which branch of that centerline to align onto;
-alignment needs a single-branch centerline.
+**Centerline** the pullback belongs to: the RCA or LCA main vessel or one of their side
+branches, listed by name. Then pick the **Reference**: the branch's ostium or the takeoff of
+one of its side branches. The three reference points (aortic, superior, inferior) are shown
+as coordinates. For a side branch, *Include parent vessel* aligns onto the path from the
+vessel ostium through the parent branches, so frames running proximally past the side
+branch's ostium land on the parent instead of being left unaligned.
 
 **8. Align.** Click **Align**.
 
@@ -315,7 +336,9 @@ CCTA) cut-off one frame to much from the ostium.
 was aligned onto is partitioned into proximal, overlap and distal sub-regions: the
 partition the next stage needs to know which part of the CCTA to replace and which to keep.
 It always follows the *Centerline* selector above, so it describes the vessel you actually
-aligned.
+aligned. Every other vertex of that vessel becomes ``off_path_points`` and is left alone by
+point removal. The vessel's own region (e.g. ``rca_points``) is unchecked in *CCTA Geometry*
+so the new sub-regions show.
 
 Stage 3: fusion
 ~~~~~~~~~~~~~~~~
@@ -353,7 +376,9 @@ The stitched mesh is shown on its own in *CCTA Geometry*.
 **13. Remesh and smooth.** Click **Fix & Remesh**: target edge length (default 0.5 mm)
 and iterations (default 10). This repairs the seam and produces an even triangulation; it
 runs in the background with live progress output. Then **Smooth** applies Taubin smoothing
-at the chosen lambda (default 0.6). Both can be repeated.
+at the chosen lambda (default 0.6). Both can be repeated. **Sphere Smooth** in the *CCTA
+Geometry* toolbar smooths only the patch under the brush (``Ctrl+wheel`` resizes it);
+**Undo** steps back through these smoothings.
 
 **14. Cut inlets and outlets (optional).** In the *Inlets & Outlets* tab, cut the geometry
 flat at slices of the vessel tree and close each cut with a planar cap.
