@@ -46,8 +46,10 @@ class FusionPage(QWidget):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(self.left_half())
         splitter.addWidget(self.right_half())
+        # 50/50 between the 3D view and the columns, also when the window is resized.
         splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([1, 1])
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -812,7 +814,12 @@ class FusionPage(QWidget):
         vessel centerline with multimodars' remove_branch. The other branches keep their
         ids and names, so the vessel tree only loses the deleted branches (and the cuts on
         them) and doesn't need discretizing again: the stitch and the cuts keep working on it,
-        and overlap labels made since stay valid."""
+        and overlap labels made since stay valid.
+
+        Every mesh made from the CCTA so far loses the branch too, so no view is left showing
+        it: the stitched mesh carries the branch labels itself, and the final (remeshed,
+        smoothed) mesh gets them from the stitched one by nearest vertex
+        (pipeline.transfer_labels). All three are updated, or none if one fails."""
         centerline = self.data.centerline_rca if vessel == 'rca' else self.data.centerline_lca
         results = self.data.results
         if not self._require(results is not None and centerline is not None, 'Run Label Branches first.'):
@@ -829,18 +836,22 @@ class FusionPage(QWidget):
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        out = self._run(
-            f'Deleting {name}…',
-            f'Deleted {name}.',
-            pipeline.run_remove_branch,
-            results,
-            centerline,
-            branch,
-            fill_hole=fill_hole,
-        )
+        stitched, final_mesh = self.data.stitched, self.data.final_mesh
+
+        def _run():
+            new_results, new_centerline = pipeline.run_remove_branch(results, centerline, branch, fill_hole=fill_hole)
+            new_stitched = new_final = None
+            if final_mesh is not None and stitched is not None:
+                labelled = pipeline.transfer_labels(stitched, final_mesh)
+                new_final = pipeline.run_remove_branch(labelled, centerline, branch, fill_hole=fill_hole)[0]['mesh']
+            if stitched is not None:
+                new_stitched = pipeline.run_remove_branch(stitched, centerline, branch, fill_hole=fill_hole)[0]
+            return new_results, new_centerline, new_stitched, new_final
+
+        out = self._run(f'Deleting {name}…', f'Deleted {name}.', _run)
         if out is None:
             return
-        new_results, new_centerline = out
+        new_results, new_centerline, new_stitched, new_final = out
         removed = sorted(set(centerline.branch_ids()) - set(new_centerline.branch_ids()))
         removed_names = ', '.join(self._branch_name(vessel, b) for b in removed)
         setattr(self.data, f'centerline_{vessel}', new_centerline)
@@ -860,11 +871,22 @@ class FusionPage(QWidget):
             self._refresh_tree_scene()
             self.left_half.refresh_toolbar(FusionScene.VESSEL_TREE)
 
+        if new_stitched is not None:
+            self.data.stitched = new_stitched
+            self.left_half.viewer.add_mesh(
+                FusionScene.CCTA_GEOMETRY, 'stitched_mesh', new_stitched['mesh'], color=(230, 180, 60)
+            )
+        if new_final is not None:
+            self.data.final_mesh_undo.clear()  # vertex snapshots of the old topology
+            self._set_final_mesh(new_final)
+
         self._refresh_geometry_scene()
         self._refresh_branch_scene()
         self._refresh_branch_name_displays()  # branch labels scene + tree/alignment choices
         self._refresh_aligned_ccta_mesh()
-        self.status_bar.showMessage(f'Deleted {removed_names}.')
+        also = ' from the stitched and final meshes too' if new_final is not None else ''
+        also = also or (' from the stitched mesh too' if new_stitched is not None else '')
+        self.status_bar.showMessage(f'Deleted {removed_names}{also}.')
 
     def _refresh_branch_scene(self) -> None:
         """Recreate multimodars' plot_centerline_branches/plot_centerline_edges as native

@@ -77,12 +77,19 @@ class SceneToolbar(QWidget):
             scroll.setMinimumHeight(_LAYERS_MIN_HEIGHT)
             scroll.setMinimumWidth(_LAYERS_MIN_WIDTH)
             scroll.setWidget(layers_widget)
-            root.addWidget(scroll, 2)
+            root.addWidget(scroll, 1)
         else:
             root.addStretch(1)
 
+        # The scene's own controls and the view buttons share the other half, so the layer
+        # list and the controls (e.g. lasso, local smoothing) split the toolbar 50/50.
+        controls = QWidget()
+        controls_layout = QHBoxLayout(controls)
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        controls_layout.setSpacing(8)
         for row in extra_rows or []:
-            root.addWidget(row)
+            controls_layout.addWidget(row, 1)
+        root.addWidget(controls, 1)
 
         # Reset View / Pick Point / Lasso / Clear All Data, stacked in that order — Pick
         # Point and Lasso sit between the two so they read as "how you interact with the
@@ -113,7 +120,7 @@ class SceneToolbar(QWidget):
         clear_btn.setToolTip('Discards every loaded/computed fusion result and clears the 3D viewer.')
         clear_btn.clicked.connect(self.clear_all_data_requested.emit)
         view_buttons.addWidget(clear_btn)
-        root.addLayout(view_buttons)
+        controls_layout.addLayout(view_buttons)
 
     def _on_lasso_toggled(self, checked: bool) -> None:
         self.lasso_btn.setText('Cancel Lasso' if checked else 'Lasso')

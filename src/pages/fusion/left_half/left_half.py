@@ -60,7 +60,8 @@ class LeftHalf:
         self.tabs = QTabWidget()
         self.tabs.setTabPosition(QTabWidget.TabPosition.North)
         for scene in self._scene_order:
-            self.tabs.addTab(self._toolbars[scene], FusionScene.label(scene))
+            # '&&': a single '&' marks a keyboard shortcut in a tab label (Inlets & Outlets)
+            self.tabs.addTab(self._toolbars[scene], FusionScene.label(scene).replace('&', '&&'))
         self.tabs.currentChanged.connect(self._on_tab_changed)
 
         # Vertical splitter (not a fixed layout) so the toolbar strip can be dragged taller

@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -32,7 +33,7 @@ class CutToolbar(SceneToolbar):
         self._source = QComboBox()
         self._source.setToolTip('Mesh the cuts are made on — any mesh works, only the planes come from the tree')
         self._selection = QLabel('Pick a slice')
-        self._selection.setMinimumWidth(160)
+        self._selection.setMinimumWidth(60)
         prev_btn = QPushButton('◀')
         next_btn = QPushButton('▶')
         for btn, step, tip in ((prev_btn, -1, 'Previous (proximal) slice'), (next_btn, 1, 'Next (distal) slice')):
@@ -70,11 +71,14 @@ class CutToolbar(SceneToolbar):
         grid.addWidget(cut_btn, 4, 0, 1, 2)
 
         self._cuts = QListWidget()
-        self._cuts.setMinimumWidth(240)
+        self._cuts.setMinimumWidth(110)
         rename_btn = QPushButton('Rename')
         rename_btn.clicked.connect(lambda: self._emit_for_current(self.rename_requested))
         remove_btn = QPushButton('Remove')
         remove_btn.clicked.connect(lambda: self._emit_for_current(self.remove_requested))
+        for btn in (rename_btn, remove_btn):  # may narrow below their text width to keep 50/50
+            btn.setSizePolicy(QSizePolicy.Policy.Ignored, btn.sizePolicy().verticalPolicy())
+            btn.setMinimumWidth(50)
         list_buttons = QHBoxLayout()
         list_buttons.addWidget(rename_btn)
         list_buttons.addWidget(remove_btn)

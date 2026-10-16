@@ -1,5 +1,5 @@
 from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import QComboBox, QDoubleSpinBox, QGroupBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QComboBox, QDoubleSpinBox, QGridLayout, QGroupBox, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from domain.fusion.types import FusionScene
 from pages.fusion.left_half.layer_tools.base import SceneToolbar
@@ -40,12 +40,15 @@ class BranchEditorToolbar(SceneToolbar):
         self.split_btn.setEnabled(False)
         self.split_btn.setToolTip("Split the selected branch at the picked/marked point.")
 
+        # Two rows per group (not one long row), so the controls fit in their half of the
+        # toolbar next to the layer list.
         split_box = QGroupBox('Split')
-        split_layout = QHBoxLayout(split_box)
-        split_layout.addWidget(QLabel('Sharp-angle threshold (cos):'))
-        split_layout.addWidget(self.cos_threshold)
-        split_layout.addWidget(self._selected_label, 1)
-        split_layout.addWidget(self.split_btn)
+        split_layout = QGridLayout(split_box)
+        split_layout.addWidget(QLabel('Sharp-angle threshold (cos):'), 0, 0)
+        split_layout.addWidget(self.cos_threshold, 0, 1)
+        split_layout.addWidget(self._selected_label, 1, 0)
+        split_layout.addWidget(self.split_btn, 1, 1)
+        split_layout.setColumnStretch(0, 1)
 
         self.merge_cl_combo = QComboBox()
         self.merge_cl_combo.addItems(['RCA', 'LCA'])
@@ -57,14 +60,16 @@ class BranchEditorToolbar(SceneToolbar):
         merge_btn.clicked.connect(self._on_merge_clicked)
 
         merge_box = QGroupBox('Merge')
-        merge_layout = QHBoxLayout(merge_box)
-        merge_layout.addWidget(QLabel('Centerline:'))
-        merge_layout.addWidget(self.merge_cl_combo)
-        merge_layout.addWidget(QLabel('Branch A:'))
-        merge_layout.addWidget(self.merge_a_combo)
-        merge_layout.addWidget(QLabel('Branch B:'))
-        merge_layout.addWidget(self.merge_b_combo)
-        merge_layout.addWidget(merge_btn)
+        merge_layout = QGridLayout(merge_box)
+        merge_layout.addWidget(QLabel('Centerline:'), 0, 0)
+        merge_layout.addWidget(self.merge_cl_combo, 0, 1)
+        merge_layout.addWidget(merge_btn, 0, 2, 1, 2)
+        merge_layout.addWidget(QLabel('Branch A:'), 1, 0)
+        merge_layout.addWidget(self.merge_a_combo, 1, 1)
+        merge_layout.addWidget(QLabel('Branch B:'), 1, 2)
+        merge_layout.addWidget(self.merge_b_combo, 1, 3)
+        merge_layout.setColumnStretch(1, 1)
+        merge_layout.setColumnStretch(3, 1)
 
         # One widget so split/merge lay out as two stacked rows (split on top, merge below)
         # instead of getting squeezed side by side with the layer list and view buttons.

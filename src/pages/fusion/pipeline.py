@@ -126,6 +126,34 @@ def run_remove_branch(results: dict, centerline, branch_id: int, *, fill_hole: b
     return mm.remove_branch(results, centerline, branch_id, fill_hole=fill_hole)
 
 
+def transfer_labels(results: dict, mesh: trimesh.Trimesh) -> dict:
+    """Carry the region and branch labels of `results` over to another mesh of the same
+    surface, e.g. the remeshed and smoothed stitched mesh: each vertex of `mesh` gets the
+    labels of the nearest vertex of results['mesh'], so label borders move by about one
+    edge at most. Boundary rings describe holes of the old mesh and are left out."""
+    from scipy.spatial import cKDTree
+
+    source = np.asarray(results['mesh'].vertices, dtype=np.float64)
+    _, nearest = cKDTree(source).query(np.asarray(mesh.vertices, dtype=np.float64))
+    index = {tuple(v): i for i, v in enumerate(source.tolist())}
+    targets = [tuple(v) for v in np.asarray(mesh.vertices).tolist()]
+
+    def remap(points: list) -> list:
+        members = np.zeros(len(source), dtype=bool)
+        members[[index[p] for p in map(tuple, points) if p in index]] = True
+        return [targets[i] for i in np.flatnonzero(members[nearest])]
+
+    labelled: dict = {'mesh': mesh}
+    for key, value in results.items():
+        if key == 'mesh' or 'boundary' in key:
+            continue
+        if key.endswith('_branches') and isinstance(value, dict):
+            labelled[key] = {k: remap(pts) for k, pts in value.items()}
+        elif isinstance(value, list) and value and len(value[0]) == 3:
+            labelled[key] = remap(value)
+    return labelled
+
+
 def run_discretize_vessel_tree(
     ao_cl,
     rca_cl,
