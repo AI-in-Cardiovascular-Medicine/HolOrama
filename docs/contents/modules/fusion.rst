@@ -65,6 +65,9 @@ and **Clear All Data**.
        overlaid for comparison.
    * - **Vessel Tree**
      - The discretised vessel tree with its reference-point triplets.
+   * - **Inlets & Outlets**
+     - The mesh to cut with the slices of the vessel tree still left to cut at, the cuts
+       made so far with their caps, and the cut centerlines.
 
 .. rubric:: Right: three columns
 
@@ -72,7 +75,7 @@ Read left to right; each column is one stage of the pipeline.
 
 #. **CCTA Geometry & Centerlines**: load and prepare the CCTA inputs.
 #. **Intravascular Alignment**: load the pullback and align it onto a coronary.
-#. **Fusion**: scale, stitch, remesh, export.
+#. **Fusion**: scale, stitch, remesh, cut, export.
 
 .. figure:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/Fusion_demo.gif
    :name: fig-fusion-demo
@@ -352,7 +355,31 @@ and iterations (default 10). This repairs the seam and produces an even triangul
 runs in the background with live progress output. Then **Smooth** applies Taubin smoothing
 at the chosen lambda (default 0.6). Both can be repeated.
 
-**14. Export.** **Export Final Mesh…** writes the result as STL.
+**14. Cut inlets and outlets (optional).** In the *Inlets & Outlets* tab, cut the geometry
+flat at slices of the vessel tree and close each cut with a planar cap.
+
+- *Source*: the mesh to cut, the latest one by default (final, stitched or CCTA mesh). Only
+  the slice planes come from the tree, so any of them can be cut, remeshed and smoothed or
+  not, without labelling it again.
+- **Pick Point**, then click near a slice; ◀ ▶ step along the branch. Slices already cut
+  off are hidden.
+- *Keep*: the side that stays, the one with the larger surface area, or the side against
+  (proximal) / along (distal) the centerline. Branches leaving the dropped part go with it,
+  from the mesh and from the centerline.
+- *Name* names the cap's file on export, e.g. ``LAD outlet``. **Cut** applies it.
+
+The cuts are listed in order and can be renamed or removed. They are replayed on the source
+mesh whenever it changed (e.g. smoothed again), so they don't have to be redone. A cut that
+no longer fits the mesh is marked ⚠ in the list. A cut fails when its plane crosses a
+bifurcation: choose a slice further from it. Discretising the tree again, or preparing,
+splitting or merging the centerlines, clears the cuts. Deleting a branch on the *Branch
+Labels* tab only drops the cuts on that branch: the tree just loses the deleted branches, so
+it doesn't need discretising again.
+
+**15. Export.** **Export Final Mesh (STL)…** writes the final mesh as STL. **Export Cut
+Geometry (STL + caps + VTP)…** writes the cut mesh (watertight, caps included) to the chosen file, and next to
+it one STL per cap (``<name>_<cap name>.stl``) and the centerlines as VTP
+(``<name>_centerline_<vessel>.vtp``), cut where a cut hit that vessel.
 
 Practical notes
 ---------------
@@ -393,6 +420,8 @@ Troubleshooting
        the right regions were removed in step 11.
    * - Nothing to export
      - Export uses the final mesh, which only exists after **Fix & Remesh**.
+   * - "the plane cuts a junction" / "no closed ring" when cutting
+     - The slice is too close to a bifurcation: step a few slices away with ◀ ▶.
 
 References
 ----------

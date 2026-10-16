@@ -8,6 +8,7 @@ from pages.fusion.left_half.display_results import FusionViewer3D
 from pages.fusion.left_half.layer_tools.alignment_tools import AlignmentToolbar, IntravascularLoadedToolbar
 from pages.fusion.left_half.layer_tools.branch_label_tools import BranchLabelsToolbar
 from pages.fusion.left_half.layer_tools.branch_tools import BranchEditorToolbar
+from pages.fusion.left_half.layer_tools.cut_tools import CutToolbar
 from pages.fusion.left_half.layer_tools.geometry_tools import GeometryToolbar
 from pages.fusion.left_half.layer_tools.tree_tools import TreeToolbar
 from pages.intravascular.utils.helpers import SplitterPane
@@ -30,6 +31,7 @@ class LeftHalf:
         self.intravascular_loaded_toolbar = IntravascularLoadedToolbar()
         self.alignment_toolbar = AlignmentToolbar()
         self.tree_toolbar = TreeToolbar()
+        self.cut_toolbar = CutToolbar()
 
         self._scene_order = [
             FusionScene.CCTA_GEOMETRY,
@@ -38,6 +40,7 @@ class LeftHalf:
             FusionScene.VESSEL_TREE,
             FusionScene.INTRAVASCULAR_LOADED,
             FusionScene.INTRAVASCULAR_ALIGNED,
+            FusionScene.INLETS_OUTLETS,
         ]
         self._toolbars = {
             FusionScene.CCTA_GEOMETRY: self.geometry_toolbar,
@@ -46,6 +49,7 @@ class LeftHalf:
             FusionScene.INTRAVASCULAR_LOADED: self.intravascular_loaded_toolbar,
             FusionScene.INTRAVASCULAR_ALIGNED: self.alignment_toolbar,
             FusionScene.VESSEL_TREE: self.tree_toolbar,
+            FusionScene.INLETS_OUTLETS: self.cut_toolbar,
         }
         for scene, toolbar in self._toolbars.items():
             toolbar.layer_visibility_changed.connect(partial(self.viewer.set_layer_visible, scene))
@@ -88,6 +92,9 @@ class LeftHalf:
     def refresh_toolbar(self, scene: FusionScene) -> None:
         """Call after adding/removing layers in a scene so its checkbox list stays in sync."""
         self._toolbars[scene].refresh(self.viewer.layer_states(scene))
+
+    def scene_at(self, index: int) -> FusionScene:
+        return self._scene_order[index]
 
     def show_scene(self, scene: FusionScene) -> None:
         self.tabs.setCurrentIndex(self._scene_order.index(scene))

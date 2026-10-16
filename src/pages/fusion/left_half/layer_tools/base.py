@@ -33,8 +33,8 @@ class SceneToolbar(QWidget):
     a small color swatch matching that layer's actual render color — more useful than
     opacity for scenes made of colored point clouds (e.g. Centerline Branches) where you
     want to match a legend entry to what's on screen, not fade it. Point picking
-    (show_pick=True) is only wired up end-to-end for the Vessel Tree and Centerline
-    Branches scenes (see FusionPage._on_point_picked), so other scenes leave it off.
+    (show_pick=True) is only wired up end-to-end for the Vessel Tree, Centerline Branches
+    and Inlets & Outlets scenes (see FusionPage._on_point_picked), so other scenes leave it off.
     Subclasses add scene-specific extras by passing extra_rows — see geometry_tools.py /
     alignment_tools.py / tree_tools.py / branch_tools.py.
     """

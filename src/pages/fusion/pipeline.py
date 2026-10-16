@@ -477,3 +477,25 @@ def run_taubin_smooth(mesh: trimesh.Trimesh, lamb: float = 0.6) -> trimesh.Trime
 
 def export_mesh(mesh: trimesh.Trimesh, path: str) -> None:
     mesh.export(path)
+
+
+def run_cut_at_slice(
+    results: dict, tree: Any, centerline: Any, vessel: str, slice_idx: int, *, branch_id: int = 0, keep: str = 'larger'
+) -> tuple[dict, Any, trimesh.Trimesh]:
+    """Only the slice's plane is taken from `tree`, so results['mesh'] may be any later
+    mesh (scaled, stitched, remeshed, smoothed) and needs no labels. Returns the cut
+    results, the cut centerline and the cap on its own."""
+    return mm.cut_at_slice(results, tree, centerline, vessel, slice_idx, branch_id=branch_id, keep=keep)
+
+
+def prune_vessel_tree(tree: Any, vessel: str, branch_ids) -> None:
+    """Drop deleted branches (see run_remove_branch) from a discretized tree in place and
+    recompute its reference triplets, so the bifurcations they left from go too. The other
+    branches keep their ids and contours: their planes don't depend on the deleted ones."""
+    gone = set(branch_ids)
+    setattr(tree, vessel, {k: b for k, b in getattr(tree, vessel).items() if k not in gone})
+    tree.calculate_ref_pts()
+
+
+def write_centerline_vtp(centerline: Any, path: str) -> None:
+    mm.write_centerline_vtp(centerline, path)

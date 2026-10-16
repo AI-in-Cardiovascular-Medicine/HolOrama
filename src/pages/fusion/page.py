@@ -21,6 +21,7 @@ from domain.fusion import display_types as colors
 from domain.fusion.types import FusionScene
 from domain.fusion.runtime_types import FusionRuntimeData
 from pages.fusion import pipeline
+from pages.fusion.cutting import CutController
 from pages.fusion.left_half.left_half import LeftHalf
 from pages.fusion.progress_worker import StdoutCapturingWorker
 from pages.fusion.right_half.right_half import RightHalf
@@ -40,6 +41,7 @@ class FusionPage(QWidget):
 
         self.left_half = LeftHalf(self)
         self.right_half = RightHalf(self)
+        self.cutting = CutController(self)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(self.left_half())
@@ -94,6 +96,7 @@ class FusionPage(QWidget):
             return
         self.data = FusionRuntimeData()
         self._reset_smoothing_state()
+        self.cutting.reset()
         self._branch_markers = []
         self._selected_branch_marker = None
         self.left_half.branch_toolbar.set_selected_marker(None)
@@ -134,8 +137,16 @@ class FusionPage(QWidget):
             self.left_half.intravascular_loaded_toolbar,
             self.left_half.alignment_toolbar,
             self.left_half.tree_toolbar,
+            self.left_half.cut_toolbar,
         ):
             toolbar.clear_all_data_requested.connect(self._on_clear_all_data)
+        ct = self.left_half.cut_toolbar
+        ct.source_changed.connect(self.cutting.on_source_changed)
+        ct.step_requested.connect(self.cutting.on_step)
+        ct.cut_requested.connect(self.cutting.on_cut)
+        ct.rename_requested.connect(self.cutting.on_rename)
+        ct.remove_requested.connect(self.cutting.on_remove)
+        self.left_half.tabs.currentChanged.connect(self._on_tab_changed)
 
         ic = self.right_half.intravascular_column
         ic.run_load_requested.connect(self._on_run_load_pullback)
@@ -153,6 +164,7 @@ class FusionPage(QWidget):
         fc.run_remesh_requested.connect(self._on_run_remesh)
         fc.run_smooth_requested.connect(self._on_run_smooth)
         fc.export_requested.connect(self._on_export)
+        fc.export_cut_requested.connect(self.cutting.on_export)
 
         gt = self.left_half.geometry_toolbar
         viewer = self.left_half.viewer
@@ -165,6 +177,11 @@ class FusionPage(QWidget):
         undo_shortcut = QShortcut(QKeySequence.StandardKey.Undo, self)
         undo_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)  # fusion page only
         undo_shortcut.activated.connect(self._on_undo_smoothing)
+
+    def _on_tab_changed(self, index: int) -> None:
+        # The cuts replay lazily, here and on export, not on every upstream mesh change.
+        if self.left_half.scene_at(index) == FusionScene.INLETS_OUTLETS:
+            self.cutting.refresh()
 
     def _require(self, ok: bool, message: str) -> bool:
         if not ok:
@@ -248,6 +265,7 @@ class FusionPage(QWidget):
             return
         self.data.centerline_aorta, self.data.centerline_rca, self.data.centerline_lca = result
         self.data.branch_names = {'rca': {}, 'lca': {}}  # new centerlines, new branch ids
+        self.cutting.reset()
         self._refresh_geometry_scene()
         self._refresh_branch_scene()
         self.left_half.show_scene(FusionScene.CENTERLINE_BRANCHES)
@@ -392,6 +410,7 @@ class FusionPage(QWidget):
         if tree is None:
             return
         self.data.vessel_tree = tree
+        self.cutting.reset()  # slice indices refer to the old tree
 
         self.data.selected_branch = {'rca': 0, 'lca': 0}
         self.data.selected_reference_index = {'rca': 0, 'lca': 0}
@@ -527,6 +546,9 @@ class FusionPage(QWidget):
     def _on_point_picked(self, x: float, y: float, z: float, scene_value: str) -> None:
         if scene_value == FusionScene.CENTERLINE_BRANCHES.value:
             self._on_branch_marker_picked(x, y, z)
+            return
+        if scene_value == FusionScene.INLETS_OUTLETS.value:
+            self.cutting.on_point_picked(x, y, z)
             return
         if scene_value != FusionScene.VESSEL_TREE.value or self.data.vessel_tree is None:
             return
@@ -788,8 +810,9 @@ class FusionPage(QWidget):
     def _on_delete_branch_requested(self, vessel: str, branch: int, fill_hole: bool) -> None:
         """Cut a side branch (and every branch growing out of it) off the mesh and the
         vessel centerline with multimodars' remove_branch. The other branches keep their
-        ids and names. The vessel tree was discretized on the old mesh and still holds the
-        deleted branches, so it's dropped and has to be discretized again."""
+        ids and names, so the vessel tree only loses the deleted branches (and the cuts on
+        them) and doesn't need discretizing again: the stitch and the cuts keep working on it,
+        and overlap labels made since stay valid."""
         centerline = self.data.centerline_rca if vessel == 'rca' else self.data.centerline_lca
         results = self.data.results
         if not self._require(results is not None and centerline is not None, 'Run Label Branches first.'):
@@ -825,27 +848,23 @@ class FusionPage(QWidget):
         self.data.results_points_removed = None  # stale: the mesh changed
         names = self.data.branch_names[vessel]
         self.data.branch_names[vessel] = {b: n for b, n in names.items() if b not in removed}
-        had_tree = self.data.vessel_tree is not None
-        self._drop_vessel_tree()
+        tree = self.data.vessel_tree
+        if tree is not None:
+            pipeline.prune_vessel_tree(tree, vessel, removed)
+            self.cutting.drop_branches(vessel, removed)
+            for b in removed:
+                self.left_half.viewer.remove_layer(FusionScene.VESSEL_TREE, f'tree_{vessel}_branch_{b}')
+            if self.data.selected_branch[vessel] in removed:
+                self.data.selected_branch[vessel] = 0
+                self.data.selected_reference_index[vessel] = 0
+            self._refresh_tree_scene()
+            self.left_half.refresh_toolbar(FusionScene.VESSEL_TREE)
 
         self._refresh_geometry_scene()
         self._refresh_branch_scene()
-        self._refresh_branch_labels_scene()
+        self._refresh_branch_name_displays()  # branch labels scene + tree/alignment choices
         self._refresh_aligned_ccta_mesh()
-        again = ' Discretize the vessel tree again.' if had_tree else ''
-        self.status_bar.showMessage(f'Deleted {removed_names}.{again}')
-
-    def _drop_vessel_tree(self) -> None:
-        """Forget the discretized tree and everything listing its branches/references."""
-        self.data.vessel_tree = None
-        self.left_half.viewer.clear_scene(FusionScene.VESSEL_TREE)
-        self.left_half.refresh_toolbar(FusionScene.VESSEL_TREE)
-        for vessel in ('rca', 'lca'):
-            self.left_half.tree_toolbar.set_branches(vessel, [], 0)
-            self.left_half.tree_toolbar.set_references(vessel, [], -1)
-        ic = self.right_half.intravascular_column
-        ic.set_centerline_choices([('RCA', 'rca', 0), ('LCA', 'lca', 0)], 'rca', 0)
-        ic.set_reference_choices([])
+        self.status_bar.showMessage(f'Deleted {removed_names}.')
 
     def _refresh_branch_scene(self) -> None:
         """Recreate multimodars' plot_centerline_branches/plot_centerline_edges as native
@@ -998,6 +1017,7 @@ class FusionPage(QWidget):
             return
         setattr(self.data, cl_attr, new_cl)
         self.data.branch_names[marker['centerline']] = {}  # split reassigns every branch id
+        self.cutting.reset()
         self.status_bar.showMessage(
             f"Split {marker['centerline'].upper()} branch {marker['branch_id']} at point {marker['point_index']}."
         )
@@ -1017,6 +1037,7 @@ class FusionPage(QWidget):
             return
         setattr(self.data, cl_attr, new_cl)
         self.data.branch_names[cl_name] = {}  # merge reassigns every branch id
+        self.cutting.reset()
         self.status_bar.showMessage(f'Merged {cl_name.upper()} branches {branch_id_a} and {branch_id_b}.')
         self._refresh_branch_scene()
         self._run_label_branches_pair()
@@ -1578,6 +1599,7 @@ class FusionPage(QWidget):
         self.data.results = results_out
         self.data.results_points_removed = None  # stale: re-run Remove Labeled Points on the scaled mesh
         self._refresh_geometry_scene()
+        self._refresh_branch_labels_scene()  # scaled mesh + its synced branch labels
         self._refresh_aligned_ccta_mesh()
 
     def _on_run_remove_points(self) -> None:
@@ -1597,6 +1619,7 @@ class FusionPage(QWidget):
             fc.set_seam_points_limit(pipeline.max_seam_points(results))
             self._clear_stitch_outputs()
             self._refresh_geometry_scene()
+            self._refresh_branch_labels_scene()
             self._refresh_aligned_ccta_mesh()
             if self.data.aligned is not None:  # the aligned scene is empty until alignment
                 self.left_half.show_scene(FusionScene.INTRAVASCULAR_ALIGNED)

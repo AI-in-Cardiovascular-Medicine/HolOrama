@@ -11,6 +11,7 @@ class FusionScene(Enum):
     INTRAVASCULAR_LOADED = 'intravascular_loaded'
     INTRAVASCULAR_ALIGNED = 'intravascular_aligned'
     VESSEL_TREE = 'vessel_tree'
+    INLETS_OUTLETS = 'inlets_outlets'
 
     @classmethod
     def label(cls, scene: 'FusionScene') -> str:
@@ -21,5 +22,6 @@ class FusionScene(Enum):
             cls.INTRAVASCULAR_LOADED: 'Intravascular Loaded',
             cls.INTRAVASCULAR_ALIGNED: 'Intravascular Aligned',
             cls.VESSEL_TREE: 'Vessel Tree',
+            cls.INLETS_OUTLETS: 'Inlets & Outlets',
         }
         return mapping[scene]

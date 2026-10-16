@@ -129,9 +129,14 @@ volume it is the file without its ``.nii``/``.nii.gz`` extension.
 Fusion module
 -------------
 
-The fusion module does not auto-save. Its only output is written by
-**Export Final Mesh…**: the fused, remeshed and smoothed geometry as a single ``.stl`` at a
-path you choose.
+The fusion module does not auto-save. It writes two outputs, each from its own button:
+
+- **Export Final Mesh (STL)…**: the fused, remeshed and smoothed geometry as a single
+  ``.stl`` at a path you choose.
+- **Export Cut Geometry (STL + caps + VTP)…**: the geometry cut on the *Inlets & Outlets*
+  tab. The chosen ``<name>.stl`` is the cut mesh (watertight, caps included); next to it go
+  one ``<name>_<cap name>.stl`` per cap and ``<name>_centerline_<vessel>.vtp`` per
+  centerline.
 
 Feeding the fusion module
 -------------------------
