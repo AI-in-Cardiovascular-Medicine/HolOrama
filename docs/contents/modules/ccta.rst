@@ -71,6 +71,8 @@ blank multi-label mask, ready to paint.
 - Click in any slice view to move the shared cursor; the other two views follow.
 - Drag :kbd:`RMB` for windowing (:kbd:`R` resets), drag :kbd:`LMB` to zoom (:kbd:`F`
   resets).
+- Drag :kbd:`Ctrl+LMB` to move the image within its view, each view on its own (:kbd:`F`
+  re-centres). Works while brushing or drawing cut lines too.
 - :kbd:`Esc` returns to a neutral state (leaves brush/line-drawing modes).
 - :kbd:`Ctrl+Z` undoes the last mask edit, brush strokes and 3D lasso erases alike.
 

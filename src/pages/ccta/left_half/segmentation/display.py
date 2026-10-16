@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from PyQt6.QtCore import QPointF, Qt, pyqtSignal
+from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QImage, QPen, QPixmap
 from PyQt6.QtWidgets import QGraphicsScene, QGraphicsView
 
@@ -67,7 +67,9 @@ class CctaDisplay(QGraphicsView):
         self._mouse_y: float = 0.0
         self._press_pos: QPointF = QPointF(0.0, 0.0)
         self._is_dragging: bool = False
-        self._user_zoomed: bool = False
+        self._user_zoomed: bool = False  # zoomed or panned: stop fitting the image to the view
+        self._panning: bool = False  # Ctrl + left drag moves the image, like the intravascular view
+        self._pan_last_pos: QPointF = QPointF(0.0, 0.0)
         self._render_buf: np.ndarray | None = None  # kept alive for QImage
         self.windowing_sensitivity: float = windowing_sensitivity
         self.zoom_sensitivity: float = zoom_sensitivity
@@ -351,6 +353,10 @@ class CctaDisplay(QGraphicsView):
             self._render_items.append(self._scene.addEllipse(sc - r, sr - r, 2 * r, 2 * r, dot_pen))
 
         self._scene.setSceneRect(0, 0, w, h)
+        # The view may scroll a full image size past every edge, so Ctrl + drag can bring any
+        # part of the image to the centre, also when it isn't zoomed in. fitInView still fits
+        # the image itself (the scene rect), not this margin.
+        self.setSceneRect(QRectF(-w, -h, 3 * w, 3 * h))
         if not self._user_zoomed:
             self.fitInView(self._scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
@@ -442,6 +448,16 @@ class CctaDisplay(QGraphicsView):
 
     def mousePressEvent(self, event) -> None:
         self.setFocus()
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and event.modifiers() & Qt.KeyboardModifier.ControlModifier
+            and self.volume is not None
+        ):
+            # Before brush and line drawing, so the image can be moved in any mode.
+            self._panning = True
+            self._pan_last_pos = event.position()
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            return
         if self._brush_mode and event.button() == Qt.MouseButton.LeftButton:
             self.mask_about_to_change.emit()
             self._brush_painting = True
@@ -461,6 +477,15 @@ class CctaDisplay(QGraphicsView):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
+        if self._panning:
+            delta = event.position() - self._pan_last_pos
+            self._pan_last_pos = event.position()
+            self._user_zoomed = True  # keep the moved view, a re-render must not re-fit it
+            h_bar, v_bar = self.horizontalScrollBar(), self.verticalScrollBar()
+            assert h_bar is not None and v_bar is not None
+            h_bar.setValue(h_bar.value() - round(delta.x()))
+            v_bar.setValue(v_bar.value() - round(delta.y()))
+            return
         if self._brush_mode:
             pos = self.mapToScene(event.position().toPoint())
             # Clamp to image bounds so the cursor stays visible even in letterbox margins
@@ -506,6 +531,15 @@ class CctaDisplay(QGraphicsView):
         self.windowing_changed.emit(self.window_level, self.window_width)
 
     def mouseReleaseEvent(self, event) -> None:
+        if self._panning and event.button() == Qt.MouseButton.LeftButton:
+            self._panning = False
+            if self._line_draw_mode:
+                self.setCursor(Qt.CursorShape.CrossCursor)
+            elif self._brush_mode:
+                self.setCursor(self._brush_cursor.make_cursor(self.transform().m11()))
+            else:
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+            return
         if self._brush_mode and event.button() == Qt.MouseButton.LeftButton:
             self._brush_painting = False
             return
