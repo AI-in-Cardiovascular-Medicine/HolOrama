@@ -33,8 +33,8 @@ class SceneToolbar(QWidget):
     a small color swatch matching that layer's actual render color — more useful than
     opacity for scenes made of colored point clouds (e.g. Centerline Branches) where you
     want to match a legend entry to what's on screen, not fade it. Point picking
-    (show_pick=True) is only wired up end-to-end for the Vessel Tree and Centerline
-    Branches scenes (see FusionPage._on_point_picked), so other scenes leave it off.
+    (show_pick=True) is only wired up end-to-end for the Vessel Tree, Centerline Branches
+    and Inlets & Outlets scenes (see FusionPage._on_point_picked), so other scenes leave it off.
     Subclasses add scene-specific extras by passing extra_rows — see geometry_tools.py /
     alignment_tools.py / tree_tools.py / branch_tools.py.
     """
@@ -77,12 +77,19 @@ class SceneToolbar(QWidget):
             scroll.setMinimumHeight(_LAYERS_MIN_HEIGHT)
             scroll.setMinimumWidth(_LAYERS_MIN_WIDTH)
             scroll.setWidget(layers_widget)
-            root.addWidget(scroll, 2)
+            root.addWidget(scroll, 1)
         else:
             root.addStretch(1)
 
+        # The scene's own controls and the view buttons share the other half, so the layer
+        # list and the controls (e.g. lasso, local smoothing) split the toolbar 50/50.
+        controls = QWidget()
+        controls_layout = QHBoxLayout(controls)
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        controls_layout.setSpacing(8)
         for row in extra_rows or []:
-            root.addWidget(row)
+            controls_layout.addWidget(row, 1)
+        root.addWidget(controls, 1)
 
         # Reset View / Pick Point / Lasso / Clear All Data, stacked in that order — Pick
         # Point and Lasso sit between the two so they read as "how you interact with the
@@ -113,7 +120,7 @@ class SceneToolbar(QWidget):
         clear_btn.setToolTip('Discards every loaded/computed fusion result and clears the 3D viewer.')
         clear_btn.clicked.connect(self.clear_all_data_requested.emit)
         view_buttons.addWidget(clear_btn)
-        root.addLayout(view_buttons)
+        controls_layout.addLayout(view_buttons)
 
     def _on_lasso_toggled(self, checked: bool) -> None:
         self.lasso_btn.setText('Cancel Lasso' if checked else 'Lasso')

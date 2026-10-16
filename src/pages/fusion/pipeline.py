@@ -126,6 +126,34 @@ def run_remove_branch(results: dict, centerline, branch_id: int, *, fill_hole: b
     return mm.remove_branch(results, centerline, branch_id, fill_hole=fill_hole)
 
 
+def transfer_labels(results: dict, mesh: trimesh.Trimesh) -> dict:
+    """Carry the region and branch labels of `results` over to another mesh of the same
+    surface, e.g. the remeshed and smoothed stitched mesh: each vertex of `mesh` gets the
+    labels of the nearest vertex of results['mesh'], so label borders move by about one
+    edge at most. Boundary rings describe holes of the old mesh and are left out."""
+    from scipy.spatial import cKDTree
+
+    source = np.asarray(results['mesh'].vertices, dtype=np.float64)
+    _, nearest = cKDTree(source).query(np.asarray(mesh.vertices, dtype=np.float64))
+    index = {tuple(v): i for i, v in enumerate(source.tolist())}
+    targets = [tuple(v) for v in np.asarray(mesh.vertices).tolist()]
+
+    def remap(points: list) -> list:
+        members = np.zeros(len(source), dtype=bool)
+        members[[index[p] for p in map(tuple, points) if p in index]] = True
+        return [targets[i] for i in np.flatnonzero(members[nearest])]
+
+    labelled: dict = {'mesh': mesh}
+    for key, value in results.items():
+        if key == 'mesh' or 'boundary' in key:
+            continue
+        if key.endswith('_branches') and isinstance(value, dict):
+            labelled[key] = {k: remap(pts) for k, pts in value.items()}
+        elif isinstance(value, list) and value and len(value[0]) == 3:
+            labelled[key] = remap(value)
+    return labelled
+
+
 def run_discretize_vessel_tree(
     ao_cl,
     rca_cl,
@@ -477,3 +505,25 @@ def run_taubin_smooth(mesh: trimesh.Trimesh, lamb: float = 0.6) -> trimesh.Trime
 
 def export_mesh(mesh: trimesh.Trimesh, path: str) -> None:
     mesh.export(path)
+
+
+def run_cut_at_slice(
+    results: dict, tree: Any, centerline: Any, vessel: str, slice_idx: int, *, branch_id: int = 0, keep: str = 'larger'
+) -> tuple[dict, Any, trimesh.Trimesh]:
+    """Only the slice's plane is taken from `tree`, so results['mesh'] may be any later
+    mesh (scaled, stitched, remeshed, smoothed) and needs no labels. Returns the cut
+    results, the cut centerline and the cap on its own."""
+    return mm.cut_at_slice(results, tree, centerline, vessel, slice_idx, branch_id=branch_id, keep=keep)
+
+
+def prune_vessel_tree(tree: Any, vessel: str, branch_ids) -> None:
+    """Drop deleted branches (see run_remove_branch) from a discretized tree in place and
+    recompute its reference triplets, so the bifurcations they left from go too. The other
+    branches keep their ids and contours: their planes don't depend on the deleted ones."""
+    gone = set(branch_ids)
+    setattr(tree, vessel, {k: b for k, b in getattr(tree, vessel).items() if k not in gone})
+    tree.calculate_ref_pts()
+
+
+def write_centerline_vtp(centerline: Any, path: str) -> None:
+    mm.write_centerline_vtp(centerline, path)

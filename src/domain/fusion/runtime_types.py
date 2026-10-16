@@ -1,8 +1,40 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
+
+
+@dataclass(frozen=True)
+class CutSpec:
+    """One flat cut of the final geometry at a slice of the discretized vessel tree (see
+    multimodars' cut_at_slice). Only the slice's plane comes from the tree, so a spec holds
+    on any mesh the tree fits (CCTA, stitched, remeshed, smoothed) and the cut geometry is
+    always these specs replayed in order on the chosen source mesh."""
+
+    vessel: str  # 'aorta' / 'rca' / 'lca'
+    branch: int  # branch id of that vessel's centerline, 0 for the aorta
+    slice_idx: int  # index into that branch's tree contours
+    keep: str  # 'larger' / 'proximal' / 'distal'
+    name: str  # user-facing, also names the cap's export file
+
+    @property
+    def geometry(self) -> tuple[str, int, int, str]:
+        """Everything but the name: what the cut result depends on."""
+        return self.vessel, self.branch, self.slice_idx, self.keep
+
+
+@dataclass
+class CutResult:
+    """The specs replayed on a source mesh (see pages/fusion/cutting.apply_cuts)."""
+
+    mesh: Any  # trimesh.Trimesh, watertight with the caps in it
+    centerlines: dict[str, Any]  # vessel -> PyCenterline, cut where a cut hit that vessel
+    caps: dict[int, Any] = field(default_factory=dict)  # spec index -> cap trimesh
+    dropped: set[tuple[str, int, int]] = field(default_factory=set)  # (vessel, branch, slice) cut off
+    failed: dict[int, str] = field(default_factory=dict)  # spec index -> why it was skipped
+    key: tuple = ()  # source mesh + specs this was computed from, see CutController
 
 
 class FusionRuntimeData:
@@ -59,3 +91,9 @@ class FusionRuntimeData:
         # smoothing never changes faces, so vertices alone restore a mesh. Reset whenever a
         # new final_mesh topology arrives (Fix & Remesh) or the final mesh is dropped.
         self.final_mesh_undo: list[np.ndarray] = []
+
+        # -- Inlets & outlets: flat cuts of the last geometry ----------------------------
+        self.cuts: list[CutSpec] = []
+        self.cut_source: str | None = None  # 'final' / 'stitched' / 'ccta', None = latest there is
+        self.cut_selection: tuple[str, int, int] | None = None  # (vessel, branch, slice) picked
+        self.cut_result: CutResult | None = None  # cache, recomputed when its key goes stale

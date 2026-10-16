@@ -3,6 +3,27 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.16.0] - 2026-10-08
+
+### Added
+- **Inlets & Outlets** tab (Fusion): cut the final, stitched or CCTA mesh flat at any vessel tree slice and cap it (keep the larger, proximal or distal side). Cuts can be renamed or removed and are replayed when the mesh changes, so no relabelling after remeshing.
+- **Export Cut Geometry (STL + caps + VTP)…**: the watertight cut mesh, one STL per cap and the cut centerlines.
+- **Branch Labels** tab (Fusion): vertices coloured per branch, with **Lasso** to move them between branches, **Rename…** and **Delete** (closes the ostium with a patch on the parent wall).
+- **Label Branches**, run automatically after Label Geometry and every split or merge.
+- **Include parent vessel**: align a side branch on the path through its parents.
+- **Remaining vessels (mm)** scaling for every vessel the pullback does not cover; replaces *Opposite vessel*.
+
+### Changed
+- Fusion needs **multimodars 0.9.0**; branches are chosen by name and id throughout alignment.
+- **Label Overlap Region** splits the whole aligned vessel; vertices off the pullback path become `off_path_points`. The vessel's own layer is hidden afterwards.
+- **Stitch** reconnects side branches leaving the overlap segment.
+- **Deleting a branch** keeps the vessel tree and also removes the branch from the stitched and final meshes.
+- **Export Final Mesh…** is now **Export Final Mesh (STL)…**.
+- Fusion page and scene toolbars split 50/50.
+
+### Fixed
+- *Branch Labels* scene not updating after **Apply Scaling** and **Remove Labeled Points**.
+
 ## [0.15.0] - 2026-10-08
 
 ### Added

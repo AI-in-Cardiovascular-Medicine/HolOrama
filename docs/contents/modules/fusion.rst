@@ -58,6 +58,9 @@ and **Clear All Data**.
        centerlines, and later the stitched and final meshes.
    * - **Centerline Branches**
      - The RCA and LCA coloured per branch, with numbered sharp-angle markers.
+   * - **Branch Labels**
+     - The RCA and LCA surface vertices coloured by the branch they belong to, in the same
+       colours as *Centerline Branches*.
    * - **Intravascular Loaded**
      - The pullback straight after loading, before any centerline alignment.
    * - **Intravascular Aligned**
@@ -65,6 +68,9 @@ and **Clear All Data**.
        overlaid for comparison.
    * - **Vessel Tree**
      - The discretised vessel tree with its reference-point triplets.
+   * - **Inlets & Outlets**
+     - The mesh to cut with the slices of the vessel tree still left to cut at, the cuts
+       made so far with their caps, and the cut centerlines.
 
 .. rubric:: Right: three columns
 
@@ -72,7 +78,7 @@ Read left to right; each column is one stage of the pipeline.
 
 #. **CCTA Geometry & Centerlines**: load and prepare the CCTA inputs.
 #. **Intravascular Alignment**: load the pullback and align it onto a coronary.
-#. **Fusion**: scale, stitch, remesh, export.
+#. **Fusion**: scale, stitch, remesh, cut, export.
 
 .. figure:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/Fusion_demo.gif
    :name: fig-fusion-demo
@@ -204,7 +210,23 @@ point cloud per region.
      - Length of the proximal segment treated as the take-off region (default 45).
 
 The branch structure is projected onto the labelled points automatically, and again after
-every split or merge.
+every split or merge. **Label Branches** (with its own *RCA / LCA sphere (mm)*) re-runs it.
+
+*Branch labels.* The *Branch Labels* tab shows which branch every RCA and LCA vertex belongs
+to. Its toolbar works on these labels:
+
+- **Lasso**: move the vertices inside the lasso from one branch to another branch of the
+  same vessel.
+- **Rename…**: give a branch a name, e.g. ``LAD``. It is used everywhere the branch is
+  listed: the layer lists, the *Vessel Tree* and alignment choices, and the cap names on the
+  *Inlets & Outlets* tab.
+- **Delete**: cut the branch, and every branch growing out of it, off the mesh and the
+  centerline. With *Fill hole* the ostium is closed with a patch following the parent
+  vessel's wall. The main vessel cannot be deleted. The other branches keep their ids, so
+  nothing has to be run again: the vessel tree only loses the deleted branches, the overlap
+  labels stay, and a stitched or final mesh that already exists loses the branch too (the
+  final mesh gets the branch labels from the stitched one by nearest vertex). The patch on
+  the final mesh is not remeshed; run **Fix & Remesh** again if it should be.
 
 *Correcting a mislabelled region:* click **Lasso** in the *CCTA Geometry* toolbar, draw a
 closed lasso around the offending points, and choose which region they come from and which
@@ -283,10 +305,12 @@ wrong, this tab tells you whether it was already wrong before centerline alignme
   However, leaving the default settings should work for almost all cases.
 
 **7. Choose the reference.** In *Reference Points (from Vessel Tree)* pick the
-**Centerline** (RCA or LCA) the pullback belongs to, then the **Reference**: the ostium or
-one of the side branches. The three reference points (aortic, superior, inferior) are shown
-as coordinates. *Branch index* selects which branch of that centerline to align onto;
-alignment needs a single-branch centerline.
+**Centerline** the pullback belongs to: the RCA or LCA main vessel or one of their side
+branches, listed by name. Then pick the **Reference**: the branch's ostium or the takeoff of
+one of its side branches. The three reference points (aortic, superior, inferior) are shown
+as coordinates. For a side branch, *Include parent vessel* aligns onto the path from the
+vessel ostium through the parent branches, so frames running proximally past the side
+branch's ostium land on the parent instead of being left unaligned.
 
 **8. Align.** Click **Align**.
 
@@ -312,7 +336,9 @@ CCTA) cut-off one frame to much from the ostium.
 was aligned onto is partitioned into proximal, overlap and distal sub-regions: the
 partition the next stage needs to know which part of the CCTA to replace and which to keep.
 It always follows the *Centerline* selector above, so it describes the vessel you actually
-aligned.
+aligned. Every other vertex of that vessel becomes ``off_path_points`` and is left alone by
+point removal. The vessel's own region (e.g. ``rca_points``) is unchecked in *CCTA Geometry*
+so the new sub-regions show.
 
 Stage 3: fusion
 ~~~~~~~~~~~~~~~~
@@ -350,9 +376,35 @@ The stitched mesh is shown on its own in *CCTA Geometry*.
 **13. Remesh and smooth.** Click **Fix & Remesh**: target edge length (default 0.5 mm)
 and iterations (default 10). This repairs the seam and produces an even triangulation; it
 runs in the background with live progress output. Then **Smooth** applies Taubin smoothing
-at the chosen lambda (default 0.6). Both can be repeated.
+at the chosen lambda (default 0.6). Both can be repeated. **Sphere Smooth** in the *CCTA
+Geometry* toolbar smooths only the patch under the brush (``Ctrl+wheel`` resizes it);
+**Undo** steps back through these smoothings.
 
-**14. Export.** **Export Final Mesh…** writes the result as STL.
+**14. Cut inlets and outlets (optional).** In the *Inlets & Outlets* tab, cut the geometry
+flat at slices of the vessel tree and close each cut with a planar cap.
+
+- *Source*: the mesh to cut, the latest one by default (final, stitched or CCTA mesh). Only
+  the slice planes come from the tree, so any of them can be cut, remeshed and smoothed or
+  not, without labelling it again.
+- **Pick Point**, then click near a slice; ◀ ▶ step along the branch. Slices already cut
+  off are hidden.
+- *Keep*: the side that stays, the one with the larger surface area, or the side against
+  (proximal) / along (distal) the centerline. Branches leaving the dropped part go with it,
+  from the mesh and from the centerline.
+- *Name* names the cap's file on export, e.g. ``LAD outlet``. **Cut** applies it.
+
+The cuts are listed in order and can be renamed or removed. They are replayed on the source
+mesh whenever it changed (e.g. smoothed again), so they don't have to be redone. A cut that
+no longer fits the mesh is marked ⚠ in the list. A cut fails when its plane crosses a
+bifurcation: choose a slice further from it. Discretising the tree again, or preparing,
+splitting or merging the centerlines, clears the cuts. Deleting a branch on the *Branch
+Labels* tab only drops the cuts on that branch: the tree just loses the deleted branches, so
+it doesn't need discretising again.
+
+**15. Export.** **Export Final Mesh (STL)…** writes the final mesh as STL. **Export Cut
+Geometry (STL + caps + VTP)…** writes the cut mesh (watertight, caps included) to the chosen file, and next to
+it one STL per cap (``<name>_<cap name>.stl``) and the centerlines as VTP
+(``<name>_centerline_<vessel>.vtp``), cut where a cut hit that vessel.
 
 Practical notes
 ---------------
@@ -393,6 +445,8 @@ Troubleshooting
        the right regions were removed in step 11.
    * - Nothing to export
      - Export uses the final mesh, which only exists after **Fix & Remesh**.
+   * - "the plane cuts a junction" / "no closed ring" when cutting
+     - The slice is too close to a bifurcation: step a few slices away with ◀ ▶.
 
 References
 ----------

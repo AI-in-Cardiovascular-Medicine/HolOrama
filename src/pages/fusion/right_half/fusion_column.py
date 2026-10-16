@@ -18,7 +18,8 @@ from domain.fusion.display_types import region_label
 
 class FusionColumn(QWidget):
     """Column 3: scale the CCTA geometry to match the intravascular lumen, stitch the two
-    together, then remesh/smooth/export. See pages/fusion/pipeline.py."""
+    together, then remesh/smooth/export. See pages/fusion/pipeline.py. The cuts exported
+    with Export Cut Geometry are made on the Inlets & Outlets tab (pages/fusion/cutting.py)."""
 
     run_compute_scaling_requested = pyqtSignal()
     run_apply_scaling_requested = pyqtSignal()
@@ -27,6 +28,7 @@ class FusionColumn(QWidget):
     run_remesh_requested = pyqtSignal()
     run_smooth_requested = pyqtSignal()
     export_requested = pyqtSignal(str)  # chosen file path
+    export_cut_requested = pyqtSignal(str)  # chosen path of the cut mesh, the rest goes next to it
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -216,21 +218,38 @@ class FusionColumn(QWidget):
 
     def _build_export_group(self) -> QGroupBox:
         box = QGroupBox('Export')
-        layout = QHBoxLayout(box)
-        btn = QPushButton('Export Final Mesh…')
+        layout = QVBoxLayout(box)
+        btn = QPushButton('Export Final Mesh (STL)…')
         btn.clicked.connect(self._on_export)
         layout.addWidget(btn)
+        cut_btn = QPushButton('Export Cut Geometry (STL + caps + VTP)…')
+        cut_btn.setToolTip(
+            'The mesh with the cuts from the Inlets & Outlets tab (watertight, caps included),\n'
+            'plus one STL per cap and the cut centerlines as VTP, next to the chosen file.'
+        )
+        cut_btn.clicked.connect(self._on_export_cut)
+        layout.addWidget(cut_btn)
         return box
 
     # ------------------------------------------------------------------
 
     def _on_export(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(self, 'Export Final Mesh', '', 'STL (*.stl)')
+        path, _ = QFileDialog.getSaveFileName(self, 'Export Final Mesh (STL)', '', 'STL (*.stl)')
         if not path:
             return
         if not path.endswith('.stl'):
             path += '.stl'
         self.export_requested.emit(path)
+
+    def _on_export_cut(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self, 'Export Cut Geometry: caps and centerlines are written next to this file', '', 'STL (*.stl)'
+        )
+        if not path:
+            return
+        if not path.endswith('.stl'):
+            path += '.stl'
+        self.export_cut_requested.emit(path)
 
     def set_scaling_results(self, results: dict[str, float]) -> None:
         """Fill in the computed values — the user can still edit them afterward."""
