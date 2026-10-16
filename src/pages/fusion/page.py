@@ -98,6 +98,7 @@ class FusionPage(QWidget):
             return
         self.data = FusionRuntimeData()
         self._reset_smoothing_state()
+        self._update_removal_undo_button()
         self.cutting.reset()
         self._branch_markers = []
         self._selected_branch_marker = None
@@ -162,6 +163,7 @@ class FusionPage(QWidget):
         fc.run_compute_scaling_requested.connect(self._on_run_compute_scaling)
         fc.run_apply_scaling_requested.connect(self._on_run_apply_scaling)
         fc.run_remove_points_requested.connect(self._on_run_remove_points)
+        fc.undo_remove_points_requested.connect(self._on_undo_remove_points)
         fc.run_stitch_requested.connect(self._on_run_stitch)
         fc.run_remesh_requested.connect(self._on_run_remesh)
         fc.run_smooth_requested.connect(self._on_run_smooth)
@@ -178,7 +180,7 @@ class FusionPage(QWidget):
         viewer.sphere_radius_step.connect(gt.step_sphere_radius)
         undo_shortcut = QShortcut(QKeySequence.StandardKey.Undo, self)
         undo_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)  # fusion page only
-        undo_shortcut.activated.connect(self._on_undo_smoothing)
+        undo_shortcut.activated.connect(self._on_undo_shortcut)
 
     def _on_tab_changed(self, index: int) -> None:
         # The cuts replay lazily, here and on export, not on every upstream mesh change.
@@ -298,7 +300,7 @@ class FusionPage(QWidget):
         if results is None:
             return
         self.data.results = results
-        self.data.results_points_removed = None  # stale: based on the previous labeling
+        self._invalidate_removal()  # stale: based on the previous labeling
         self._refresh_geometry_scene()
         self.left_half.show_scene(FusionScene.CCTA_GEOMETRY)
         self._run_label_branches_pair()
@@ -333,6 +335,7 @@ class FusionPage(QWidget):
         if results is None:
             return False
         self.data.results = results
+        self._clear_removal_undo()  # snapshots carry the old branch ids
         self._refresh_branch_labels_scene()
         return True
 
@@ -856,7 +859,7 @@ class FusionPage(QWidget):
         removed_names = ', '.join(self._branch_name(vessel, b) for b in removed)
         setattr(self.data, f'centerline_{vessel}', new_centerline)
         self.data.results = new_results
-        self.data.results_points_removed = None  # stale: the mesh changed
+        self._invalidate_removal()  # stale: the mesh changed
         names = self.data.branch_names[vessel]
         self.data.branch_names[vessel] = {b: n for b, n in names.items() if b not in removed}
         tree = self.data.vessel_tree
@@ -1512,7 +1515,7 @@ class FusionPage(QWidget):
         )
         if results is not None:
             self.data.results = results
-            self.data.results_points_removed = None  # stale: re-run Remove Labeled Points
+            self._invalidate_removal()  # stale: re-run Remove Labeled Points
             # proximal/distal/anomalous (shown as overlap)/off_path_points now exist
             self._refresh_geometry_scene()
             # They split the aligned vessel's own region, which would hide them: uncheck it
@@ -1625,7 +1628,7 @@ class FusionPage(QWidget):
         if results_out is None:
             return
         self.data.results = results_out
-        self.data.results_points_removed = None  # stale: re-run Remove Labeled Points on the scaled mesh
+        self._invalidate_removal()  # stale: re-run Remove Labeled Points on the scaled mesh
         self._refresh_geometry_scene()
         self._refresh_branch_labels_scene()  # scaled mesh + its synced branch labels
         self._refresh_aligned_ccta_mesh()
@@ -1634,6 +1637,9 @@ class FusionPage(QWidget):
         fc = self.right_half.fusion_column
         if not self._require(self.data.results is not None, 'Run label_geometry first.'):
             return
+        # Taken before the call, in case remove_labeled_points_from_mesh touches its input.
+        before = copy.deepcopy(self.data.results)
+        assert before is not None
         results = self._run(
             'Removing labeled points…',
             'Points removed.',
@@ -1642,15 +1648,66 @@ class FusionPage(QWidget):
             fc.remove_point_keys(),
         )
         if results is not None:
+            undo = self.data.removal_undo
+            undo.append(before)
+            del undo[: max(len(undo) - self._REMOVAL_UNDO_LIMIT, 0)]
+            self._set_removed_results(results)
+            if self.data.aligned is not None:  # the aligned scene is empty until alignment
+                self.left_half.show_scene(FusionScene.INTRAVASCULAR_ALIGNED)
+
+    # Full results snapshots (mesh + every label list) — far heavier than a vertex array.
+    _REMOVAL_UNDO_LIMIT = 5
+
+    def _on_undo_remove_points(self) -> None:
+        if not self.data.removal_undo:
+            return
+        results = self.data.removal_undo.pop()
+        # With removals left on the stack, the restored state is itself a post-removal one
+        # Stitch can start from; otherwise it is the labelled mesh from before any removal.
+        if self.data.removal_undo:
+            self._set_removed_results(results)
+        else:
             self.data.results = results
-            self.data.results_points_removed = copy.deepcopy(results)
-            fc.set_seam_points_limit(pipeline.max_seam_points(results))
+            self.data.results_points_removed = None
             self._clear_stitch_outputs()
             self._refresh_geometry_scene()
             self._refresh_branch_labels_scene()
             self._refresh_aligned_ccta_mesh()
-            if self.data.aligned is not None:  # the aligned scene is empty until alignment
-                self.left_half.show_scene(FusionScene.INTRAVASCULAR_ALIGNED)
+            self._update_removal_undo_button()
+        self.status_bar.showMessage(f'Undid point removal ({len(self.data.removal_undo)} left).')
+
+    def _set_removed_results(self, results: dict) -> None:
+        """Make `results` (the output of a removal) current, as the snapshot Stitch starts from."""
+        self.data.results = results
+        self.data.results_points_removed = copy.deepcopy(results)
+        self.right_half.fusion_column.set_seam_points_limit(pipeline.max_seam_points(results))
+        self._clear_stitch_outputs()
+        self._refresh_geometry_scene()
+        self._refresh_branch_labels_scene()
+        self._refresh_aligned_ccta_mesh()
+        self._update_removal_undo_button()
+
+    def _invalidate_removal(self) -> None:
+        """`results` was replaced by something other than a removal: the post-removal
+        snapshot and the removal undo stack no longer match it."""
+        self.data.results_points_removed = None
+        self._clear_removal_undo()
+
+    def _clear_removal_undo(self) -> None:
+        self.data.removal_undo.clear()
+        self._update_removal_undo_button()
+
+    def _update_removal_undo_button(self) -> None:
+        self.right_half.fusion_column.undo_remove_btn.setEnabled(bool(self.data.removal_undo))
+
+    def _on_undo_shortcut(self) -> None:
+        """Ctrl+Z: smoothing steps first; then point removals, but only while nothing has
+        been stitched — undoing a removal drops the stitched/remeshed mesh, too costly to
+        lose to a stray keypress (the Undo button next to Remove still does it)."""
+        if self.data.final_mesh_undo:
+            self._on_undo_smoothing()
+        elif self.data.stitched is None and self.data.final_mesh is None:
+            self._on_undo_remove_points()
 
     def _clear_stitch_outputs(self) -> None:
         """Drop the stitched mesh and everything derived from it (remesh/smooth), so a

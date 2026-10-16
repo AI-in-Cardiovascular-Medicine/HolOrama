@@ -85,6 +85,10 @@ class FusionRuntimeData:
         # always starts from a fresh copy of this (stitch_ccta_to_intravascular mutates the
         # results dict + mesh in place), so Stitch can be re-run with different parameters.
         self.results_points_removed: dict | None = None
+        # Deep copies of `results` from just before each Remove Labeled Points (oldest
+        # first), for undoing removals. Cleared whenever `results` is replaced by anything
+        # else (relabel, scaling, branch delete/relabel), which would make them stale.
+        self.removal_undo: list[dict] = []
         self.stitched: dict | None = None  # result of stitch_ccta_to_intravascular
         self.final_mesh: Any | None = None  # trimesh.Trimesh after remesh/smoothing
         # Previous final_mesh vertex arrays (oldest first) for undoing smoothing steps

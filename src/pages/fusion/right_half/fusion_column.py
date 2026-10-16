@@ -24,6 +24,7 @@ class FusionColumn(QWidget):
     run_compute_scaling_requested = pyqtSignal()
     run_apply_scaling_requested = pyqtSignal()
     run_remove_points_requested = pyqtSignal()
+    undo_remove_points_requested = pyqtSignal()
     run_stitch_requested = pyqtSignal()
     run_remesh_requested = pyqtSignal()
     run_smooth_requested = pyqtSignal()
@@ -112,7 +113,16 @@ class FusionColumn(QWidget):
         layout.addWidget(self._remove_proximal)
         btn = QPushButton('Remove')
         btn.clicked.connect(self.run_remove_points_requested.emit)
-        layout.addWidget(btn)
+        self.undo_remove_btn = QPushButton('Undo')
+        self.undo_remove_btn.setToolTip(
+            'Restore the mesh and labels from before the last removal (Ctrl+Z, unless a stitched mesh exists)'
+        )
+        self.undo_remove_btn.setEnabled(False)
+        self.undo_remove_btn.clicked.connect(self.undo_remove_points_requested.emit)
+        buttons = QHBoxLayout()
+        buttons.addWidget(btn, 1)
+        buttons.addWidget(self.undo_remove_btn)
+        layout.addLayout(buttons)
         return box
 
     def _build_stitch_group(self) -> QGroupBox:
