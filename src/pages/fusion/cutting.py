@@ -343,7 +343,12 @@ class CutController:
             return
         ring = np.array(contour.points_as_tuples())
         self.viewer.add_polyline(
-            scene, 'selected_slice', np.vstack([ring, ring[:1]]), color=SELECTED_SLICE_COLOR, line_width=4.0
+            scene,
+            'selected_slice',
+            np.vstack([ring, ring[:1]]),
+            color=SELECTED_SLICE_COLOR,
+            line_width=4.0,
+            on_top=True,  # coronary rings are small and sit on their own slice points
         )
 
     def _sync_cut_list(self) -> None:

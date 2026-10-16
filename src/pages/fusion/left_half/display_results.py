@@ -184,9 +184,16 @@ class FusionViewer3D(QWidget):
         color: tuple[int, int, int] = (255, 255, 0),
         line_width: float = 2.0,
         visible: bool = True,
+        on_top: bool = False,
     ) -> None:
+        """on_top draws the line in front of everything else (a highlight lying on top of
+        other geometry, e.g. a selected contour on its own slice points), by pulling its
+        depth far towards the camera — the same trick ParaView uses for selections."""
         mapper = vtkPolyDataMapper()
         mapper.SetInputData(_points_to_polydata(points, as_polyline=True))
+        if on_top:
+            mapper.SetResolveCoincidentTopologyToPolygonOffset()
+            mapper.SetRelativeCoincidentTopologyLineOffsetParameters(0, -66000)
         actor = self._add_actor(scene, key, mapper, color, 1.0, visible)
         actor.GetProperty().SetLineWidth(line_width)
 

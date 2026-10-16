@@ -1493,6 +1493,12 @@ class FusionPage(QWidget):
             self.data.results_points_removed = None  # stale: re-run Remove Labeled Points
             # proximal/distal/anomalous (shown as overlap)/off_path_points now exist
             self._refresh_geometry_scene()
+            # They split the aligned vessel's own region, which would hide them: uncheck it
+            # (the user can still turn it back on).
+            vessel_layer = f'{self.data.aligned_vessel}_points'
+            if vessel_layer in self.left_half.viewer.layer_states(FusionScene.CCTA_GEOMETRY):
+                self.left_half.viewer.set_layer_visible(FusionScene.CCTA_GEOMETRY, vessel_layer, False)
+                self.left_half.refresh_toolbar(FusionScene.CCTA_GEOMETRY)
 
     def _on_run_compute_scaling(self) -> None:
         frames = self._aligned_frames()
