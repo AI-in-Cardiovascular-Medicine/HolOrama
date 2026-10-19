@@ -6,19 +6,9 @@ from pages.fusion.left_half.layer_tools.base import SceneToolbar
 
 
 class BranchEditorToolbar(SceneToolbar):
-    """Toolbar for the Centerline Branches scene: shows RCA/LCA colored per branch — one
-    color per branch, matched by the layer-list swatches (see colors.BRANCH_COLORS_RCA/LCA)
-    — with sharp angles additionally numbered (see FusionPage._refresh_branch_scene), and
-    lets the user split a branch or merge two branches — mirroring the manual
-    split_branch/merge_branches correction step in multimodars' own example workflow.
-
-    Split is on top, Merge below, each in its own labeled group so the two unrelated
-    actions don't run together. To split: click 'Pick Point' then click *any* point on an
-    RCA/LCA branch in the 3D scene (not just a numbered sharp-angle marker) —
-    FusionPage._on_point_picked resolves the click to the nearest actual centerline point
-    and calls set_selected_marker() below. The cos threshold only controls which points get
-    a numbered marker in the scene; it doesn't limit what you can pick.
-    """
+    """Toolbar for the Centerline Branches scene: RCA/LCA colored per branch with sharp
+    angles numbered, plus split/merge of branches. Any centerline point can be picked for
+    a split, the cos threshold only controls which points get a numbered marker."""
 
     cos_threshold_changed = pyqtSignal(float)
     split_requested = pyqtSignal()
@@ -40,8 +30,7 @@ class BranchEditorToolbar(SceneToolbar):
         self.split_btn.setEnabled(False)
         self.split_btn.setToolTip("Split the selected branch at the picked/marked point.")
 
-        # Two rows per group (not one long row), so the controls fit in their half of the
-        # toolbar next to the layer list.
+        # Two rows per group so the controls fit next to the layer list.
         split_box = QGroupBox('Split')
         split_layout = QGridLayout(split_box)
         split_layout.addWidget(QLabel('Sharp-angle threshold (cos):'), 0, 0)
@@ -71,8 +60,7 @@ class BranchEditorToolbar(SceneToolbar):
         merge_layout.setColumnStretch(1, 1)
         merge_layout.setColumnStretch(3, 1)
 
-        # One widget so split/merge lay out as two stacked rows (split on top, merge below)
-        # instead of getting squeezed side by side with the layer list and view buttons.
+        # Stack split above merge instead of side by side.
         edit_widget = QWidget()
         edit_layout = QVBoxLayout(edit_widget)
         edit_layout.setContentsMargins(0, 0, 0, 0)
@@ -93,8 +81,8 @@ class BranchEditorToolbar(SceneToolbar):
         self.split_btn.clicked.connect(self.split_requested.emit)
 
     def set_branch_choices(self, rca_branch_ids: list[int], lca_branch_ids: list[int]) -> None:
-        """Call after every prepare/split/merge — branch IDs are reassigned (by descending
-        length) after each edit, so the merge dropdowns must be rebuilt from scratch."""
+        """Call after every prepare/split/merge, since branch IDs are reassigned after each
+        edit."""
         self._branch_choices = {'rca': rca_branch_ids, 'lca': lca_branch_ids}
         self._refresh_merge_choices()
 

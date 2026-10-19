@@ -15,9 +15,8 @@ from pages.intravascular.utils.helpers import SplitterPane
 
 
 class LeftHalf:
-    """Tabbed 3D scene: one tab per FusionScene, each showing that scene's toolbar
-    above the shared FusionViewer3D. Switching tabs swaps which actor group is visible
-    in the viewer — see FusionViewer3D.set_scene()."""
+    """Tabbed 3D scene: one tab per FusionScene with its toolbar above the shared
+    FusionViewer3D. Switching tabs switches the viewer's visible scene."""
 
     def __init__(self, main_window) -> None:
         self.main_window = main_window
@@ -64,10 +63,7 @@ class LeftHalf:
             self.tabs.addTab(self._toolbars[scene], FusionScene.label(scene).replace('&', '&&'))
         self.tabs.currentChanged.connect(self._on_tab_changed)
 
-        # Vertical splitter (not a fixed layout) so the toolbar strip can be dragged taller
-        # when a scene's controls need more room than the default — e.g. Centerline
-        # Branches' layer list + split/merge groups — the same way RightHalf's three
-        # columns are resizable relative to each other.
+        # Splitter so the toolbar strip can be dragged taller when a scene needs more room.
         splitter = QSplitter(Qt.Orientation.Vertical, self.widget)
         splitter.addWidget(self.tabs)
         splitter.addWidget(self.viewer)

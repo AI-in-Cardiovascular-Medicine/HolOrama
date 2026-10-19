@@ -6,14 +6,9 @@ from pages.fusion.left_half.layer_tools.base import SceneToolbar
 
 
 class BranchLabelsToolbar(SceneToolbar):
-    """Toolbar for the Branch Labels scene: the RCA/LCA surface vertices colored by the
-    centerline branch label_branches assigned them to (same colors as the Centerline
-    Branches tab), one layer per branch. Lasso moves vertices to another branch of the same
-    vessel — see FusionPage._on_branch_lasso_closed.
-
-    The Branch group renames a branch (one name for its vertices here and its centerline
-    on the Centerline Branches tab, used everywhere the branch is listed) or deletes it
-    with multimodars' remove_branch."""
+    """Toolbar for the Branch Labels scene: RCA/LCA surface vertices colored by branch, one
+    layer per branch. Lasso moves vertices to another branch of the same vessel. The Branch
+    group renames or deletes a branch."""
 
     rename_requested = pyqtSignal(str, int)  # vessel ('rca'/'lca'), branch id
     delete_requested = pyqtSignal(str, int, bool)  # vessel, branch id, fill hole
@@ -55,8 +50,7 @@ class BranchLabelsToolbar(SceneToolbar):
         self._sync_delete_enabled()
 
     def set_branches(self, choices: list[tuple[str, str, int]]) -> None:
-        """choices are (label, vessel, branch id); keeps the current branch selected if it
-        is still there."""
+        """choices are (label, vessel, branch id). Keeps the current selection if present."""
         current = self.branch_combo.currentData()
         self.branch_combo.blockSignals(True)
         self.branch_combo.clear()

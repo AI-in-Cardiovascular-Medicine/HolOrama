@@ -17,9 +17,8 @@ from domain.fusion.display_types import region_label
 
 
 class FusionColumn(QWidget):
-    """Column 3: scale the CCTA geometry to match the intravascular lumen, stitch the two
-    together, then remesh/smooth/export. See pages/fusion/pipeline.py. The cuts exported
-    with Export Cut Geometry are made on the Inlets & Outlets tab (pages/fusion/cutting.py)."""
+    """Column 3: scale the CCTA geometry to the intravascular lumen, stitch the two, then
+    remesh/smooth/export. Cuts for Export Cut Geometry come from the Inlets & Outlets tab."""
 
     run_compute_scaling_requested = pyqtSignal()
     run_apply_scaling_requested = pyqtSignal()
@@ -55,9 +54,7 @@ class FusionColumn(QWidget):
         box = QGroupBox('Scaling Factors')
         layout = QVBoxLayout(box)
 
-        # No aortic-wall scaling for the moment: find_aortic_wall_scaling is dropped from
-        # this UI/pipeline pending a clearer use case — it was computed and displayed but
-        # never actually applied to the mesh in _on_run_apply_scaling anyway.
+        # No aortic-wall scaling (find_aortic_wall_scaling) for now.
         self._scaling_spinboxes: dict[str, QDoubleSpinBox] = {}
         for key, text in [
             ('proximal_scaling', 'Proximal (mm):'),
@@ -77,9 +74,7 @@ class FusionColumn(QWidget):
         compute_btn.clicked.connect(self.run_compute_scaling_requested.emit)
         layout.addWidget(compute_btn)
 
-        # Below Compute, not above with the other three: this one is never auto-filled —
-        # no intravascular pullback covers these vessels, so it's manual-only. Scales the
-        # remaining vessels as a whole on Apply, not just a proximal/distal boundary.
+        # Below Compute because it is manual-only (no pullback covers these vessels).
         remaining_spin = QDoubleSpinBox()
         remaining_spin.setRange(-20.0, 20.0)
         remaining_spin.setDecimals(2)
@@ -131,10 +126,7 @@ class FusionColumn(QWidget):
 
         self._prox_start_mode = QComboBox()
         self._prox_start_mode.addItems(['nearest_iv', 'highest_z'])
-        # 'highest_z' is the documented default for anomalous-RCA cases (the intramural
-        # segment removal leaves the proximal IV ring needing to seat against the
-        # highest point of the aortic cut, not the nearest one — 'nearest_iv' silently
-        # reverses the proximal stitch order for these cases).
+        # 'highest_z' for anomalous cases: 'nearest_iv' can reverse the proximal stitch order.
         self._prox_start_mode.setCurrentText('highest_z')
         layout.addLayout(_row('Proximal start mode:', self._prox_start_mode))
 
@@ -148,8 +140,7 @@ class FusionColumn(QWidget):
         self._clamp_overshoot.setValue(0.0)
         layout.addLayout(_row('Clamp overshoot (mm):', self._clamp_overshoot))
 
-        # Fillet + seam params only act on the two-half ostium conditioning, which
-        # multimodars runs only for prox_start_mode='highest_z' — hidden otherwise.
+        # Fillet + seam params only apply with prox_start_mode='highest_z', hidden otherwise.
         self._ostium_params = QWidget()
         ostium_layout = QVBoxLayout(self._ostium_params)
         ostium_layout.setContentsMargins(0, 0, 0, 0)
@@ -166,8 +157,7 @@ class FusionColumn(QWidget):
         self._fillet_layers.setValue(5)
         ostium_layout.addLayout(_row('Fillet layers:', self._fillet_layers))
 
-        # Ranges are capped to the actual boundary ring size once Remove Labeled Points
-        # has run (see set_seam_points_limit); until then any value is accepted.
+        # Capped to the boundary ring size after Remove Labeled Points (set_seam_points_limit).
         self._seam_points_a = QSpinBox()
         self._seam_points_a.setRange(0, 125)
         self._seam_points_a.setSingleStep(1)
@@ -262,15 +252,14 @@ class FusionColumn(QWidget):
         self.export_cut_requested.emit(path)
 
     def set_scaling_results(self, results: dict[str, float]) -> None:
-        """Fill in the computed values — the user can still edit them afterward."""
+        """Fill in the computed values (still editable)."""
         for key, spin in self._scaling_spinboxes.items():
             value = results.get(key)
             if value is not None:
                 spin.setValue(value)
 
     def set_seam_points_limit(self, max_points: int) -> None:
-        """Cap both seam spinboxes to what the current boundary rings can give. QSpinBox
-        clamps the current value into the new range, so an oversized value shrinks too."""
+        """Cap both seam spinboxes to the current boundary ring size (clamps oversized values)."""
         for spin in (self._seam_points_a, self._seam_points_b):
             spin.setMaximum(max_points)
             spin.setToolTip(f'At most {max_points} for the current boundary rings')
@@ -280,12 +269,11 @@ class FusionColumn(QWidget):
     # ------------------------------------------------------------------
 
     def scaling_values(self) -> dict[str, float]:
-        """Current scaling values — reflects manual edits, not just the last computed result."""
+        """Current scaling values, including manual edits."""
         return {key: spin.value() for key, spin in self._scaling_spinboxes.items()}
 
     def remove_point_keys(self) -> list[str]:
-        # Upstream keys, not the displayed labels — mm.remove_labeled_points_from_mesh
-        # indexes results by these names (see REGION_LABELS).
+        # Upstream results keys, not the displayed labels (see REGION_LABELS).
         keys = []
         if self._remove_anomalous.isChecked():
             keys.append('anomalous_points')

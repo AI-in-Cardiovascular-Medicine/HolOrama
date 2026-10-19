@@ -8,10 +8,8 @@ import numpy as np
 
 @dataclass(frozen=True)
 class CutSpec:
-    """One flat cut of the final geometry at a slice of the discretized vessel tree (see
-    multimodars' cut_at_slice). Only the slice's plane comes from the tree, so a spec holds
-    on any mesh the tree fits (CCTA, stitched, remeshed, smoothed) and the cut geometry is
-    always these specs replayed in order on the chosen source mesh."""
+    """One flat cut at a vessel-tree slice (multimodars cut_at_slice). Only the slice plane
+    comes from the tree, so a spec applies to any mesh the tree fits."""
 
     vessel: str  # 'aorta' / 'rca' / 'lca'
     branch: int  # branch id of that vessel's centerline, 0 for the aorta
@@ -38,14 +36,8 @@ class CutResult:
 
 
 class FusionRuntimeData:
-    """Holds the multimodars objects produced while working through the fusion pipeline.
-
-    Fields are grouped by the right-half column that produces them: geometry/centerline
-    labeling (column 1), intravascular alignment (column 2), fusion/scaling/stitching
-    (column 3). Nothing here is serialized as-is -> each stage writes its own output file
-    (STL, VTP, JSON) via pipeline.py, and this container just keeps the in-memory objects
-    needed to feed the next stage and to redraw the 3D viewer.
-    """
+    """In-memory multimodars objects of the fusion pipeline, grouped by the right-half
+    column that produces them."""
 
     def __init__(self):
         self.case_dir: str | None = None  # last directory used for file/save dialogs
@@ -56,23 +48,20 @@ class FusionRuntimeData:
         self.centerline_lca: Any | None = None
         self.results: dict | None = None  # multimodars "results" dict (mesh, *_points, ...)
         self.vessel_tree: Any | None = None  # PyDiscretizedVesselTree
-        # Per vessel ('rca'/'lca'): selected branch (0 = main, n = side branch n) and the
-        # index into that branch's reference list (see FusionPage._branch_references).
+        # Per vessel: selected branch (0 = main) and index into its reference list.
         self.selected_branch: dict[str, int] = {'rca': 0, 'lca': 0}
         self.selected_reference_index: dict[str, int] = {'rca': 0, 'lca': 0}
-        # User-given branch names per vessel, by branch id (missing = default 'RCA branch 2').
-        # One name for a branch's centerline and its labelled vertices. Branch ids survive
-        # remove_branch but not split/merge, which reset that vessel's names.
+        # User-given branch names per vessel, by branch id (missing = default name).
+        # Split/merge reassign branch ids and reset that vessel's names.
         self.branch_names: dict[str, dict[int, str]] = {'rca': {}, 'lca': {}}
 
         # -- Column 2: intravascular alignment -------------------------------------------
-        self.iv_geometry_pair: Any | None = None  # PyGeometryPair from from_file_singlepair
+        self.iv_geometry_pair: Any | None = None  # loaded pullback (PyGeometryPair or PyGeometry)
         self.iv_align_logs: tuple | None = None
         self.aligned: Any | None = None  # PyGeometryPair | PyGeometry from align_combined
         self.aligned_centerline: Any | None = None  # single-branch rca/lca centerline passed into the alignment
-        # The whole prepared vessel (all branches) the pullback was aligned onto, which one
-        # ('rca'/'lca') and which branch id — label_anomalous_region needs every branch plus
-        # the pullback branch id, not just aligned_centerline.
+        # The full vessel centerline (all branches) and branch id the pullback was aligned
+        # onto. label_anomalous_region needs every branch, not just aligned_centerline.
         self.aligned_vessel: str | None = None
         self.aligned_branch: int = 0
         self.aligned_vessel_centerline: Any | None = None
@@ -81,19 +70,16 @@ class FusionRuntimeData:
         self.prox_scaling: float | None = None
         self.distal_scaling: float | None = None
         self.aortic_scaling: float | None = None
-        # Deep-copied snapshot of `results` right after Remove Labeled Points. Stitching
-        # always starts from a fresh copy of this (stitch_ccta_to_intravascular mutates the
-        # results dict + mesh in place), so Stitch can be re-run with different parameters.
+        # Snapshot of `results` after Remove Labeled Points. Stitch works on a fresh copy
+        # (stitch_ccta_to_intravascular mutates in place), so it can be re-run.
         self.results_points_removed: dict | None = None
-        # Deep copies of `results` from just before each Remove Labeled Points (oldest
-        # first), for undoing removals. Cleared whenever `results` is replaced by anything
-        # else (relabel, scaling, branch delete/relabel), which would make them stale.
+        # Copies of `results` before each Remove Labeled Points (oldest first), for undo.
+        # Cleared whenever `results` is replaced otherwise, since they would be stale.
         self.removal_undo: list[dict] = []
         self.stitched: dict | None = None  # result of stitch_ccta_to_intravascular
         self.final_mesh: Any | None = None  # trimesh.Trimesh after remesh/smoothing
-        # Previous final_mesh vertex arrays (oldest first) for undoing smoothing steps
-        # smoothing never changes faces, so vertices alone restore a mesh. Reset whenever a
-        # new final_mesh topology arrives (Fix & Remesh) or the final mesh is dropped.
+        # Previous final_mesh vertices (oldest first) for undoing smoothing, which keeps faces.
+        # Reset on a new topology (Fix and Remesh) or when the final mesh is dropped.
         self.final_mesh_undo: list[np.ndarray] = []
 
         # -- Inlets & outlets: flat cuts of the last geometry ----------------------------

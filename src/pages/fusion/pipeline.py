@@ -1,23 +1,8 @@
-"""Thin wrappers around the ``multimodars`` package for the fusion pipeline.
+"""Thin wrappers around module-level ``multimodars`` functions for the fusion pipeline.
 
-Each function below corresponds to one button in a right_half column and mirrors
-the call signature of the underlying multimodars function as installed
-(multimodars>=0.6.0 — see pyproject.toml). Keeping this as a separate module (rather
-than calling multimodars directly from the column widgets or page.py) means the GUI
-code never has to change if a multimodars upgrade renames or reshapes an argument —
-only this file does. Centerline methods (get_branch, split_branch, merge_branches,
-find_sharp_angles, orient_by_max_z, ...) are called directly on the PyCenterline
-objects in page.py instead, matching how get_branch is already used there — only
-module-level ``mm.*`` functions get a wrapper here.
-
-This application only ever loads centerlines from .vtp files (never CSV/array), via
-``load_centerline`` below.
-
-None of the wrappers here expose multimodars' own ``control_plot``/``debug_plot``
-parameters — they are always passed as False. Those flags pop up the package's own
-matplotlib/trimesh scenes, which would fight with our VTK viewer; we recreate the same
-visualizations as native VTK layers instead (see page.py's ``_refresh_*_scene`` methods
-and left_half/colors.py for the color legend, ported from multimodars/ccta/debug_plots.py).
+Keeps multimodars API changes out of the GUI code. PyCenterline methods are called
+directly in page.py. ``control_plot``/``debug_plot`` are always False: their own
+matplotlib/trimesh windows would clash with the VTK viewer, which draws the same layers.
 """
 
 from __future__ import annotations
@@ -45,11 +30,9 @@ def prepare_centerline(
     rm_start_mm: float = 0.0,
     smooth_sigma: float = 2.5,
 ) -> Any:
-    """Run the load->branch->order->smooth prep pipeline on one centerline.
+    """Prepare one centerline (branch, trim, resample, orient, smooth).
 
-    ``ref_centerline`` doubles as the "is this a coronary?" signal — pass the
-    prepared aorta centerline for RCA/LCA, leave it ``None`` for the aorta itself.
-    See ``multimodars.prepare_centerline`` for the full step-by-step docstring.
+    Pass the prepared aorta as ``ref_centerline`` for RCA/LCA, ``None`` for the aorta itself.
     """
     return mm.prepare_centerline(  # type: ignore[attr-defined]
         centerline,
@@ -79,8 +62,7 @@ def run_label_geometry(
     bounding_sphere_radius_mm_rca: float = 3.0,
     bounding_sphere_radius_mm_lca: float = 3.0,
 ) -> dict:
-    """Centerlines must already be prepared (see ``prepare_centerline``) — label_geometry
-    no longer loads or orients them itself."""
+    """Centerlines must already be prepared (see ``prepare_centerline``)."""
     return mm.label_geometry(  # type: ignore[call-arg, return-value]
         path_ccta_geometry=path_ccta_geometry,
         centerline_aorta=centerline_aorta,
@@ -105,32 +87,23 @@ def run_label_branches_pair(
     bounding_sphere_radius_mm_rca: float = 3.0,
     bounding_sphere_radius_mm_lca: float = 3.0,
 ) -> dict:
-    """Project rca_cl/lca_cl's branch structure onto results' labelled surface points:
-    results['rca_branches'] / results['lca_branches'], a dict from every branch id to its
-    vertices (multimodars>=0.8.0).
+    """Set results['rca_branches'] / ['lca_branches'] (branch id -> vertices).
 
-    mm.label_branches_pair always uses the default sphere radius, so this calls
-    mm.label_branches per vessel instead, to expose the radius.
-
-    Call after any manual split_branch/merge_branches edit to the centerlines (those
-    reassign branch ids) so the branch labels, consumed by discretize_vessel_tree and
-    label_anomalous_region, reflect the edit."""
+    Calls mm.label_branches per vessel to expose the sphere radius. Rerun after any
+    split_branch/merge_branches edit, since those reassign branch ids."""
     results = mm.label_branches(rca_cl, results, vessel='rca', bounding_sphere_radius_mm=bounding_sphere_radius_mm_rca)
     return mm.label_branches(lca_cl, results, vessel='lca', bounding_sphere_radius_mm=bounding_sphere_radius_mm_lca)
 
 
 def run_remove_branch(results: dict, centerline, branch_id: int, *, fill_hole: bool = True) -> tuple[dict, Any]:
-    """Cut side branch `branch_id`, and every branch growing out of it, off the mesh and
-    `centerline` (the whole vessel it belongs to), optionally closing the ostium. Returns
-    (results, centerline); the other branches keep their ids."""
+    """Cut branch `branch_id` and its sub-branches off the mesh and `centerline`, optionally
+    closing the ostium. Returns (results, centerline). Other branches keep their ids."""
     return mm.remove_branch(results, centerline, branch_id, fill_hole=fill_hole)
 
 
 def transfer_labels(results: dict, mesh: trimesh.Trimesh) -> dict:
-    """Carry the region and branch labels of `results` over to another mesh of the same
-    surface, e.g. the remeshed and smoothed stitched mesh: each vertex of `mesh` gets the
-    labels of the nearest vertex of results['mesh'], so label borders move by about one
-    edge at most. Boundary rings describe holes of the old mesh and are left out."""
+    """Copy region and branch labels to another mesh of the same surface (nearest vertex).
+    Boundary rings are left out, they describe holes of the old mesh."""
     from scipy.spatial import cKDTree
 
     source = np.asarray(results['mesh'].vertices, dtype=np.float64)
@@ -186,9 +159,7 @@ def run_from_array(
     write_obj: bool = False,
     smooth: bool = True,
 ) -> tuple[Any, Any]:
-    # Tab-delimited to match the report exporter (save_csv_files writes these with
-    # csv.writer(delimiter='\t')). Each row is [frame, x_mm, y_mm, position_mm], i.e.
-    # [frame_index, x, y, z] as numpy_to_inputdata expects.
+    # Tab-delimited, as written by the report exporter. Rows: [frame, x, y, z].
     oct_raw = np.genfromtxt(os.path.join(input_path, "tagged_contours.csv"), delimiter='\t')
     oct_ref = np.genfromtxt(os.path.join(input_path, "tagged_reference_points.csv"), delimiter='\t')
 
@@ -226,8 +197,7 @@ def run_from_file_single(
     write_obj: bool = False,
     smooth: bool = True,
 ) -> tuple[Any, Any]:
-    # from_file_single takes labels as a 1-element list; `diastole` picks which phase of
-    # the IVUS CSV folder to read. Returns a single PyGeometry (not a pair).
+    # `diastole` picks which phase of the IVUS CSV folder to read.
     return mm.from_file_single(
         input_path=input_path,
         labels=[label],
@@ -254,7 +224,6 @@ def run_from_file_singlepair(
     write_obj: bool = False,
     smooth: bool = True,
 ) -> tuple[Any, tuple[Any, Any]]:
-    # image_center isn't exposed in the UI — always the library default (4.5, 4.5) mm.
     return mm.from_file_singlepair(
         input_path=input_path,
         labels=labels,
@@ -284,12 +253,10 @@ def run_align_combined(
     output_dir: str = 'output/aligned',
     align_wall_anomalous: bool = False,
 ) -> tuple[Any, float, float]:
-    """Returns (aligned_geometry, spacing_mm, total_rotation_deg) — no resampled centerline.
-    multimodars>=0.7.4 finds main_ref_pt on `centerline` at its own spacing and resamples a
-    private copy to spacing_mm anchored on that point; don't re-resample `centerline` to
-    spacing_mm yourself (centerline.resample anchors at index 0, so it would not match the
-    grid the frames were placed on) — use `centerline` as-is (see
-    FusionPage._apply_align_result)."""
+    """Returns (aligned_geometry, spacing_mm, total_rotation_deg).
+
+    Use `centerline` as-is afterwards. Resampling it to spacing_mm anchors at index 0, not
+    at main_ref_pt, so it would not match the grid the frames were placed on."""
     return mm.align_combined(
         centerline,
         geometry,
@@ -316,10 +283,9 @@ def run_align_manual(
     watertight: bool = True,
     align_wall_anomalous: bool = False,
 ) -> tuple[Any, float, float]:
-    """Only works for elliptic vessels (anomalous coronaries) — see mm.align_manual.
+    """Only works for elliptic vessels (anomalous coronaries).
 
-    Returns (aligned_geometry, spacing_mm, total_rotation_deg) — see run_align_combined's
-    docstring above for why `centerline` should be used as-is afterwards."""
+    Returns (aligned_geometry, spacing_mm, total_rotation_deg), see run_align_combined."""
     return mm.align_manual(
         centerline,
         geometry,
@@ -332,15 +298,9 @@ def run_align_manual(
 
 
 def frames_to_mesh(geometry, contour_type: str | None = None) -> trimesh.Trimesh:
-    """Loft a tube mesh through a PyGeometry's contours — a VTK/trimesh port of
-    multimodars' own ``_converters.geometry_to_trimesh`` (used internally by
-    stitch_ccta_to_intravascular to turn the aligned intravascular geometry into a
-    real mesh). contour_type=None uses the lumen; otherwise pass one of the PyContour
-    'kind' values ('Eem', 'Calcification', 'Sidebranch', 'Catheter', 'Wall').
+    """Loft a tube mesh through a PyGeometry's contours of `contour_type` (lumen if None).
 
-    Every contour must have the same point count (call geometry.downsample(n) first
-    if they don't) — this is a hard requirement of the quad-strip lofting below, not
-    a limitation we added.
+    All contours need the same point count (use geometry.downsample(n) first).
     """
     contours = geometry.get_lumen_contours() if contour_type is None else geometry.get_contours_by_type(contour_type)
     if len(contours) < 2:
@@ -361,8 +321,7 @@ def frames_to_mesh(geometry, contour_type: str | None = None) -> trimesh.Trimesh
             faces.append((base_i + k, base_j + k1, base_j + k))
     mesh = trimesh.Trimesh(vertices=vertices, faces=np.array(faces), process=False)
 
-    # Same inward/outward check multimodars' own geometry_to_trimesh performs: flip
-    # every face if the first one points toward contour 0's centroid instead of away.
+    # Flip all faces if the first one points toward contour 0's centroid.
     face0_center = vertices[np.asarray(faces[0])].mean(axis=0)
     outward = face0_center - np.array(contours[0].centroid, dtype=np.float64)
     if np.dot(mesh.face_normals[0], outward) < 0:
@@ -371,9 +330,8 @@ def frames_to_mesh(geometry, contour_type: str | None = None) -> trimesh.Trimesh
 
 
 def run_label_anomalous_region(centerline, frames, results: dict, *, branch_id: int = 0) -> dict:
-    """`centerline` is the whole vessel the branches were labelled with; `branch_id` the
-    branch the frames were aligned onto. Only that branch's pullback path is split into
-    proximal/anomalous/distal; the vessel's other vertices go to 'off_path_points'."""
+    """Split the pullback path of `branch_id` (the branch the frames were aligned onto)
+    into proximal/anomalous/distal. The vessel's other vertices go to 'off_path_points'."""
     return mm.label_anomalous_region(
         centerline=centerline, frames=frames, results=results, branch_id=branch_id, debug_plot=False
     )
@@ -382,32 +340,21 @@ def run_label_anomalous_region(centerline, frames, results: dict, *, branch_id: 
 def run_find_scalings(
     frames, centerline_vessel, centerline_aorta, results: dict, *, vessel: str = 'rca'
 ) -> dict[str, float]:
-    """Run the proximal/distal/aortic scaling lookups for `vessel` ('rca' or 'lca' —
-    whichever centerline `centerline_vessel` is) and return them by name.
+    """Return proximal, distal and aortic scaling for `vessel` ('rca' or 'lca').
 
-    No aortic-wall scaling for the moment — find_aortic_wall_scaling is dropped from this
-    pipeline pending a clearer use case (see FusionColumn's Scaling Factors group).
-
-    mm.find_aorta_scaling hardcodes ``results['rca_removed_points']`` internally (see
-    multimodars/ccta/manipulating.py) — there's no lca_removed_points equivalent upstream
-    yet. For an LCA case we work around this by handing it a shallow copy of `results` with
-    rca_removed_points aliased to the real lca_removed_points, so it reads the correct
-    vessel's occluded points instead of silently scaling against the wrong (RCA) region.
+    mm.find_aorta_scaling always reads results['rca_removed_points'], so for LCA it gets a
+    copy with lca_removed_points under that key.
     """
     prox, distal = mm.find_distal_and_proximal_scaling(frames=frames, centerline=centerline_vessel, results=results)
     aortic_results = (
         results if vessel == 'rca' else {**results, 'rca_removed_points': results.get('lca_removed_points', [])}
     )
     if not aortic_results.get('rca_removed_points'):
-        # No occluded points (no acute takeoff, e.g. a side-branch pullback): upstream's
-        # search then never beats its f64::MAX start and returns that as the scaling.
+        # No removed points to scale (e.g. no acute takeoff).
         logger.warning(f'No {vessel.upper()} removed points — defaulting aortic_scaling to 0.0')
         return {'proximal_scaling': prox, 'distal_scaling': distal, 'aortic_scaling': 0.0}
     try:
-        # mm.find_aorta_scaling raises ValueError when none of `frames` carries the
-        # aortic_thickness/"Wall" extras it needs (e.g. not an anomalous-takeoff case,
-        # where those extras are never written) — no wall reference just means no
-        # aortic scaling to apply, not a pipeline failure.
+        # ValueError when no frame has aortic wall data (e.g. not an anomalous case).
         aortic = mm.find_aorta_scaling(frames=frames, cl_aorta=centerline_aorta, results=aortic_results)
     except ValueError as e:
         logger.warning(f'No aortic wall reference in frames — defaulting aortic_scaling to 0.0 ({e})')
@@ -449,9 +396,8 @@ def run_stitch(
     seam_points_b: int = 4,
     tree: Any | None = None,
 ) -> dict:
-    """`tree` is the discretized vessel tree of the mesh before removal; with it, side
-    branches leaving the removed segment (off_path_points) are reconnected to the
-    intravascular wall instead of being left loose."""
+    """With `tree` (the vessel tree before removal), side branches leaving the removed
+    segment are reconnected to the intravascular wall."""
     return mm.stitch_ccta_to_intravascular(
         iv_mesh,
         mesh,
@@ -470,10 +416,8 @@ def run_stitch(
 def max_seam_points(results: dict) -> int:
     """Largest seam_points_a/_b the stitch can use for the boundary rings in `results`.
 
-    The ostial ring is split into two halves of roughly n/2 points, and multimodars'
-    _blend_half_seams takes at most (n_half - 2) // 2 points per half at each seam. Which
-    ring ends up proximal is only decided inside the stitch, so bound by the smallest ring.
-    multimodars still clamps (with a warning) if the actual split turns out more uneven.
+    A ring of n points allows (n/2 - 2) // 2 per seam. Bounded by the smallest ring, since
+    which ring is proximal is only decided inside the stitch.
     """
     ring_sizes = [
         len(v)
@@ -510,16 +454,14 @@ def export_mesh(mesh: trimesh.Trimesh, path: str) -> None:
 def run_cut_at_slice(
     results: dict, tree: Any, centerline: Any, vessel: str, slice_idx: int, *, branch_id: int = 0, keep: str = 'larger'
 ) -> tuple[dict, Any, trimesh.Trimesh]:
-    """Only the slice's plane is taken from `tree`, so results['mesh'] may be any later
-    mesh (scaled, stitched, remeshed, smoothed) and needs no labels. Returns the cut
-    results, the cut centerline and the cap on its own."""
+    """Cut results['mesh'] (any mesh, labels not needed) at a tree slice's plane.
+    Returns (results, cut centerline, cap)."""
     return mm.cut_at_slice(results, tree, centerline, vessel, slice_idx, branch_id=branch_id, keep=keep)
 
 
 def prune_vessel_tree(tree: Any, vessel: str, branch_ids) -> None:
-    """Drop deleted branches (see run_remove_branch) from a discretized tree in place and
-    recompute its reference triplets, so the bifurcations they left from go too. The other
-    branches keep their ids and contours: their planes don't depend on the deleted ones."""
+    """Drop deleted branches from a discretized tree in place and recompute its reference
+    triplets. Other branches keep their ids and contours."""
     gone = set(branch_ids)
     setattr(tree, vessel, {k: b for k, b in getattr(tree, vessel).items() if k not in gone})
     tree.calculate_ref_pts()

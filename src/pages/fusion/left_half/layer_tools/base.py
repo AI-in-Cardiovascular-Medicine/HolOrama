@@ -14,30 +14,15 @@ from PyQt6.QtWidgets import (
 from domain.fusion.display_types import region_label
 from domain.fusion.types import FusionScene
 
-# Minimum height for the layer list's internal scroll area — below this a couple of rows
-# wouldn't even fit. The toolbar itself has no max height: it sits in a QSplitter (see
-# LeftHalf) so the user can drag it taller when a scene's layer list or extra controls
-# (e.g. BranchEditorToolbar's split/merge groups) need more room than this minimum.
+# Minimum size of the layer list. The toolbar height itself is set by LeftHalf's splitter.
 _LAYERS_MIN_HEIGHT = 60
-# Minimum width for the layer list, so checkbox labels (e.g. 'Rca Branch 3') and their
-# color swatch/opacity slider don't get squeezed down to nothing next to a scene's other
-# controls (e.g. BranchEditorToolbar's Split/Merge groups) when the toolbar is narrow.
 _LAYERS_MIN_WIDTH = 220
 
 
 class SceneToolbar(QWidget):
-    """Toolbar shown above the 3D viewer for one FusionScene tab.
-
-    Provides the controls every scene needs (reset camera) and, when show_layers=True,
-    a per-layer visibility list with either an opacity slider or (show_color_swatch=True)
-    a small color swatch matching that layer's actual render color — more useful than
-    opacity for scenes made of colored point clouds (e.g. Centerline Branches) where you
-    want to match a legend entry to what's on screen, not fade it. Point picking
-    (show_pick=True) is only wired up end-to-end for the Vessel Tree, Centerline Branches
-    and Inlets & Outlets scenes (see FusionPage._on_point_picked), so other scenes leave it off.
-    Subclasses add scene-specific extras by passing extra_rows — see geometry_tools.py /
-    alignment_tools.py / tree_tools.py / branch_tools.py.
-    """
+    """Toolbar above the 3D viewer for one FusionScene tab: view buttons, an optional layer
+    list (opacity slider or color swatch per layer) and scene-specific `extra_rows`.
+    show_pick only works for scenes FusionPage._on_point_picked handles."""
 
     layer_visibility_changed = pyqtSignal(str, bool)  # layer key, visible
     layer_opacity_changed = pyqtSignal(str, float)  # layer key, opacity [0, 1]
@@ -81,8 +66,7 @@ class SceneToolbar(QWidget):
         else:
             root.addStretch(1)
 
-        # The scene's own controls and the view buttons share the other half, so the layer
-        # list and the controls (e.g. lasso, local smoothing) split the toolbar 50/50.
+        # Scene controls and view buttons share the other half (50/50 with the layer list).
         controls = QWidget()
         controls_layout = QHBoxLayout(controls)
         controls_layout.setContentsMargins(0, 0, 0, 0)
@@ -91,9 +75,7 @@ class SceneToolbar(QWidget):
             controls_layout.addWidget(row, 1)
         root.addWidget(controls, 1)
 
-        # Reset View / Pick Point / Lasso / Clear All Data, stacked in that order — Pick
-        # Point and Lasso sit between the two so they read as "how you interact with the
-        # view" rather than a stray button off to the side.
+        # Reset View / Pick Point / Lasso / Clear All Data, stacked.
         view_buttons = QVBoxLayout()
         reset_btn = QPushButton('Reset View')
         reset_btn.clicked.connect(self.reset_camera_requested.emit)
@@ -127,15 +109,12 @@ class SceneToolbar(QWidget):
         self.lasso_mode_toggled.emit(checked)
 
     def set_layer_labels(self, labels: dict[str, str]) -> None:
-        """Display names for layer keys (e.g. user-named branches), used by the next refresh()
-        instead of the title-cased key."""
+        """Display names for layer keys, used by the next refresh() instead of the key."""
         self._layer_labels = dict(labels)
 
     def refresh(self, layer_states: dict[str, tuple[bool, float, tuple[int, int, int]]]) -> None:
-        """Rebuild the layer visibility rows for the current set of layers, initializing
-        each checkbox (and slider/swatch) to that layer's actual (visible, opacity, color)
-        — not a fixed assumed default, since layers can be added at less than 100% opacity
-        (e.g. a translucent base mesh). No-op when built with show_layers=False."""
+        """Rebuild the layer rows, initialized to each layer's (visible, opacity, color).
+        No-op when show_layers=False."""
         if not self._show_layers:
             return
         _clear_layout(self._layers_box)
@@ -143,8 +122,7 @@ class SceneToolbar(QWidget):
 
         for key, (visible, opacity, color) in layer_states.items():
             row = QHBoxLayout()
-            # region_label so the overlap region reads 'Overlap Points' rather than
-            # multimodars' internal 'Anomalous Points' key (see REGION_LABELS).
+            # region_label maps internal region keys to display names.
             box = QCheckBox(self._layer_labels.get(key) or region_label(key).replace('_', ' ').title())
             box.setChecked(visible)
             box.toggled.connect(lambda checked, k=key: self.layer_visibility_changed.emit(k, checked))
@@ -187,7 +165,7 @@ def _clear_layout(layout) -> None:
 
 
 def labeled(text: str, widget: QWidget) -> QWidget:
-    """Small helper for scene-specific extra rows: 'Label:' + control, as one widget."""
+    """'Label:' + control as one widget."""
     wrapper = QWidget()
     box = QHBoxLayout(wrapper)
     box.setContentsMargins(0, 0, 0, 0)

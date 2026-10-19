@@ -18,10 +18,8 @@ from pages.fusion.left_half.layer_tools.base import SceneToolbar
 
 
 class CutToolbar(SceneToolbar):
-    """Toolbar for the Inlets & Outlets scene: pick a slice of the vessel tree (Pick Point,
-    then step with ◀ ▶), choose which side stays, and cut. The cuts are listed in order and
-    can be renamed or removed; every change replays them on the chosen source mesh (see
-    pages/fusion/cutting.py). Exporting is in the Fusion column."""
+    """Toolbar for the Inlets & Outlets scene: pick a slice, choose the side to keep, and
+    cut. Every change to the cut list replays all cuts on the chosen source mesh."""
 
     source_changed = pyqtSignal(str)  # 'final' / 'stitched' / 'ccta'
     step_requested = pyqtSignal(int)  # -1 / +1 slice along the selected branch

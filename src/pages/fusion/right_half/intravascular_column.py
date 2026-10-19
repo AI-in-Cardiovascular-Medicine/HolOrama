@@ -53,10 +53,8 @@ class IntravascularColumn(QWidget):
         box = QGroupBox('Load Pullback')
         layout = QVBoxLayout(box)
 
-        # Modality selector — drives which label fields show below and which pipeline entry
-        # point runs (see FusionPage._on_run_load_pullback):
-        #   IVUS → from_file_singlepair (both phases) or from_file_single (one phase)
-        #   OCT  → from_array (the exported tagged_contours.csv / tagged_reference_points.csv)
+        # Modality picks the label fields and the loader: IVUS -> from_file_singlepair (both
+        # phases) or from_file_single (one phase), OCT -> from_array.
         modality_row = QHBoxLayout()
         self._ivus_radio = QRadioButton('IVUS')
         self._oct_radio = QRadioButton('OCT')
@@ -80,8 +78,7 @@ class IntravascularColumn(QWidget):
         row.addWidget(browse_btn)
         layout.addLayout(row)
 
-        # IVUS: one checkbox + label field per phase. Check both → load a diastole/systole
-        # pair; check exactly one → load just that phase (diastole True/False).
+        # IVUS: one checkbox + label per phase. Both checked loads the pair, one loads that phase.
         self._ivus_phase_widget = QWidget()
         ivus_layout = QVBoxLayout(self._ivus_phase_widget)
         ivus_layout.setContentsMargins(0, 0, 0, 0)
@@ -96,7 +93,7 @@ class IntravascularColumn(QWidget):
         ivus_layout.addLayout(_checkbox_row(self._sys_check, self._label_sys_edit))
         layout.addWidget(self._ivus_phase_widget)
 
-        # OCT: a single label field; loads the tagged-frame arrays via from_array.
+        # OCT: a single label field.
         self._oct_label_widget = QWidget()
         oct_layout = QHBoxLayout(self._oct_label_widget)
         oct_layout.setContentsMargins(0, 0, 0, 0)
@@ -207,9 +204,7 @@ class IntravascularColumn(QWidget):
         )
         layout.addLayout(_row('Index range:', self._index_range))
 
-        # No "write intermediate files" toggle — align never writes them in this app.
-        # No "align anomalous wall" toggle either — it's driven automatically by
-        # whether Anomalous RCA/LCA is checked in column 1 (see FusionPage._on_run_align).
+        # No "align anomalous wall" toggle: it follows Acute Takeoff in column 1 (main vessel only).
         self._watertight = QCheckBox('Watertight')
         layout.addWidget(self._watertight)
 
@@ -238,7 +233,6 @@ class IntravascularColumn(QWidget):
         )
         layout.addLayout(_row('Ref. point offset:', self._manual_ref_offset))
 
-        # No "write intermediate files" toggle, same as the automatic Align group above.
         self._manual_watertight = QCheckBox('Watertight')
         layout.addWidget(self._manual_watertight)
 
@@ -283,12 +277,12 @@ class IntravascularColumn(QWidget):
         return data.split(':')[0] if data else 'rca'
 
     def reference_branch(self) -> int:
-        """0 for the main vessel, n for side branch n — the centerline.get_branch() id."""
+        """0 for the main vessel, n for side branch n (the centerline.get_branch() id)."""
         data = self._ref_vessel_combo.currentData()
         return int(data.split(':')[1]) if data else 0
 
     def set_centerline_choices(self, choices: list[tuple[str, str, int]], vessel: str, branch: int) -> None:
-        """choices are (label, vessel, branch) triples; selects (vessel, branch) without emitting."""
+        """choices are (label, vessel, branch) triples. Selects (vessel, branch) without emitting."""
         combo = self._ref_vessel_combo
         combo.blockSignals(True)
         combo.clear()
@@ -305,16 +299,15 @@ class IntravascularColumn(QWidget):
         self._sync_with_parents_enabled()
 
     def _sync_with_parents_enabled(self, *_) -> None:
-        # The main vessel starts at the ostium — it has no parent to extend into.
+        # The main vessel has no parent.
         self._with_parents_check.setEnabled(self.reference_branch() != 0)
 
     def align_with_parents(self) -> bool:
-        """Whether to align onto get_branch(branch, with_parents=True) — side branches only."""
+        """Whether to align onto get_branch(branch, with_parents=True) (side branches only)."""
         return self.reference_branch() != 0 and self._with_parents_check.isChecked()
 
     def set_reference_choices(self, labels: list[str]) -> None:
-        """Repopulate the Reference dropdown — same label list as the Vessel Tree tab's
-        reference dropdown for whichever vessel/branch is currently selected above."""
+        """Repopulate the Reference dropdown without emitting."""
         self._ref_index_combo.blockSignals(True)
         self._ref_index_combo.clear()
         self._ref_index_combo.addItems(labels)
@@ -334,9 +327,7 @@ class IntravascularColumn(QWidget):
     # ------------------------------------------------------------------
 
     def load_plan(self) -> dict:
-        """Everything FusionPage._on_run_load_pullback needs to pick and parameterize the
-        right pipeline entry point. `mode` is 'oct' or 'ivus'; the common alignment params
-        are shared by all three entry points (from_array / from_file_single / _singlepair)."""
+        """Loader choice and params for Load Pullback. `mode` is 'oct' or 'ivus'."""
         common = {
             'input_path': self._input_path_edit.text(),
             'step_rotation_deg': self._step_rotation.value(),

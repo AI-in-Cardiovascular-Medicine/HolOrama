@@ -15,12 +15,9 @@ from PyQt6.QtWidgets import (
 
 
 class GeometryColumn(QWidget):
-    """Column 1: load the CCTA mesh + centerlines, prepare the centerlines, run
-    label_geometry, label the branches, then discretize_vessel_tree. Label Branches also
-    runs automatically right after label_geometry and after every split/merge edit on the
-    Centerline Branches tab (those reassign branch ids); its own button re-runs it, e.g.
-    with other sphere radii. See pages/fusion/pipeline.py for the multimodars calls each
-    button triggers."""
+    """Column 1: load the CCTA mesh + centerlines, prepare them, label geometry and branches,
+    then discretize the vessel tree. Label Branches also reruns automatically after
+    label_geometry and after split/merge edits (those reassign branch ids)."""
 
     run_label_geometry_requested = pyqtSignal()
     run_label_branches_requested = pyqtSignal()
@@ -241,13 +238,11 @@ class GeometryColumn(QWidget):
             self.geometry_files_changed.emit()
 
     # ------------------------------------------------------------------
-    # Param getters — read by FusionPage when handling the *_requested signals
+    # Param getters (read by FusionPage on the *_requested signals)
     # ------------------------------------------------------------------
 
     def prepare_centerline_kwargs(self, key: str) -> dict:
-        """key is 'aorta'/'rca'/'lca'. spacing_mm/branch_spacing_tolerance/smooth_sigma are
-        shared across all three; rm_start_mm trims a coronary's inlet and must never be
-        applied to the aortic centerline, which has no such inlet."""
+        """key is 'aorta'/'rca'/'lca'. rm_start_mm trims a coronary inlet, so it is 0 for the aorta."""
         return {
             'spacing_mm': self._pc_spacing_mm.value() if self._pc_resample.isChecked() else None,
             'branch_spacing_tolerance': self._pc_branch_tolerance.value(),
@@ -279,9 +274,7 @@ class GeometryColumn(QWidget):
         }
 
     def has_acute_takeoff(self, vessel: str = 'rca') -> bool:
-        """Whether the given vessel ('rca' or 'lca' — whichever column 2 is currently
-        aligning onto) was marked with an acute takeoff — drives align_wall_anomalous in
-        column 2 automatically instead of a separate manual toggle there."""
+        """Whether `vessel` ('rca'/'lca') is marked acute takeoff. Drives align_wall_anomalous in column 2."""
         return self._acute_takeoff_lca.isChecked() if vessel == 'lca' else self._acute_takeoff_rca.isChecked()
 
 

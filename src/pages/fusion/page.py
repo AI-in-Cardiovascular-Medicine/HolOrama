@@ -210,8 +210,7 @@ class FusionPage(QWidget):
     # ------------------------------------------------------------------
 
     def _on_geometry_preview(self) -> None:
-        """Show the raw mesh + centerlines as soon as they're picked, before Prepare
-        Centerlines/Run Label Geometry exist to branch/color/label anything."""
+        """Show the raw mesh and centerlines as soon as they're picked, before any processing."""
         gc = self.right_half.geometry_column
         viewer = self.left_half.viewer
 
@@ -242,8 +241,7 @@ class FusionPage(QWidget):
         self.left_half.show_scene(FusionScene.CCTA_GEOMETRY)
 
     def _on_run_prepare_centerlines(self) -> None:
-        """Load + prepare all three centerlines: the aorta first (no reference, no branch
-        detection), then RCA/LCA oriented to it (see pipeline.prepare_centerline)."""
+        """Load and prepare all three centerlines: the aorta first, then RCA/LCA oriented to it."""
         gc = self.right_half.geometry_column
         if not self._require(
             all(k in gc.centerline_paths for k in ('aorta', 'rca', 'lca')),
@@ -315,12 +313,9 @@ class FusionPage(QWidget):
             self.left_half.show_scene(FusionScene.BRANCH_LABELS)
 
     def _run_label_branches_pair(self) -> bool:
-        """Project the current RCA/LCA branch structure onto label_geometry's labelled
-        surface points (results['rca_branches'] / ['lca_branches']). Runs from the Label
-        Branches button, right after label_geometry, and again after every
-        split_branch/merge_branches edit, since both reassign the branch ids these labels
-        refer to — which discards manual lasso edits on the Branch Labels tab. No-op until
-        label_geometry has actually run. Returns whether the labels were updated."""
+        """Project the RCA/LCA branch structure onto label_geometry's surface points.
+        Re-run after every split/merge (they reassign branch ids), which discards manual lasso edits.
+        No-op until label_geometry has run. Returns whether the labels were updated."""
         if None in (self.data.results, self.data.centerline_rca, self.data.centerline_lca):
             return False
         results = self._run(
@@ -349,12 +344,8 @@ class FusionPage(QWidget):
         }
 
     def _refresh_branch_labels_scene(self) -> None:
-        """Per labelled branch, its vertices over the translucent mesh, colored like the same
-        branch in the Centerline Branches scene (palette index = position among the
-        centerline's sorted branch ids there too) and named after the branch
-        (_branch_name — the same name its centerline gets on that tab). Rebuilt from
-        scratch, since branch ids can disappear (split/merge/delete), keeping each
-        surviving layer's visibility."""
+        """One layer per labelled branch, colored and named like that branch on the Centerline Branches
+        tab. Rebuilt from scratch (branch ids can disappear), keeping surviving layers' visibility."""
         viewer = self.left_half.viewer
         scene = FusionScene.BRANCH_LABELS
         saved_states = viewer.layer_states(scene)
@@ -429,17 +420,15 @@ class FusionPage(QWidget):
         self.left_half.show_scene(FusionScene.VESSEL_TREE)
 
     def _tree_branches(self, vessel: str) -> dict:
-        """vessel_tree.rca / .lca: branch id (0 = main vessel, the centerline's own ids) ->
-        PyDiscretizedBranch. A branch discretize_vessel_tree failed on is missing."""
+        """Branch id (0 = main vessel) -> PyDiscretizedBranch. Branches that failed to discretize are missing."""
         tree = self.data.vessel_tree
         if tree is None:
             return {}
         return dict(tree.rca if vessel == 'rca' else tree.lca)
 
     def _branch_reference_entries(self, vessel: str, branch: int) -> list[tuple[int | None, tuple]]:
-        """(child id, triplet) for every reference on one branch: its own ostium first
-        (child None), then the bifurcation where each child branch leaves it, proximal →
-        distal (by the parent contour each child starts at)."""
+        """(child id, triplet) for every reference on one branch: its own ostium first (child None),
+        then each child's takeoff, proximal to distal."""
         branches = self._tree_branches(vessel)
         node = branches.get(branch)
         if node is None:
@@ -466,8 +455,7 @@ class FusionPage(QWidget):
         return [b for b in sorted(self._tree_branches(vessel)) if self._branch_reference_entries(vessel, b)]
 
     def _branch_name(self, vessel: str, branch: int) -> str:
-        """The branch's user-given name (Branch Labels tab), else 'RCA main' / 'RCA branch 2'.
-        One name for its centerline and its labelled vertices, wherever they're listed."""
+        """The user-given name, else 'RCA main' / 'RCA branch 2'. Shared by the branch's centerline and vertices."""
         default = f'{vessel.upper()} main' if branch == 0 else f'{vessel.upper()} branch {branch}'
         return self.data.branch_names[vessel].get(branch) or default
 
@@ -481,8 +469,7 @@ class FusionPage(QWidget):
         ]
 
     def _reference_labels(self, vessel: str, branch: int) -> list[str]:
-        """Labels for _branch_references(vessel, branch) — shared by the Vessel Tree tab and
-        the Intravascular Alignment column's Reference dropdown."""
+        """Labels for _branch_references(vessel, branch), for the Vessel Tree tab and the Reference dropdown."""
         name = self._branch_name(vessel, branch)
         return [
             f'{name} ostium' if child is None else f'Takeoff of {self._branch_name(vessel, child)}'
@@ -490,9 +477,8 @@ class FusionPage(QWidget):
         ]
 
     def _select_branch(self, vessel: str, branch: int, index: int = 0) -> None:
-        """Make `branch` the active branch of `vessel` (from the Vessel Tree tab, the
-        Intravascular Alignment column's Centerline combo, or a scene click), repopulate the
-        reference dropdowns with only that branch's references, and select `index`."""
+        """Make `branch` the active branch of `vessel`, repopulate the reference dropdowns with its
+        references, and select `index`."""
         if self.data.vessel_tree is None:
             return
         self.data.selected_branch[vessel] = branch
@@ -507,8 +493,7 @@ class FusionPage(QWidget):
         self._select_reference(vessel, index)
 
     def _select_reference(self, vessel: str, index: int) -> None:
-        """Apply reference triplet `index` of `vessel`'s active branch and highlight it in the
-        viewer (white for the RCA, cyan for the LCA)."""
+        """Apply reference `index` of `vessel`'s active branch and highlight it in the viewer."""
         branch = self.data.selected_branch[vessel]
         refs = self._branch_references(vessel, branch)
         if not 0 <= index < len(refs):
@@ -524,11 +509,8 @@ class FusionPage(QWidget):
         self._sync_intravascular_reference_ui(vessel, index, triplet)
 
     def _sync_intravascular_reference_ui(self, vessel: str, index: int, triplet) -> None:
-        """Keep the Intravascular Alignment column's Reference dropdown and reference-point
-        display in step with whichever reference was just selected — but only when
-        that column currently has this same vessel chosen, so selecting an LCA reference in
-        the Vessel Tree tab doesn't clobber an in-progress RCA alignment setup (and vice
-        versa)."""
+        """Sync the Intravascular Alignment column's reference display, only if it has the same vessel
+        selected (so picking an LCA reference doesn't clobber an RCA setup)."""
         ic = self.right_half.intravascular_column
         if ic.reference_vessel() != vessel:
             return
@@ -536,16 +518,14 @@ class FusionPage(QWidget):
         ic.set_reference_points(triplet[0], triplet[1], triplet[2])
 
     def _on_reference_centerline_changed(self, vessel: str, branch: int) -> None:
-        """The Intravascular Alignment column's Centerline combo changed — switch to that
-        vessel/branch, keeping the reference already selected if the branch is unchanged."""
+        """Switch to the chosen vessel/branch, keeping the selected reference if the branch is unchanged."""
         if self.data.vessel_tree is None:
             return
         keep = branch == self.data.selected_branch[vessel]
         self._select_branch(vessel, branch, self.data.selected_reference_index[vessel] if keep else 0)
 
     def _on_reference_index_changed(self, index: int) -> None:
-        """The Intravascular Alignment column's own Reference dropdown changed — route to
-        the same selection path as the Vessel Tree tab so everything stays in sync."""
+        """Route through the same selection path as the Vessel Tree tab so everything stays in sync."""
         self._select_reference(self.right_half.intravascular_column.reference_vessel(), index)
 
     def _on_point_picked(self, x: float, y: float, z: float, scene_value: str) -> None:
@@ -569,9 +549,8 @@ class FusionPage(QWidget):
         self._select_branch(*best)
 
     def _refresh_geometry_scene(self) -> None:
-        """Recreate multimodars' plot_results_key (its label_geometry/label_anomalous_region
-        control_plot) as native VTK layers: translucent base mesh + one colored point cloud
-        per labeled region present in results, plus the three centerlines."""
+        """Native VTK version of multimodars' plot_results_key: translucent mesh, one point cloud per
+        labelled region, and the three centerlines."""
         viewer = self.left_half.viewer
         results = self.data.results
         if results is not None and 'mesh' in results:
@@ -582,9 +561,7 @@ class FusionPage(QWidget):
                 if points:
                     viewer.add_points(FusionScene.CCTA_GEOMETRY, key, np.array(points), color=color)
                 else:
-                    # A reclassify (or upstream removal) can empty out a region that was
-                    # previously rendered — drop its stale layer rather than leaving it on
-                    # screen with points that no longer belong to it.
+                    # The region was emptied (reclassify, removal): drop its stale layer.
                     viewer.remove_layer(FusionScene.CCTA_GEOMETRY, key)
         for key, cl in (
             ('centerline_aorta', self.data.centerline_aorta),
@@ -592,9 +569,8 @@ class FusionPage(QWidget):
             ('centerline_lca', self.data.centerline_lca),
         ):
             if cl is not None:
-                # Points, not a polyline: points_as_tuples() concatenates every branch back
-                # to back, so connecting them sequentially draws spurious lines jumping
-                # between branches. Loose points also make it easy to eyeball point spacing.
+                # Points, not a polyline: points_as_tuples() concatenates all branches, so a line
+                # would jump between them.
                 viewer.add_points(
                     FusionScene.CCTA_GEOMETRY,
                     key,
@@ -605,11 +581,7 @@ class FusionPage(QWidget):
         self.left_half.refresh_toolbar(FusionScene.CCTA_GEOMETRY)
 
     def _on_lasso_mode_toggled(self, enabled: bool) -> None:
-        # The sole slot on GeometryToolbar.lasso_mode_toggled — deliberately not wired
-        # generically alongside pick_mode in LeftHalf, since turning lasso mode on needs
-        # this guard to run (and possibly veto) before the viewer's mode flips, and a
-        # second independent slot on the same signal couldn't undo an already-dispatched
-        # `enabled=True` call to the viewer.
+        # Sole slot on this signal: the guard must be able to veto before the viewer's mode flips.
         if enabled:
             results = self.data.results
             if results is None or not any(results.get(key) for key in colors.REGION_COLORS):
@@ -619,11 +591,7 @@ class FusionPage(QWidget):
         self.left_half.viewer.set_lasso_mode(enabled)
 
     def _on_lasso_closed(self) -> None:
-        """Move the points enclosed by the just-closed lasso from one labeled region to
-        another in self.data.results — the fusion analogue of CCTA's lasso mask erase,
-        except here there's no single voxel array to flip: each region is its own list of
-        (x, y, z) tuples (see colors.REGION_COLORS), so "reclassify" means popping the
-        enclosed tuples out of the source list and appending them to the destination list."""
+        """Move the points inside the lasso from one labelled region to another."""
         if self.left_half.branch_labels_toolbar.lasso_btn.isChecked():
             self._on_branch_lasso_closed()
             return
@@ -681,11 +649,9 @@ class FusionPage(QWidget):
         self.left_half.geometry_toolbar.lasso_btn.setChecked(False)  # ends lasso mode, clears overlay
 
     def _sync_branch_labels(self, moved: list, source: str, dest: str) -> None:
-        """Keep rca_branches/lca_branches partitioning rca_points/lca_points after a CCTA
-        Geometry lasso moved `moved` from region `source` to `dest`: drop them from the
-        source vessel's branches, and give points that joined a vessel the branch of their
-        nearest centerline point. Done in place rather than re-running label_branches, so
-        manual edits on the Branch Labels tab survive."""
+        """Keep the branch labels partitioning rca/lca_points after a CCTA Geometry lasso move: drop moved
+        points from the source vessel's branches and give joined points their nearest centerline point's branch.
+        Done in place so manual Branch Labels edits survive."""
         results = self.data.results
         if results is None:
             return
@@ -717,9 +683,7 @@ class FusionPage(QWidget):
         self.left_half.viewer.set_lasso_mode(enabled)
 
     def _on_branch_lasso_closed(self) -> None:
-        """Move the vertices of one branch enclosed by the lasso to another branch of the
-        same vessel. The branches partition the vessel's vertices, so this never moves a
-        vertex between RCA and LCA (use the CCTA Geometry lasso on rca/lca_points for that)."""
+        """Move the lasso-enclosed vertices of one branch to another branch of the same vessel."""
         viewer = self.left_half.viewer
         toolbar = self.left_half.branch_labels_toolbar
         results = self.data.results
@@ -771,8 +735,7 @@ class FusionPage(QWidget):
         toolbar.lasso_btn.setChecked(False)  # ends lasso mode, clears overlay
 
     def _centerline_branch_layer_labels(self) -> dict[str, str]:
-        """Centerline Branches layer key -> branch name plus its id, which the split/merge
-        controls there refer to."""
+        """Centerline Branches layer key -> branch name plus its id (used by the split/merge controls)."""
         labels = {}
         for vessel, centerline in (('rca', self.data.centerline_rca), ('lca', self.data.centerline_lca)):
             if centerline is None:
@@ -782,7 +745,7 @@ class FusionPage(QWidget):
         return labels
 
     def _on_rename_branch_requested(self, vessel: str, branch: int) -> None:
-        """One name for the branch's centerline and its vertices; empty restores the default."""
+        """One name for the branch's centerline and its vertices. Empty restores the default."""
         current = self._branch_name(vessel, branch)
         name, ok = QInputDialog.getText(
             self, 'Rename branch', f'New name for {current} (empty = default):', text=current
@@ -813,16 +776,9 @@ class FusionPage(QWidget):
             self._select_branch(vessel, branch, self.data.selected_reference_index[vessel])
 
     def _on_delete_branch_requested(self, vessel: str, branch: int, fill_hole: bool) -> None:
-        """Cut a side branch (and every branch growing out of it) off the mesh and the
-        vessel centerline with multimodars' remove_branch. The other branches keep their
-        ids and names, so the vessel tree only loses the deleted branches (and the cuts on
-        them) and doesn't need discretizing again: the stitch and the cuts keep working on it,
-        and overlap labels made since stay valid.
-
-        Every mesh made from the CCTA so far loses the branch too, so no view is left showing
-        it: the stitched mesh carries the branch labels itself, and the final (remeshed,
-        smoothed) mesh gets them from the stitched one by nearest vertex
-        (pipeline.transfer_labels). All three are updated, or none if one fails."""
+        """Cut a side branch and its descendants off the mesh and centerline (multimodars' remove_branch).
+        Other branches keep their ids and names, so the vessel tree is pruned, not rediscretized. The stitched
+        and final meshes lose the branch too (final via transfer_labels), all or none."""
         centerline = self.data.centerline_rca if vessel == 'rca' else self.data.centerline_lca
         results = self.data.results
         if not self._require(results is not None and centerline is not None, 'Run Label Branches first.'):
@@ -892,19 +848,10 @@ class FusionPage(QWidget):
         self.status_bar.showMessage(f'Deleted {removed_names}{also}.')
 
     def _refresh_branch_scene(self) -> None:
-        """Recreate multimodars' plot_centerline_branches/plot_centerline_edges as native
-        VTK layers: RCA/LCA colored per branch (see colors.BRANCH_COLORS_RCA/LCA), with
-        sharp-angle positions additionally marked and numbered as a splitting hint — every
-        point on every branch is picked up into self._branch_markers below, though, so
-        Pick Point can split anywhere, not just at a numbered marker. Rebuilds from scratch
-        every time, since split_branch/merge_branches reassign branch IDs (by descending
-        length) on every edit — there's no stable id to update in place."""
+        """Native VTK version of multimodars' plot_centerline_branches: RCA/LCA colored per branch, sharp
+        angles numbered as split hints. Rebuilt from scratch since split/merge reassign branch ids."""
         viewer = self.left_half.viewer
-        # Unlike the geometry/tree scenes (which re-add by key and so keep visibility/
-        # opacity automatically), this scene is torn down and rebuilt from scratch every
-        # time because branch IDs get reassigned. Snapshot the per-layer state first and
-        # reapply it below for any key that still exists after the rebuild, so a
-        # threshold nudge or split/merge doesn't re-check every box the user had cleared.
+        # Rebuilt from scratch, so snapshot each layer's visibility/opacity and reapply it below.
         saved_states = viewer.layer_states(FusionScene.CENTERLINE_BRANCHES)
         viewer.clear_scene(FusionScene.CENTERLINE_BRANCHES)
         self._branch_markers = []
@@ -948,9 +895,7 @@ class FusionPage(QWidget):
                     size=4.0,
                 )
                 branch_start = cl.branch_start_indices[branch_id] if branch_id < len(cl.branch_start_indices) else 0
-                # Every point on this branch is pickable for Split, not just the numbered
-                # sharp-angle ones below — lets the user split anywhere along a branch,
-                # not only at spots the cos-threshold heuristic happened to flag.
+                # Every point is pickable for Split, not just the sharp-angle markers.
                 for local_index, position in enumerate(points):
                     self._branch_markers.append(
                         {
@@ -985,10 +930,7 @@ class FusionPage(QWidget):
                     color=colors.SHARP_ANGLE_LABEL_COLOR,
                 )
 
-        # Reapply the visibility/opacity captured before the rebuild for any layer key
-        # that survived it (aorta, sharp-angle markers/labels, and any branch key whose
-        # id happened to be reused) — before refreshing the toolbar, so its checkboxes
-        # initialize to the restored state rather than the fresh defaults.
+        # Restore surviving layers' state before refresh_toolbar, so its checkboxes match.
         for key, (visible, opacity, _color) in saved_states.items():
             viewer.set_layer_visible(FusionScene.CENTERLINE_BRANCHES, key, visible)
             viewer.set_layer_opacity(FusionScene.CENTERLINE_BRANCHES, key, opacity)
@@ -997,11 +939,7 @@ class FusionPage(QWidget):
         self.left_half.branch_toolbar.set_layer_labels(self._centerline_branch_layer_labels())
         self.left_half.refresh_toolbar(FusionScene.CENTERLINE_BRANCHES)
 
-        # find_sharp_angles only decides which points get a numbered marker in the scene —
-        # it never touches branch structure/colors, so nudging the threshold can look like
-        # "nothing happened" if you're watching the branch colors. Report the actual count
-        # so it's obvious the threshold is doing something even when it's subtle on screen
-        # (or genuinely finding nothing, e.g. after heavy smoothing removed the sharp bends).
+        # The threshold only changes the markers, not branch colors, so report the count.
         total_sharp = sum(sharp_angle_counts.values())
         self.status_bar.showMessage(
             f'Sharp-angle markers (cos ≥ {cos_threshold:.2f}): '
@@ -1099,10 +1037,7 @@ class FusionPage(QWidget):
                 size=5.0,
             )
 
-        # Reference triplets (main/ostium + 2 points that fix rotation). One layer per triplet
-        # slot, pooling the references of every RCA + LCA branch, rather than one layer per
-        # triplet, because otherwise a tree with many side branches would flood the toolbar with
-        # tiny 1-point layers.
+        # Reference triplets: one layer per triplet slot, pooled over all branches, to keep the toolbar short.
         ref_slots: list[list[tuple[float, float, float]]] = [[], [], []]
         all_refs = [
             triplet
@@ -1149,7 +1084,7 @@ class FusionPage(QWidget):
             if not self._require(dia or sys, 'Select Diastole, Systole, or both.'):
                 return
             if dia and sys:
-                # Both phases → the existing diastole/systole pair.
+                # Both phases -> diastole/systole pair.
                 result = self._run(
                     'Loading pullback (dia + sys)…',
                     'Pullback loaded.',
@@ -1171,22 +1106,18 @@ class FusionPage(QWidget):
         if result is None:
             return
         geometry, align_logs = result
-        # May be a PyGeometryPair (dia/sys) or a single PyGeometry (OCT / one IVUS phase) —
-        # everything downstream normalizes via _phase_geoms / _primary_geom.
+        # A PyGeometryPair (dia/sys) or a single PyGeometry (OCT / one IVUS phase), see _phase_geoms.
         self.data.iv_geometry_pair = geometry
         self.data.iv_align_logs = align_logs
 
-        # Shown before centerline alignment so a bad final result can be traced back to
-        # whether it was already wrong here (dia/sys self-alignment) or introduced later.
+        # Shown before centerline alignment, so errors can be traced to the dia/sys self-alignment.
         self._add_geometry_pair_meshes(FusionScene.INTRAVASCULAR_LOADED, geometry, 'raw_geom')
         self.left_half.show_scene(FusionScene.INTRAVASCULAR_LOADED)
 
     @staticmethod
     def _phase_geoms(geometry):
-        """Normalize a loaded/aligned intravascular result to (phase_key, geom, color) rows.
-        from_file_singlepair yields a PyGeometryPair (geom_a=diastole, geom_b=systole);
-        from_file_single / from_array yield a bare PyGeometry (one IVUS phase or OCT), which
-        is treated as a single phase-a geometry."""
+        """Normalize a pullback result to (phase_key, geom, color) rows. A PyGeometryPair gives
+        diastole (a) and systole (b), a single PyGeometry (OCT or one IVUS phase) is one phase-a row."""
         geom_a = getattr(geometry, 'geom_a', None)
         geom_b = getattr(geometry, 'geom_b', None)
         if geom_a is None and geom_b is None:
@@ -1200,16 +1131,14 @@ class FusionPage(QWidget):
 
     @staticmethod
     def _primary_geom(geometry):
-        """The single PyGeometry to read frames from / stitch: geom_a for a pair, or the
-        geometry itself when it's already a single PyGeometry."""
+        """The single PyGeometry to read frames from / stitch: geom_a for a pair, else the geometry itself."""
         if geometry is None:
             return None
         geom_a = getattr(geometry, 'geom_a', None)
         return geometry if geom_a is None else geom_a
 
     def _add_geometry_pair_meshes(self, scene: FusionScene, geometry_pair, key_prefix: str) -> None:
-        """Loft lumen + wall meshes for both cardiac phases of a PyGeometryPair into `scene`.
-        Used for both the pre-centerline-alignment (raw) and post-alignment scenes."""
+        """Loft lumen and wall meshes for each phase of `geometry_pair` into `scene`."""
         viewer = self.left_half.viewer
         for phase_key, geom, color in self._phase_geoms(geometry_pair):
             if geom is None:
@@ -1230,15 +1159,13 @@ class FusionPage(QWidget):
         self.left_half.refresh_toolbar(scene)
 
     def _selected_align_centerline(self, vessel: str, branch: int):
-        """(centerline, references, selected_index) for whichever vessel/branch the
-        Intravascular Alignment column currently has chosen in its Centerline selector.
-        `centerline` is the whole multi-branch vessel; references are only the branch's own."""
+        """(centerline, references, selected_index) for the chosen vessel/branch. The centerline is the
+        whole vessel, the references only the branch's own."""
         centerline = self.data.centerline_rca if vessel == 'rca' else self.data.centerline_lca
         return centerline, self._branch_references(vessel, branch), self.data.selected_reference_index[vessel]
 
     def _align_takeoff_anomalous(self, vessel: str, branch: int) -> bool:
-        """Acute takeoff describes a coronary leaving the aorta, so it only applies to the
-        main vessel — a side branch leaves its parent coronary, not the aortic wall."""
+        """Acute takeoff only applies to the main vessel (a side branch leaves its parent, not the aorta)."""
         return branch == 0 and self.right_half.geometry_column.has_acute_takeoff(vessel)
 
     def _on_run_align(self) -> None:
@@ -1264,9 +1191,7 @@ class FusionPage(QWidget):
         except (IndexError, AttributeError, ValueError, TypeError) as e:
             ErrorMessage(self, f'Could not resolve reference points / branch: {e}')
             return
-        # A side branch is scored against its own surface points (label_branches_pair's
-        # results['{vessel}_branches'][branch]), not the whole vessel's, which would
-        # include the parent.
+        # A side branch is scored against its own surface points, not the whole vessel's.
         points = results.get(f'{vessel}_branches', {}).get(branch) if branch else None
 
         result = self._run(
@@ -1289,9 +1214,8 @@ class FusionPage(QWidget):
         )
 
     def _on_run_align_manual(self) -> None:
-        """Same preconditions as _on_run_align, but rotates by an explicit angle around a
-        single reference point instead of searching angle_range_deg. Only meaningful for
-        elliptic (anomalous) vessels — see pipeline.run_align_manual."""
+        """Like _on_run_align, but rotates by an explicit angle around one reference point instead of
+        searching. Only meaningful for elliptic (anomalous) vessels."""
         ic = self.right_half.intravascular_column
         vessel, branch = ic.reference_vessel(), ic.reference_branch()
         if not self._require(self.data.iv_geometry_pair is not None, 'Load a pullback first.'):
@@ -1331,12 +1255,8 @@ class FusionPage(QWidget):
         )
 
     def _alignment_branch(self, centerline, branch: int):
-        """The single-branch centerline the pullback is aligned onto. With "Include parent
-        vessel" checked (side branches only), get_branch(with_parents=True) returns the
-        path from the vessel ostium through the parent branches to the side branch's tip,
-        so frames running proximally past the side branch's ostium land on the parent
-        instead of being left unaligned. with_parents needs multimodars>=0.7.8; it's only
-        passed when checked, so older versions keep working with the box unchecked."""
+        """The single-branch centerline to align onto. With "Include parent vessel", the path from the
+        vessel ostium through the parents to the side branch's tip, so proximal frames land on the parent."""
         if self.right_half.intravascular_column.align_with_parents():
             return centerline.get_branch(branch, with_parents=True)
         return centerline.get_branch(branch)
@@ -1344,20 +1264,8 @@ class FusionPage(QWidget):
     def _resolve_manual_ref_point(
         self, cl_main, main_ref_pt: tuple[float, float, float], offset: int
     ) -> tuple[float, float, float]:
-        """offset=0 is whichever point of `cl_main` (the same single-branch RCA/LCA
-        centerline passed into align_manual/align_combined) lies closest to main_ref_pt —
-        not main_ref_pt itself, since that's a vessel-tree reference point and may not sit
-        exactly on the centerline. +N/-N then walks N *centerline points* — not the coarser
-        step_size-spaced vessel-tree contours — away from/towards point index 0.
-
-        prepare_centerline's orient_to_reference(aorta) orients every branch (main and side
-        branches alike) so point index 0 is its proximal/ostium end, regardless of which reference is currently
-        selected — so -N always walks towards the ostium and +N away from it. With "Include
-        parent vessel", index 0 is the vessel's ostium and -N walks on into the parent
-        branches past the side branch's own ostium. Clamped to
-        [0, len(points)-1]: if the closest point is already index 0 (e.g. the 'ostium'
-        reference itself is selected), negative offsets have nowhere to go and clamp back
-        to it — there's nothing more proximal than the ostium to walk to."""
+        """The centerline point closest to main_ref_pt, shifted by `offset` centerline points
+        (negative = towards the ostium). Clamped to the centerline's ends."""
         points = cl_main.points_as_tuples()
         distances = [float(np.linalg.norm(np.array(p) - np.array(main_ref_pt))) for p in points]
         base_index = int(np.argmin(distances))
@@ -1380,33 +1288,16 @@ class FusionPage(QWidget):
         source_centerline,
         ostium_point: tuple[float, float, float],
     ) -> None:
-        """`result` is align_combined/align_manual's (aligned_geometry, spacing_mm,
-        total_rotation_deg). `source_centerline` is the single-branch RCA/LCA centerline
-        that was passed into align_combined/align_manual, at whatever spacing
-        prepare_centerline left it (e.g. 0.5 mm) — it's kept as-is, not resampled to
-        spacing_mm. multimodars>=0.7.4 locates the reference point on exactly this
-        centerline and only resamples a private copy, anchored on that point, to place the
-        frames; re-resampling here from index 0 would put the shown centerline up to half a
-        spacing off the one actually used. The downstream steps (label_anomalous_region,
-        find_distal_and_proximal_scaling) only do nearest-point lookups on the centerline,
-        so they don't need it at the frame spacing either.
-
-        `vessel_centerline` is the whole prepared `vessel` centerline (all branches) that
-        `source_centerline` (branch `branch`) was taken from — label_anomalous_region needs
-        that one plus the branch id, see _on_run_label_anomalous.
-
-        `ostium_point` is the point of `source_centerline` closest to the selected
-        vessel-tree reference — without align_manual's ref. point offset — shown as a fixed
-        marker so a manual offset (or align_combined's index_range refinement) shows up as
-        the IV geometry shifting relative to it."""
+        """`result` is (aligned_geometry, spacing_mm, total_rotation_deg). `source_centerline` is the
+        single-branch centerline passed to the aligner, kept as-is: resampling it to spacing_mm would offset it
+        from the one multimodars used. `vessel_centerline` is the whole vessel (for label_anomalous_region).
+        `ostium_point` is a fixed marker, so an offset shows up as the IV geometry shifting relative to it."""
         self.data.aligned, _spacing_mm, total_rotation_deg = result
         self.data.aligned_centerline = source_centerline
         self.data.aligned_vessel = vessel
         self.data.aligned_branch = branch
         self.data.aligned_vessel_centerline = vessel_centerline
-        # Prefill the Manual group with whatever angle this alignment landed on (automatic
-        # search or a previous manual value round-tripped back) so nudging it further starts
-        # from here instead of 0.
+        # Prefill the Manual angle with this result so further nudging starts from here.
         self.right_half.intravascular_column.set_manual_rotation_angle(total_rotation_deg)
 
         viewer = self.left_half.viewer
@@ -1424,20 +1315,14 @@ class FusionPage(QWidget):
             color=colors.TREE_REF_COLORS[0],
             size=14.0,
         )
-        # For a pair, geom_a/geom_b are the two cardiac phases from from_file_singlepair's
-        # `labels` (default aligned_dia/aligned_sys — see IntravascularColumn.load_plan),
-        # assumed diastole/systole in that order to match the app's color convention; a
-        # single-phase (OCT / one IVUS phase) result renders as one geometry via _phase_geoms.
+        # geom_a/geom_b are assumed diastole/systole (load_plan label order) to match the colors.
         self._add_geometry_pair_meshes(FusionScene.INTRAVASCULAR_ALIGNED, self.data.aligned, 'aligned_geom')
         self._refresh_aligned_ccta_mesh()
         self.left_half.show_scene(FusionScene.INTRAVASCULAR_ALIGNED)
 
     def _refresh_aligned_ccta_mesh(self) -> None:
-        """Overlay the unlabeled CCTA mesh (no region colors) in the Intravascular Aligned
-        scene, so the aligned IV geometry can be checked against it in place. Call again
-        whenever results['mesh'] changes (scaling, point removal) to keep it in sync —
-        only meaningful once alignment has happened, since that's what makes the two
-        geometries share a coordinate frame in the first place."""
+        """Overlay the unlabelled CCTA mesh in the Intravascular Aligned scene. Call whenever results['mesh']
+        changes. No-op before alignment."""
         if self.data.aligned is None or self.data.results is None or 'mesh' not in self.data.results:
             return
         self.left_half.viewer.add_mesh(
@@ -1451,11 +1336,8 @@ class FusionPage(QWidget):
         self.left_half.refresh_toolbar(FusionScene.INTRAVASCULAR_ALIGNED)
 
     def _refresh_aligned_boundary_rings(self) -> None:
-        """Show the rims left by Remove Labeled Points (boundary_points_1, _2, ...) in the
-        Intravascular Aligned scene next to the IV ostium, so the seam A/B point counts
-        can be judged against the actual ring. Old ring layers are always dropped first — the ring count
-        can change between removals, and results without rings (e.g. after a fresh
-        label_geometry) should leave none behind."""
+        """Show Remove Labeled Points' rims (boundary_points_N) in the Intravascular Aligned scene to judge
+        the seam point counts. Old ring layers are always dropped first, since the ring count can change."""
         viewer = self.left_half.viewer
         scene = FusionScene.INTRAVASCULAR_ALIGNED
         # Remembered so a re-added layer keeps the user's checkbox state.
@@ -1487,16 +1369,9 @@ class FusionPage(QWidget):
             return None
 
     def _on_run_label_anomalous(self) -> None:
-        """Label Overlap Region: splits the pullback path of whichever coronary branch the
-        pullback was actually aligned onto into proximal/overlap/distal sub-regions — the
-        vessel/branch stored at alignment time, not the column 2 selector's current value,
-        so centerline, frames and branch can't end up describing different vessels.
-
-        Gets the whole vessel centerline (every branch, the one label_branches_pair
-        labelled), not the single aligned branch: multimodars>=0.8.0 raises otherwise. Only
-        the path from the ostium to the pullback branch is split; every other vertex of the
-        vessel goes to off_path_points and is left alone by scaling and point removal. A
-        split/merge after aligning reassigns branch ids, so align again after one."""
+        """Split the aligned branch's pullback path into proximal/overlap/distal regions. Uses the
+        vessel/branch stored at alignment time, not the current selector. Needs the whole vessel centerline.
+        Off-path vertices go to off_path_points. Re-align after a split/merge (they reassign branch ids)."""
         frames = self._aligned_frames()
         if not self._require(frames is not None, 'Align the intravascular geometry first.'):
             return
@@ -1517,8 +1392,7 @@ class FusionPage(QWidget):
             self._invalidate_removal()  # stale: re-run Remove Labeled Points
             # proximal/distal/anomalous (shown as overlap)/off_path_points now exist
             self._refresh_geometry_scene()
-            # They split the aligned vessel's own region, which would hide them: uncheck it
-            # (the user can still turn it back on).
+            # Hide the aligned vessel's own region, which would cover them.
             vessel_layer = f'{self.data.aligned_vessel}_points'
             if vessel_layer in self.left_half.viewer.layer_states(FusionScene.CCTA_GEOMETRY):
                 self.left_half.viewer.set_layer_visible(FusionScene.CCTA_GEOMETRY, vessel_layer, False)
@@ -1529,10 +1403,8 @@ class FusionPage(QWidget):
         if not self._require(frames is not None, 'Align the intravascular geometry first.'):
             return
         vessel = self.right_half.intravascular_column.reference_vessel()
-        # The aligned branch, not the whole vessel: find_distal_and_proximal_scaling only
-        # morphs anomalous_points, which lie on the pullback path, radially away from their
-        # nearest centerline point. With every branch present, wall vertices near a
-        # junction could pick the other branch's centerline and be pushed sideways.
+        # The aligned branch, not the whole vessel: near a junction, vertices could snap to another branch's
+        # centerline and be pushed sideways.
         centerline = self.data.aligned_centerline
         if not self._require(centerline is not None, 'Run label_geometry first.'):
             return
@@ -1572,8 +1444,7 @@ class FusionPage(QWidget):
         ):
             return
 
-        # Read live from the spinboxes, not self.data.*_scaling — the user may have
-        # edited them by hand after Compute Scaling Factors filled in the defaults.
+        # Read from the spinboxes: the user may have edited the computed values.
         scaling = self.right_half.fusion_column.scaling_values()
         remaining_scaling = scaling['remaining_vessels_scaling']
         if not self._require(
@@ -1605,11 +1476,8 @@ class FusionPage(QWidget):
             results = pipeline.run_sync_results_to_mesh(results, mesh, scaled)
             mesh = results['mesh']
 
-            # Manual-only: no intravascular data for the vessels the pullback doesn't cover,
-            # so this is skipped entirely (not scaled by 0, just left untouched) unless set
-            # by hand. Each part is morphed around its own vessel's centerline: the opposite
-            # coronary, and this coronary's off-path branches (label_anomalous_region's
-            # off_path_points — none until Label Overlap Region has run).
+            # Manual-only (no IV data for these vessels): skipped unless set. Each part is morphed around its own
+            # centerline: the opposite coronary, and this coronary's off_path_points.
             if remaining_scaling != 0.0:
                 assert opposite_centerline is not None
                 for region, region_centerline in (
@@ -1654,15 +1522,15 @@ class FusionPage(QWidget):
             if self.data.aligned is not None:  # the aligned scene is empty until alignment
                 self.left_half.show_scene(FusionScene.INTRAVASCULAR_ALIGNED)
 
-    # Full results snapshots (mesh + every label list) — far heavier than a vertex array.
+    # Full results snapshots (mesh + every label list), far heavier than a vertex array.
     _REMOVAL_UNDO_LIMIT = 5
 
     def _on_undo_remove_points(self) -> None:
         if not self.data.removal_undo:
             return
         results = self.data.removal_undo.pop()
-        # With removals left on the stack, the restored state is itself a post-removal one
-        # Stitch can start from; otherwise it is the labelled mesh from before any removal.
+        # With removals left, the restored state is a post-removal one Stitch can start from.
+        # Otherwise it is the labelled mesh from before any removal.
         if self.data.removal_undo:
             self._set_removed_results(results)
         else:
@@ -1700,17 +1568,15 @@ class FusionPage(QWidget):
         self.right_half.fusion_column.undo_remove_btn.setEnabled(bool(self.data.removal_undo))
 
     def _on_undo_shortcut(self) -> None:
-        """Ctrl+Z: smoothing steps first; then point removals, but only while nothing has
-        been stitched — undoing a removal drops the stitched/remeshed mesh, too costly to
-        lose to a stray keypress (the Undo button next to Remove still does it)."""
+        """Ctrl+Z: undo smoothing first, then point removals, but only while nothing is stitched (that
+        would drop the stitched mesh). The Undo button next to Remove still does it."""
         if self.data.final_mesh_undo:
             self._on_undo_smoothing()
         elif self.data.stitched is None and self.data.final_mesh is None:
             self._on_undo_remove_points()
 
     def _clear_stitch_outputs(self) -> None:
-        """Drop the stitched mesh and everything derived from it (remesh/smooth), so a
-        re-run of Stitch never leaves a stale final_mesh from the previous stitch behind."""
+        """Drop the stitched mesh and everything derived from it, so no stale final_mesh survives a re-stitch."""
         self.data.stitched = None
         self.data.final_mesh = None
         self._reset_smoothing_state()
@@ -1727,17 +1593,15 @@ class FusionPage(QWidget):
             return
         if self._remesh_worker is not None and self._remesh_worker.isRunning():
             return
-        aligned_geom = self._primary_geom(self.data.aligned)  # geom_a for a pair, else the single geometry
+        aligned_geom = self._primary_geom(self.data.aligned)
         snapshot = self.data.results_points_removed
         assert aligned_geom is not None and snapshot is not None
 
         def _run():
-            # stitch_ccta_to_intravascular mutates the results dict (and its mesh) in place,
-            # so always hand it a fresh copy of the post-removal snapshot — that keeps the
-            # snapshot pristine and makes Stitch re-runnable with different parameters.
+            # Stitch mutates results in place, so pass a copy to keep the snapshot reusable.
             results = copy.deepcopy(snapshot)
             # The tree (discretized before scaling/removal, as multimodars expects) lets the
-            # stitch reconnect side branches leaving the removed segment; it only reads it.
+            # stitch reconnect side branches leaving the removed segment. It is only read.
             return pipeline.run_stitch(
                 aligned_geom, results['mesh'], results, tree=self.data.vessel_tree, **fc.stitch_kwargs()
             )
@@ -1809,7 +1673,7 @@ class FusionPage(QWidget):
     # Local sphere smoothing of the final mesh (+ undo)
     # ------------------------------------------------------------------
 
-    _SMOOTHING_UNDO_LIMIT = 20  # vertex snapshots kept — each is a full (N, 3) float array
+    _SMOOTHING_UNDO_LIMIT = 20  # vertex snapshots, each a full (N, 3) float array
 
     def _set_final_mesh(self, mesh) -> None:
         self.data.final_mesh = mesh

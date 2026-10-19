@@ -74,10 +74,8 @@ def dropped_slices(slices: dict, spec: CutSpec, cap: trimesh.Trimesh, centerline
 
 
 def apply_cuts(start: CutResult, slices: dict, tree, specs: list[CutSpec], first: int = 0) -> CutResult:
-    """Replay specs[first:] on top of `start`, which is left as is. Each cut takes the plane
-    of its slice and that vessel's centerline as cut so far. A spec that fails (its slice
-    was cut off by an earlier cut, or no clean ring on this mesh) is skipped and recorded in
-    `failed`; the others still apply."""
+    """Replay specs[first:] on a copy of `start`. A spec that fails (slice already cut off,
+    or no clean ring on this mesh) is recorded in `failed` and skipped, the others still apply."""
     out = dataclasses.replace(
         start,
         centerlines=dict(start.centerlines),
@@ -153,9 +151,8 @@ def _busy():
 
 
 class CutController:
-    """Drives the Inlets & Outlets tab and the Fusion column's Export Cut Geometry for
-    FusionPage. All state lives in page.data (cuts, cut_source, cut_selection, cut_result),
-    so Clear All Data resets it with everything else; only the per-tree slice cache is here."""
+    """Drives the Inlets & Outlets tab and Export Cut Geometry. State lives in page.data,
+    so Clear All Data resets it. Only the per-tree slice cache is kept here."""
 
     def __init__(self, page) -> None:
         self.page = page
@@ -193,8 +190,7 @@ class CutController:
         self.toolbar.set_cuts([])
 
     def drop_branches(self, vessel: str, branch_ids) -> None:
-        """Branches were deleted from the tree (FusionPage._on_delete_branch_requested):
-        forget the cuts on them, keep every other cut."""
+        """Forget the cuts on deleted branches, keep every other cut."""
         gone = set(branch_ids)
         on_gone = [s.name for s in self.data.cuts if s.vessel == vessel and s.branch in gone]
         if on_gone:

@@ -6,15 +6,8 @@ from pages.fusion.left_half.layer_tools.base import SceneToolbar
 
 
 class GeometryToolbar(SceneToolbar):
-    """Toolbar for the CCTA Geometry scene: mesh + centerline layer toggles, plus the
-    sphere-brush local smoothing of the final (remeshed) mesh.
-
-    Sphere Smooth: hover over the final mesh to preview the brush (translucent sphere +
-    the vertices it would move, highlighted orange), click to smooth them. Ctrl+wheel
-    resizes the brush; camera rotate/zoom keep working as usual. Undo (Ctrl+Z) steps back
-    through the local smoothing strokes (and whole-mesh Smooth runs) since the last
-    Fix & Remesh. See FusionPage._on_sphere_* and tools.sphere_smooth.
-    """
+    """Toolbar for the CCTA Geometry scene: layer toggles, lasso and sphere-brush local
+    smoothing of the final (remeshed) mesh, with undo."""
 
     sphere_mode_toggled = pyqtSignal(bool)
     sphere_radius_changed = pyqtSignal(float)

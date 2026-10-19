@@ -3,17 +3,15 @@ from pages.fusion.left_half.layer_tools.base import SceneToolbar
 
 
 class IntravascularLoadedToolbar(SceneToolbar):
-    """Toolbar for the Intravascular Loaded scene: the raw geometry straight out of
-    from_file_singlepair, before centerline alignment -> lets you check whether a bad
-    final result already started out wrong here, independent of centerline alignment."""
+    """Toolbar for the Intravascular Loaded scene: the raw geometry before centerline
+    alignment, to check whether a bad result was already wrong before alignment."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(FusionScene.INTRAVASCULAR_LOADED, parent=parent)
 
 
 class AlignmentToolbar(SceneToolbar):
-    """Toolbar for the Intravascular Aligned scene: aligned-geometry / aligned-centerline /
-    ostium-point layer toggles."""
+    """Toolbar for the Intravascular Aligned scene."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(FusionScene.INTRAVASCULAR_ALIGNED, parent=parent)
