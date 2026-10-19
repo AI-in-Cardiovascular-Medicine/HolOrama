@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.16.1] - 2026-10-19
+
+### Changed
+- Fusion reference points are labelled **Main / Rotation 1 / Rotation 2** (was Aortic / Superior / Inferior, which only fits an anomalous ostium).
+- Internal: the fusion page is split into Qt-free logic (`src/fusion_pipeline/`, now unit-tested) and one controller per pipeline stage (`pages/fusion/controllers/`). Display constants moved to `domain/fusion/display_types.py`, `knot_resampling` to `tools/`.
+
+### Fixed
+- **Remaining vessels (mm)** scaling reads each region after the previous morph, like the other scaling steps.
+- Lassoing points between regions in CCTA Geometry always refreshes the Branch Labels scene.
+
 ## [0.16.0] - 2026-10-08
 
 ### Added
