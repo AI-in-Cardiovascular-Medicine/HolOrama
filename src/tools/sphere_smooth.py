@@ -1,6 +1,6 @@
 """Sphere-brush local smoothing / remeshing of a triangle mesh, for VTK 3D views.
 
-Used by Fusion's final-mesh brush (pages/fusion/left_half/display_results.py +
+Used by Fusion's final-mesh brush (pages/fusion/left_half/viewer.py +
 FusionPage._on_sphere_*), and meant to be reusable wherever a surface mesh needs
 touching up locally (e.g. CCTA's cut geometry before centerline extraction). Same split
 as tools.lasso: this module owns the mesh math and the brush's preview actors/picking,

@@ -1,11 +1,5 @@
-"""Background-thread runner that forwards stdout lines as Qt signals.
-
-Every other pipeline step in this page is either fast enough not to need live progress,
-or reports it through multimodars' own return values. fix_and_remesh_stitched_mesh is the
-one exception (pure Python, no Rust, several seconds, and its verbose=True output goes to
-print() rather than a callback) — this lets the "Fix and Remesh" progress dialog show that
-output live instead of a static "please wait" message.
-"""
+"""Background-thread runner that forwards stdout lines as Qt signals, so long blocking steps
+(CCTA centerline extraction, fusion remeshing) can show their print() output live."""
 
 import sys
 
@@ -13,13 +7,9 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 
 class StdoutCapturingWorker(QThread):
-    """Runs `fn(*args, **kwargs)` off the main thread; emits line_printed for every line
-    it writes to stdout, then exactly one of finished_ok(result) / failed(message).
-
-    Note: sys.stdout is process-global, so this redirects it for the whole process while
-    the thread runs, not just for this call. Fine here since the app only ever has one
-    such blocking step in flight at a time (driven by an explicit button click).
-    """
+    """Runs `fn(*args, **kwargs)` off the main thread, emits line_printed per stdout line,
+    then finished_ok(result) or failed(message). Redirects sys.stdout process-wide while
+    running, so only one such worker may run at a time."""
 
     line_printed = pyqtSignal(str)
     finished_ok = pyqtSignal(object)

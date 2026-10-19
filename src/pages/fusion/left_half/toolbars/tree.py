@@ -2,16 +2,13 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QVBoxLayout, QWidget
 
 from domain.fusion.types import FusionScene
-from pages.fusion.left_half.layer_tools.base import SceneToolbar, labeled
+from pages.fusion.left_half.toolbars.base import SceneToolbar
+from pages.fusion.widgets import labeled
 
 
 class TreeToolbar(SceneToolbar):
-    """Toolbar for the Vessel Tree scene. There's nothing to show/hide here, the only
-    interaction is choosing which reference-point triplet to highlight per vessel (RCA
-    row above, LCA row below): first the branch (main or a side branch), then one of the
-    references reachable on that branch, or by clicking a reference marker in the scene
-    (see FusionPage._on_point_picked), so show_layers is off. Whichever vessel the
-    Intravascular Alignment column has chosen follows its row here."""
+    """Toolbar for the Vessel Tree scene: per vessel, choose the branch and the reference
+    triplet to highlight (or pick a reference marker in the scene). No layer list."""
 
     branch_selected = pyqtSignal(str, int)  # vessel ('rca'/'lca'), branch (0 = main, n = side branch n)
     reference_selected = pyqtSignal(str, int)  # vessel, index into that branch's reference list
@@ -49,7 +46,7 @@ class TreeToolbar(SceneToolbar):
             )
 
     def set_branches(self, vessel: str, choices: list[tuple[str, int]], selected: int) -> None:
-        """choices are (label, branch id) pairs; `selected` is the branch id to show."""
+        """choices are (label, branch id) pairs. `selected` is the branch id to show."""
         combo = self._branch_combos[vessel]
         combo.blockSignals(True)
         combo.clear()

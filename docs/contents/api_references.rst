@@ -20,8 +20,9 @@ All application code lives under ``src/``::
     │   ├── intravascular/   RuntimeData, FrameData, contour types and presets, undo snapshots
     │   ├── ccta/            CctaRuntimeData, VolumeGeometry, label presets, display constants
     │   └── fusion/          FusionRuntimeData, FusionScene, display colours
+    ├── fusion_pipeline/     Qt-free fusion logic: multimodars wrappers, mesh, branch, scaling and cut logic
     ├── gui/                 app-level wiring: Master window, page switching, menu bar,
-    │                        keyboard shortcuts
+    │                        keyboard shortcuts, the stdout-streaming worker thread
     ├── input_output/
     │   ├── input/           readers: DICOM series, NIfTI (IVUS/OCT/CCTA), metadata
     │   └── output/          writers: report, contour CSV/JSON, NIfTI, STL, video
@@ -37,13 +38,15 @@ All application code lives under ``src/``::
     │   │   ├── cut_geometry.py  mask → mesh, inlet/outlet location
     │   │   └── vmtk_runner.py   drives an external vmtk install for centerlines
     │   └── fusion/
+    │       ├── controllers/     one controller per pipeline stage (geometry, branches, tree,
+    │       │                    alignment, fusion, final mesh, cuts)
     │       ├── left_half/       shared 3D viewer and per-scene toolbars
     │       ├── right_half/      the three pipeline columns
-    │       └── pipeline.py      thin wrappers around the multimodars calls
+    │       └── page.py          builds the views and wires their signals to the controllers
     ├── segmentation/        automatic segmentation: nnUZoo wrapper, mask→contour
     ├── signal_processing/   cardiac gating and breathing analysis: signal preparation,
     │                        automatic gating, the interactive gating plot
-    └── tools/               Qt-independent helpers: geometry, painting, lasso
+    └── tools/               Qt-independent helpers: geometry, painting, lasso, knot resampling
 
 Design principles
 -----------------
@@ -59,6 +62,8 @@ Design principles
   and pixmap helpers.
 - ``input_output/`` has no GUI imports, so it can be exercised headlessly in tests or CLI
   scripts.
+- ``fusion_pipeline/`` holds the fusion logic without Qt imports. ``pages/fusion/`` calls it
+  and only handles widgets, dialogs and drawing.
 - Long-running work (CCTA volume loading, vmtk centerlines, fusion remeshing) runs in a
   worker thread behind a progress dialog that streams the worker's output, so a slow step
   is distinguishable from a frozen one.

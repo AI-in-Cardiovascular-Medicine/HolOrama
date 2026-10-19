@@ -39,7 +39,7 @@ from input_output.output.stl_export import export_nifti, export_stl
 from pages.ccta.left_half.cut_geometry import geometry as cut_geometry, vmtk
 from pages.ccta.left_half.cut_geometry import state_io as cut_state_io
 from pages.ccta.left_half.cut_geometry.dialogs.centerline_smoothing_dialog import CenterlineSmoothingDialog
-from pages.ccta.utils.progress_worker import StdoutCapturingWorker
+from gui.progress_worker import StdoutCapturingWorker
 from pages.ccta.left_half.left_half import LeftHalf
 from pages.ccta.popup_windows.contour_settings_dialog import CctaContourSettingsDialog, ask_for_draft
 from pages.ccta.right_half.right_half import RightHalf

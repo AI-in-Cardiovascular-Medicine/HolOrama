@@ -8,10 +8,8 @@ from pages.intravascular.utils.helpers import SplitterPane
 
 
 class RightHalf:
-    """Three side-by-side columns: CCTA geometry/centerlines, intravascular alignment,
-    fusion. Each column is its own widget (see the *_column.py files); this class just
-    lays them out and owns the scroll areas, since every column has more controls than
-    fit in view at once."""
+    """Three scrollable side-by-side columns: CCTA geometry/centerlines, intravascular
+    alignment, fusion."""
 
     def __init__(self, main_window) -> None:
         self.main_window = main_window

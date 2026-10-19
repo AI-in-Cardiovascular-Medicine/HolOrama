@@ -30,10 +30,8 @@ from tools.sphere_smooth import SphereBrush
 
 @dataclass
 class _Layer:
-    # A single mesh/points/polyline actor, or a list of billboard text actors for a
-    # text-label layer (see add_labels). Only vtkActor (mesh/points/polyline) has
-    # GetProperty() for opacity — set_layer_opacity guards on isinstance(..., list)
-    # before calling it, since a label group's vtkProp3Ds don't support it.
+    # One mesh/points/polyline actor, or a list of text actors for a label layer.
+    # Label actors have no GetProperty(), so opacity is skipped for lists.
     actor: vtkActor | list[vtkProp3D]
     visible: bool = True
     opacity: float = 1.0
@@ -90,17 +88,13 @@ def _points_to_polydata(points: np.ndarray, as_polyline: bool) -> vtkPolyData:
 
 
 class FusionViewer3D(QWidget):
-    """Single shared VTK renderer for all three fusion scenes.
-
-    Meshes/centerlines/points are added under a (scene, key) pair. Only the actors
-    belonging to the current scene are visible at any time — switching scenes with
-    set_scene() just toggles actor visibility, it never tears down the GL context.
-    """
+    """Single shared VTK renderer for all fusion scenes. Layers are keyed by (scene, key).
+    set_scene() only toggles actor visibility, it never tears down the GL context."""
 
     point_picked = pyqtSignal(float, float, float, str)  # x, y, z, scene.value
     lasso_closed = pyqtSignal()  # lasso polygon closed, caller decides what "inside" means
-    # Sphere brush (see set_sphere_mode): surface point under the cursor / clicked, and
-    # Ctrl+wheel radius steps (+1 / -1) — the caller owns the radius value itself.
+    # Sphere brush: hovered/clicked surface point, and Ctrl+wheel radius steps (+1/-1).
+    # The caller owns the radius value.
     sphere_hovered = pyqtSignal(float, float, float)
     sphere_clicked = pyqtSignal(float, float, float)
     sphere_radius_step = pyqtSignal(int)
@@ -141,14 +135,12 @@ class FusionViewer3D(QWidget):
         self._lasso_mode = False
         self._lasso = Lasso2D(self._ren)
 
-        # Sphere brush (tools.sphere_smooth): hover preview — sphere + the affected
-        # vertices, which the caller computes and hands back via set_sphere_highlight —
+        # Sphere brush: hover preview (affected vertices come back via set_sphere_highlight)
         # and click-to-apply, picking only against the target layer's actor.
         self._sphere_mode = False
         self._sphere_target: tuple[FusionScene, str] | None = None
         self._sphere_brush = SphereBrush(self._ren)
-        # Hover picks are coalesced: a mouse move only (re)starts this timer, so moving
-        # across a big mesh costs one pick + region query per ~30 ms, not one per event.
+        # Hover picks are coalesced via this timer (one pick per ~30 ms, not per mouse move).
         self._sphere_hover_pos = QPoint()
         self._sphere_hover_timer = QTimer(self)
         self._sphere_hover_timer.setSingleShot(True)
@@ -186,9 +178,8 @@ class FusionViewer3D(QWidget):
         visible: bool = True,
         on_top: bool = False,
     ) -> None:
-        """on_top draws the line in front of everything else (a highlight lying on top of
-        other geometry, e.g. a selected contour on its own slice points), by pulling its
-        depth far towards the camera — the same trick ParaView uses for selections."""
+        """on_top draws the line in front of coincident geometry (e.g. a highlighted contour)
+        via a large polygon offset towards the camera."""
         mapper = vtkPolyDataMapper()
         mapper.SetInputData(_points_to_polydata(points, as_polyline=True))
         if on_top:
@@ -221,14 +212,10 @@ class FusionViewer3D(QWidget):
         font_size: int = 14,
         visible: bool = True,
     ) -> None:
-        """One billboard text actor per (point, text) pair — always faces the camera,
-        unlike a 3D-oriented label would. Used for sharp-angle markers (see
-        colors.SHARP_ANGLE_LABEL_COLOR)."""
+        """One camera-facing text actor per (point, text) pair."""
         is_first_layer_in_scene = not self._scenes[scene].layers
 
-        # Same preservation as _add_actor: a re-add of an existing label layer keeps the
-        # user's checkbox state instead of forcing it back on. (Label layers have no
-        # opacity control, so only `visible` is carried over.)
+        # Re-adding a layer keeps the user's visibility (see _add_actor).
         existing = self._scenes[scene].layers.get(key)
         if existing is not None:
             visible = existing.visible
@@ -254,19 +241,12 @@ class FusionViewer3D(QWidget):
         self._vtk_widget.GetRenderWindow().Render()
 
     def _add_actor(self, scene, key, mapper, color, opacity, visible) -> vtkActor:
-        # Empty *before* this add → this is the scene's first-ever layer, so the camera
-        # is still wherever it was left (possibly not even pointed at the origin) and
-        # nothing would be visible until a manual Reset View. Auto-fit just this once;
-        # later re-adds/updates to an already-populated scene must NOT re-fit, or every
-        # button click while the user has zoomed in would yank the camera back out.
+        # Fit the camera only for a scene's first layer. Re-fitting on later adds would
+        # reset the user's zoom on every update.
         is_first_layer_in_scene = not self._scenes[scene].layers
 
-        # Preserve the user's current visibility/opacity across a re-add of the same key.
-        # Every pipeline step (scaling, point removal, stitch, remesh, smooth, …) re-adds
-        # its layers with the caller's default visible=True/opacity=…, which would
-        # otherwise silently re-check every box and reset every slider the user had
-        # adjusted. Only the *first* add of a key honors the caller's requested defaults
-        # (e.g. a translucent base mesh at 0.4); re-adds keep whatever the user set.
+        # Re-adding a key keeps the user's visibility/opacity. The caller's defaults apply
+        # only to the first add, otherwise every pipeline step would reset the toolbar.
         existing = self._scenes[scene].layers.get(key)
         if existing is not None:
             visible = existing.visible
@@ -308,9 +288,8 @@ class FusionViewer3D(QWidget):
             self._vtk_widget.GetRenderWindow().Render()
 
     def isolate_layer(self, scene: FusionScene, key: str) -> None:
-        """Hide every layer in `scene` except `key`. Updates each layer's stored .visible
-        flag (not just actor visibility), so a subsequent toolbar refresh shows the right
-        layer checked and everything else unchecked."""
+        """Hide every layer in `scene` except `key`. Updates the stored .visible flags too,
+        so a toolbar refresh shows the right checkboxes."""
         for k, layer in self._scenes[scene].layers.items():
             layer.visible = k == key
             if scene == self._current_scene:
@@ -324,17 +303,14 @@ class FusionViewer3D(QWidget):
         if layer is None:
             return
         layer.opacity = opacity
-        # Text-label layers (a list of vtkBillboardTextActor3D) have no vtkProperty to
-        # set an overall opacity on — visibility toggling is all they support.
+        # Text-label layers have no vtkProperty, so they only support visibility.
         if not isinstance(layer.actor, list):
             layer.actor.GetProperty().SetOpacity(opacity)
         if scene == self._current_scene:
             self._vtk_widget.GetRenderWindow().Render()
 
     def layer_states(self, scene: FusionScene) -> dict[str, tuple[bool, float, tuple[int, int, int]]]:
-        """(visible, opacity, color) per layer key — lets a toolbar initialize its
-        checkboxes/sliders/swatches to what's actually on screen instead of always
-        assuming visible/100%/gray."""
+        """(visible, opacity, color) per layer key, for initializing toolbar controls."""
         return {key: (layer.visible, layer.opacity, layer.color) for key, layer in self._scenes[scene].layers.items()}
 
     # ------------------------------------------------------------------
@@ -403,8 +379,7 @@ class FusionViewer3D(QWidget):
         return super().eventFilter(obj, event)
 
     # ------------------------------------------------------------------
-    # Lasso (reclassify points between labels — drawing/projection mechanics shared
-    # with CCTA's mask-erase lasso via tools.lasso)
+    # Lasso (reclassify points between labels, see tools.lasso)
     # ------------------------------------------------------------------
 
     # ------------------------------------------------------------------
@@ -412,8 +387,8 @@ class FusionViewer3D(QWidget):
     # ------------------------------------------------------------------
 
     def set_sphere_mode(self, enabled: bool, scene: FusionScene | None = None, key: str | None = None) -> None:
-        """Turn the sphere brush on for layer `key` of `scene` (hover to preview, click to
-        emit sphere_clicked) or off. Camera rotate/zoom keep working while it's on."""
+        """Turn the sphere brush on for layer `key` of `scene`, or off. Camera controls keep
+        working while it's on."""
         self._sphere_mode = enabled
         self._sphere_target = (scene, key) if enabled and scene is not None and key is not None else None
         if not enabled:
@@ -436,22 +411,20 @@ class FusionViewer3D(QWidget):
             self._vtk_widget.GetRenderWindow().Render()
 
     def refresh_sphere_hover(self) -> None:
-        """Re-run the hover pick at the last cursor position — e.g. after the target mesh
-        changed under a stationary cursor, so the highlight matches the new surface."""
+        """Re-run the hover pick at the last cursor position (e.g. after the mesh changed)."""
         if self._sphere_mode:
             self._sphere_hover_timer.start()
 
     def _sphere_event(self, event) -> bool:
-        """Sphere-mode handling for one widget event; True = consumed (VTK never sees it).
-        Presses/drags are passed through so the camera still rotates; a click is a press +
-        release that moved at most 3 px, like Pick Point."""
+        """Handle one widget event in sphere mode. Returns True if consumed (VTK never sees it).
+        Presses/drags pass through so the camera still rotates. A click moves at most 3 px."""
         etype = event.type()
         if etype == QEvent.Type.MouseMove:
             if event.buttons() == Qt.MouseButton.NoButton:
                 self._sphere_hover_pos = event.pos()
                 self._sphere_hover_timer.start()
             elif self._sphere_brush.visible:
-                self.hide_sphere_preview()  # rotating/panning — the preview would lag behind
+                self.hide_sphere_preview()  # rotating/panning, the preview would lag behind
         elif etype == QEvent.Type.Leave:
             self._sphere_hover_timer.stop()
             self.hide_sphere_preview()
@@ -500,8 +473,7 @@ class FusionViewer3D(QWidget):
         self._vtk_widget.GetRenderWindow().Render()
 
     def points_inside_lasso(self, points: np.ndarray) -> np.ndarray:
-        """Boolean mask over `points` (N, 3 world xyz): which fall inside the closed
-        lasso polygon. Call only after lasso_closed has fired."""
+        """Boolean mask of `points` (N, 3) inside the closed lasso. Call after lasso_closed."""
         screen = project_world_batch(
             self._ren, self._vtk_widget.GetRenderWindow().GetSize(), points[:, 0], points[:, 1], points[:, 2]
         )

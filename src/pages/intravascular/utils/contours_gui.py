@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import QMessageBox
 from domain.intravascular.types import ContourType, SegmentationTool
 from domain.intravascular.contour_presets import active_preset
 from domain.intravascular.io_types import Contour, clear_frame_annotations, is_contour_key
-from domain.intravascular.knot_resampling import KnotHistory, without_closing_repeat
+from tools.knot_resampling import KnotHistory, without_closing_repeat
 from domain.intravascular.undo import (
     push_contour_snapshot,
     push_frame_annotation_snapshot,

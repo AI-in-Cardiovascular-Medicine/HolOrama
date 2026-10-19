@@ -1,6 +1,6 @@
 """Tuning of the contours the software fits rather than the user draws: read off a mask
 (input_output.input.mask_contours) or resampled to another knot count
-(domain.intravascular.knot_resampling)."""
+(tools.knot_resampling)."""
 
 # -- reading a mask --------------------------------------------------------------------------
 
