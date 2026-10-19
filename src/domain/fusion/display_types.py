@@ -54,7 +54,7 @@ REGION_COLORS: dict[str, tuple[int, int, int]] = {
     'rca_points': (0, 0, 255),  # blue
     'lca_points': (0, 255, 0),  # green
     'rca_removed_points': (255, 0, 0),  # red
-    'lca_removed_points': (255, 0, 0),  # red
+    'lca_removed_points': (255, 0, 0),  # red (upstream uses the same key/color for both)
     'proximal_points': (0, 255, 255),  # cyan
     'distal_points': (255, 0, 255),  # magenta
     'anomalous_points': (255, 165, 0),  # orange
