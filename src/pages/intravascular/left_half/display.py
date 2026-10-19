@@ -21,7 +21,7 @@ from domain.colors import DEFAULT_MASK_ALPHA
 from domain.intravascular.contour_presets import active_preset
 from domain.intravascular.display_types import BRUSH_DEFAULT_RADIUS_PX, BRUSH_FOREIGN_COLOR
 from domain.intravascular.io_types import Contour, Measure, is_contour_key, sector_points, set_sector_points
-from domain.intravascular.knot_resampling import KnotHistory
+from tools.knot_resampling import KnotHistory
 from domain.intravascular.undo import push_contour_snapshot
 from input_output.output.imgs_masks import contours_to_mask
 from pages.intravascular.utils.contours_gui import refresh_overviews, step_selected_contour_knots

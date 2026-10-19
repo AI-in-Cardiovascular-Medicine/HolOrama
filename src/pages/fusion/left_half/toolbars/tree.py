@@ -2,7 +2,8 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QVBoxLayout, QWidget
 
 from domain.fusion.types import FusionScene
-from pages.fusion.left_half.layer_tools.base import SceneToolbar, labeled
+from pages.fusion.left_half.toolbars.base import SceneToolbar
+from pages.fusion.widgets import labeled
 
 
 class TreeToolbar(SceneToolbar):

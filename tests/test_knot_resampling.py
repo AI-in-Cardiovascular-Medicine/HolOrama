@@ -1,4 +1,4 @@
-"""Tests for changing a contour's knot count (domain.intravascular.knot_resampling) and its
+"""Tests for changing a contour's knot count (tools.knot_resampling) and its
 Points control / Shift+Wheel (pages.intravascular.utils.contours_gui).
 
 The shape survives, a count once reached returns exactly, and only the selected contour
@@ -15,7 +15,7 @@ from scipy.spatial import cKDTree
 
 from domain.intravascular.types import ContourType
 from domain.intravascular.io_types import Contour, FrameData
-from domain.intravascular.knot_resampling import KnotHistory
+from tools.knot_resampling import KnotHistory
 from domain.intravascular.runtime_types import RuntimeData
 from gui.shortcuts import undo_last_contour_edit
 from pages.intravascular.utils.contours_gui import (

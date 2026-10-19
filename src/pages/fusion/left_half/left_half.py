@@ -4,13 +4,13 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QSplitter, QTabWidget, QVBoxLayout
 
 from domain.fusion.types import FusionScene
-from pages.fusion.left_half.display_results import FusionViewer3D
-from pages.fusion.left_half.layer_tools.alignment_tools import AlignmentToolbar, IntravascularLoadedToolbar
-from pages.fusion.left_half.layer_tools.branch_label_tools import BranchLabelsToolbar
-from pages.fusion.left_half.layer_tools.branch_tools import BranchEditorToolbar
-from pages.fusion.left_half.layer_tools.cut_tools import CutToolbar
-from pages.fusion.left_half.layer_tools.geometry_tools import GeometryToolbar
-from pages.fusion.left_half.layer_tools.tree_tools import TreeToolbar
+from pages.fusion.left_half.viewer import FusionViewer3D
+from pages.fusion.left_half.toolbars.alignment import AlignmentToolbar, IntravascularLoadedToolbar
+from pages.fusion.left_half.toolbars.branch_labels import BranchLabelsToolbar
+from pages.fusion.left_half.toolbars.centerline_branches import BranchEditorToolbar
+from pages.fusion.left_half.toolbars.cuts import CutToolbar
+from pages.fusion.left_half.toolbars.geometry import GeometryToolbar
+from pages.fusion.left_half.toolbars.tree import TreeToolbar
 from pages.intravascular.utils.helpers import SplitterPane
 
 
@@ -56,16 +56,16 @@ class LeftHalf:
             toolbar.pick_mode_toggled.connect(self.viewer.set_pick_mode)
             toolbar.reset_camera_requested.connect(self.viewer.reset_camera)
 
-        self.tabs = QTabWidget()
-        self.tabs.setTabPosition(QTabWidget.TabPosition.North)
+        self._tabs = QTabWidget()
+        self._tabs.setTabPosition(QTabWidget.TabPosition.North)
         for scene in self._scene_order:
             # '&&': a single '&' marks a keyboard shortcut in a tab label (Inlets & Outlets)
-            self.tabs.addTab(self._toolbars[scene], FusionScene.label(scene).replace('&', '&&'))
-        self.tabs.currentChanged.connect(self._on_tab_changed)
+            self._tabs.addTab(self._toolbars[scene], FusionScene.label(scene).replace('&', '&&'))
+        self._tabs.currentChanged.connect(self._on_tab_changed)
 
         # Splitter so the toolbar strip can be dragged taller when a scene needs more room.
         splitter = QSplitter(Qt.Orientation.Vertical, self.widget)
-        splitter.addWidget(self.tabs)
+        splitter.addWidget(self._tabs)
         splitter.addWidget(self.viewer)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
@@ -90,8 +90,9 @@ class LeftHalf:
         """Call after adding/removing layers in a scene so its checkbox list stays in sync."""
         self._toolbars[scene].refresh(self.viewer.layer_states(scene))
 
-    def scene_at(self, index: int) -> FusionScene:
-        return self._scene_order[index]
+    def on_scene_shown(self, callback) -> None:
+        """Call `callback(scene)` whenever the user or show_scene switches to a tab."""
+        self._tabs.currentChanged.connect(lambda index: callback(self._scene_order[index]))
 
     def show_scene(self, scene: FusionScene) -> None:
-        self.tabs.setCurrentIndex(self._scene_order.index(scene))
+        self._tabs.setCurrentIndex(self._scene_order.index(scene))

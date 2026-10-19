@@ -5,6 +5,12 @@ from typing import Any
 
 import numpy as np
 
+from domain.undo import UndoStack
+
+# Full results snapshots (mesh + every label list), far heavier than a vertex array.
+REMOVAL_UNDO_LIMIT = 5
+SMOOTHING_UNDO_LIMIT = 20  # vertex snapshots, each a full (N, 3) float array
+
 
 @dataclass(frozen=True)
 class CutSpec:
@@ -25,7 +31,7 @@ class CutSpec:
 
 @dataclass
 class CutResult:
-    """The specs replayed on a source mesh (see pages/fusion/cutting.apply_cuts)."""
+    """The specs replayed on a source mesh (see fusion_pipeline.cuts.apply_cuts)."""
 
     mesh: Any  # trimesh.Trimesh, watertight with the caps in it
     centerlines: dict[str, Any]  # vessel -> PyCenterline, cut where a cut hit that vessel
@@ -33,6 +39,17 @@ class CutResult:
     dropped: set[tuple[str, int, int]] = field(default_factory=set)  # (vessel, branch, slice) cut off
     failed: dict[int, str] = field(default_factory=dict)  # spec index -> why it was skipped
     key: tuple = ()  # source mesh + specs this was computed from, see CutController
+
+
+@dataclass
+class BranchRemoval:
+    """What deleting a side branch leaves behind (see fusion_pipeline.branches.remove_branch)."""
+
+    results: dict
+    centerline: Any  # PyCenterline without the branch
+    stitched: dict | None  # None when nothing was stitched
+    final_mesh: Any | None  # trimesh.Trimesh, None when there was no final mesh
+    removed: list[int]  # the branch and its descendants
 
 
 class FusionRuntimeData:
@@ -73,17 +90,21 @@ class FusionRuntimeData:
         # Snapshot of `results` after Remove Labeled Points. Stitch works on a fresh copy
         # (stitch_ccta_to_intravascular mutates in place), so it can be re-run.
         self.results_points_removed: dict | None = None
-        # Copies of `results` before each Remove Labeled Points (oldest first), for undo.
+        # Copies of `results` before each Remove Labeled Points, for undo.
         # Cleared whenever `results` is replaced otherwise, since they would be stale.
-        self.removal_undo: list[dict] = []
+        self.removal_undo: UndoStack[dict] = UndoStack(REMOVAL_UNDO_LIMIT)
         self.stitched: dict | None = None  # result of stitch_ccta_to_intravascular
         self.final_mesh: Any | None = None  # trimesh.Trimesh after remesh/smoothing
-        # Previous final_mesh vertices (oldest first) for undoing smoothing, which keeps faces.
+        # Previous final_mesh vertices for undoing smoothing, which keeps faces.
         # Reset on a new topology (Fix and Remesh) or when the final mesh is dropped.
-        self.final_mesh_undo: list[np.ndarray] = []
+        self.final_mesh_undo: UndoStack[np.ndarray] = UndoStack(SMOOTHING_UNDO_LIMIT)
 
         # -- Inlets & outlets: flat cuts of the last geometry ----------------------------
         self.cuts: list[CutSpec] = []
         self.cut_source: str | None = None  # 'final' / 'stitched' / 'ccta', None = latest there is
         self.cut_selection: tuple[str, int, int] | None = None  # (vessel, branch, slice) picked
         self.cut_result: CutResult | None = None  # cache, recomputed when its key goes stale
+
+    def centerline(self, vessel: str) -> Any | None:
+        """The centerline of 'aorta', 'rca' or 'lca'."""
+        return getattr(self, f'centerline_{vessel}')

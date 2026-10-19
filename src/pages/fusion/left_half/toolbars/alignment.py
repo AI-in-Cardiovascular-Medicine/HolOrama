@@ -1,5 +1,5 @@
 from domain.fusion.types import FusionScene
-from pages.fusion.left_half.layer_tools.base import SceneToolbar
+from pages.fusion.left_half.toolbars.base import SceneToolbar
 
 
 class IntravascularLoadedToolbar(SceneToolbar):

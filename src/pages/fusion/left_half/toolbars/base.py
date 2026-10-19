@@ -81,22 +81,24 @@ class SceneToolbar(QWidget):
         reset_btn.clicked.connect(self.reset_camera_requested.emit)
         view_buttons.addWidget(reset_btn)
 
+        self._pick_btn: QPushButton | None = None
+        self._lasso_btn: QPushButton | None = None
         if show_pick:
-            self.pick_btn = QPushButton('Pick Point')
-            self.pick_btn.setCheckable(True)
-            self.pick_btn.setToolTip('Click a point in the 3D scene')
-            self.pick_btn.toggled.connect(self.pick_mode_toggled.emit)
-            view_buttons.addWidget(self.pick_btn)
+            self._pick_btn = QPushButton('Pick Point')
+            self._pick_btn.setCheckable(True)
+            self._pick_btn.setToolTip('Click a point in the 3D scene')
+            self._pick_btn.toggled.connect(self.pick_mode_toggled.emit)
+            view_buttons.addWidget(self._pick_btn)
 
         if show_lasso:
-            self.lasso_btn = QPushButton('Lasso')
-            self.lasso_btn.setCheckable(True)
-            self.lasso_btn.setToolTip(
+            self._lasso_btn = QPushButton('Lasso')
+            self._lasso_btn.setCheckable(True)
+            self._lasso_btn.setToolTip(
                 'Draw a closed lasso around points (left-click to add points, click near the\n'
                 'start or right-click to close), then choose which label to reclassify them as.'
             )
-            self.lasso_btn.toggled.connect(self._on_lasso_toggled)
-            view_buttons.addWidget(self.lasso_btn)
+            self._lasso_btn.toggled.connect(self._on_lasso_toggled)
+            view_buttons.addWidget(self._lasso_btn)
 
         clear_btn = QPushButton('Clear All Data')
         clear_btn.setToolTip('Discards every loaded/computed fusion result and clears the 3D viewer.')
@@ -105,8 +107,17 @@ class SceneToolbar(QWidget):
         controls_layout.addLayout(view_buttons)
 
     def _on_lasso_toggled(self, checked: bool) -> None:
-        self.lasso_btn.setText('Cancel Lasso' if checked else 'Lasso')
+        assert self._lasso_btn is not None
+        self._lasso_btn.setText('Cancel Lasso' if checked else 'Lasso')
         self.lasso_mode_toggled.emit(checked)
+
+    def lasso_active(self) -> bool:
+        return self._lasso_btn is not None and self._lasso_btn.isChecked()
+
+    def end_lasso(self) -> None:
+        """Uncheck Lasso, which ends lasso mode and clears the overlay."""
+        if self._lasso_btn is not None:
+            self._lasso_btn.setChecked(False)
 
     def set_layer_labels(self, labels: dict[str, str]) -> None:
         """Display names for layer keys, used by the next refresh() instead of the key."""
@@ -162,13 +173,3 @@ def _clear_layout(layout) -> None:
             sub_layout = item.layout()
             if sub_layout is not None:
                 _clear_layout(sub_layout)
-
-
-def labeled(text: str, widget: QWidget) -> QWidget:
-    """'Label:' + control as one widget."""
-    wrapper = QWidget()
-    box = QHBoxLayout(wrapper)
-    box.setContentsMargins(0, 0, 0, 0)
-    box.addWidget(QLabel(text))
-    box.addWidget(widget)
-    return wrapper

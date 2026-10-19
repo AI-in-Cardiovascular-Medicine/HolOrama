@@ -44,10 +44,6 @@ def prepare_centerline(
     )
 
 
-def load_ccta_mesh(path: str) -> trimesh.Trimesh:
-    return trimesh.load_mesh(path)
-
-
 def run_label_geometry(
     path_ccta_geometry: str | trimesh.Trimesh,
     centerline_aorta,
@@ -99,32 +95,6 @@ def run_remove_branch(results: dict, centerline, branch_id: int, *, fill_hole: b
     """Cut branch `branch_id` and its sub-branches off the mesh and `centerline`, optionally
     closing the ostium. Returns (results, centerline). Other branches keep their ids."""
     return mm.remove_branch(results, centerline, branch_id, fill_hole=fill_hole)
-
-
-def transfer_labels(results: dict, mesh: trimesh.Trimesh) -> dict:
-    """Copy region and branch labels to another mesh of the same surface (nearest vertex).
-    Boundary rings are left out, they describe holes of the old mesh."""
-    from scipy.spatial import cKDTree
-
-    source = np.asarray(results['mesh'].vertices, dtype=np.float64)
-    _, nearest = cKDTree(source).query(np.asarray(mesh.vertices, dtype=np.float64))
-    index = {tuple(v): i for i, v in enumerate(source.tolist())}
-    targets = [tuple(v) for v in np.asarray(mesh.vertices).tolist()]
-
-    def remap(points: list) -> list:
-        members = np.zeros(len(source), dtype=bool)
-        members[[index[p] for p in map(tuple, points) if p in index]] = True
-        return [targets[i] for i in np.flatnonzero(members[nearest])]
-
-    labelled: dict = {'mesh': mesh}
-    for key, value in results.items():
-        if key == 'mesh' or 'boundary' in key:
-            continue
-        if key.endswith('_branches') and isinstance(value, dict):
-            labelled[key] = {k: remap(pts) for k, pts in value.items()}
-        elif isinstance(value, list) and value and len(value[0]) == 3:
-            labelled[key] = remap(value)
-    return labelled
 
 
 def run_discretize_vessel_tree(
@@ -297,38 +267,6 @@ def run_align_manual(
     )
 
 
-def frames_to_mesh(geometry, contour_type: str | None = None) -> trimesh.Trimesh:
-    """Loft a tube mesh through a PyGeometry's contours of `contour_type` (lumen if None).
-
-    All contours need the same point count (use geometry.downsample(n) first).
-    """
-    contours = geometry.get_lumen_contours() if contour_type is None else geometry.get_contours_by_type(contour_type)
-    if len(contours) < 2:
-        raise ValueError('Need at least 2 contours to loft a mesh.')
-
-    rings = [np.array(c.points_as_tuples(), dtype=np.float64) for c in contours]
-    n = len(rings[0])
-    if any(len(r) != n for r in rings):
-        raise ValueError('All contours must have the same point count — call geometry.downsample(n) first.')
-
-    vertices = np.concatenate(rings, axis=0)
-    faces = []
-    for i in range(len(rings) - 1):
-        base_i, base_j = i * n, (i + 1) * n
-        for k in range(n):
-            k1 = (k + 1) % n
-            faces.append((base_i + k, base_i + k1, base_j + k1))
-            faces.append((base_i + k, base_j + k1, base_j + k))
-    mesh = trimesh.Trimesh(vertices=vertices, faces=np.array(faces), process=False)
-
-    # Flip all faces if the first one points toward contour 0's centroid.
-    face0_center = vertices[np.asarray(faces[0])].mean(axis=0)
-    outward = face0_center - np.array(contours[0].centroid, dtype=np.float64)
-    if np.dot(mesh.face_normals[0], outward) < 0:
-        mesh.invert()
-    return mesh
-
-
 def run_label_anomalous_region(centerline, frames, results: dict, *, branch_id: int = 0) -> dict:
     """Split the pullback path of `branch_id` (the branch the frames were aligned onto)
     into proximal/anomalous/distal. The vessel's other vertices go to 'off_path_points'."""
@@ -413,22 +351,6 @@ def run_stitch(
     )
 
 
-def max_seam_points(results: dict) -> int:
-    """Largest seam_points_a/_b the stitch can use for the boundary rings in `results`.
-
-    A ring of n points allows (n/2 - 2) // 2 per seam. Bounded by the smallest ring, since
-    which ring is proximal is only decided inside the stitch.
-    """
-    ring_sizes = [
-        len(v)
-        for k, v in results.items()
-        if k.startswith('boundary_points_') and k.removeprefix('boundary_points_').isdigit()
-    ]
-    if not ring_sizes:
-        return 0
-    return max((min(ring_sizes) // 2 - 2) // 2, 0)
-
-
 def run_remesh(
     mesh: trimesh.Trimesh,
     *,
@@ -441,30 +363,12 @@ def run_remesh(
     )
 
 
-def run_taubin_smooth(mesh: trimesh.Trimesh, lamb: float = 0.6) -> trimesh.Trimesh:
-    """Mutates and returns ``mesh`` (trimesh.smoothing operates in place)."""
-    trimesh.smoothing.filter_taubin(mesh, lamb=lamb)
-    return mesh
-
-
-def export_mesh(mesh: trimesh.Trimesh, path: str) -> None:
-    mesh.export(path)
-
-
 def run_cut_at_slice(
     results: dict, tree: Any, centerline: Any, vessel: str, slice_idx: int, *, branch_id: int = 0, keep: str = 'larger'
 ) -> tuple[dict, Any, trimesh.Trimesh]:
     """Cut results['mesh'] (any mesh, labels not needed) at a tree slice's plane.
     Returns (results, cut centerline, cap)."""
     return mm.cut_at_slice(results, tree, centerline, vessel, slice_idx, branch_id=branch_id, keep=keep)
-
-
-def prune_vessel_tree(tree: Any, vessel: str, branch_ids) -> None:
-    """Drop deleted branches from a discretized tree in place and recompute its reference
-    triplets. Other branches keep their ids and contours."""
-    gone = set(branch_ids)
-    setattr(tree, vessel, {k: b for k, b in getattr(tree, vessel).items() if k not in gone})
-    tree.calculate_ref_pts()
 
 
 def write_centerline_vtp(centerline: Any, path: str) -> None:

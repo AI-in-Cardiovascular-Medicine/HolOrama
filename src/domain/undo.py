@@ -24,3 +24,6 @@ class UndoStack(Generic[T]):
     @property
     def can_undo(self) -> bool:
         return bool(self._stack)
+
+    def __len__(self) -> int:
+        return len(self._stack)

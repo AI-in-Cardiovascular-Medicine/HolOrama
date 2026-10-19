@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
 )
 
 from domain.fusion.display_types import region_label
+from pages.fusion.widgets import row
 
 
 class FusionColumn(QWidget):
@@ -67,7 +68,7 @@ class FusionColumn(QWidget):
             spin.setSingleStep(0.1)
             spin.setToolTip('Auto-filled by "Compute Scaling Factors" — adjust freely before applying.')
             self._scaling_spinboxes[key] = spin
-            layout.addLayout(_row(text, spin))
+            layout.addLayout(row(text, spin))
 
         compute_btn = QPushButton('Compute Scaling Factors')
         compute_btn.setToolTip('Fills in the fields above; you can still edit them by hand afterward.')
@@ -86,7 +87,7 @@ class FusionColumn(QWidget):
             'Region), each around its own centerline. Leave at 0 to skip it.'
         )
         self._scaling_spinboxes['remaining_vessels_scaling'] = remaining_spin
-        layout.addLayout(_row('Remaining vessels (mm):', remaining_spin))
+        layout.addLayout(row('Remaining vessels (mm):', remaining_spin))
 
         apply_btn = QPushButton('Apply Scaling to Mesh')
         apply_btn.setToolTip(
@@ -108,15 +109,15 @@ class FusionColumn(QWidget):
         layout.addWidget(self._remove_proximal)
         btn = QPushButton('Remove')
         btn.clicked.connect(self.run_remove_points_requested.emit)
-        self.undo_remove_btn = QPushButton('Undo')
-        self.undo_remove_btn.setToolTip(
+        self._undo_remove_btn = QPushButton('Undo')
+        self._undo_remove_btn.setToolTip(
             'Restore the mesh and labels from before the last removal (Ctrl+Z, unless a stitched mesh exists)'
         )
-        self.undo_remove_btn.setEnabled(False)
-        self.undo_remove_btn.clicked.connect(self.undo_remove_points_requested.emit)
+        self._undo_remove_btn.setEnabled(False)
+        self._undo_remove_btn.clicked.connect(self.undo_remove_points_requested.emit)
         buttons = QHBoxLayout()
         buttons.addWidget(btn, 1)
-        buttons.addWidget(self.undo_remove_btn)
+        buttons.addWidget(self._undo_remove_btn)
         layout.addLayout(buttons)
         return box
 
@@ -128,17 +129,17 @@ class FusionColumn(QWidget):
         self._prox_start_mode.addItems(['nearest_iv', 'highest_z'])
         # 'highest_z' for anomalous cases: 'nearest_iv' can reverse the proximal stitch order.
         self._prox_start_mode.setCurrentText('highest_z')
-        layout.addLayout(_row('Proximal start mode:', self._prox_start_mode))
+        layout.addLayout(row('Proximal start mode:', self._prox_start_mode))
 
         self._dist_start_mode = QComboBox()
         self._dist_start_mode.addItems(['nearest_iv', 'highest_z'])
-        layout.addLayout(_row('Distal start mode:', self._dist_start_mode))
+        layout.addLayout(row('Distal start mode:', self._dist_start_mode))
 
         self._clamp_overshoot = QDoubleSpinBox()
         self._clamp_overshoot.setRange(0.0, 2.0)
         self._clamp_overshoot.setSingleStep(0.1)
         self._clamp_overshoot.setValue(0.0)
-        layout.addLayout(_row('Clamp overshoot (mm):', self._clamp_overshoot))
+        layout.addLayout(row('Clamp overshoot (mm):', self._clamp_overshoot))
 
         # Fillet + seam params only apply with prox_start_mode='highest_z', hidden otherwise.
         self._ostium_params = QWidget()
@@ -149,26 +150,26 @@ class FusionColumn(QWidget):
         self._fillet_bulge.setRange(0.0, 1.0)
         self._fillet_bulge.setSingleStep(0.1)
         self._fillet_bulge.setValue(0.5)
-        ostium_layout.addLayout(_row('Fillet bulge strength:', self._fillet_bulge))
+        ostium_layout.addLayout(row('Fillet bulge strength:', self._fillet_bulge))
 
         self._fillet_layers = QSpinBox()
         self._fillet_layers.setRange(0, 20)
         self._fillet_layers.setSingleStep(1)
         self._fillet_layers.setValue(5)
-        ostium_layout.addLayout(_row('Fillet layers:', self._fillet_layers))
+        ostium_layout.addLayout(row('Fillet layers:', self._fillet_layers))
 
         # Capped to the boundary ring size after Remove Labeled Points (set_seam_points_limit).
         self._seam_points_a = QSpinBox()
         self._seam_points_a.setRange(0, 125)
         self._seam_points_a.setSingleStep(1)
         self._seam_points_a.setValue(2)
-        ostium_layout.addLayout(_row('Seam A n points:', self._seam_points_a))
+        ostium_layout.addLayout(row('Seam A n points:', self._seam_points_a))
 
         self._seam_points_b = QSpinBox()
         self._seam_points_b.setRange(0, 125)
         self._seam_points_b.setSingleStep(1)
         self._seam_points_b.setValue(4)
-        ostium_layout.addLayout(_row('Seam B n points:', self._seam_points_b))
+        ostium_layout.addLayout(row('Seam B n points:', self._seam_points_b))
 
         layout.addWidget(self._ostium_params)
         self._prox_start_mode.currentTextChanged.connect(self._update_ostium_params_visible)
@@ -190,12 +191,12 @@ class FusionColumn(QWidget):
         self._target_edge_length.setRange(0.01, 10.0)
         self._target_edge_length.setSingleStep(0.05)
         self._target_edge_length.setValue(0.5)
-        layout.addLayout(_row('Target edge length (mm):', self._target_edge_length))
+        layout.addLayout(row('Target edge length (mm):', self._target_edge_length))
 
         self._remesh_iterations = QSpinBox()
         self._remesh_iterations.setRange(1, 100)
         self._remesh_iterations.setValue(10)
-        layout.addLayout(_row('Iterations:', self._remesh_iterations))
+        layout.addLayout(row('Iterations:', self._remesh_iterations))
 
         self._remesh_verbose = QCheckBox('Verbose')
         self._remesh_verbose.setChecked(True)
@@ -209,7 +210,7 @@ class FusionColumn(QWidget):
         self._taubin_lamb.setRange(0.0, 1.0)
         self._taubin_lamb.setSingleStep(0.05)
         self._taubin_lamb.setValue(0.6)
-        layout.addLayout(_row('Taubin smoothing lambda:', self._taubin_lamb))
+        layout.addLayout(row('Taubin smoothing lambda:', self._taubin_lamb))
 
         smooth_btn = QPushButton('Smooth')
         smooth_btn.clicked.connect(self.run_smooth_requested.emit)
@@ -258,6 +259,9 @@ class FusionColumn(QWidget):
             if value is not None:
                 spin.setValue(value)
 
+    def set_undo_remove_available(self, available: bool) -> None:
+        self._undo_remove_btn.setEnabled(available)
+
     def set_seam_points_limit(self, max_points: int) -> None:
         """Cap both seam spinboxes to the current boundary ring size (clamps oversized values)."""
         for spin in (self._seam_points_a, self._seam_points_b):
@@ -301,10 +305,3 @@ class FusionColumn(QWidget):
 
     def taubin_lamb(self) -> float:
         return self._taubin_lamb.value()
-
-
-def _row(label: str, widget: QWidget) -> QHBoxLayout:
-    layout = QHBoxLayout()
-    layout.addWidget(QLabel(label))
-    layout.addWidget(widget, 1)
-    return layout

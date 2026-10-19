@@ -1,7 +1,5 @@
-"""Background-thread runner that forwards stdout lines as Qt signals.
-
-Used to show fix_and_remesh_stitched_mesh's print() output live in its progress dialog.
-"""
+"""Background-thread runner that forwards stdout lines as Qt signals, so long blocking steps
+(CCTA centerline extraction, fusion remeshing) can show their print() output live."""
 
 import sys
 

@@ -18,6 +18,31 @@ __all__ = [
     'BRANCH_COLORS_LCA',
     'SHARP_ANGLE_COLOR',
     'SHARP_ANGLE_LABEL_COLOR',
+    'POINT_SIZE',
+    'CCTA_MESH_COLOR',
+    'CCTA_MESH_OPACITY',
+    'BRANCH_LABELS_MESH_OPACITY',
+    'STITCHED_MESH_COLOR',
+    'FINAL_MESH_COLOR',
+    'BRANCHES_AORTA_POINT_SIZE',
+    'SHARP_ANGLE_POINT_SIZE',
+    'TREE_CENTROID_POINT_SIZE',
+    'TREE_REF_POINT_SIZE',
+    'SELECTED_REF_COLORS',
+    'SELECTED_REF_POINT_SIZE',
+    'IV_LUMEN_OPACITY',
+    'IV_WALL_COLOR',
+    'IV_WALL_OPACITY',
+    'ALIGNED_CENTERLINE_COLOR',
+    'ALIGNED_CCTA_MESH_COLOR',
+    'ALIGNED_CCTA_MESH_OPACITY',
+    'BOUNDARY_RING_POINT_SIZE',
+    'CUT_MESH_COLOR',
+    'CUT_MESH_OPACITY',
+    'CUT_CAP_COLOR',
+    'CUT_SLICE_COLORS',
+    'CUT_SELECTED_SLICE_COLOR',
+    'CUT_SELECTED_SLICE_LINE_WIDTH',
     'branch_ramp_color',
     'DIASTOLE_COLOR',
     'SYSTOLE_COLOR',
@@ -82,3 +107,40 @@ BRANCH_COLORS_RCA: tuple[tuple[int, int, int], ...] = CATEGORICAL_PALETTE[0::2]
 BRANCH_COLORS_LCA: tuple[tuple[int, int, int], ...] = CATEGORICAL_PALETTE[1::2]
 SHARP_ANGLE_COLOR: tuple[int, int, int] = (255, 0, 0)  # red
 SHARP_ANGLE_LABEL_COLOR: tuple[int, int, int] = (255, 255, 255)  # white
+
+# Scene styles. Point clouds without an explicit size use the viewer's default.
+POINT_SIZE = 4.0  # centerlines, tree contours, branch points, cut slices
+
+# CCTA Geometry / Branch Labels
+CCTA_MESH_COLOR = (200, 200, 200)  # light gray
+CCTA_MESH_OPACITY = 0.4
+BRANCH_LABELS_MESH_OPACITY = 0.3
+STITCHED_MESH_COLOR = (230, 180, 60)  # amber
+FINAL_MESH_COLOR = (230, 230, 230)  # off-white
+
+# Centerline Branches
+BRANCHES_AORTA_POINT_SIZE = 3.0
+SHARP_ANGLE_POINT_SIZE = 9.0
+
+# Vessel Tree
+TREE_CENTROID_POINT_SIZE = 5.0
+TREE_REF_POINT_SIZE = 10.0
+SELECTED_REF_COLORS = {'rca': (255, 255, 255), 'lca': (0, 255, 255)}  # white, cyan
+SELECTED_REF_POINT_SIZE = 14.0  # also the ostium point in Intravascular Aligned
+
+# Intravascular Loaded / Aligned (lumen color is the phase color)
+IV_LUMEN_OPACITY = 0.6
+IV_WALL_COLOR = (220, 220, 220)  # light gray
+IV_WALL_OPACITY = 0.25
+ALIGNED_CENTERLINE_COLOR = (0, 200, 0)  # green
+ALIGNED_CCTA_MESH_COLOR = (160, 160, 160)  # gray
+ALIGNED_CCTA_MESH_OPACITY = 0.35
+BOUNDARY_RING_POINT_SIZE = 8.0
+
+# Inlets & Outlets
+CUT_MESH_COLOR = (220, 220, 220)  # light gray
+CUT_MESH_OPACITY = 0.5
+CUT_CAP_COLOR = (255, 140, 0)  # orange
+CUT_SLICE_COLORS = {'aorta': TREE_AORTA_COLOR, 'rca': TREE_RCA_MAIN_COLOR, 'lca': TREE_LCA_MAIN_COLOR}
+CUT_SELECTED_SLICE_COLOR = (255, 255, 255)  # white
+CUT_SELECTED_SLICE_LINE_WIDTH = 4.0

@@ -16,10 +16,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from pages.fusion.widgets import row
+
 
 class IntravascularColumn(QWidget):
     """Column 2: load an intravascular (IVUS/OCT) pullback pair and align it onto the
-    RCA or LCA centerline computed in column 1. See pages/fusion/pipeline.py."""
+    RCA or LCA centerline computed in column 1. See fusion_pipeline/multimodars_api.py."""
 
     run_load_requested = pyqtSignal()
     run_align_requested = pyqtSignal()
@@ -68,15 +70,15 @@ class IntravascularColumn(QWidget):
         modality_row.addStretch(1)
         layout.addLayout(modality_row)
 
-        row = QHBoxLayout()
+        path_row = QHBoxLayout()
         self._input_path_edit = QLineEdit()
         self._input_path_edit.setReadOnly(True)
         self._input_path_edit.setPlaceholderText('Case folder (e.g. ivus_rest)')
         browse_btn = QPushButton('Browse…')
         browse_btn.clicked.connect(self._on_browse_input_path)
-        row.addWidget(self._input_path_edit, 1)
-        row.addWidget(browse_btn)
-        layout.addLayout(row)
+        path_row.addWidget(self._input_path_edit, 1)
+        path_row.addWidget(browse_btn)
+        layout.addLayout(path_row)
 
         # IVUS: one checkbox + label per phase. Both checked loads the pair, one loads that phase.
         self._ivus_phase_widget = QWidget()
@@ -111,19 +113,19 @@ class IntravascularColumn(QWidget):
         self._step_rotation.setToolTip(
             'Rotation step (deg) for the coarse alignment search. Finer = more precise but slower.'
         )
-        layout.addLayout(_row('Step rotation (deg):', self._step_rotation))
+        layout.addLayout(row('Step rotation (deg):', self._step_rotation))
 
         self._sample_size = QSpinBox()
         self._sample_size.setRange(1, 1000)
         self._sample_size.setValue(200)
         self._sample_size.setToolTip('Number of points each frame is downsampled to before alignment.')
-        layout.addLayout(_row('Sample size:', self._sample_size))
+        layout.addLayout(row('Sample size:', self._sample_size))
 
         self._n_points = QSpinBox()
         self._n_points.setRange(0, 1000)
         self._n_points.setValue(20)
         self._n_points.setToolTip('Number of points on the synthetic catheter contour (not the lumen contour).')
-        layout.addLayout(_row('Catheter points:', self._n_points))
+        layout.addLayout(row('Catheter points:', self._n_points))
 
         load_btn = QPushButton('Load Pullback')
         load_btn.clicked.connect(self.run_load_requested.emit)
@@ -158,7 +160,7 @@ class IntravascularColumn(QWidget):
         self._ref_vessel_combo.currentIndexChanged.connect(
             lambda _: self.reference_centerline_changed.emit(self.reference_vessel(), self.reference_branch())
         )
-        centerline_row = _row('Centerline:', self._ref_vessel_combo)
+        centerline_row = row('Centerline:', self._ref_vessel_combo)
         centerline_row.addWidget(self._with_parents_check)
         layout.addLayout(centerline_row)
 
@@ -168,7 +170,7 @@ class IntravascularColumn(QWidget):
             'same list as the Vessel Tree tab.'
         )
         self._ref_index_combo.currentIndexChanged.connect(self._on_ref_index_changed)
-        layout.addLayout(_row('Reference:', self._ref_index_combo))
+        layout.addLayout(row('Reference:', self._ref_index_combo))
 
         self._ref_labels = {
             'main': QLabel('Main: —'),
@@ -187,14 +189,14 @@ class IntravascularColumn(QWidget):
         self._angle_range.setRange(1.0, 180.0)
         self._angle_range.setValue(30.0)
         self._angle_range.setToolTip('Total rotation search range (deg) for the Hausdorff refinement.')
-        layout.addLayout(_row('Angle range (deg):', self._angle_range))
+        layout.addLayout(row('Angle range (deg):', self._angle_range))
 
         self._angle_step = QDoubleSpinBox()
         self._angle_step.setRange(0.01, 45.0)
         self._angle_step.setSingleStep(0.1)
         self._angle_step.setValue(1.0)
         self._angle_step.setToolTip('Step size (deg) for the Hausdorff refinement rotation search.')
-        layout.addLayout(_row('Angle step (deg):', self._angle_step))
+        layout.addLayout(row('Angle step (deg):', self._angle_step))
 
         self._index_range = QSpinBox()
         self._index_range.setRange(0, 50)
@@ -202,7 +204,7 @@ class IntravascularColumn(QWidget):
         self._index_range.setToolTip(
             'Number of centerline indices considered around each reference point during refinement.'
         )
-        layout.addLayout(_row('Index range:', self._index_range))
+        layout.addLayout(row('Index range:', self._index_range))
 
         # No "align anomalous wall" toggle: it follows Acute Takeoff in column 1 (main vessel only).
         self._watertight = QCheckBox('Watertight')
@@ -221,7 +223,7 @@ class IntravascularColumn(QWidget):
         self._manual_rotation_angle.setRange(-360.0, 360.0)
         self._manual_rotation_angle.setSingleStep(1.0)
         self._manual_rotation_angle.setToolTip('Rotation to apply, in degrees.')
-        layout.addLayout(_row('Rotation angle (deg):', self._manual_rotation_angle))
+        layout.addLayout(row('Rotation angle (deg):', self._manual_rotation_angle))
 
         self._manual_ref_offset = QSpinBox()
         self._manual_ref_offset.setRange(-100, 100)
@@ -231,7 +233,7 @@ class IntravascularColumn(QWidget):
             'negative = N centerline points more proximal, towards the ostium (point index 0).\n'
             'Clamped at the ostium — you cannot go more proximal than that.'
         )
-        layout.addLayout(_row('Ref. point offset:', self._manual_ref_offset))
+        layout.addLayout(row('Ref. point offset:', self._manual_ref_offset))
 
         self._manual_watertight = QCheckBox('Watertight')
         layout.addWidget(self._manual_watertight)
@@ -361,13 +363,6 @@ class IntravascularColumn(QWidget):
 
     def manual_align_kwargs(self) -> dict:
         return {'watertight': self._manual_watertight.isChecked()}
-
-
-def _row(label: str, widget: QWidget) -> QHBoxLayout:
-    layout = QHBoxLayout()
-    layout.addWidget(QLabel(label))
-    layout.addWidget(widget, 1)
-    return layout
 
 
 def _checkbox_row(checkbox: QCheckBox, widget: QWidget) -> QHBoxLayout:
