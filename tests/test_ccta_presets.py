@@ -1,7 +1,6 @@
 """Tests for the CCTA label presets (domain.ccta.presets), their settings dialog, the mask
-panel showing them, and the Switch default button."""
+panel showing them and its preset list."""
 
-import json
 from types import SimpleNamespace
 
 import pytest
@@ -148,30 +147,27 @@ class TestMaskPanel:
         assert panel.label_names() == {1: 'Coronaries', 7: 'Aorta', 42: 'Label 42'}
         assert not panel.findChildren(QLineEdit)
 
-    def test_switch_default_asks_the_page(self, qt_app):
+    def test_the_preset_list_offers_every_preset_and_asks_the_page(self, qt_app):
         from pages.ccta.right_half.mask_panel import MaskPanel
 
         panel = MaskPanel()
-        asked = []
-        panel.switch_default_requested.connect(lambda: asked.append(True))
-        panel._btn_switch.click()
-        assert asked == [True]
+        panel.set_preset_names(['Default 1 - Colorful', 'Default 2 - Publication', 'Mine'])
+        panel.show_preset('Default 1 - Colorful')
+        chosen = []
+        panel.preset_selected.connect(chosen.append)
+        combo = panel._preset_combo
+        assert [combo.itemText(i) for i in range(combo.count())][-1] == 'Mine'
+        combo.textActivated.emit('Mine')
+        assert chosen == ['Mine']
 
+    def test_refreshing_the_list_keeps_the_shown_preset(self, qt_app):
+        from pages.ccta.right_half.mask_panel import MaskPanel
 
-class TestSwitchDefault:
-    def _switch(self, active):
-        from domain.ccta.presets import switched_default
-
-        return switched_default(active).name
-
-    def test_colorful_switches_to_publication_and_back(self):
-        assert self._switch(load_ccta_preset(COLORFUL_PRESET_FILE)) == 'Default 2 - Publication'
-        assert self._switch(load_ccta_preset(PUBLICATION_PRESET_FILE)) == 'Default 1 - Colorful'
-
-    def test_a_custom_preset_switches_to_colorful(self):
-        raw = json.loads(PUBLICATION_PRESET_FILE.read_text(encoding='utf-8'))
-        raw['name'] = 'Mine'
-        assert self._switch(CctaPreset.from_dict(raw)) == 'Default 1 - Colorful'
+        panel = MaskPanel()
+        panel.set_preset_names(['A', 'B'])
+        panel.show_preset('B')
+        panel.set_preset_names(['A', 'B', 'C'])
+        assert panel._preset_combo.currentText() == 'B'
 
 
 class TestPresetForAMask:

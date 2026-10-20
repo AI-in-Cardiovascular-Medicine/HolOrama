@@ -15,7 +15,7 @@ class CctaRuntimeData:
         self.voxel_spacing: tuple[float, float, float] | None = None  # (dz, dy, dx) mm
         self.geometry: VolumeGeometry | None = None  # source file's voxel grid, for writing masks back
         self.mask: np.ndarray | None = None  # (Z, Y, X) uint8 label values
-        self.labels: list[int] = []  # non-background labels present in mask
+        self.labels: list[int] = []  # labels in the mask plus those the active preset names
         self.mask_undo: UndoStack = UndoStack()  # last 5 full-mask snapshots, for Ctrl+Z
 
         # -- Post-cut geometry (Build Cut Geometry / Smooth / Calculate Centerlines) ----

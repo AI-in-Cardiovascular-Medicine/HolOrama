@@ -29,7 +29,7 @@ intravascular:
 
 ccta:
   # The name and colour of each mask label (Settings > CCTA Contour Settings)
-  contour_preset: 'Default 1 - Colorful'
+  contour_preset: 'Calcification included'
 
 fusion: {}  # no fusion settings yet; placeholder so config stays organized by module
 

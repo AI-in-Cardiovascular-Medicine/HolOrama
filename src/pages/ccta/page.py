@@ -25,7 +25,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from domain.ccta.presets import CctaPreset, active_ccta_preset, set_active_ccta_preset, switched_default
+from domain.ccta.presets import CctaPreset, active_ccta_preset, set_active_ccta_preset
 from domain.ccta.io_types import VolumeGeometry, geometry_from_spacing
 from domain.ccta.runtime_types import CctaRuntimeData
 from gui import settings_io
@@ -36,6 +36,7 @@ from input_output.input.ccta_io import (
     read_nifti_volume,
 )
 from input_output.output.stl_export import export_nifti, export_stl
+from input_output.preset_library import CCTA, load_library
 from pages.ccta.left_half.cut_geometry import geometry as cut_geometry, vmtk
 from pages.ccta.left_half.cut_geometry import state_io as cut_state_io
 from pages.ccta.left_half.cut_geometry.dialogs.centerline_smoothing_dialog import CenterlineSmoothingDialog
@@ -122,7 +123,8 @@ class CctaPage(QWidget):
         # Wire up mask panel signals
         self._mask_tab.alpha_changed.connect(self._on_mask_alpha_changed)
         self._mask_tab.label_visibility_changed.connect(self._on_label_visibility_changed)
-        self._mask_tab.switch_default_requested.connect(self._on_switch_default)
+        self._mask_tab.preset_selected.connect(self._on_preset_selected)
+        self._refresh_preset_names()
 
         # Wire up brush panel signals
         self._brush_panel.brush_enabled_changed.connect(self._on_brush_enabled_changed)
@@ -370,14 +372,27 @@ class CctaPage(QWidget):
         if clear_undo:
             self.data.mask_undo.clear()
         self.data.mask = mask
-        self.data.labels = sorted(int(v) for v in np.unique(mask) if v != 0)
+        self._show_labels(self._labels_for(mask))
+
+    def _labels_for(self, mask: np.ndarray) -> list[int]:
+        """The labels `mask` holds and those the active preset names, so a preset label can
+        be painted before any voxel has it. Only values the mask's dtype can hold."""
+        present = {int(v) for v in np.unique(mask) if v != 0}
+        top = np.iinfo(mask.dtype).max
+        named = {defn.label for defn in active_ccta_preset().labels if defn.label <= top}
+        return sorted(present | named)
+
+    def _show_labels(self, labels: list[int]) -> None:
+        """List `labels` in every view and panel, after the active preset."""
+        assert self.data.mask is not None
+        self.data.labels = labels
         for display in (self._axial, self._coronal, self._sagittal):
-            display.set_mask(mask, self.data.labels)
-        self._mask_tab.set_labels(self.data.labels)
-        self._brush_panel.set_labels(self.data.labels)
-        self._stl_panel.set_labels(self.data.labels, self._mask_tab.label_names())
+            display.set_mask(self.data.mask, labels)
+        self._mask_tab.set_labels(labels)
+        self._brush_panel.set_labels(labels)
+        self._stl_panel.set_labels(labels, self._mask_tab.label_names())
         if self.data.voxel_spacing is not None:
-            self._3d_viewer.set_mask(mask, self.data.labels, self.data.voxel_spacing)
+            self._3d_viewer.set_mask(self.data.mask, labels, self.data.voxel_spacing)
         self.apply_label_preset()
 
     def apply_label_preset(self) -> None:
@@ -405,7 +420,11 @@ class CctaPage(QWidget):
         key_sections, values = {'contour_preset': 'ccta'}, {'contour_preset': preset.name}
         settings_io.apply_values(self.config, key_sections, values)
         settings_io.save_values(settings_io.resolve_config_path(self.config), key_sections, values)
-        self.apply_label_preset()
+        labels = self._labels_for(self.data.mask) if self.data.mask is not None else self.data.labels
+        if labels != self.data.labels:
+            self._show_labels(labels)
+        else:
+            self.apply_label_preset()
         self._cut_state_dirty = True  # it records the label names
 
     def open_label_presets(self, draft: CctaPreset | None = None) -> None:
@@ -413,23 +432,33 @@ class CctaPage(QWidget):
         the preset chosen there the active one on OK."""
         dialog = CctaContourSettingsDialog(self, active_name=active_ccta_preset().name, draft=draft)
         if dialog.exec():
+            self._refresh_preset_names()  # the dialog may have added, renamed or deleted some
             preset = dialog.selected_preset()
             if preset is not None:
                 self.set_label_preset(preset)
+
+    def _refresh_preset_names(self) -> None:
+        self._mask_tab.set_preset_names([entry.name for entry in load_library(CCTA)])
+        self._mask_tab.show_preset(active_ccta_preset().name)
+
+    def _on_preset_selected(self, name: str) -> None:
+        entry = next((entry for entry in load_library(CCTA) if entry.name == name), None)
+        if entry is None:  # its file went away since the list was filled
+            self._refresh_preset_names()
+            return
+        self.set_label_preset(entry.preset)
+        self.status_bar.showMessage(f'Labels named and coloured after {name}')
 
     def _offer_preset_for_mask_soon(self) -> None:
         # Once the mask is on screen, so the question is asked over what it is about.
         QTimer.singleShot(0, self._offer_preset_for_mask)
 
     def _offer_preset_for_mask(self) -> None:
-        draft = ask_for_draft(self, self.data.labels)
+        if self.data.mask is None:
+            return
+        draft = ask_for_draft(self, sorted(int(v) for v in np.unique(self.data.mask) if v != 0))
         if draft is not None:
             self.open_label_presets(draft)
-
-    def _on_switch_default(self) -> None:
-        target = switched_default(active_ccta_preset())
-        self.set_label_preset(target)
-        self.status_bar.showMessage(f'Labels named and coloured after {target.name}')
 
     def open_mask(self) -> None:
         if self.data.volume is None:
@@ -526,20 +555,14 @@ class CctaPage(QWidget):
             for d in (self._axial, self._coronal, self._sagittal):
                 d.disable_brush()
 
-    def _initialize_empty_mask(self, n_labels: int = 4) -> None:
-        """Create a blank mask for the loaded volume so the brush works without a mask file."""
+    def _initialize_empty_mask(self) -> None:
+        """Create a blank mask for the loaded volume so the brush works without a mask file,
+        with the labels of the active preset (1 to 4 if it has none)."""
         assert self.data.volume is not None
         Z, Y, X = self.data.volume.shape
-        mask = np.zeros((Z, Y, X), dtype=np.uint8)
         self.data.mask_undo.clear()
-        self.data.mask = mask
-        self.data.labels = list(range(1, n_labels + 1))
-        for display in (self._axial, self._coronal, self._sagittal):
-            display.set_mask(mask, self.data.labels)
-        self._mask_tab.set_labels(self.data.labels)
-        self._brush_panel.set_labels(self.data.labels)
-        self._stl_panel.set_labels(self.data.labels, self._mask_tab.label_names())
-        self.apply_label_preset()
+        self.data.mask = np.zeros((Z, Y, X), dtype=np.uint8)
+        self._show_labels(self._labels_for(self.data.mask) or [1, 2, 3, 4])
 
     def reset_to_neutral(self) -> None:
         """Return to neutral state: deactivate brush and cancel any active line draw."""

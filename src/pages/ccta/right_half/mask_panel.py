@@ -1,10 +1,10 @@
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QScrollArea,
     QSlider,
     QVBoxLayout,
@@ -74,7 +74,7 @@ class MaskPanel(QWidget):
 
     alpha_changed = pyqtSignal(float)  # 0.0–1.0
     label_visibility_changed = pyqtSignal(int, bool)  # label_value, visible
-    switch_default_requested = pyqtSignal()
+    preset_selected = pyqtSignal(str)  # the preset name
 
     def __init__(
         self,
@@ -113,21 +113,16 @@ class MaskPanel(QWidget):
         self._all_cb.setToolTip('Show / hide all labels')
         self._all_cb.toggled.connect(self._on_toggle_all)
         header_row.addStretch()
-        self._btn_switch = QPushButton('Switch default')
-        self._btn_switch.setToolTip(
-            'Switch between the two built-in presets, Colorful and Publication. Names and colours '
-            'are edited in Settings > CCTA Contour Settings'
-        )
-        self._btn_switch.setFixedHeight(22)
-        self._btn_switch.clicked.connect(self.switch_default_requested)
-        header_row.addWidget(self._btn_switch)
         header_row.addWidget(self._all_cb)
         root.addLayout(header_row)
 
-        self._preset_lbl = QLabel()  # the preset the labels are named and coloured after
-        self._preset_lbl.setStyleSheet('color: #888; font-size: 10px;')
-        self._preset_lbl.setWordWrap(True)
-        root.addWidget(self._preset_lbl)
+        self._preset_combo = QComboBox()  # the preset the labels are named and coloured after
+        self._preset_combo.setToolTip(
+            'The preset the labels are named and coloured after. Names and colours are edited in '
+            'Settings > CCTA Contour Settings'
+        )
+        self._preset_combo.textActivated.connect(self.preset_selected)
+        root.addWidget(self._preset_combo)
 
         self._rows_widget = QWidget()
         self._rows_layout = QVBoxLayout(self._rows_widget)
@@ -155,9 +150,26 @@ class MaskPanel(QWidget):
             self._rows[label] = row
         self._all_cb.setChecked(True)
 
+    def set_preset_names(self, names: list[str]) -> None:
+        """The presets the preset list offers, keeping the one shown if it is still there."""
+        current = self._preset_combo.currentText()
+        self._preset_combo.blockSignals(True)
+        self._preset_combo.clear()
+        self._preset_combo.addItems(names)
+        self._preset_combo.setCurrentText(current)
+        self._preset_combo.blockSignals(False)
+
+    def show_preset(self, name: str) -> None:
+        """Select `name` in the preset list without emitting preset_selected."""
+        self._preset_combo.blockSignals(True)
+        if self._preset_combo.findText(name) < 0:
+            self._preset_combo.addItem(name)
+        self._preset_combo.setCurrentText(name)
+        self._preset_combo.blockSignals(False)
+
     def set_label_appearance(self, preset_name: str, names: dict[int, str], colors: dict[int, tuple]) -> None:
         """Show each label with the name and colour the active preset (`preset_name`) gives it."""
-        self._preset_lbl.setText(preset_name)
+        self.show_preset(preset_name)
         for label, row in self._rows.items():
             row.set_label_name(names.get(label, f'Label {label}'))
             if label in colors:

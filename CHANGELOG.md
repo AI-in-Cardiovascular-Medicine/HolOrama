@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.16.2] - 2026-10-20
+
+### Changed
+- CCTA mask panel: **Switch default** is replaced by a preset list that offers every label preset, including your own.
+- CCTA label list and brush offer every label of the active preset, also those the mask does not hold yet, so they can be painted.
+
 ## [0.16.1] - 2026-10-19
 
 ### Changed
