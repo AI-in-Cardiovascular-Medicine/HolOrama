@@ -1,7 +1,16 @@
 import numpy as np
 from loguru import logger
+from scipy.signal import find_peaks
 
-from signal_processing.gating_pipeline import filter_by_period
+from signal_processing.gating_pipeline import bandpass_filter, normalize_data
+
+# Diastolic anchors: band around f_heart narrow enough to leave one valley per beat
+ANCHOR_LO_FRAC = 0.7
+ANCHOR_HI_FRAC = 1.3
+ANCHOR_MIN_DISTANCE = 0.7  # x beat length
+SNAP_FRAMES = 3  # anchor -> nearest valley of the gating signal
+SYSTOLE_WINDOW = (0.25, 0.75)  # part of each D-D interval searched for systole
+REFINE_FRAMES = 1  # final shift to the lowest raw value
 
 
 def walk_extrema(
@@ -83,152 +92,153 @@ def walk_extrema(
     return all_extrema, maxima_idx, minima_idx
 
 
+def _local_minima(signal: np.ndarray, lo: int, hi: int) -> list[int]:
+    lo, hi = max(lo, 1), min(hi, len(signal) - 1)
+    return [i for i in range(lo, hi) if signal[i] <= signal[i - 1] and signal[i] <= signal[i + 1]]
+
+
+def _deepest_minimum(signal: np.ndarray, lo: int, hi: int) -> int | None:
+    minima = _local_minima(signal, lo, hi)
+    return min(minima, key=lambda i: signal[i]) if minima else None
+
+
+def _beat_misfit(frame: int, neighbours: list[int], beat: float) -> float:
+    """Distance in frames from the nearest whole number of beats to each neighbour."""
+    misfit = 0.0
+    for n in neighbours:
+        gap = abs(n - frame)
+        misfit += abs(gap - beat * max(1, round(gap / beat)))
+    return misfit
+
+
+def _enforce_spacing(dia: list[int], beat: float) -> list[int]:
+    """Drop one of two diastoles closer than ANCHOR_MIN_DISTANCE beats.
+
+    Snapping can pull an anchor onto the systolic valley. Of the close pair
+    the one that fits the beat grid of its neighbours is kept.
+    """
+    dia = sorted(dia)
+    while len(dia) > 1:
+        gaps = np.diff(dia)
+        i = int(np.argmin(gaps))
+        if gaps[i] >= ANCHOR_MIN_DISTANCE * beat:
+            break
+        neighbours = dia[max(0, i - 1) : i] + dia[i + 2 : i + 3]
+        if not neighbours:
+            del dia[i + 1]
+            continue
+        a, b = dia[i], dia[i + 1]
+        del dia[i + 1 if _beat_misfit(a, neighbours, beat) <= _beat_misfit(b, neighbours, beat) else i]
+    return dia
+
+
+def _fill_gaps(dia: list[int], gating_signal: np.ndarray, beat: float) -> list[int]:
+    """Split a gap spanning several beats into equal beats, with one diastole per split.
+
+    Each inserted diastole is the deepest valley within a quarter beat of its split point.
+    """
+    filled = [dia[0]]
+    for nxt in dia[1:]:
+        prev = filled[-1]
+        n_beats = int(round((nxt - prev) / beat))
+        sub_beat = (nxt - prev) / max(1, n_beats)
+        for k in range(1, n_beats):
+            expected = prev + k * sub_beat
+            lo, hi = int(expected - sub_beat / 4), int(np.ceil(expected + sub_beat / 4)) + 1
+            valley = _deepest_minimum(gating_signal, lo, hi)
+            filled.append(valley if valley is not None else lo + int(np.argmin(gating_signal[lo:hi])))
+        filled.append(nxt)
+    return filled
+
+
+def find_diastole(image_raw: np.ndarray, gating_signal: np.ndarray, f_heart: float, fs: float, step: int) -> list[int]:
+    """One valley per beat on the raw signal bandpassed tightly around f_heart.
+
+    That valley is the longest still phase, i.e. diastole. Each anchor is
+    snapped to the deepest valley of the gating signal within SNAP_FRAMES.
+    Anchors closer than ANCHOR_MIN_DISTANCE beats are thinned out and missed
+    beats are filled, so every D-D interval holds about one beat.
+    """
+    beat = fs / f_heart
+    anchor_signal = normalize_data(bandpass_filter(image_raw, f_heart, fs, ANCHOR_LO_FRAC, ANCHOR_HI_FRAC), step=step)
+    anchors, _ = find_peaks(-anchor_signal, distance=max(1.0, ANCHOR_MIN_DISTANCE * beat))
+    dia = set()
+    for i in anchors:
+        snapped = _deepest_minimum(gating_signal, int(i) - SNAP_FRAMES, int(i) + SNAP_FRAMES + 1)
+        dia.add(int(i) if snapped is None else snapped)
+    if not dia:
+        return []
+    filled = _fill_gaps(_enforce_spacing(sorted(dia), beat), gating_signal, beat)
+    return _enforce_spacing(filled, beat)
+
+
+def find_systole(dia: list[int], gating_signal: np.ndarray) -> list[int]:
+    """Deepest valley between each pair of diastoles, falling back to the lowest point so phases alternate."""
+    sys_frames = []
+    for a, b in zip(dia[:-1], dia[1:]):
+        lo = a + int(SYSTOLE_WINDOW[0] * (b - a))
+        hi = a + int(np.ceil(SYSTOLE_WINDOW[1] * (b - a))) + 1
+        if hi <= lo:
+            continue
+        valley = _deepest_minimum(gating_signal, lo, hi)
+        sys_frames.append(valley if valley is not None else lo + int(np.argmin(gating_signal[lo:hi])))
+    return sys_frames
+
+
+def _refine_one(i: int, image_raw: np.ndarray) -> int:
+    lo = max(0, i - REFINE_FRAMES)
+    return lo + int(np.argmin(image_raw[lo : i + REFINE_FRAMES + 1]))
+
+
+def refine_to_raw(frames: list[int], image_raw: np.ndarray, blocked: set[int] | None = None) -> list[int]:
+    """Shift each frame to the lowest raw value within REFINE_FRAMES.
+
+    A frame whose shift would land on a blocked frame (e.g. a diastole) stays put.
+    """
+    blocked = blocked or set()
+    out = set()
+    for i in frames:
+        refined = _refine_one(i, image_raw)
+        out.add(i if refined in blocked else refined)
+    return sorted(out)
+
+
 class AutomaticGating:
-    def __init__(self, main_window, report_data, lower_limit: int = 0) -> None:
+    def __init__(self, main_window, lower_limit: int = 0) -> None:
         self.main_window = main_window
-        self.report_data = report_data
         self.lower_limit = lower_limit
 
     def _signal_to_frame_key(self, sig_idx: int) -> int:
         return self.lower_limit + int(sig_idx)
 
-    def automatic_gating(self, image_filtered: np.ndarray, contour_filtered: np.ndarray) -> None:
-        """Classify frames as systole or diastole.
+    def automatic_gating(self, image_raw: np.ndarray, gating_signal: np.ndarray, f_heart: float) -> bool:
+        """Two-step gating on the image signal (1 - NCC, low = still).
 
-        Combined path (contour available)
-        ----------------------------------
-        1. Walk the image signal with hysteresis -> image-signal minima (minimum-
-           motion stable frames = end-diastole / end-systole, 2 per cardiac cycle).
-        2. Walk the contour (area) signal independently -> area maxima (end-
-           diastole, lumen largest) and area minima (end-systole, lumen smallest).
-        3. Apply a period-consistency filter to each peak list using f_heart so
-           that noise ripples and duplicate detections are removed.
-        4. Classify each image valley by the nearest area extremum: area maximum ->
-           diastole, area minimum -> systole.
-
-        Image-only path (no contour)
-        ----------------------------
-        Walk the image signal; alternate valleys into two groups; classify by mean
-        amplitude (lower = more stable = diastole).
+        1. Diastole: one valley per beat after a narrow bandpass at f_heart,
+           snapped to the gating signal (the filtered curve shown in the plot).
+        2. Systole: deepest valley of the gating signal between two diastoles.
+        Both are finally shifted to the lowest raw value within one frame.
+        Returns False when the signal yields too few beats.
         """
-        gs = getattr(self.main_window.runtime_data, 'gating_signal', None) or {}
-        f_heart = gs.get('f_heart')
+        if not f_heart or f_heart <= 0:
+            logger.warning('Auto-gating: no heart rate available')
+            return False
         fs = float(self.main_window.runtime_data.metadata.get('frame_rate', 30))
+        step = self.main_window.config.gating.normalize_step
 
-        # Expected inter-peak/valley interval for image-signal maxima: 2 peaks per cycle
-        T_half = fs / (2.0 * f_heart) if f_heart and f_heart > 0 else None
-
-        # ── Walk image signal - track valleys (stable end-phases) ─────────
-        _, _, img_minima = walk_extrema(image_filtered)
-        if T_half is not None:
-            img_minima = filter_by_period(img_minima, T_half)
-
-        if len(img_minima) < 2:
-            logger.warning('Auto-gating: too few image signal valleys - check signal quality')
-            return
-
-        # ── Classify ───────────────────────────────────────────────────────
-        contour_flat = np.all(np.abs(contour_filtered) < 1e-9)
-
-        if not contour_flat:
-            T_full = T_half * 2 if T_half is not None else None
-            _, area_maxima, area_minima = walk_extrema(contour_filtered)
-            if T_full is not None:
-                area_maxima = filter_by_period(area_maxima, T_full)
-                area_minima = filter_by_period(area_minima, T_full)
-
-            logger.info(
-                f'Walk extrema: {len(img_minima)} image valleys, '
-                f'{len(area_maxima)} area maxima, {len(area_minima)} area minima'
-            )
-
-            dia_frames, sys_frames = self._classify_by_area_extrema(img_minima, area_maxima, area_minima)
-            if not dia_frames or not sys_frames:
-                logger.warning('Area-extrema classification collapsed - falling back to alternating')
-                dia_frames, sys_frames = self._alternate_by_amplitude(img_minima, image_filtered)
-        else:
-            logger.info(f'Walk extrema (image-only): {len(img_minima)} image valleys')
-            dia_frames, sys_frames = self._alternate_by_amplitude(img_minima, image_filtered)
-
-        if not dia_frames and not sys_frames:
-            logger.warning('Auto-gating produced no frames - check signal quality')
-            return
+        dia = find_diastole(image_raw, gating_signal, f_heart, fs, step)
+        # Refine before the systole search so every D-D interval keeps room for one systole
+        dia = _enforce_spacing(refine_to_raw(dia, image_raw), fs / f_heart)
+        if len(dia) < 2:
+            logger.warning('Auto-gating: too few diastolic valleys - check signal quality')
+            return False
+        sys_ = refine_to_raw(find_systole(dia, gating_signal), image_raw, blocked=set(dia))
+        dia_frames = [self._signal_to_frame_key(i) for i in dia]
+        sys_frames = [self._signal_to_frame_key(i) for i in sys_ if i not in set(dia)]
+        logger.info(f'Auto-gating at {f_heart * 60:.0f} BPM: {len(dia_frames)} dia, {len(sys_frames)} sys')
 
         self._apply_gating(dia_frames, sys_frames)
-
-    # ── combined: image peaks + area extrema ──────────────────────────────
-
-    def _classify_by_area_extrema(
-        self,
-        img_maxima: np.ndarray,
-        area_maxima: np.ndarray,
-        area_minima: np.ndarray,
-    ) -> tuple[list, list]:
-        """Classify each image-signal peak by the nearest area-signal extremum.
-
-        Nearest area maximum -> lumen area near its peak -> end-systole.
-        Nearest area minimum -> lumen area near its valley -> end-diastole.
-
-        Uses global nearest-neighbour (no distance cutoff) so the method
-        degrades gracefully when only a few area extrema are detected.
-        """
-        all_area = np.concatenate([area_maxima, area_minima])
-        if len(all_area) == 0:
-            return [], []
-
-        # Aortic vessel dilates during systole → area maximum = systole (+1)
-        # and contracts during diastole → area minimum = diastole (-1)
-        tags = np.concatenate(
-            [
-                np.ones(len(area_maxima), dtype=int),  # area_maxima → systole
-                -np.ones(len(area_minima), dtype=int),  # area_minima → diastole
-            ]
-        )
-        order = np.argsort(all_area)
-        all_area = all_area[order]
-        tags = tags[order]
-
-        dia_frames: list[int] = []
-        sys_frames: list[int] = []
-        for i in img_maxima:
-            nearest = int(np.argmin(np.abs(all_area - i)))
-            frame_key = self._signal_to_frame_key(i)
-            if tags[nearest] == -1:  # area minimum = diastole
-                dia_frames.append(frame_key)
-            else:
-                sys_frames.append(frame_key)
-
-        logger.info(f'Area-extrema classification: {len(dia_frames)} dia, {len(sys_frames)} sys')
-        return dia_frames, sys_frames
-
-    # ── image-only: alternating peaks ─────────────────────────────────────
-
-    def _alternate_by_amplitude(self, maxima: np.ndarray, image_filtered: np.ndarray) -> tuple[list, list]:
-        """Alternate image-signal peaks; lower mean amplitude -> sharpest images -> diastole."""
-        first_sig = maxima[::2].tolist()
-        second_sig = maxima[1::2].tolist()
-
-        first_frames = [self._signal_to_frame_key(i) for i in first_sig]
-        second_frames = [self._signal_to_frame_key(i) for i in second_sig]
-
-        N = len(image_filtered)
-        amp_f = self._mean_amp(image_filtered, first_frames, N)
-        amp_s = self._mean_amp(image_filtered, second_frames, N)
-
-        if amp_f <= amp_s:
-            dia_frames, sys_frames = first_frames, second_frames
-        else:
-            dia_frames, sys_frames = second_frames, first_frames
-
-        logger.info(
-            f'Image-only gating: {len(dia_frames)} dia, {len(sys_frames)} sys '
-            f'(amp_dia={min(amp_f, amp_s):.3f}, amp_sys={max(amp_f, amp_s):.3f})'
-        )
-        return dia_frames, sys_frames
-
-    def _mean_amp(self, signal: np.ndarray, frame_keys: list, N: int) -> float:
-        idxs = [k - self.lower_limit for k in frame_keys if 0 <= k - self.lower_limit < N]
-        return float(np.mean([signal[i] for i in idxs])) if idxs else 0.0
+        return True
 
     def _apply_gating(self, dia_frames: list, sys_frames: list) -> None:
         for fd in self.main_window.runtime_data.frame_data_dct.values():
@@ -248,5 +258,21 @@ class AutomaticGating:
             if frame in self.main_window.runtime_data.frame_data_dct:
                 self.main_window.runtime_data.frame_data_dct[frame].phase = 'S'
 
+        # Reference for is_auto_gated(), any later manual edit makes the lists differ
+        gs = self.main_window.runtime_data.gating_signal
+        if gs is not None:
+            gs['auto_gating_dia'] = list(self.main_window.runtime_data.gated_frames_dia)
+            gs['auto_gating_sys'] = list(self.main_window.runtime_data.gated_frames_sys)
+
         self.main_window.save_contours_soon()
         logger.info(f'Gating applied: {len(dia_frames)} diastolic, {len(sys_frames)} systolic')
+
+
+def is_auto_gated(runtime_data) -> bool:
+    """True while the current phases are exactly those of the last automatic gating."""
+    gs = runtime_data.gating_signal or {}
+    if 'auto_gating_dia' not in gs:
+        return False
+    return sorted(runtime_data.gated_frames_dia) == sorted(gs['auto_gating_dia']) and sorted(
+        runtime_data.gated_frames_sys
+    ) == sorted(gs.get('auto_gating_sys', []))

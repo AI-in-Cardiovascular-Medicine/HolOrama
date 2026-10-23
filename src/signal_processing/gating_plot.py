@@ -7,10 +7,10 @@ import pandas as pd
 from matplotlib.backend_bases import MouseButton
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.widgets import Button
-from PyQt6.QtWidgets import QMainWindow, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QMainWindow, QMessageBox, QVBoxLayout, QWidget
 
 import signal_processing.gating_pipeline as pipeline
-from signal_processing.automatic_gating import AutomaticGating
+from signal_processing.automatic_gating import AutomaticGating, is_auto_gated
 from input_output.output.reports import report
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
@@ -116,6 +116,16 @@ class GatingPlot:
         image_based_gating_filtered,
         contour_based_gating_filtered,
     ):
+        self._image_raw = np.asarray(image_based_gating, dtype=float)
+        gs = self.main_window.runtime_data.gating_signal or {}
+        # A cutoff picked in the frequency sweep replaces the default filter and heart rate
+        cutoff_bpm = gs.get('gating_cutoff_bpm')
+        if cutoff_bpm:
+            image_based_gating_filtered = self._cutoff_signal(cutoff_bpm)
+            f_gating = cutoff_bpm / 120.0
+        else:
+            f_gating = gs.get('f_heart')
+
         # Shift unfiltered signals below the filtered ones (work on copies - originals
         # are still referenced by prepare_data's return values)
         image_based_gating = image_based_gating.copy()
@@ -178,8 +188,7 @@ class GatingPlot:
         )
 
         if not self.main_window.runtime_data.gated_frames_dia and not self.main_window.runtime_data.gated_frames_sys:
-            auto_gating = AutomaticGating(self.main_window, self.report_data, self.lower_limit)
-            auto_gating.automatic_gating(image_based_gating_filtered, contour_based_gating_filtered)
+            self._auto_gate(image_based_gating_filtered, f_gating)
             self.draw_existing_lines(
                 self.main_window.runtime_data.gated_frames_dia,
                 self.main_window.diastole_color_plt,
@@ -192,11 +201,48 @@ class GatingPlot:
 
         return True
 
+    def _cutoff_signal(self, cutoff_bpm: float) -> np.ndarray:
+        """Raw image signal low-pass filtered at cutoff_bpm, as shown after a sweep click."""
+        fs = self.main_window.runtime_data.metadata['frame_rate']
+        filtered = pipeline.lowpass_filter(self._image_raw, cutoff_bpm / 60.0, fs)
+        return pipeline.normalize_data(filtered, step=self.main_window.config.gating.normalize_step)
+
+    def _auto_gate(self, gating_signal: np.ndarray, f_heart: float) -> bool:
+        auto_gating = AutomaticGating(self.main_window, self.lower_limit)
+        return auto_gating.automatic_gating(self._image_raw, gating_signal, f_heart)
+
+    def _may_regate(self, choice: dict) -> bool:
+        """Regate freely while the gating is empty or still automatic, otherwise ask once per sweep window."""
+        rt = self.main_window.runtime_data
+        if (not rt.gated_frames_dia and not rt.gated_frames_sys) or is_auto_gated(rt):
+            return True
+        if choice.get('overwrite') is None:
+            reply = QMessageBox.question(
+                self._sweep_win,
+                'Overwrite gating',
+                'The gating was edited manually. Overwrite it with automatic gating at the selected cutoff?',
+            )
+            choice['overwrite'] = reply == QMessageBox.StandardButton.Yes
+        return choice['overwrite']
+
+    def _refresh_phase_views(self):
+        self.selected_line = None
+        self.redraw_phase_lines(
+            self.main_window.runtime_data.gated_frames_dia,
+            self.main_window.diastole_color_plt,
+            self.main_window.runtime_data.gated_frames_sys,
+            self.main_window.systole_color_plt,
+        )
+        self.main_window.display.update_display()
+        self.main_window.longitudinal_view.plot_areas()
+
     def _show_frequency_sweep(self, *_):
         """Heatmap: image signal low-pass filtered at increasing BPM cutoffs.
 
-        Click a row to interactively apply that cutoff to the main gating plot.
-        The yellow line marks the currently active cutoff.
+        Click a row to apply that cutoff to the main gating plot. The implied
+        heart rate is cutoff / 2. While the gating is automatic it is redone
+        at that heart rate, a manually edited gating is only overwritten after
+        confirmation.
         """
         gs = getattr(self.main_window.runtime_data, 'gating_signal', None)
         if not gs or 'freq_sweep_signals' not in gs:
@@ -205,12 +251,10 @@ class GatingPlot:
         bpm_cuts = np.array(gs['freq_sweep_bpm_cuts'])
         sweep = np.array(gs['freq_sweep_signals'])
         f_heart = gs.get('f_heart', 1.0)
-        image_raw = np.array(gs['image_based_gating'])
-        fs = self.main_window.runtime_data.metadata['frame_rate']
-        cfg = self.main_window.config.gating
-
         hr_bpm = f_heart * 60
-        initial_bpm = 2.0 * hr_bpm  # yellow line starts at 2xHR
+        default_bpm = 2.0 * hr_bpm
+        initial_bpm = gs.get('gating_cutoff_bpm') or default_bpm  # yellow line starts at the active cutoff
+        choice: dict = {}  # overwrite answer, asked at most once per window
 
         sweep_fig, ax_sw = plt.subplots(figsize=(13, 5))
         sweep_fig.patch.set_facecolor('#1e1e1e')
@@ -229,13 +273,13 @@ class GatingPlot:
         # 1xHR reference line - moves on click to show implied HR (legend index 1)
         (hr_line,) = ax_sw.plot(
             [self.x[0], self.x[-1]],
-            [hr_bpm, hr_bpm],
+            [initial_bpm / 2, initial_bpm / 2],
             color='lime',
             lw=1.2,
             ls='--',
-            label=f'HR = {hr_bpm:.0f} BPM',
+            label=f'HR = {initial_bpm / 2:.0f} BPM',
         )
-        ax_sw.axhline(initial_bpm, color='#888888', lw=1.0, ls=':', label=f'Initial 2xHR = {initial_bpm:.0f} BPM')
+        ax_sw.axhline(default_bpm, color='#888888', lw=1.0, ls=':', label=f'Detected 2xHR = {default_bpm:.0f} BPM')
 
         ax_sw.set_xlabel('Frame', color='white')
         ax_sw.set_ylabel('Low-pass cutoff (BPM)', color='white')
@@ -251,7 +295,6 @@ class GatingPlot:
             if ev.inaxes != ax_sw or ev.ydata is None:
                 return
             new_bpm = float(np.clip(ev.ydata, bpm_cuts[0], bpm_cuts[-1]))
-            new_hz = new_bpm / 60.0
 
             implied_hr = new_bpm / 2.0
             active_line.set_ydata([new_bpm, new_bpm])
@@ -260,9 +303,11 @@ class GatingPlot:
             legend.get_texts()[1].set_text(f'HR = {implied_hr:.0f} BPM')
             sweep_fig.canvas.draw_idle()
 
-            new_filt = pipeline.lowpass_filter(image_raw, new_hz, fs)
-            new_filt = pipeline.normalize_data(new_filt, step=cfg.normalize_step)
+            new_filt = self._cutoff_signal(new_bpm)
             self._img_line.set_ydata(new_filt)
+            gs['gating_cutoff_bpm'] = new_bpm
+            if self._may_regate(choice) and self._auto_gate(new_filt, implied_hr / 60.0):
+                self._refresh_phase_views()
             self.fig.canvas.draw_idle()
 
         canvas = FigureCanvasQTAgg(sweep_fig)

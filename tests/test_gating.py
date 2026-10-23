@@ -1,10 +1,20 @@
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from signal_processing.automatic_gating import AutomaticGating, walk_extrema
+from signal_processing.automatic_gating import (
+    AutomaticGating,
+    _enforce_spacing,
+    _fill_gaps,
+    find_diastole,
+    find_systole,
+    is_auto_gated,
+    refine_to_raw,
+    walk_extrema,
+)
 from signal_processing.gating_pipeline import (
     bandpass_filter,
     compute_correlation_signal,
@@ -13,14 +23,13 @@ from signal_processing.gating_pipeline import (
 from signal_processing.gating_pipeline import compute_lumen_signal as compute_lumen_area_signal
 from signal_processing.gating_pipeline import (
     detect_heart_rate,
-    filter_by_period,
     lowpass_filter,
     normalize_data,
 )
 
 
 def _ag(lower_limit=0):
-    return AutomaticGating(Mock(), pd.DataFrame(), lower_limit=lower_limit)
+    return AutomaticGating(Mock(), lower_limit=lower_limit)
 
 
 def _sine(f_hz, fs=100.0, n=1000):
@@ -114,6 +123,13 @@ class TestDetectHeartRate:
         sig = 10.0 * np.sin(2 * np.pi * 0.5 * t) + np.sin(2 * np.pi * 2.0 * t)
         result = detect_heart_rate(sig, fs=100.0, f_min=1.0, f_max=3.5)
         assert result == pytest.approx(2.0, abs=0.15)
+
+    def test_prefers_fundamental_over_stronger_second_harmonic(self):
+        # Like the 1 - NCC signal: two motion events per beat put most power at 2 x HR
+        t = np.arange(1000) / 100.0
+        sig = 0.5 * np.sin(2 * np.pi * 1.2 * t) + np.sin(2 * np.pi * 2.4 * t) + 0.3 * np.sin(2 * np.pi * 3.6 * t)
+        result = detect_heart_rate(sig, fs=100.0, f_min=1.0, f_max=3.5)
+        assert result == pytest.approx(1.2, abs=0.15)
 
     def test_returns_midpoint_when_no_peak_in_range(self):
         # N=4, fs=1.0 → FFT bins at 0, 0.25, 0.5 Hz — none in [1.0, 3.5]
@@ -304,44 +320,137 @@ class TestWalkExtrema:
         assert len(minima) == 4
 
 
-# ─────────────────────────────── filter_by_period ───────────────────────────
+# ──────────────────────────── two-step gating ───────────────────────────────
+
+FS = 30.0
+BEAT = 24  # frames per beat, 75 BPM at 30 fps
+DIA = np.arange(12, 600, BEAT)
+SYS = DIA[:-1] + 11
 
 
-class TestFilterByPeriod:
-    def test_empty_input_returned_unchanged(self):
-        result = filter_by_period(np.array([], dtype=int), expected_interval=50)
-        assert len(result) == 0
+def _valley_signal():
+    """Synthetic 1 - NCC signal: deep wide valley at diastole, shallow narrow one at systole."""
+    x = np.arange(624, dtype=float)
+    sig = np.ones_like(x)
+    for d in DIA:
+        sig -= 1.0 * np.exp(-0.5 * ((x - d) / 2.5) ** 2)
+    for s_ in SYS:
+        sig -= 0.5 * np.exp(-0.5 * ((x - s_) / 1.5) ** 2)
+    return sig
 
-    def test_single_element_returned_unchanged(self):
-        result = filter_by_period(np.array([10]), expected_interval=50)
-        np.testing.assert_array_equal(result, [10])
 
-    def test_drops_peak_too_close_to_previous(self):
-        # expected=50, tolerance=0.4 → t_min=30; gap 79-50=29 < 30 → dropped
-        indices = np.array([0, 50, 79, 130])
-        result = filter_by_period(indices, expected_interval=50, tolerance=0.4)
-        np.testing.assert_array_equal(result, [0, 50, 130])
+def _gating_signal(raw, f_heart=FS / BEAT):
+    return normalize_data(bandpass_filter(raw, f_heart, FS, 0.7, 2.2), step=100)
 
-    def test_keeps_peaks_within_tolerance(self):
-        # gaps of 50 exactly — all kept
-        indices = np.array([0, 50, 100, 150])
-        result = filter_by_period(indices, expected_interval=50, tolerance=0.4)
-        np.testing.assert_array_equal(result, [0, 50, 100, 150])
 
-    def test_large_gap_is_retained(self):
-        # gap 250 >> t_max=70, but kept (possible missed beat)
-        indices = np.array([0, 50, 300])
-        result = filter_by_period(indices, expected_interval=50, tolerance=0.4)
-        np.testing.assert_array_equal(result, [0, 50, 300])
+def _max_offset(found, expected):
+    return max(int(np.min(np.abs(np.asarray(found) - e))) for e in expected)
 
-    def test_multiple_duplicates_only_first_kept(self):
-        # Only first of a rapid burst should survive
-        indices = np.array([0, 5, 10, 15, 100])
-        result = filter_by_period(indices, expected_interval=50, tolerance=0.4)
-        assert result[0] == 0
-        assert 100 in result
-        # 5, 10, 15 all have gap < 30 from their predecessor after filtering
-        assert len(result) < len(indices)
+
+class TestFindDiastole:
+    def test_one_anchor_per_beat_on_the_deep_valley(self):
+        raw = _valley_signal()
+        dia = find_diastole(raw, _gating_signal(raw), FS / BEAT, FS, step=100)
+        inner = DIA[2:-2]  # filter edge effects
+        assert _max_offset(dia, inner) <= 1
+        assert all(np.diff(dia) > 0.7 * BEAT)
+
+
+class TestDiastoleRepair:
+    def test_close_pair_keeps_frame_on_beat_grid(self):
+        # 30 sits half a beat off, e.g. an anchor snapped onto the systolic valley
+        assert _enforce_spacing([0, 24, 30, 48, 72], beat=24) == [0, 24, 48, 72]
+
+    def test_long_gap_split_into_equal_beats(self):
+        raw = _valley_signal()
+        filled = _fill_gaps([int(DIA[1]), int(DIA[4])], _gating_signal(raw), beat=BEAT)
+        assert len(filled) == 4
+        assert _max_offset(filled[1:3], DIA[2:4]) <= 1
+
+
+class TestFindSystole:
+    def test_shallow_valley_between_diastoles(self):
+        raw = _valley_signal()
+        sys_ = find_systole(list(DIA), _gating_signal(raw))
+        assert len(sys_) == len(DIA) - 1
+        assert _max_offset(sys_, SYS[2:-2]) <= 1
+
+    def test_falls_back_to_lowest_point_without_valley(self):
+        sys_ = find_systole([0, 20], np.linspace(1.0, 0.0, 21))
+        assert sys_ == [15]  # end of the 25-75 % window on a falling ramp
+
+
+class TestRefineToRaw:
+    def test_moves_to_lowest_neighbour(self):
+        raw = np.array([3.0, 2.0, 1.0, 2.0, 3.0, 0.5, 3.0])
+        assert refine_to_raw([1, 4], raw) == [2, 5]
+
+    def test_merges_frames_landing_on_same_minimum(self):
+        raw = np.array([3.0, 1.0, 3.0])
+        assert refine_to_raw([0, 2], raw) == [1]
+
+
+def _main_window(n_frames, lower_limit=0):
+    rt = SimpleNamespace(
+        frame_data_dct={i: SimpleNamespace(phase='-') for i in range(lower_limit + n_frames)},
+        metadata={'frame_rate': FS},
+        gating_signal={},
+        gated_frames_dia=[],
+        gated_frames_sys=[],
+    )
+    return SimpleNamespace(
+        runtime_data=rt,
+        config=SimpleNamespace(gating=SimpleNamespace(normalize_step=100)),
+        diastolic_frame_box=Mock(),
+        systolic_frame_box=Mock(),
+        save_contours_soon=Mock(),
+    )
+
+
+class TestAutomaticGating:
+    def test_gates_alternating_phases_with_offset(self):
+        raw = _valley_signal()
+        mw = _main_window(len(raw), lower_limit=50)
+        assert AutomaticGating(mw, lower_limit=50).automatic_gating(raw, _gating_signal(raw), FS / BEAT)
+        rt = mw.runtime_data
+        assert _max_offset(rt.gated_frames_dia, DIA[2:-2] + 50) <= 1
+        assert _max_offset(rt.gated_frames_sys, SYS[2:-2] + 50) <= 1
+        assert rt.frame_data_dct[rt.gated_frames_dia[3]].phase == 'D'
+        assert rt.frame_data_dct[rt.gated_frames_sys[3]].phase == 'S'
+
+    def test_returns_false_without_heart_rate(self):
+        raw = _valley_signal()
+        mw = _main_window(len(raw))
+        assert not AutomaticGating(mw).automatic_gating(raw, _gating_signal(raw), 0.0)
+        assert mw.runtime_data.gated_frames_dia == []
+
+
+class TestSystoleInEveryInterval:
+    @pytest.mark.parametrize('seed', range(5))
+    def test_noisy_signal_never_leaves_diastoles_without_systole(self, seed):
+        rng = np.random.default_rng(seed)
+        raw = _valley_signal()
+        raw = raw + rng.normal(0, 0.4, len(raw))
+        mw = _main_window(len(raw))
+        AutomaticGating(mw).automatic_gating(raw, _gating_signal(raw), FS / BEAT)
+        dia, sys_ = mw.runtime_data.gated_frames_dia, mw.runtime_data.gated_frames_sys
+        assert all(np.diff(dia) >= 0.7 * BEAT - 2)
+        assert all(any(a < x < b for x in sys_) for a, b in zip(dia[:-1], dia[1:]))
+
+
+class TestIsAutoGated:
+    def test_true_until_manual_edit(self):
+        raw = _valley_signal()
+        mw = _main_window(len(raw))
+        AutomaticGating(mw).automatic_gating(raw, _gating_signal(raw), FS / BEAT)
+        rt = mw.runtime_data
+        assert is_auto_gated(rt)
+        rt.gated_frames_sys.remove(rt.gated_frames_sys[0])
+        assert not is_auto_gated(rt)
+
+    def test_false_without_automatic_gating(self):
+        rt = SimpleNamespace(gating_signal={}, gated_frames_dia=[1], gated_frames_sys=[2])
+        assert not is_auto_gated(rt)
 
 
 # ──────────────────────────── AutomaticGating ───────────────────────────────
@@ -356,99 +465,3 @@ class TestAutomaticGatingSigToFrameKey:
         ag = _ag(lower_limit=10)
         assert ag._signal_to_frame_key(5) == 15
         assert ag._signal_to_frame_key(0) == 10
-
-
-class TestClassifyByAreaExtrema:
-    def test_near_area_minima_classified_as_diastole(self):
-        ag = _ag(lower_limit=0)
-        img_valleys = np.array([10, 50])
-        area_maxima = np.array([200])  # far from both
-        area_minima = np.array([12, 48])  # close to img valleys
-        dia, sys = ag._classify_by_area_extrema(img_valleys, area_maxima, area_minima)
-        assert 10 in dia
-        assert 50 in dia
-        assert len(sys) == 0
-
-    def test_near_area_maxima_classified_as_systole(self):
-        ag = _ag(lower_limit=0)
-        img_valleys = np.array([10, 50])
-        area_maxima = np.array([12, 48])  # close to img valleys
-        area_minima = np.array([200])  # far from both
-        dia, sys = ag._classify_by_area_extrema(img_valleys, area_maxima, area_minima)
-        assert 10 in sys
-        assert 50 in sys
-        assert len(dia) == 0
-
-    def test_empty_area_extrema_returns_empty(self):
-        ag = _ag(lower_limit=0)
-        dia, sys = ag._classify_by_area_extrema(np.array([10, 30]), np.array([], dtype=int), np.array([], dtype=int))
-        assert dia == []
-        assert sys == []
-
-    def test_lower_limit_applied_to_frame_keys(self):
-        ag = _ag(lower_limit=20)
-        img_valleys = np.array([5])  # sig_idx 5 → frame 25
-        area_maxima = np.array([100])
-        area_minima = np.array([6])  # nearest to img_valley → diastole
-        dia, _ = ag._classify_by_area_extrema(img_valleys, area_maxima, area_minima)
-        assert dia == [25]
-
-    def test_mixed_nearest_gives_mixed_classification(self):
-        ag = _ag(lower_limit=0)
-        # img_valley 10 is near area_max(12) → systole
-        # img_valley 40 is near area_min(38) → diastole
-        img_valleys = np.array([10, 40])
-        area_maxima = np.array([12])
-        area_minima = np.array([38])
-        dia, sys = ag._classify_by_area_extrema(img_valleys, area_maxima, area_minima)
-        assert 10 in sys
-        assert 40 in dia
-
-
-class TestAlternateByAmplitude:
-    def test_lower_amplitude_group_is_diastole(self):
-        ag = _ag(lower_limit=0)
-        maxima = np.array([2, 5, 8, 11])
-        image_filtered = np.zeros(15)
-        image_filtered[2] = 0.2  # first group (::2)
-        image_filtered[5] = 0.9  # second group (1::2)
-        image_filtered[8] = 0.2
-        image_filtered[11] = 0.9
-        dia, sys = ag._alternate_by_amplitude(maxima, image_filtered)
-        assert sorted(dia) == [2, 8]
-        assert sorted(sys) == [5, 11]
-
-    def test_higher_amplitude_group_is_systole(self):
-        ag = _ag(lower_limit=0)
-        maxima = np.array([2, 5, 8, 11])
-        image_filtered = np.zeros(15)
-        image_filtered[2] = 0.9  # first group — higher amplitude
-        image_filtered[5] = 0.2
-        image_filtered[8] = 0.9
-        image_filtered[11] = 0.2
-        dia, sys = ag._alternate_by_amplitude(maxima, image_filtered)
-        assert sorted(dia) == [5, 11]
-        assert sorted(sys) == [2, 8]
-
-
-class TestMeanAmp:
-    def test_basic_computation(self):
-        ag = _ag(lower_limit=0)
-        signal = np.array([0.1, 0.5, 0.3])
-        assert ag._mean_amp(signal, [0, 2], N=3) == pytest.approx(0.2)
-
-    def test_empty_frame_keys_returns_zero(self):
-        ag = _ag(lower_limit=0)
-        assert ag._mean_amp(np.array([1.0, 2.0]), [], N=2) == 0.0
-
-    def test_out_of_range_keys_excluded(self):
-        ag = _ag(lower_limit=0)
-        signal = np.array([1.0, 2.0, 3.0])
-        # key=5 → idx=5, out of [0, 3) → excluded; only key=1 contributes
-        assert ag._mean_amp(signal, [1, 5], N=3) == pytest.approx(2.0)
-
-    def test_lower_limit_subtracted_from_keys(self):
-        ag = _ag(lower_limit=10)
-        signal = np.array([0.0, 0.5, 1.0])
-        # frame_key=11 → idx=11-10=1; frame_key=12 → idx=2
-        assert ag._mean_amp(signal, [11, 12], N=3) == pytest.approx(0.75)
