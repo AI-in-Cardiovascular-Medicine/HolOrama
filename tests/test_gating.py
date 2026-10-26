@@ -6,13 +6,12 @@ import pandas as pd
 import pytest
 
 from signal_processing.automatic_gating import (
+    SYSTOLE_MARGIN,
     AutomaticGating,
-    _enforce_spacing,
-    _fill_gaps,
-    find_diastole,
-    find_systole,
     is_auto_gated,
-    refine_to_raw,
+    minor_axis_clock,
+    place_systole,
+    track_diastole,
     walk_extrema,
 )
 from signal_processing.gating_pipeline import (
@@ -320,7 +319,7 @@ class TestWalkExtrema:
         assert len(minima) == 4
 
 
-# ──────────────────────────── two-step gating ───────────────────────────────
+# ──────────────────────────── beat tracker gating ───────────────────────────
 
 FS = 30.0
 BEAT = 24  # frames per beat, 75 BPM at 30 fps
@@ -328,14 +327,15 @@ DIA = np.arange(12, 600, BEAT)
 SYS = DIA[:-1] + 11
 
 
-def _valley_signal():
+def _valley_signal(dia=DIA, sys_=SYS, n=624, sys_depth=0.5):
     """Synthetic 1 - NCC signal: deep wide valley at diastole, shallow narrow one at systole."""
-    x = np.arange(624, dtype=float)
+    x = np.arange(n, dtype=float)
     sig = np.ones_like(x)
-    for d in DIA:
+    for d in dia:
         sig -= 1.0 * np.exp(-0.5 * ((x - d) / 2.5) ** 2)
-    for s_ in SYS:
-        sig -= 0.5 * np.exp(-0.5 * ((x - s_) / 1.5) ** 2)
+    for s_ in sys_:
+        depth = sys_depth[s_] if isinstance(sys_depth, dict) else sys_depth
+        sig -= depth * np.exp(-0.5 * ((x - s_) / 1.5) ** 2)
     return sig
 
 
@@ -347,47 +347,63 @@ def _max_offset(found, expected):
     return max(int(np.min(np.abs(np.asarray(found) - e))) for e in expected)
 
 
-class TestFindDiastole:
-    def test_one_anchor_per_beat_on_the_deep_valley(self):
-        raw = _valley_signal()
-        dia = find_diastole(raw, _gating_signal(raw), FS / BEAT, FS, step=100)
-        inner = DIA[2:-2]  # filter edge effects
-        assert _max_offset(dia, inner) <= 1
-        assert all(np.diff(dia) > 0.7 * BEAT)
+class TestTrackDiastole:
+    def test_chain_follows_the_deep_valleys(self):
+        dia, skipped = track_diastole(_gating_signal(_valley_signal()), BEAT)
+        assert _max_offset(dia, DIA[2:-2]) <= 1  # filter edge effects at both ends
+        assert skipped == []
+
+    def test_holds_phase_when_one_systolic_valley_is_deeper(self):
+        deeper = {int(SYS[10]): 1.4}
+        raw = _valley_signal(sys_depth={int(s_): deeper.get(int(s_), 0.5) for s_ in SYS})
+        dia, _ = track_diastole(_gating_signal(raw), BEAT)
+        assert _max_offset(dia, DIA[2:-2]) <= 1
+        assert min(abs(np.asarray(dia) - SYS[10])) > BEAT / 4
+
+    def test_extrasystole_is_skipped_and_flagged(self):
+        # beat 12 comes early (0.6 beat) and is followed by a compensatory pause
+        premature = int(DIA[11] + 0.6 * BEAT)
+        dia_true = [d for d in DIA if d != DIA[12]] + [premature]
+        sys_true = [s_ for s_ in SYS if not DIA[11] < s_ < DIA[13]]
+        # unfiltered, a bandpass would ring and fill the pause with a ghost valley
+        dia, skipped = track_diastole(_valley_signal(sorted(dia_true), sys_true), BEAT)
+        assert min(abs(np.asarray(dia) - premature)) > 2
+        assert len(skipped) == 1
+        a, b = skipped[0]
+        assert abs(a - DIA[11]) <= 1 and abs(b - DIA[13]) <= 1
 
 
-class TestDiastoleRepair:
-    def test_close_pair_keeps_frame_on_beat_grid(self):
-        # 30 sits half a beat off, e.g. an anchor snapped onto the systolic valley
-        assert _enforce_spacing([0, 24, 30, 48, 72], beat=24) == [0, 24, 48, 72]
-
-    def test_long_gap_split_into_equal_beats(self):
-        raw = _valley_signal()
-        filled = _fill_gaps([int(DIA[1]), int(DIA[4])], _gating_signal(raw), beat=BEAT)
-        assert len(filled) == 4
-        assert _max_offset(filled[1:3], DIA[2:4]) <= 1
-
-
-class TestFindSystole:
+class TestPlaceSystole:
     def test_shallow_valley_between_diastoles(self):
-        raw = _valley_signal()
-        sys_ = find_systole(list(DIA), _gating_signal(raw))
+        sys_ = place_systole(list(DIA), [], _gating_signal(_valley_signal()), BEAT)
         assert len(sys_) == len(DIA) - 1
         assert _max_offset(sys_, SYS[2:-2]) <= 1
 
-    def test_falls_back_to_lowest_point_without_valley(self):
-        sys_ = find_systole([0, 20], np.linspace(1.0, 0.0, 21))
-        assert sys_ == [15]  # end of the 25-75 % window on a falling ramp
+    def test_keeps_margin_from_both_diastoles(self):
+        # flat valley-free ramp: systole is forced inside the margins
+        sys_ = place_systole([0, 24, 48], [], np.linspace(1.0, 0.0, 49), BEAT)
+        margin = np.ceil(SYSTOLE_MARGIN * BEAT)
+        assert all(a + margin <= x <= b - margin for x, (a, b) in zip(sys_, [(0, 24), (24, 48)]))
+
+    def test_skipped_beat_gets_no_systole(self):
+        sys_ = place_systole([12, 36, 84, 108], [(36, 84)], _gating_signal(_valley_signal()), BEAT)
+        assert len(sys_) == 2
+        assert not any(36 < x < 84 for x in sys_)
 
 
-class TestRefineToRaw:
-    def test_moves_to_lowest_neighbour(self):
-        raw = np.array([3.0, 2.0, 1.0, 2.0, 3.0, 0.5, 3.0])
-        assert refine_to_raw([1, 4], raw) == [2, 5]
+class TestMinorAxisClock:
+    def test_favours_the_phase_of_the_diastoles(self):
+        t = np.arange(624)
+        minor = 3.0 + 0.2 * np.sin(2 * np.pi * t / BEAT + 1.0)  # diastole at a patient-specific phase
+        prior = minor_axis_clock(minor, list(DIA[2:-2]), FS / BEAT, FS)
+        assert np.all(prior[DIA[2:-2]] > 0.9)
+        assert np.all(prior[DIA[2:-2] + BEAT // 2] < -0.9)
 
-    def test_merges_frames_landing_on_same_minimum(self):
-        raw = np.array([3.0, 1.0, 3.0])
-        assert refine_to_raw([0, 2], raw) == [1]
+    def test_none_without_enough_diastoles_or_with_gaps(self):
+        minor = np.ones(624)
+        assert minor_axis_clock(minor, [12, 36], FS / BEAT, FS) is None
+        minor[5] = np.nan
+        assert minor_axis_clock(minor, list(DIA), FS / BEAT, FS) is None
 
 
 def _main_window(n_frames, lower_limit=0):
@@ -409,40 +425,63 @@ def _main_window(n_frames, lower_limit=0):
 
 class TestAutomaticGating:
     def test_gates_alternating_phases_with_offset(self):
-        raw = _valley_signal()
-        mw = _main_window(len(raw), lower_limit=50)
-        assert AutomaticGating(mw, lower_limit=50).automatic_gating(raw, _gating_signal(raw), FS / BEAT)
+        g = _gating_signal(_valley_signal())
+        mw = _main_window(len(g), lower_limit=50)
+        assert AutomaticGating(mw, lower_limit=50).automatic_gating(g, FS / BEAT)
         rt = mw.runtime_data
         assert _max_offset(rt.gated_frames_dia, DIA[2:-2] + 50) <= 1
         assert _max_offset(rt.gated_frames_sys, SYS[2:-2] + 50) <= 1
         assert rt.frame_data_dct[rt.gated_frames_dia[3]].phase == 'D'
         assert rt.frame_data_dct[rt.gated_frames_sys[3]].phase == 'S'
+        assert rt.gating_signal['gating_skipped'] == []
+
+    def test_minor_axis_clock_keeps_the_result_on_a_clean_signal(self):
+        g = _gating_signal(_valley_signal())
+        minor = 3.0 + 0.2 * np.sin(2 * np.pi * np.arange(len(g)) / BEAT)
+        mw = _main_window(len(g))
+        assert AutomaticGating(mw).automatic_gating(g, FS / BEAT, minor_axis=minor)
+        assert _max_offset(mw.runtime_data.gated_frames_dia, DIA[2:-2]) <= 1
+
+    def test_stores_skipped_beats_as_frame_keys(self):
+        premature = int(DIA[11] + 0.6 * BEAT)
+        dia_true = sorted([d for d in DIA if d != DIA[12]] + [premature])
+        sys_true = [s_ for s_ in SYS if not DIA[11] < s_ < DIA[13]]
+        g = _valley_signal(dia_true, sys_true)  # unfiltered, see test_extrasystole_is_skipped_and_flagged
+        mw = _main_window(len(g), lower_limit=50)
+        AutomaticGating(mw, lower_limit=50).automatic_gating(g, FS / BEAT)
+        ((a, b),) = mw.runtime_data.gating_signal['gating_skipped']
+        assert abs(a - (DIA[11] + 50)) <= 1 and abs(b - (DIA[13] + 50)) <= 1
 
     def test_returns_false_without_heart_rate(self):
-        raw = _valley_signal()
-        mw = _main_window(len(raw))
-        assert not AutomaticGating(mw).automatic_gating(raw, _gating_signal(raw), 0.0)
+        g = _gating_signal(_valley_signal())
+        mw = _main_window(len(g))
+        assert not AutomaticGating(mw).automatic_gating(g, 0.0)
         assert mw.runtime_data.gated_frames_dia == []
 
 
-class TestSystoleInEveryInterval:
+class TestPhysiologicalSpacing:
     @pytest.mark.parametrize('seed', range(5))
-    def test_noisy_signal_never_leaves_diastoles_without_systole(self, seed):
+    def test_noisy_signal_keeps_spacing_and_one_systole_per_beat(self, seed):
         rng = np.random.default_rng(seed)
         raw = _valley_signal()
-        raw = raw + rng.normal(0, 0.4, len(raw))
-        mw = _main_window(len(raw))
-        AutomaticGating(mw).automatic_gating(raw, _gating_signal(raw), FS / BEAT)
-        dia, sys_ = mw.runtime_data.gated_frames_dia, mw.runtime_data.gated_frames_sys
-        assert all(np.diff(dia) >= 0.7 * BEAT - 2)
-        assert all(any(a < x < b for x in sys_) for a, b in zip(dia[:-1], dia[1:]))
+        g = _gating_signal(raw + rng.normal(0, 0.4, len(raw)))
+        mw = _main_window(len(g))
+        AutomaticGating(mw).automatic_gating(g, FS / BEAT)
+        rt = mw.runtime_data
+        dia, sys_ = rt.gated_frames_dia, rt.gated_frames_sys
+        skipped = {tuple(x) for x in rt.gating_signal['gating_skipped']}
+        assert all(np.diff(dia) >= 0.7 * BEAT)
+        for a, b in zip(dia[:-1], dia[1:]):
+            inside = [x for x in sys_ if a < x < b]
+            assert len(inside) == (0 if (a, b) in skipped else 1)
+            assert all(min(x - a, b - x) >= min(SYSTOLE_MARGIN * BEAT, 0.45 * (b - a)) - 1 for x in inside)
 
 
 class TestIsAutoGated:
     def test_true_until_manual_edit(self):
-        raw = _valley_signal()
-        mw = _main_window(len(raw))
-        AutomaticGating(mw).automatic_gating(raw, _gating_signal(raw), FS / BEAT)
+        g = _gating_signal(_valley_signal())
+        mw = _main_window(len(g))
+        AutomaticGating(mw).automatic_gating(g, FS / BEAT)
         rt = mw.runtime_data
         assert is_auto_gated(rt)
         rt.gated_frames_sys.remove(rt.gated_frames_sys[0])

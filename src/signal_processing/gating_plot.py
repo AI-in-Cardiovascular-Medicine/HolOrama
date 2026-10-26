@@ -35,6 +35,7 @@ class GatingPlot:
         self.lower_limit = 0
         self.default_line_color = 'grey'
         self.default_linestyle = (0, (1, 3))
+        self._skip_spans = []
 
     def _draw(self):
         try:
@@ -137,6 +138,7 @@ class GatingPlot:
         self.fig = self.main_window.gating_display.fig
         self.fig.clear()
         self.frame_marker = None
+        self._skip_spans = []
         self.ax = self.fig.add_subplot()
 
         # Filtered signals - primary visual focus
@@ -197,7 +199,7 @@ class GatingPlot:
                 self.main_window.runtime_data.gated_frames_sys,
                 self.main_window.systole_color_plt,
             )
-            self._draw()
+        self._draw_skipped()
 
         return True
 
@@ -208,8 +210,31 @@ class GatingPlot:
         return pipeline.normalize_data(filtered, step=self.main_window.config.gating.normalize_step)
 
     def _auto_gate(self, gating_signal: np.ndarray, f_heart: float) -> bool:
+        gs = self.main_window.runtime_data.gating_signal or {}
+        minor_axis = gs.get('minor_axis_signal') or None
+        if minor_axis is not None and len(minor_axis) != len(self._image_raw):
+            minor_axis = None
         auto_gating = AutomaticGating(self.main_window, self.lower_limit)
-        return auto_gating.automatic_gating(self._image_raw, gating_signal, f_heart)
+        return auto_gating.automatic_gating(gating_signal, f_heart, minor_axis=minor_axis)
+
+    def _draw_skipped(self):
+        """Shade beats the automatic gating skipped (extrasystole or unclear signal) for review."""
+        if not self._ready:
+            return
+        for span in self._skip_spans:
+            try:
+                span.remove()
+            except (NotImplementedError, ValueError):
+                pass
+        self._skip_spans = []
+        gs = self.main_window.runtime_data.gating_signal or {}
+        for start, end in gs.get('gating_skipped', []):
+            if self.x[0] <= start + 1 and end + 1 <= self.x[-1]:
+                label = '_nolegend_' if self._skip_spans else 'Skipped beat (review)'
+                self._skip_spans.append(self.ax.axvspan(start + 1, end + 1, color='orange', alpha=0.15, label=label))
+        legend = self.ax.legend(ncol=2, loc='lower right')
+        legend.set_draggable(True)
+        self._draw()
 
     def _may_regate(self, choice: dict) -> bool:
         """Regate freely while the gating is empty or still automatic, otherwise ask once per sweep window."""
@@ -233,6 +258,7 @@ class GatingPlot:
             self.main_window.runtime_data.gated_frames_sys,
             self.main_window.systole_color_plt,
         )
+        self._draw_skipped()
         self.main_window.display.update_display()
         self.main_window.longitudinal_view.plot_areas()
 

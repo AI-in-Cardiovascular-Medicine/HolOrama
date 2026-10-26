@@ -1,0 +1,26 @@
+case_id,group,folder,perfect,quality,swap_labels,label_frame_min,label_frame_max,exclude,json,notes
+348,tuning,Run1,1,5,0,,,,,re-labelled 2026-10-26
+351,tuning,Run1,0,4,0,,,,,re-labelled 2026-10-26 (earlier set: only frames 500-900 trusted)
+355,tuning,Rest,0,3,0,,,,,re-labelled 2026-10-26
+359,tuning,Run1,1,5,0,,,,,re-labelled 2026-10-26
+365,tuning,Rest,1,5,0,,,,,re-labelled 2026-10-26
+367,tuning,Run1,1,5,0,,,,,re-labelled 2026-10-26; 103 BPM; stretch 284-906 where D is the shallower valley
+368,tuning,Run1,1,5,0,,,,,re-labelled 2026-10-26
+375,tuning,Rest,0,4,0,,,,,re-labelled 2026-10-26 (rest proximal pullback)
+378,tuning,Rest,0,3,0,,,,,re-labelled 2026-10-26
+380,tuning,Rest,0,3,0,,,,,re-labelled 2026-10-26
+318,earlier,Run1,,,0,,,,,earlier labels (2026-10-23 state)
+323,earlier,Run1,,,0,,,x,,very bad signal
+327,earlier,Run1,,,0,,,,,earlier labels
+328,earlier,Run1,,,0,,,,,earlier labels
+329,earlier,Run1,,,1,,,,,D/S swapped in earlier labels; poor signal
+330,earlier,Run1,,,1,,,,,D/S swapped in earlier labels; very bad signal
+335,earlier,Run1,,,0,,,,,earlier labels
+341,earlier,Run1,,,0,,,,,earlier labels
+346,earlier,Run1,,,0,,,,,earlier labels (only D labelled)
+357,earlier,Rest,,,0,,,,,earlier labels
+358,earlier,Rest,,,0,,,,,earlier labels
+360,earlier,Rest,,,0,,,x,,inconsistent: labels and signal repeat every 13 frames (138 BPM at 30 fps) but ~85 BPM recorded
+366,earlier,Run1,,,0,,,,,earlier labels (only D labelled)
+381,earlier,Rest,,,0,,,,,earlier labels
+test,stress,,1,,0,,,,test_cases/anonymized_contours_ho_0_16_1.json,stress scan ~156 BPM; corrected labels in labels/test.csv (the JSON phases were overwritten by auto-gating)
