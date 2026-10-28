@@ -17,9 +17,11 @@ Contour signal  (when ≥50% of frames have drawn contours)
     Troughs = systole (small, compressed lumen).
 
 Heart rate detection
-    FFT spectral peak of the correlation signal in the configured range.
-    No grid-search optimization -> the FFT estimate is already correct for
-    both rest (~60-100 BPM) and stress (~100-210 BPM) imaging.
+    Harmonic sum of the correlation signal spectrum in the configured range.
+    The image signal has two motion events per beat, so its single FFT peak
+    often sits at 2x or 3x the heart rate. Summing the power of the first
+    harmonics of each candidate picks the fundamental for both rest
+    (~60-100 BPM) and stress (~100-210 BPM) imaging.
 
 Notes on Reasoning
 ------------------
@@ -38,6 +40,9 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 from scipy.signal import butter, filtfilt
+
+# Bump when the heart rate detection changes, so cached signals from older project files are recomputed
+HEART_RATE_METHOD = 'harmonic_sum'
 
 
 def _timing(func):
@@ -74,7 +79,7 @@ def prepare_data(
         0. Crop images to remove frame number and focus on central region.
         1. Normalise frames to [0,1] in the cropped region.
         2. Compute image signal: 1 - NCC between consecutive frames.
-        3. Detect heart rate via FFT spectral peak in the configured range.
+        3. Detect heart rate via the harmonic sum of the spectrum in the configured range.
         4. Bandpass filter both signals at [0.7, 2.2] x f_heart.
 
     Parameters
@@ -110,7 +115,12 @@ def prepare_data(
     # ── Cache ──────────────────────────────────────────────────────────────
     try:
         gs = main_window.runtime_data.gating_signal
-        if gs and gs.get('gating_config') == dict(vars(cfg)) and len(gs.get('image_based_gating', [])) == N:
+        if (
+            gs
+            and gs.get('gating_config') == dict(vars(cfg))
+            and gs.get('f_heart_method') == HEART_RATE_METHOD
+            and len(gs.get('image_based_gating', [])) == N
+        ):
             # Frequency sweep is recomputed even on cache hit: its BPM range
             # is fixed by compute_frequency_sweep(), not by gating_config, so
             # a project file saved under an older sweep range (e.g. before
@@ -140,7 +150,7 @@ def prepare_data(
     image_raw = compute_correlation_signal(frames_norm)
     image_raw = normalize_data(image_raw, step=cfg.normalize_step)
 
-    # ── Heart rate detection via FFT ───────────────────────────────────────
+    # ── Heart rate detection via harmonic sum ──────────────────────────────
     f_heart_min = getattr(cfg, 'f_cardiac_min', 1.0)
     f_heart_max = getattr(cfg, 'f_cardiac_max', 3.5)
     f_heart = detect_heart_rate(image_raw, fs, f_heart_min, f_heart_max)
@@ -176,6 +186,8 @@ def prepare_data(
     if gs is None:
         gs = {}
         main_window.runtime_data.gating_signal = gs
+    # A cutoff picked in the frequency sweep belongs to the previous signal
+    gs.pop('gating_cutoff_bpm', None)
     gs.update(
         {
             'image_based_gating': image_raw.tolist(),
@@ -185,6 +197,7 @@ def prepare_data(
             'gating_config': dict(vars(cfg)),
             'f_heart': f_heart,
             'f_heart_bpm': f_heart * 60,
+            'f_heart_method': HEART_RATE_METHOD,
             'freq_sweep_bpm_cuts': bpm_cuts.tolist(),
             'freq_sweep_signals': sweep.tolist(),
         }
@@ -209,13 +222,18 @@ def normalize_data(data, step: int) -> np.ndarray:
 
 
 def adjust_for_elliptic_deformation(area: np.ndarray, minor_axis: np.ndarray, step: int) -> np.ndarray:
-    """Scale area by a normalised minor-axis (shortest diameter) factor, so a
-    vessel that deforms from round to elliptic without losing lumen area still
-    shows up as displacement in the signal. Both are z-scored first so they're
-    on comparable scales before multiplying. Used for both the cardiac contour
-    signal (gating_pipeline) and the breathing signal (breathing_pipeline).
+    """Scale area by the minor axis (shortest diameter) relative to its mean, then z-score.
+
+    A vessel that deforms from round to elliptic without losing lumen area still
+    shows up as displacement in the signal. The factor stays positive, so a small
+    and flat lumen is never confused with a large and round one. Used for both the
+    cardiac contour signal (gating_pipeline) and the breathing signal (breathing_pipeline).
     """
-    return normalize_data(area, step=step) * normalize_data(minor_axis, step=step)
+    area = np.asarray(area, dtype=float)
+    minor_axis = np.asarray(minor_axis, dtype=float)
+    mean_minor = np.nanmean(minor_axis)
+    scaled = area * minor_axis / mean_minor if mean_minor > 0 else area
+    return normalize_data(scaled, step=step)
 
 
 # ─────────────────────────────── image signal ────
@@ -267,21 +285,34 @@ def detect_heart_rate(
     fs: float,
     f_min: float = 1.0,
     f_max: float = 3.5,
+    n_harmonics: int = 4,
 ) -> float:
-    """Dominant heart rate via FFT spectral peak in physiological range [Hz]."""
-    f_heart = fft_peak_freq(signal, fs, f_min, f_max, label="heart rate")
+    """Heart rate [Hz] in [f_min, f_max] with the most spectral power summed over its first harmonics.
+
+    The 1 - NCC signal has two motion events per beat, so its single FFT peak
+    is often the 2nd or 3rd harmonic. A candidate at that harmonic misses the
+    power at the true fundamental, so the harmonic sum favours the fundamental.
+    Higher harmonics weigh slightly less, so a candidate at half the true rate
+    never ties with it.
+    """
+    sig = np.nan_to_num(signal - np.nanmean(signal))
+    freqs = np.fft.rfftfreq(len(sig), d=1.0 / fs)
+    spectrum = np.abs(np.fft.rfft(sig))
+    candidates = freqs[(freqs >= f_min) & (freqs <= f_max)]
+    if len(candidates) == 0:
+        logger.warning(f"No heart rate candidate in [{f_min}, {f_max}] Hz -> using midpoint")
+        return (f_min + f_max) / 2
+
+    tol = max(0.08, float(freqs[1]))  # at least one frequency bin
+
+    def power_near(f: float) -> float:
+        mask = np.abs(freqs - f) <= tol
+        return float(spectrum[mask].max()) if mask.any() else 0.0
+
+    weights = 1.0 - 0.1 * np.arange(n_harmonics)
+    scores = [sum(w * power_near((k + 1) * f) for k, w in enumerate(weights)) for f in candidates]
+    f_heart = float(candidates[int(np.argmax(scores))])
     logger.info(f"Heart rate: {f_heart:.3f} Hz  ({f_heart * 60:.0f} BPM)")
-
-    # The 1-NCC signal has strong power at 2xf_heart (two motion events per cycle).
-    # If the actual heart rate is below f_min/2, the harmonic rather than the
-    # fundamental may be the dominant peak in [f_min, f_max].
-    if f_heart > f_max / 2:
-        logger.warning(
-            f"Detected f_heart={f_heart:.2f} Hz is above half of f_max={f_max} Hz. "
-            "The 2xf_heart harmonic of a slower heart rate may have been picked up. "
-            "If gating looks wrong, try halving f_cardiac_max in config."
-        )
-
     return f_heart
 
 
@@ -367,43 +398,6 @@ def lowpass_filter(signal: np.ndarray, f_cutoff: float, fs: float, order: int = 
         return filtfilt(b, a, np.nan_to_num(signal))
     except Exception:
         return np.array(signal, dtype=float)
-
-
-def filter_by_period(
-    indices: np.ndarray,
-    expected_interval: float,
-    tolerance: float = 0.4,
-) -> np.ndarray:
-    """Drop peaks whose inter-peak gap violates the expected cardiac interval.
-
-    Peaks closer than (1 - tolerance) x expected_interval to the previous
-    kept peak are discarded as noise ripple or walk-algorithm duplicates.
-    Peaks further than (1 + tolerance) x expected_interval are retained but
-    logged as potential missed beats (no automatic gap-filling).
-
-    Parameters
-    ----------
-    expected_interval : expected frames between consecutive peaks of this type
-                        (e.g. fs / (2 x f_heart) for image-signal maxima).
-    tolerance         : fractional tolerance; 0.4 -> ±40 %.
-    """
-    if len(indices) < 2:
-        return indices
-
-    t_min = (1.0 - tolerance) * expected_interval
-    t_max = (1.0 + tolerance) * expected_interval
-    kept = [int(indices[0])]
-    for idx in indices[1:]:
-        gap = int(idx) - kept[-1]
-        if gap < t_min:
-            logger.debug(f"Period filter: dropped peak at {idx} (gap {gap:.1f} < min {t_min:.1f})")
-        else:
-            if gap > t_max:
-                logger.debug(
-                    f"Period filter: large gap {gap:.1f} > {t_max:.1f} before peak at {idx} - possible missed beat"
-                )
-            kept.append(int(idx))
-    return np.array(kept, dtype=int)
 
 
 def compute_frequency_sweep(
