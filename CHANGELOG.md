@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.17.0] - 2026-10-28
+
+### Changed
+- **Automatic gating** rewritten, image signal only:
+  - Heart rate from the summed harmonics, so resting scans no longer lock onto 2–3× the true rate.
+  - Diastole is the deeper valley, chosen as one chain with a steady beat, so no phase slips and no diastoles a systole apart.
+  - Systole is one valley per beat between two diastoles, so D and S always alternate.
+- Picking a cutoff in **Freq. sweep** reruns the automatic gating. A manually edited gating is only replaced after confirmation.
+- The gating plot no longer shows the unfiltered contour curve.
+
+### Added
+- Beats the automatic gating skips (extrasystole or unclear signal) are shaded orange in the gating plot for review.
+
+### Fixed
+- Automatic gating of a whole pullback no longer stops after a stretch without motion.
+
 ## [0.16.2] - 2026-10-20
 
 ### Changed
