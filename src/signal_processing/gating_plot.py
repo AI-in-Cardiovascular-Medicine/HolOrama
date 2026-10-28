@@ -210,12 +210,8 @@ class GatingPlot:
         return pipeline.normalize_data(filtered, step=self.main_window.config.gating.normalize_step)
 
     def _auto_gate(self, gating_signal: np.ndarray, f_heart: float) -> bool:
-        gs = self.main_window.runtime_data.gating_signal or {}
-        minor_axis = gs.get('minor_axis_signal') or None
-        if minor_axis is not None and len(minor_axis) != len(self._image_raw):
-            minor_axis = None
         auto_gating = AutomaticGating(self.main_window, self.lower_limit)
-        return auto_gating.automatic_gating(gating_signal, f_heart, minor_axis=minor_axis)
+        return auto_gating.automatic_gating(gating_signal, f_heart)
 
     def _draw_skipped(self):
         """Shade beats the automatic gating skipped (extrasystole or unclear signal) for review."""

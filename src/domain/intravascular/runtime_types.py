@@ -21,7 +21,6 @@ class GatingSignal(TypedDict, total=False):
     auto_gating_dia: list[int]
     auto_gating_sys: list[int]
     gating_skipped: list[list[int]]
-    minor_axis_signal: list[float]
     freq_sweep_bpm_cuts: list[float]
     freq_sweep_signals: list[float]
     f_resp: float

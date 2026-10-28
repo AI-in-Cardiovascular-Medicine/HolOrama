@@ -1,8 +1,5 @@
 import numpy as np
 from loguru import logger
-from scipy.signal import hilbert
-
-from signal_processing.gating_pipeline import bandpass_filter
 
 # Beat tracker, tuned on 10 NARCO pullbacks with verified labels (see research/gating_validation)
 NORMAL_GAP = (0.7, 1.35)  # D-D gap of a regular beat, in beats
@@ -12,7 +9,6 @@ TEMPO_WEIGHT = 10.0  # penalty for a change between consecutive gaps
 SKIP_PENALTY = 6.0  # cost of skipping a beat
 SYSTOLE_MARGIN = 0.35  # minimum distance of systole from both diastoles, in beats
 DELAY_WEIGHT = 64.0  # pull of systole towards the recording's median D->S delay
-CLOCK_WEIGHT = 1.0  # weight of the lumen minor-axis beat clock
 
 
 def walk_extrema(
@@ -108,27 +104,51 @@ def _robust_z(x: np.ndarray) -> np.ndarray:
     return (x - np.median(x)) / scale
 
 
-def track_diastole(
-    gating_signal: np.ndarray, beat: float, prior: np.ndarray | None = None
-) -> tuple[list[int], list[tuple[int, int]]]:
+def track_diastole(gating_signal: np.ndarray, beat: float) -> tuple[list[int], list[tuple[int, int]]]:
     """Chain of diastoles among the valleys of the gating signal, chosen as a whole.
 
     Deeper valleys score higher (the heart is stillest in diastole). Steps
     between diastoles should stay near one beat and change gradually. A step
     of about two beats skips an irregular or missed beat at SKIP_PENALTY.
     The best chain is found by dynamic programming over pairs of consecutive
-    diastoles. Returns the diastoles and the skipped (start, end) intervals.
+    diastoles. Where no step can bridge to the next valleys (e.g. a long
+    stretch without motion), a new chain starts after the gap, which is
+    flagged like a skipped beat. Returns the diastoles and the skipped
+    (start, end) intervals.
     """
     g = gating_signal
     cand = np.array(_local_minima(g, 1, len(g) - 1))
     if len(cand) < 2:
         return [int(c) for c in cand], []
     node = _robust_z(-g[cand])
-    if prior is not None:
-        node = node + prior[cand]
 
+    dia: list[int] = []
+    joins: list[tuple[int, int]] = []
+    first = 0
+    while first < len(cand) - 1:
+        chain = _best_chain(cand, node, beat, first)
+        if len(chain) < 2:
+            first += 1
+            continue
+        if dia:
+            joins.append((dia[-1], int(cand[chain[0]])))
+        dia += [int(cand[k]) for k in chain]
+        first = int(np.searchsorted(cand, dia[-1] + NORMAL_GAP[0] * beat))
+    if not dia:
+        return [int(cand[np.argmin(g[cand])])], []
+    skipped = [(a, b) for a, b in zip(dia[:-1], dia[1:]) if (b - a) / beat >= SKIP_GAP[0] or (a, b) in joins]
+    return dia, skipped
+
+
+def _best_chain(cand: np.ndarray, node: np.ndarray, beat: float, first: int) -> list[int]:
+    """Best chain (candidate indices) starting within 1.5 beats of cand[first].
+
+    Prefers chains ending within 1.5 beats of the last candidate. If none
+    gets there, returns the chain reaching furthest so the caller can
+    continue after it.
+    """
     steps_by_end: dict[int, list[tuple[int, bool, float]]] = {}
-    for i in range(len(cand)):
+    for i in range(first, len(cand)):
         for j in range(i + 1, len(cand)):
             gap = (cand[j] - cand[i]) / beat
             if gap > SKIP_GAP[1]:
@@ -138,10 +158,10 @@ def track_diastole(
             elif gap >= SKIP_GAP[0]:
                 steps_by_end.setdefault(j, []).append((i, True, gap))
 
-    start_ok = cand <= cand[0] + 1.5 * beat
+    start_ok = cand <= cand[first] + 1.5 * beat
     best: dict[tuple[int, int], float] = {}
     back: dict[tuple[int, int], tuple[int, int] | None] = {}
-    for j in range(len(cand)):
+    for j in range(first, len(cand)):
         for i, skip, gap in steps_by_end.get(j, []):
             gain = node[j] - (SKIP_PENALTY if skip else GAP_WEIGHT * (gap - 1) ** 2)
             options: list[tuple[float, tuple[int, int] | None]] = [(node[i] + gain, None)] if start_ok[i] else []
@@ -152,18 +172,19 @@ def track_diastole(
             if options:
                 best[(i, j)], back[(i, j)] = max(options, key=lambda o: o[0])
     if not best:
-        return [int(cand[np.argmin(g[cand])])], []
+        return []
 
-    end_states = [s for s in best if cand[s[1]] >= cand[-1] - 1.5 * beat] or list(best)
-    last = max(end_states, key=lambda s: best[s])
+    end_states = [s for s in best if cand[s[1]] >= cand[-1] - 1.5 * beat]
+    if end_states:
+        last = max(end_states, key=lambda s: best[s])
+    else:
+        last = max(best, key=lambda s: (s[1], best[s]))
     chain = [last[1]]
     state: tuple[int, int] | None = last
     while state is not None:
         chain.append(state[0])
         state = back[state]
-    dia = [int(cand[k]) for k in reversed(chain)]
-    skipped = [(a, b) for a, b in zip(dia[:-1], dia[1:]) if (b - a) / beat >= SKIP_GAP[0]]
-    return dia, skipped
+    return chain[::-1]
 
 
 def place_systole(dia: list[int], skipped: list[tuple[int, int]], gating_signal: np.ndarray, beat: float) -> list[int]:
@@ -197,21 +218,6 @@ def place_systole(dia: list[int], skipped: list[tuple[int, int]], gating_signal:
     return sys_frames
 
 
-def minor_axis_clock(minor_axis: np.ndarray, dia: list[int], f_heart: float, fs: float) -> np.ndarray | None:
-    """Per-frame bonus from the beat phase of the lumen minor axis.
-
-    The minor axis follows the cardiac cycle closely, but where diastole falls
-    on it differs between patients. Its phase at the image-based diastoles
-    gives that offset for this recording. Frames at the same phase are
-    favoured, scaled by how consistent the phase was.
-    """
-    if minor_axis is None or len(dia) < 3 or not np.all(np.isfinite(minor_axis)):
-        return None
-    phase = np.angle(hilbert(bandpass_filter(minor_axis, f_heart, fs, 0.7, 1.3)))
-    mean_vector = np.mean(np.exp(1j * phase[dia]))
-    return CLOCK_WEIGHT * np.abs(mean_vector) * np.cos(phase - np.angle(mean_vector))
-
-
 class AutomaticGating:
     def __init__(self, main_window, lower_limit: int = 0) -> None:
         self.main_window = main_window
@@ -220,11 +226,10 @@ class AutomaticGating:
     def _signal_to_frame_key(self, sig_idx: int) -> int:
         return self.lower_limit + int(sig_idx)
 
-    def automatic_gating(self, gating_signal: np.ndarray, f_heart: float, minor_axis: np.ndarray | None = None) -> bool:
+    def automatic_gating(self, gating_signal: np.ndarray, f_heart: float) -> bool:
         """Gate diastole and systole on the image gating signal (1 - NCC, low = still).
 
         1. Diastole: the chain of deep valleys with a steady beat (track_diastole).
-           With a lumen minor axis a second pass adds its beat clock.
         2. Systole: one valley per beat near the learned D->S delay (place_systole).
         Skipped beats are stored in gating_signal['gating_skipped'] for review.
         Returns False when the signal yields too few beats.
@@ -236,10 +241,6 @@ class AutomaticGating:
         beat = fs / f_heart
 
         dia, skipped = track_diastole(gating_signal, beat)
-        if minor_axis is not None and len(minor_axis) == len(gating_signal):
-            prior = minor_axis_clock(np.asarray(minor_axis, dtype=float), dia, f_heart, fs)
-            if prior is not None:
-                dia, skipped = track_diastole(gating_signal, beat, prior)
         if len(dia) < 2:
             logger.warning('Auto-gating: too few diastolic valleys - check signal quality')
             return False

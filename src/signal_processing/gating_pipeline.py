@@ -119,7 +119,6 @@ def prepare_data(
             gs
             and gs.get('gating_config') == dict(vars(cfg))
             and gs.get('f_heart_method') == HEART_RATE_METHOD
-            and 'minor_axis_signal' in gs
             and len(gs.get('image_based_gating', [])) == N
         ):
             # Frequency sweep is recomputed even on cache hit: its BPM range
@@ -166,7 +165,6 @@ def prepare_data(
     # ── Contour signal: lumen area ─────────────────────────────────────────
     contour_raw = np.zeros(N)
     contour_filtered = np.zeros(N)
-    minor_axis_clock: list[float] = []  # beat clock for the automatic gating, empty without contours
 
     if report_data is not None and len(report_data) > 0:
         area_signal = compute_lumen_signal(report_data, N, lower_limit, key='lumen_area')
@@ -177,7 +175,6 @@ def prepare_data(
             contour_raw = adjust_for_elliptic_deformation(area_signal, minor_axis_signal, step=cfg.normalize_step)
             area_filtered = bandpass_filter(area_signal, f_heart, fs, lo_frac, hi_frac)
             contour_filtered = normalize_data(area_filtered, step=cfg.normalize_step)
-            minor_axis_clock = minor_axis_signal.tolist()
 
     # ── Frequency sweep for interactive visualisation ──────────────────────
     bpm_cuts, sweep = compute_frequency_sweep(image_raw, fs)
@@ -197,7 +194,6 @@ def prepare_data(
             'contour_based_gating': contour_raw.tolist(),
             'image_based_gating_filtered': image_filtered.tolist(),
             'contour_based_gating_filtered': contour_filtered.tolist(),
-            'minor_axis_signal': minor_axis_clock,
             'gating_config': dict(vars(cfg)),
             'f_heart': f_heart,
             'f_heart_bpm': f_heart * 60,

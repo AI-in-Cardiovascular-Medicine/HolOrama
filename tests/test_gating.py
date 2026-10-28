@@ -9,7 +9,6 @@ from signal_processing.automatic_gating import (
     SYSTOLE_MARGIN,
     AutomaticGating,
     is_auto_gated,
-    minor_axis_clock,
     place_systole,
     track_diastole,
     walk_extrema,
@@ -372,6 +371,18 @@ class TestTrackDiastole:
         a, b = skipped[0]
         assert abs(a - DIA[11]) <= 1 and abs(b - DIA[13]) <= 1
 
+    def test_continues_after_a_stretch_without_valleys(self):
+        # no motion for four beats (e.g. pullback paused), too long for a skipped-beat step
+        quiet = (DIA[8], DIA[12])
+        dia_true = [d for d in DIA if not quiet[0] < d < quiet[1]]
+        sys_true = [s_ for s_ in SYS if not quiet[0] < s_ < quiet[1]]
+        sig = _valley_signal(dia_true, sys_true)
+        flat = slice(quiet[0] + 8, quiet[1] - 8)
+        sig[flat] += np.linspace(0, 0.01, flat.stop - flat.start)  # a gentle slope, no valleys
+        dia, skipped = track_diastole(sig, BEAT)
+        assert _max_offset(dia, DIA[DIA > quiet[1]]) <= 1  # gated to the end
+        assert any(a <= quiet[0] + 1 and b >= quiet[1] - 1 for a, b in skipped)
+
 
 class TestPlaceSystole:
     def test_shallow_valley_between_diastoles(self):
@@ -389,21 +400,6 @@ class TestPlaceSystole:
         sys_ = place_systole([12, 36, 84, 108], [(36, 84)], _gating_signal(_valley_signal()), BEAT)
         assert len(sys_) == 2
         assert not any(36 < x < 84 for x in sys_)
-
-
-class TestMinorAxisClock:
-    def test_favours_the_phase_of_the_diastoles(self):
-        t = np.arange(624)
-        minor = 3.0 + 0.2 * np.sin(2 * np.pi * t / BEAT + 1.0)  # diastole at a patient-specific phase
-        prior = minor_axis_clock(minor, list(DIA[2:-2]), FS / BEAT, FS)
-        assert np.all(prior[DIA[2:-2]] > 0.9)
-        assert np.all(prior[DIA[2:-2] + BEAT // 2] < -0.9)
-
-    def test_none_without_enough_diastoles_or_with_gaps(self):
-        minor = np.ones(624)
-        assert minor_axis_clock(minor, [12, 36], FS / BEAT, FS) is None
-        minor[5] = np.nan
-        assert minor_axis_clock(minor, list(DIA), FS / BEAT, FS) is None
 
 
 def _main_window(n_frames, lower_limit=0):
@@ -434,13 +430,6 @@ class TestAutomaticGating:
         assert rt.frame_data_dct[rt.gated_frames_dia[3]].phase == 'D'
         assert rt.frame_data_dct[rt.gated_frames_sys[3]].phase == 'S'
         assert rt.gating_signal['gating_skipped'] == []
-
-    def test_minor_axis_clock_keeps_the_result_on_a_clean_signal(self):
-        g = _gating_signal(_valley_signal())
-        minor = 3.0 + 0.2 * np.sin(2 * np.pi * np.arange(len(g)) / BEAT)
-        mw = _main_window(len(g))
-        assert AutomaticGating(mw).automatic_gating(g, FS / BEAT, minor_axis=minor)
-        assert _max_offset(mw.runtime_data.gated_frames_dia, DIA[2:-2]) <= 1
 
     def test_stores_skipped_beats_as_frame_keys(self):
         premature = int(DIA[11] + 0.6 * BEAT)

@@ -30,8 +30,8 @@ idealized example below:
    :align: center
    :width: 450px
 
-HolOrama identifies the phases **from the images themselves** (image-based gating) and,
-when contours exist, uses them as an additional beat clock. The method builds on the
+HolOrama identifies the phases **from the images themselves** (image-based gating). The
+method builds on the
 algorithm published as *AIVUS-CAA* (:ref:`Stark et al. 2025 <gating-citation-2>`) and has
 been improved and validated against manually gated pullbacks since then.
 
@@ -58,8 +58,7 @@ detected heart rate.
        at least 50 % of the frames. It follows the cardiac cycle, but where diastole falls
        on it differs between patients and vessel segments (pronounced vessel motion near
        the ostium in coronary anomalies, plaque in coronary artery disease). It is shown for
-       reference. The automatic gating uses the related lumen **minor axis** only as a beat
-       clock, see *Phase assignment* below.
+       reference and not used by the automatic gating.
 
 .. rubric:: Heart-rate detection
 
@@ -89,10 +88,6 @@ one systole.
 - **Diastole**: a beat tracker chooses the whole chain of diastoles at once among all
   valleys. It prefers deep valleys and steps of about one beat that change only gradually
   along the pullback, so it does not slip onto the systolic valley for a few beats.
-- **Lumen minor axis**: when contours cover at least half of the frames, the minor axis
-  serves as an additional beat clock. It follows the cardiac cycle closely, but where
-  diastole falls on it differs between patients, so its offset is learned from the
-  image-based diastoles of the same pullback.
 - **Systole**: one valley per beat, close to the typical delay after diastole in this
   pullback and at least about a third of a beat away from both neighbouring diastoles.
 - **Skipped beats**: a step of about two beats is allowed at a cost, for example around
@@ -119,9 +114,9 @@ Prerequisites
 ~~~~~~~~~~~~~
 
 - An IVUS pullback loaded in the :doc:`intravascular` module.
-- Optional but strongly recommended: lumen contours on at least half the frames (draw them
-  or run **Automatic Segmentation**). Without them only the image signal is available, and
-  the phase assignment is less reliable.
+- Optional: lumen contours on at least half the frames (draw them or run **Automatic
+  Segmentation**) to show the lumen-area curve for reference. The automatic gating uses
+  the image signal only.
 
 See overview of the gating module in the GUI representation below:
 
@@ -254,9 +249,9 @@ Troubleshooting
 
    * - Symptom
      - What to try
-   * - Only the green curve carries information
+   * - The yellow curve is flat
      - Fewer than 50 % of frames have contours. Draw more, or run **Automatic
-       Segmentation** first.
+       Segmentation** first. The automatic gating does not need it.
    * - Markers are placed at roughly double or half the true rate
      - The heart-rate estimate is off. Open **Freq. sweep** and pick a better cutoff, or
        narrow ``f_cardiac_min`` / ``f_cardiac_max`` in ``config.yaml``.

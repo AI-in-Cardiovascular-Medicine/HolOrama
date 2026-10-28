@@ -1,8 +1,0 @@
-10 cases, perfect cases weigh double
-shipped {'SYSTOLE_MARGIN': 0.35, 'DELAY_WEIGHT': 64.0, 'GAP_WEIGHT': 5.0, 'TEMPO_WEIGHT': 10.0, 'SKIP_PENALTY': 6.0, 'CLOCK_WEIGHT': 1.0} D  78.9 S  70.1 (tol 2: D  83.7 S  81.5) mean  74.5
-SYSTOLE_MARGIN  0.25: D  78.9 S  68.4 (tol 2: D  83.7 S  80.5) mean  73.6 | 0.3: D  78.9 S  69.2 (tol 2: D  83.7 S  80.9) mean  74.0 | 0.35: D  78.9 S  70.1 (tol 2: D  83.7 S  81.5) mean  74.5 | 0.4: D  78.9 S  72.3 (tol 2: D  83.7 S  83.4) mean  75.6
-DELAY_WEIGHT    4: D  78.9 S  68.2 (tol 2: D  83.7 S  79.1) mean  73.6 | 16: D  78.9 S  69.1 (tol 2: D  83.7 S  80.9) mean  74.0 | 64: D  78.9 S  70.1 (tol 2: D  83.7 S  81.5) mean  74.5 | 256: D  78.9 S  70.3 (tol 2: D  83.7 S  82.1) mean  74.6
-GAP_WEIGHT      2: D  78.8 S  70.1 (tol 2: D  83.7 S  81.5) mean  74.5 | 5: D  78.9 S  70.1 (tol 2: D  83.7 S  81.5) mean  74.5 | 20: D  78.0 S  69.7 (tol 2: D  83.0 S  81.0) mean  73.9
-TEMPO_WEIGHT    3: D  78.4 S  69.9 (tol 2: D  83.3 S  81.1) mean  74.1 | 10: D  78.9 S  70.1 (tol 2: D  83.7 S  81.5) mean  74.5 | 30: D  78.1 S  69.1 (tol 2: D  83.0 S  80.3) mean  73.6
-SKIP_PENALTY    3: D  78.6 S  69.7 (tol 2: D  83.6 S  81.0) mean  74.2 | 6: D  78.9 S  70.1 (tol 2: D  83.7 S  81.5) mean  74.5 | 12: D  78.5 S  69.9 (tol 2: D  83.3 S  81.1) mean  74.2
-CLOCK_WEIGHT    0: D  78.1 S  69.9 (tol 2: D  83.2 S  81.0) mean  74.0 | 0.5: D  78.4 S  69.9 (tol 2: D  83.5 S  81.3) mean  74.1 | 1: D  78.9 S  70.1 (tol 2: D  83.7 S  81.5) mean  74.5 | 2: D  75.7 S  66.9 (tol 2: D  80.5 S  78.7) mean  71.3
