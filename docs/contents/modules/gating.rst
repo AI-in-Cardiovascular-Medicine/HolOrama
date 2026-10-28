@@ -127,7 +127,7 @@ See overview of the gating module in the GUI representation below:
    :width: 900px
 
    Bottom right: the ``Extract Diastolic and Systolic Frames`` button. Top: the calculated
-   image and contour signals (filtered above, unfiltered below) and the detected gated
+   image and contour signals (filtered, with the unfiltered image signal below) and the detected gated
    frames (blue = diastole, red = systole, grey = untyped). Below the plot: the
    frequency-sweep and breathing-sweep diagnostic views. Frequency sweep: a heat map of the
    image signal low-pass filtered at increasing BPM cutoffs; the yellow line marks the
@@ -152,7 +152,7 @@ The gating plot appears in the top right of the window:
 
 - **Solid green**: the filtered image signal.
 - **Solid yellow**: the filtered contour (lumen-area) signal.
-- **Dashed** curves below them: the same signals unfiltered, for reference.
+- **Dashed green** curve below them: the image signal unfiltered, for reference.
 - **Vertical lines**: the gated frames. Blue = diastole, red = systole, grey = untyped.
 - **Orange shaded areas**: beats the automatic gating skipped (possible extrasystole or
   unclear signal). Check these frames and add lines by hand if needed.

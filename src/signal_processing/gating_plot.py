@@ -56,23 +56,13 @@ class GatingPlot:
         if not dialog_success:
             self.main_window.status_bar.showMessage(self.main_window.waiting_status)
             return
-        (
-            image_based_gating,
-            contour_based_gating,
-            image_based_gating_filtered,
-            contour_based_gating_filtered,
-        ) = pipeline.prepare_data(
+        (image_based_gating, _, image_based_gating_filtered, contour_based_gating_filtered,) = pipeline.prepare_data(
             self.main_window,
             self.frames,
             self.report_data,
             lower_limit=self.lower_limit,
         )
-        self.plot_data(
-            image_based_gating,
-            contour_based_gating,
-            image_based_gating_filtered,
-            contour_based_gating_filtered,
-        )
+        self.plot_data(image_based_gating, image_based_gating_filtered, contour_based_gating_filtered)
         self.main_window.status_bar.showMessage(self.main_window.waiting_status)
 
     def define_roi(self):
@@ -110,13 +100,7 @@ class GatingPlot:
         self.x = np.arange(lower_limit + 1, upper_limit + 1)
         return True
 
-    def plot_data(
-        self,
-        image_based_gating,
-        contour_based_gating,
-        image_based_gating_filtered,
-        contour_based_gating_filtered,
-    ):
+    def plot_data(self, image_based_gating, image_based_gating_filtered, contour_based_gating_filtered):
         self._image_raw = np.asarray(image_based_gating, dtype=float)
         gs = self.main_window.runtime_data.gating_signal or {}
         # A cutoff picked in the frequency sweep replaces the default filter and heart rate
@@ -127,13 +111,10 @@ class GatingPlot:
         else:
             f_gating = gs.get('f_heart')
 
-        # Shift unfiltered signals below the filtered ones (work on copies - originals
-        # are still referenced by prepare_data's return values)
+        # Shift the unfiltered image signal below the filtered ones (on a copy, the original
+        # is still referenced by prepare_data's return values)
         image_based_gating = image_based_gating.copy()
-        contour_based_gating = contour_based_gating.copy()
-        min_sig = min(np.nanmin(image_based_gating), np.nanmin(contour_based_gating))
-        for sig in (image_based_gating, contour_based_gating):
-            sig += min_sig - np.nanmax(sig)
+        image_based_gating += np.nanmin(image_based_gating) - np.nanmax(image_based_gating)
 
         self.fig = self.main_window.gating_display.fig
         self.fig.clear()
@@ -148,11 +129,8 @@ class GatingPlot:
         (self._cnt_line,) = self.ax.plot(
             self.x, contour_based_gating_filtered, color='yellow', lw=2, label='Contour (filtered)'
         )
-        # Raw signals - subtle background reference
+        # Raw image signal - subtle background reference
         self.ax.plot(self.x, image_based_gating, color='green', ls='dashed')
-        self.ax.plot(self.x, contour_based_gating, color='yellow', ls='dashed')
-        # self.ax.plot(self.x, image_based_gating, color='green', ls='dashed', alpha=0.30)
-        # self.ax.plot(self.x, contour_based_gating, color='yellow', ls='dashed', alpha=0.30)
 
         self.ax.set_xlabel('Frame')
         self.ax.get_yaxis().set_visible(False)
