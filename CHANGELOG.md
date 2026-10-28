@@ -18,6 +18,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 - Automatic gating of a whole pullback no longer stops after a stretch without motion.
+- **Breathing correction**: a small, flattened lumen is no longer mistaken for a large, round one, and gated frames anchor the taper fit with the intended weight (10×, was 100×).
 
 ## [0.16.2] - 2026-10-20
 

@@ -222,13 +222,18 @@ def normalize_data(data, step: int) -> np.ndarray:
 
 
 def adjust_for_elliptic_deformation(area: np.ndarray, minor_axis: np.ndarray, step: int) -> np.ndarray:
-    """Scale area by a normalised minor-axis (shortest diameter) factor, so a
-    vessel that deforms from round to elliptic without losing lumen area still
-    shows up as displacement in the signal. Both are z-scored first so they're
-    on comparable scales before multiplying. Used for both the cardiac contour
-    signal (gating_pipeline) and the breathing signal (breathing_pipeline).
+    """Scale area by the minor axis (shortest diameter) relative to its mean, then z-score.
+
+    A vessel that deforms from round to elliptic without losing lumen area still
+    shows up as displacement in the signal. The factor stays positive, so a small
+    and flat lumen is never confused with a large and round one. Used for both the
+    cardiac contour signal (gating_pipeline) and the breathing signal (breathing_pipeline).
     """
-    return normalize_data(area, step=step) * normalize_data(minor_axis, step=step)
+    area = np.asarray(area, dtype=float)
+    minor_axis = np.asarray(minor_axis, dtype=float)
+    mean_minor = np.nanmean(minor_axis)
+    scaled = area * minor_axis / mean_minor if mean_minor > 0 else area
+    return normalize_data(scaled, step=step)
 
 
 # ─────────────────────────────── image signal ────

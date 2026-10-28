@@ -130,6 +130,7 @@ def _build_signal_signature(
 ) -> dict:
     """Inputs that fully determine ``compute_breathing_signal``'s output, used to invalidate the cache."""
     return {
+        'version': 2,  # bump when the computation changes, so results cached in saved files are recomputed
         'frames': frames_arr.tolist(),
         'areas': areas_arr.tolist(),
         'gated_frames': sorted(int(f) for f in gated_frames) if gated_frames else [],
@@ -183,7 +184,8 @@ def _fit_weighted_trend(
         weights = np.where(np.isin(frames_arr.astype(int), list(gated_frames)), gated_weight, 1.0)
 
     deg = min(poly_deg, n_samples - 1)
-    coeffs = np.polyfit(frames_arr, areas_arr, deg=deg, w=weights)
+    # polyfit squares w with the residual, so sqrt gives gated frames gated_weight times the squared error
+    coeffs = np.polyfit(frames_arr, areas_arr, deg=deg, w=np.sqrt(weights))
     trend = np.polyval(coeffs, frames_arr)
     # Analytic derivative of the polynomial trend -> local taper slope (mm²/frame).
     slope = np.polyval(np.polyder(coeffs), frames_arr)
