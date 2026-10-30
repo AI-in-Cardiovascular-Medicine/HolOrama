@@ -378,8 +378,9 @@ class Display(QGraphicsView, MetricsMixin):
                 )
                 knot_points.append(knot_point)
 
-            for p in knot_points:
-                self.graphics_scene.addItem(p)
+            if set_current:  # only the active contour shows its knots
+                for p in knot_points:
+                    self.graphics_scene.addItem(p)
             spline = spline_cls(geometry, color=color, line_thickness=thickness, transparency=alpha)
 
             # Closed splines draw a dotted arc between each start/end pair.
@@ -1536,6 +1537,9 @@ class Display(QGraphicsView, MetricsMixin):
             self.active_contour_type = contour_type
             self.active_contour_index = index
             self.working_spline = None
+            for p in self.points_to_draw:  # the previous contour is no longer active, so hide its knots
+                if p.scene() == self.graphics_scene:
+                    self.graphics_scene.removeItem(p)
             self.points_to_draw = []
             self.active_point = None
             self.active_point_index = None
@@ -1687,7 +1691,10 @@ class Display(QGraphicsView, MetricsMixin):
         super().mousePressEvent(event)
 
     def _attempt_contour_switch(self, pos) -> bool:
-        """Switch to another contour if `pos` is near one of its knots. Returns True if it switched."""
+        """Switch to another contour if `pos` is near its line. Returns True if it switched.
+
+        Within reach of the active contour, that one wins, as its knots are the only ones shown.
+        """
         if self.drawing_mode:
             return False
         min_dist = float('inf')
@@ -1699,16 +1706,16 @@ class Display(QGraphicsView, MetricsMixin):
             if contour_obj is None or not contour_obj.contours:
                 continue
             for i, contour in enumerate(contour_obj.contours):
-                if not contour or not contour[0]:
+                if not contour or not contour[0] or len(contour) < 2:
                     continue
-                for x_orig, y_orig in zip(contour[0], contour[1] if len(contour) > 1 else []):
-                    dist = math.hypot(
-                        pos.x() - (x_orig * self.scaling_factor), pos.y() - (y_orig * self.scaling_factor)
-                    )
-                    if dist < min_dist:
-                        min_dist = dist
-                        nearest_ct = ct
-                        nearest_index = i
+                is_closed = contour_obj.closed[i] if len(contour_obj.closed) > i else True
+                dist = self._distance_to_curve(pos, contour[0], contour[1], is_closed)
+                if ct == self.active_contour_type and i == self.active_contour_index and dist < self.snap_radius_px:
+                    return False
+                if dist < min_dist:
+                    min_dist = dist
+                    nearest_ct = ct
+                    nearest_index = i
 
         if nearest_ct and min_dist < self.snap_radius_px:
             if nearest_ct != self.active_contour_type or nearest_index != self.active_contour_index:
@@ -1724,6 +1731,27 @@ class Display(QGraphicsView, MetricsMixin):
                 self.display_image(update_contours=True)
                 return True
         return False
+
+    def _distance_to_curve(self, pos, xs: List[float], ys: List[float], is_closed: bool) -> float:
+        """Distance from scene `pos` to the interpolated spline through unscaled knots (xs, ys)."""
+        sf = self.scaling_factor
+        knots_x = [x * sf for x in xs]
+        knots_y = [y * sf for y in ys]
+        if len(knots_x) < 2:
+            return math.hypot(pos.x() - knots_x[0], pos.y() - knots_y[0]) if knots_x else float('inf')
+        if is_closed:
+            curve_x, curve_y = SplineGeometry(knots_x, knots_y, self.n_points_contour, None, None).full_contour
+        else:
+            curve_x, curve_y = OpenSplineGeometry(
+                knot_points_x=knots_x,
+                knot_points_y=knots_y,
+                n_interpolated_points=self.n_points_contour,
+                start_coords=None,
+                end_coords=None,
+            ).interpolate()
+        if len(curve_x) == 0:
+            return float('inf')
+        return float(np.min(np.hypot(np.asarray(curve_x) - pos.x(), np.asarray(curve_y) - pos.y())))
 
     def _handle_item_interaction(self, scene_pos, view_pos):
         """Select a clicked knot or add one on the spline."""
