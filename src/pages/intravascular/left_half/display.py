@@ -1585,7 +1585,8 @@ class Display(QGraphicsView, MetricsMixin):
         self.display_image(update_image=bool(mask_active), update_contours=True)
 
     def _draw_open_spline_edge_lines(self):
-        """Extend lines from open spline ends to the image edge, away from the centroid."""
+        """Extend lines from open spline ends to the image edge, away from the centroid
+        (the image centre for macrophage)."""
         fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
         if fd is None:
             return
@@ -1600,8 +1601,9 @@ class Display(QGraphicsView, MetricsMixin):
 
             pen = get_qt_pen(self.contour_color(ct), self.point_thickness)
 
+            # Macrophage lines point away from the image centre, the rest from the lumen centroid
             centroid = image_center
-            if fd.centroid:
+            if fd.centroid and ct.value != 'macrophage':
                 centroid = QPointF(fd.centroid[0] * self.scaling_factor, fd.centroid[1] * self.scaling_factor)
 
             for i in range(len(contour_obj.contours)):
