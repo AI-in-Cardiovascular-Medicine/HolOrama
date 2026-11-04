@@ -56,7 +56,9 @@ frames: ``diastolic`` and ``systolic`` for gated IVUS, ``tagged`` for OCT.
    * - File
      - Contents
    * - ``<group>_contours.csv``
-     - Lumen contour points: ``frame, x_mm, y_mm, position_mm``
+     - Lumen contour points: ``frame, x_mm, y_mm, position_mm``. For diastole and systole
+       with a stored breathing sort, ``position_mm`` follows the sorted order: the k-th
+       sorted frame takes the k-th smallest acquisition position.
    * - ``<group>_reference_points.csv``
      - The reference point per frame, defining the rotational reference
    * - ``eem_<group>_contours.csv``
@@ -67,8 +69,8 @@ frames: ``diastolic`` and ``systolic`` for gated IVUS, ``tagged`` for OCT.
      - Side-branch contours; only when they exist
    * - ``combined_sorted_manual.csv``
      - Always written with the report: the gated diastolic frames followed by the systolic
-       ones (IVUS) or the tagged frames (OCT), in acquisition order, carrying any manual
-       moves made in the breathing-sort viewer.
+       ones (IVUS) or the tagged frames (OCT), in the stored breathing-corrected order
+       (including manual moves in the breathing-sort viewer), else in acquisition order.
 
 NIfTI export
 ~~~~~~~~~~~~

@@ -50,24 +50,29 @@ How it works
 3. **Respiratory rate.** Detected as the spectral peak of the residual (or overridden
    manually), then the residual is low-pass filtered at about twice that rate to isolate a
    clean breathing envelope.
-4. **Peaks and valleys.** Turning points of that envelope are found with the same
-   hysteresis walker used for cardiac gating. **Valleys are rest**, peaks are maximum
-   respiratory displacement.
-5. **Binning.** Each frame is assigned to one of ``gating.breathing_bins`` displacement
-   bins per half-cycle (default 5), where bin 0 is the valley/rest state. Ascending
-   (valley → peak) and descending (peak → valley) half-cycles map onto the same bins by
-   displacement, so irregular breathing with unequal half-cycle lengths still harmonises.
-6. **Registration.** For each bin a line ``area = slope·frame + intercept`` is fitted
-   through that bin's own points, and the horizontal shift that makes it agree with the
-   valley (rest) line is solved for directly. Shifts are forced to be monotonic in
-   magnitude, so the valley bin (fixed at 0) and peak bin anchor the noisier bins in
-   between.
-7. **Corrected order.** Each frame gets a corrected position; sorting by it produces the
-   breathing-corrected order used by the *Filtered* view.
+4. **Peaks and valleys.** The valleys are found with the beat tracker of the cardiac
+   gating, with one breath as the beat: a chain of valleys about one breath apart, which
+   also keeps shallow breaths. Each peak is the highest point between two valleys.
+   **Valleys are rest**, peaks are maximum respiratory displacement.
+5. **Breath profile.** Within each valley-to-valley breath, the envelope above the line
+   through its two valleys is scaled to 1 at the peak. A frame's breathing displacement is
+   its breath's amplitude times this profile, 0 at rest and largest at the peak.
+6. **Shape sort.** The amplitude of every breath is chosen so the lumen area and the
+   elliptic ratio change as smoothly as possible along the sorted diastolic and systolic
+   stacks: a vessel cannot switch back and forth between round and elliptic, a wrong order
+   makes it do so. Diastole and systole share the amplitudes, and all breaths shift in one
+   direction (distal or proximal, whichever fits the pullback better).
+7. **Fine-tuning and clean-up.** Single frames are then moved a short way (up to half a
+   breath) where that makes the stack smoother, and the few frames that still stand out
+   from both neighbours, such as a round contour inside the elliptic segment, are moved to
+   wherever in the stack they fit best.
+8. **Corrected order.** Sorting by the corrected position gives the breathing-corrected
+   order used by the *Filtered* view and by the 3D reconstruction.
 
-The result also yields a corrected pullback length: once every bin has been shifted
-independently, raw frame count no longer measures distance, so the span of one full
-valley → peak half-cycle plus the peak shift is reported as the true length.
+In ostial pullbacks of anomalous arteries the displacement can reach several millimetres per
+breath, more than the pullback advances in one breath, so frames of consecutive breaths
+interleave along the vessel. The full method is written up in
+``research/gating_validation/paper/breathing_correction.tex``.
 
 Tutorial
 --------
@@ -139,7 +144,7 @@ real respiratory component only adds error.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Click **Filtered** (left of the longitudinal view) to open the breathing-sorted viewer. It
-runs the registration independently for the gated diastolic and gated systolic frames and
+runs the shape sort on the gated diastolic and systolic frames together (about a second) and
 shows them side by side:
 
 - A central slider scrolls through the **breathing-corrected order**, not acquisition
@@ -150,20 +155,23 @@ shows them side by side:
 - Only gated frames appear; positions without a frame are skipped.
 
 Look for a frame whose contour is obviously out of sequence with its neighbours; that is
-what the manual swap is for.
+what the manual move is for.
 
 5. Fix individual outliers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-At the bottom of the viewer, choose the phase (**Diastole** / **Systole**), enter the two
-indices to exchange, and click **Apply move**. The swap is stored immediately.
+At the bottom of the viewer, choose the phase (**Diastole** / **Systole**), enter the index
+of the frame and the index it should move to, and click **Apply move**. The other frames keep
+their order, and the move is stored immediately.
 This sorting can of course also be performed when no breathing artefact is present, but the
 patient maybe moved, or other influences resulted in a shift in frames.
 
 Click **Raw** to go back to acquisition order at any time. The sort (peaks, valleys,
-ordered indices, per-bin shifts and every manual move) is cached with the case and written
-into the contour JSON, so it survives closing and reopening. When the gated frame set
-changes, membership is reconciled rather than recomputed from scratch.
+ordered indices, per-breath amplitudes and every manual move) is cached with the case and
+written into the contour JSON, so it survives closing and reopening. It is only recomputed
+when the peaks or valleys change. When the gated frame set changes, newly gated frames are
+inserted at their corrected position and the rest of the order, including manual moves, is
+kept.
 
 .. figure:: ../../media/overview_sorting_view.webp
    :name: fig-sorting-view
@@ -181,8 +189,9 @@ changes, membership is reconciled rather than recomputed from scratch.
 ~~~~~~~~~
 
 Saving a report always writes ``combined_sorted_manual.csv`` next to the other CSVs: the
-gated diastolic frames followed by the systolic frames, carrying the manual sort. See
-:doc:`../outputs`.
+gated diastolic frames followed by the systolic frames, in the breathing-corrected order
+including manual moves. The contour CSVs follow the same order, so the 3D reconstruction in
+the Fusion module stacks the frames as sorted. See :doc:`../outputs`.
 
 Tuning
 ------
@@ -193,9 +202,9 @@ Tuning
 
    * - Setting
      - Effect
-   * - ``gating.breathing_bins``
-     - Bins per breathing half-cycle (default 5). More bins resolve the displacement more
-       finely but leave fewer points per bin, which makes the per-bin line fit noisier.
+   * - **Peak** / **Valley**
+     - The sort shifts each valley-to-valley breath as a whole, so a missed or extra valley
+       matters most. Fix the valleys first if the sorted stack looks wrong in one stretch.
    * - **Breathing sweep** (gating plot)
      - Heat map of the signal filtered at increasing breathing-rate cutoffs; click a row to
        override the detected respiratory rate when the automatic estimate is wrong.

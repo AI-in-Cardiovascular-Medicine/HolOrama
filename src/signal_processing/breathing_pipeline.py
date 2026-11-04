@@ -759,12 +759,14 @@ def clean_outliers(
     order = list(np.argsort(z, kind='stable'))
     moved: set[int] = set()
 
+    # an end frame counts its one neighbour twice (mirrored), otherwise the ends would be
+    # the cheapest place for any frame that fits nowhere
     def detour(o: list[int], k: int) -> float:
         i = o[k]
         if k == 0:
-            return D[i, o[1]]
+            return 2 * D[i, o[1]]
         if k == len(o) - 1:
-            return D[i, o[-2]]
+            return 2 * D[i, o[-2]]
         return D[i, o[k - 1]] + D[i, o[k + 1]] - D[o[k - 1], o[k + 1]]
 
     for _ in range(max(1, int(max_fraction * n))):
@@ -778,9 +780,9 @@ def clean_outliers(
             if i in moved:
                 continue
             rest = order[:k] + order[k + 1 :]
-            costs = [D[i, rest[0]]]
+            costs = [2 * D[i, rest[0]]]
             costs += [D[i, a] + D[i, b] - D[a, b] for a, b in zip(rest[:-1], rest[1:])]
-            costs.append(D[i, rest[-1]])
+            costs.append(2 * D[i, rest[-1]])
             m = int(np.argmin(costs))
             if costs[m] < detours[k] - median_step:
                 order = rest[:m] + [i] + rest[m:]
