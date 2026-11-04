@@ -69,6 +69,32 @@ def test_phases_without_anchors_are_valid():
     assert np.all((phase >= 0.0) & (phase < 1.0))
 
 
+def test_breath_tracker_keeps_shallow_breaths():
+    # ten breaths, the middle four twenty times shallower (walk_extrema skips them)
+    t = np.arange(1000)
+    amp = np.where((t >= 300) & (t < 700), 0.05, 1.0)
+    sig = -amp * np.cos(2 * np.pi * t / 100.0)
+    valleys_true = np.arange(100, 1000, 100)
+    _, _, walk_valleys = compute_breathing_phases(sig, frames_arr=t)
+    assert len(walk_valleys) < len(valleys_true)
+    phase, peaks, valleys = compute_breathing_phases(sig, frames_arr=t, breath=100.0)
+    assert len(valleys) == len(valleys_true)
+    assert np.max(np.abs(np.sort(valleys) - valleys_true)) <= 2
+    assert len(peaks) == 10  # one per breath, including both edges
+    assert np.all((phase >= 0.0) & (phase < 1.0))
+
+
+def test_breath_tracker_follows_a_changing_rate():
+    # breaths shorten from 120 to 80 samples, the spectrum says 100
+    lengths = np.linspace(120, 80, 12)
+    edges = np.concatenate([[0], np.cumsum(lengths)])
+    t = np.arange(int(edges[-1]))
+    sig = -np.cos(2 * np.pi * np.interp(t, edges, np.arange(len(edges))))
+    _, peaks, valleys = compute_breathing_phases(sig, frames_arr=t, breath=100.0)
+    assert np.max(np.abs(np.sort(valleys) - np.round(edges[1:-1]))) <= 2
+    assert len(peaks) == len(lengths)
+
+
 # ─────────────────────────── bin-registration sort ─────────────────────────
 
 

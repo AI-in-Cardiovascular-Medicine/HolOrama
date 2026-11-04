@@ -1,12 +1,19 @@
 import numpy as np
 from loguru import logger
 
-from signal_processing.automatic_gating import walk_extrema
+from signal_processing.automatic_gating import track_diastole, walk_extrema
 from signal_processing.gating_pipeline import (
     adjust_for_elliptic_deformation,
     fft_peak_freq,
     lowpass_filter,
 )
+
+# Breath tracker: the gating beat tracker with one breath as the beat. Breathing changes
+# rate more than the heart, so the steps are wider than in gating (tested on 10 NARCO
+# pullbacks against the breathing wave of the aortic pressure)
+BREATH_GAP = (0.6, 1.5)  # valley-valley gap of a regular breath, in breaths
+BREATH_SKIP_GAP = (1.7, 2.5)  # gap of a missed breath, in breaths
+EDGE_PEAK = 0.75  # furthest peak outside the first or last valley, in breaths
 
 
 def adjusted_areas_by_frame(
@@ -227,6 +234,44 @@ def _extract_breathing_signal(
     return lowpass_filter(area_signal, f_cutoff, fs)
 
 
+def track_breaths(breathing_signal: np.ndarray, breath: float) -> tuple[np.ndarray, np.ndarray]:
+    """Peaks and valleys of the breathing signal, valleys chosen as a chain like gating's diastoles.
+
+    The valleys are the track_diastole chain with one breath as the beat, so
+    they stay about one breath apart even where the breathing is shallow. The
+    chain is extended breath by breath towards both ends, where the tracker
+    may stop up to 1.5 breaths short. Each peak is the highest point between
+    two valleys, plus one within EDGE_PEAK breaths outside each end valley.
+    """
+    sig = np.nan_to_num(breathing_signal)
+    valleys, _ = track_diastole(sig, breath, BREATH_GAP, BREATH_SKIP_GAP)
+    empty = np.array([], dtype=int)
+    if not valleys:
+        return empty, empty
+
+    minima = _turning_points(-sig)
+    lo, hi = BREATH_GAP[0] * breath, BREATH_GAP[1] * breath
+    while len(c := minima[(minima >= valleys[0] - hi) & (minima <= valleys[0] - lo)]):
+        valleys.insert(0, int(c[np.argmin(sig[c])]))
+    while len(c := minima[(minima >= valleys[-1] + lo) & (minima <= valleys[-1] + hi)]):
+        valleys.append(int(c[np.argmin(sig[c])]))
+
+    peaks = [a + int(np.argmax(sig[a:b])) for a, b in zip(valleys[:-1], valleys[1:]) if b - a > 2]
+    maxima = _turning_points(sig)
+    before = maxima[(maxima < valleys[0]) & (maxima >= valleys[0] - EDGE_PEAK * breath)]
+    after = maxima[(maxima > valleys[-1]) & (maxima <= valleys[-1] + EDGE_PEAK * breath)]
+    if len(before):
+        peaks.insert(0, int(before[np.argmax(sig[before])]))
+    if len(after):
+        peaks.append(int(after[np.argmax(sig[after])]))
+    return np.array(peaks, dtype=int), np.array(valleys, dtype=int)
+
+
+def _turning_points(x: np.ndarray) -> np.ndarray:
+    """Indices of the local maxima of x (first sample of a flat top)."""
+    return np.flatnonzero((x[1:-1] > x[:-2]) & (x[1:-1] >= x[2:])) + 1
+
+
 def compute_breathing_phases(
     breathing_signal: np.ndarray,
     manual_peaks: list[int] | None = None,
@@ -235,6 +280,7 @@ def compute_breathing_phases(
     swing_fraction: float = 0.10,
     anchor_gap: int = 15,
     manual_only: bool = False,
+    breath: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Per-frame breathing phase in [0, 1), peaks, and valley indices.
 
@@ -242,6 +288,10 @@ def compute_breathing_phases(
     peaks (mid-breath, vessel displaced) -> 0.5.  Phase between anchors is
     linearly interpolated from a monotonically increasing cumulative-phase
     sequence and then wrapped to [0, 1).
+
+    The automatic anchors come from track_breaths when the breath length is
+    known, else from walk_extrema (a swing of ``swing_fraction`` of the
+    peak-to-peak range), which leaves holes where the breathing is shallow.
 
     Manual anchors override the automatic detection (hard anchors): any
     auto-detected extremum within ``anchor_gap`` samples of a manual anchor is
@@ -254,6 +304,7 @@ def compute_breathing_phases(
     manual_peaks/manual_valleys : peak / valley locations **as frame numbers**
         (matched against ``frames_arr``).  If ``frames_arr`` is None they are
         treated as direct indices into ``breathing_signal``.
+    breath : samples per breath (fs / f_resp), None or 0 if unknown.
 
     Returns
     -------
@@ -265,7 +316,12 @@ def compute_breathing_phases(
     n_samples = len(sig_centered)
     phase = np.zeros(n_samples)
 
-    _, auto_peaks, auto_valleys = walk_extrema(sig_centered, swing_fraction=swing_fraction)
+    if manual_only:
+        auto_peaks = auto_valleys = np.array([], dtype=int)
+    elif breath and np.isfinite(breath) and 2 < breath < n_samples:
+        auto_peaks, auto_valleys = track_breaths(sig_centered, breath)
+    else:
+        _, auto_peaks, auto_valleys = walk_extrema(sig_centered, swing_fraction=swing_fraction)
     manual_peak_idx = _frames_to_indices(manual_peaks, frames_arr, n_samples)
     manual_valley_idx = _frames_to_indices(manual_valleys, frames_arr, n_samples)
 

@@ -165,7 +165,10 @@ class BreathingSortViewer(QMainWindow):
         areas = np.array([area_of[int(f)] for f in frames])
         fs = float(rt.metadata.get('frame_rate', 30))
         breathing = compute_breathing_signal(frames, areas, fs=fs, f_heart=gs.get('f_heart'), cache=gs)
-        _, pk, vl = compute_breathing_phases(breathing['smoothed'], frames_arr=frames)
+        f_resp = breathing['f_resp']
+        _, pk, vl = compute_breathing_phases(
+            breathing['smoothed'], frames_arr=frames, breath=fs / f_resp if f_resp > 0 else None
+        )
         peaks = [int(frames[i]) for i in pk if 0 <= i < len(frames)]
         valleys = [int(frames[i]) for i in vl if 0 <= i < len(frames)]
         return peaks, valleys

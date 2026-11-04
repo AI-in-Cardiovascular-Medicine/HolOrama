@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **Breathing** peaks and valleys are found like the gating diastoles: the valleys are chosen as one chain about one breath apart, with a peak between each pair. Shallow breaths are no longer skipped, so the breathing phase has far fewer holes.
+
 ## [0.17.0] - 2026-10-28
 
 ### Changed

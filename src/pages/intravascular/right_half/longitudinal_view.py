@@ -353,6 +353,7 @@ class LongitudinalView(QGraphicsView):
             frames_arr=frames_arr,
             anchor_gap=gap,
             manual_only=manual_mode,
+            breath=fs / f_resp if f_resp > 0 else None,
         )
         if gs is not None:
             gs['breathing_phase'] = phase.tolist()
