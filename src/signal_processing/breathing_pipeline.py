@@ -639,7 +639,9 @@ def _apply_bin_shifts(frames: np.ndarray, bins: np.ndarray, shifts: np.ndarray, 
 # valley line, scaled to 1 at the peak. The amplitudes are chosen so lumen area
 # and elliptic ratio oscillate least along the diastolic and systolic stacks,
 # since a vessel cannot switch back and forth between round and elliptic.
-# A second pass moves single frames a short way to remove leftover islands.
+# A second pass moves single frames a short way to remove leftover islands, and a
+# clean-up moves the few frames that still stand out from both neighbours to
+# wherever in the stack they fit best.
 
 SHAPE_MAX_SHIFT_S = 24.0  # largest peak displacement tried, in seconds of pullback
 SHAPE_GRID_STEPS = 29  # candidate amplitudes from 0 to the largest
@@ -647,6 +649,8 @@ SHAPE_STARTS = (0.0, 0.2, 0.4, 0.7)  # starting amplitudes, as fractions of the 
 SHAPE_SWEEPS = 4
 REFINE_WINDOW = 0.5  # breaths, how far the fine-tuning may move one frame
 REFINE_COST = 0.3  # variation a move across the whole window must save
+CLEAN_OUTLIER = 5.0  # median steps a frame must stand out from its neighbours to be moved
+CLEAN_MAX_FRACTION = 0.1  # at most this share of a stack is moved by the clean-up
 
 
 def breath_profile(
@@ -734,6 +738,82 @@ def refine_positions(
     return z
 
 
+def clean_outliers(
+    positions: np.ndarray,
+    features: list[np.ndarray],
+    outlier: float = CLEAN_OUTLIER,
+    max_fraction: float = CLEAN_MAX_FRACTION,
+) -> np.ndarray:
+    """Move frames that stand out from both stack neighbours to where they fit best.
+
+    A frame stands out when the detour through it (distance to both neighbours minus
+    the distance between them) exceeds `outlier` median steps. It is moved anywhere in
+    the stack if that saves at least one median step.
+    """
+    z = np.asarray(positions, dtype=float).copy()
+    n = len(z)
+    if n < 4:
+        return z
+    F = np.array([f / (np.ptp(f) + 1e-9) for f in features])
+    D = np.abs(F[:, :, None] - F[:, None, :]).sum(axis=0)
+    order = list(np.argsort(z, kind='stable'))
+    moved: set[int] = set()
+
+    def detour(o: list[int], k: int) -> float:
+        i = o[k]
+        if k == 0:
+            return D[i, o[1]]
+        if k == len(o) - 1:
+            return D[i, o[-2]]
+        return D[i, o[k - 1]] + D[i, o[k + 1]] - D[o[k - 1], o[k + 1]]
+
+    for _ in range(max(1, int(max_fraction * n))):
+        median_step = float(np.median([D[a, b] for a, b in zip(order[:-1], order[1:])]))
+        detours = np.array([detour(order, k) for k in range(n)])
+        found = False
+        for k in np.argsort(-detours):
+            if detours[k] <= outlier * median_step:
+                break
+            i = order[k]
+            if i in moved:
+                continue
+            rest = order[:k] + order[k + 1 :]
+            costs = [D[i, rest[0]]]
+            costs += [D[i, a] + D[i, b] - D[a, b] for a, b in zip(rest[:-1], rest[1:])]
+            costs.append(D[i, rest[-1]])
+            m = int(np.argmin(costs))
+            if costs[m] < detours[k] - median_step:
+                order = rest[:m] + [i] + rest[m:]
+                moved.add(i)
+                found = True
+                break
+        if not found:
+            break
+
+    # moved frames take evenly spaced positions between their unmoved neighbours
+    k = 0
+    while k < n:
+        if order[k] not in moved:
+            k += 1
+            continue
+        end = k
+        while end < n and order[end] in moved:
+            end += 1
+        gaps = end - k + 1
+        if k > 0 and end < n:
+            before, after = float(z[order[k - 1]]), float(z[order[end]])
+        elif k > 0:
+            before = float(z[order[k - 1]])
+            after = before + gaps
+        else:
+            after = float(z[order[end]])
+            before = after - gaps
+        for j, idx in enumerate(order[k:end]):
+            z[idx] = before + (j + 1) * (after - before) / gaps
+        k = end
+    return z
+
+
 def sort_by_shape(
     dia: list[int],
     sys: list[int],
@@ -787,7 +867,7 @@ def sort_by_shape(
     z = frames - best[breath_idx] * profile
     window = REFINE_WINDOW * breath if breath and np.isfinite(breath) else 0.0
     for idx, feats in stacks:
-        z[idx] = refine_positions(z[idx], feats, window)
+        z[idx] = clean_outliers(refine_positions(z[idx], feats, window), feats)
     out['amplitudes'] = [float(a) for a in best]
     out['dia_pos'] = {f: float(z[i]) for i, f in enumerate(dia)}
     if len(stacks) > 1:

@@ -11,6 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   - Each breath gets one displacement, 0 at the valley and largest at the peak, along the breathing curve.
   - The displacements are chosen so lumen area and elliptic ratio oscillate least along the diastolic and systolic stacks.
   - A second pass moves single frames up to half a breath to remove leftover islands.
+  - A clean-up then moves the few frames that still stand out from both neighbours (more than 5 median steps in area and elliptic ratio) to wherever in the stack they fit best.
   - Diastole and systole share the displacements.
   - Sorts stored by the old bin registration are recomputed once. The `breathing_bins` setting is gone.
 - Contour CSVs and `combined_sorted_manual.csv` follow the stored breathing sort, so the 3D reconstruction uses it. Before, writing a report reset `combined_sorted_manual.csv` to acquisition order, and multimodars up to 0.9.0 kept each frame at its acquisition z anyway.

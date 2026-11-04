@@ -13,6 +13,7 @@ import numpy as np
 from signal_processing.breathing_pipeline import (
     assign_breathing_bins,
     breathing_shift,
+    clean_outliers,
     compute_breathing_phases,
     compute_breathing_signal,
     refine_positions,
@@ -211,6 +212,17 @@ def test_shape_sort_finds_a_proximal_shift():
 def test_shape_sort_without_breaths_keeps_acquisition_order():
     R = sort_by_shape([1, 2, 3], [], {1: 1.0, 2: 2.0, 3: 3.0}, {}, np.arange(5.0), np.zeros(5), [], fs=30.0)
     assert R['amplitudes'] == [] and R['dia_pos'] == {1: 1.0, 2: 2.0, 3: 3.0}
+
+
+def test_clean_up_moves_only_the_frame_out_of_pattern():
+    z = np.arange(30, dtype=float)
+    shape = np.arange(30, dtype=float) + 0.3 * np.sin(np.arange(30))  # smooth with small wiggles
+    z[4] = 24.5  # a round contour far out in the elliptic part
+    new = clean_outliers(z, [shape])
+    assert list(np.argsort(new, kind='stable')) == list(range(30))
+    assert np.count_nonzero(new != z) == 1
+    smooth = np.arange(30, dtype=float)
+    assert np.array_equal(clean_outliers(smooth, [shape]), smooth)
 
 
 def test_refine_moves_an_island_back():
