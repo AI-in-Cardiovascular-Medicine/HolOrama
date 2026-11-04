@@ -1,8 +1,8 @@
 """Breathing-sorted paired viewer.
 
-Opened from the "Filtered" button.  Runs the breathing-bin registration sort
-(gating_pipeline.register_phase) independently for the gated diastolic and
-systolic frames, then lets the user scroll through the breathing-corrected
+Opened from the "Filtered" button.  Runs the shape sort
+(breathing_pipeline.sort_by_shape) on the gated diastolic and systolic frames
+together, then lets the user scroll through the breathing-corrected
 order with a central slider.  Diastole and systole are shown side by side with
 their lumen contours, each flanked by a 5-image filmstrip of its sorted-order
 neighbours (index and distance from ostium on top) that updates with the
@@ -40,10 +40,10 @@ from PyQt6.QtWidgets import (
 
 from signal_processing.breathing_pipeline import (
     adjusted_areas_by_frame,
-    assign_breathing_bins,
+    breathing_shift,
     compute_breathing_phases,
     compute_breathing_signal,
-    register_phase,
+    sort_by_shape,
 )
 from input_output.output.reports import report
 from domain.intravascular.types import ContourType
@@ -51,7 +51,8 @@ from domain.intravascular.contour_presets import active_preset
 from tools.geometry import SplineGeometry
 
 N_STRIP = 5  # thumbnails per filmstrip (odd → current one centred)
-# Persistence: the sort (peaks/valleys, ordered dia/sys indices, per-bin shifts)
+SORT_METHOD = 'shape'  # part of the sort signature, so sorts from older methods are recomputed
+# Persistence: the sort (peaks/valleys, ordered dia/sys indices, per-breath amplitudes)
 # is cached in runtime_data.gating_signal, which is written to / read from the
 # _contours_*.json automatically.  Reused when anchors are unchanged; membership
 # is reconciled when gated frames change; manual moves are stored immediately.
@@ -89,11 +90,9 @@ class BreathingSortViewer(QMainWindow):
         self.sys_sorted: list[int] = []
         self.dia_pos: dict[int, float] = {}
         self.sys_pos: dict[int, float] = {}
-        self.dia_shifts: list[float] = []
-        self.sys_shifts: list[float] = []
+        self.amplitudes: list[float] = []  # peak displacement per breath, in frames
         self.peaks: list[int] = []
         self.valleys: list[int] = []
-        self.n_bins: int = 4
         self.has_artefact: bool = True
         self.dia_idx = 0
         self.sys_idx = 0
@@ -107,7 +106,7 @@ class BreathingSortViewer(QMainWindow):
         self.sys_ostium_frame: int | None = None
         # the frame whose corrected position is actually used as the 0 mm pin for
         # distance-from-ostium: the tail of the sorted list, NOT the marked ostium
-        # frame itself -- register_phase's per-bin shifts can be large enough
+        # frame itself -- breathing shifts can be large enough
         # (hundreds of frames) to place some other, more-distal-by-raw-index frame
         # at a higher corrected position than the marked ostium, which would make
         # that frame read as a nonsensical negative distance if pinned there
@@ -150,6 +149,36 @@ class BreathingSortViewer(QMainWindow):
                 minor_axis_of[frame] = float(m.minor_axis)
         return adjusted_areas_by_frame(area_of, minor_axis_of)
 
+    def _shape(self):
+        """Raw lumen area and elliptic ratio (major / minor axis) per frame."""
+        area_of, ell_of = {}, {}
+        for frame, fd in self.main_window.runtime_data.frame_data_dct.items():
+            m = fd.lumen.measurements
+            if m.area is not None and m.area > 0:
+                area_of[frame] = float(m.area)
+            if m.major_axis and m.minor_axis and m.minor_axis > 0:
+                ell_of[frame] = float(m.major_axis) / float(m.minor_axis)
+        return area_of, ell_of
+
+    def _breathing_curve(self, area_of):
+        """Frames, breathing signal and f_resp: the ones shown in the longitudinal view when stored."""
+        rt = self.main_window.runtime_data
+        gs = rt.gating_signal
+        frames = gs.get('breathing_frames')
+        signal = gs.get('breathing_display_signal')
+        if frames and signal and len(frames) == len(signal) and gs.get('f_resp'):
+            return np.asarray(frames, dtype=float), np.asarray(signal, dtype=float), float(gs['f_resp'])
+        if len(area_of) < 30:
+            return None, None, 0.0
+        frames = np.array(sorted(area_of.keys()), dtype=float)
+        areas = np.array([area_of[int(f)] for f in frames])
+        fs = float(rt.metadata.get('frame_rate', 30))
+        gated = set(rt.gated_frames_dia) | set(rt.gated_frames_sys)
+        breathing = compute_breathing_signal(
+            frames, areas, gated_frames=gated, fs=fs, f_heart=gs.get('f_heart'), cache=gs
+        )
+        return frames, np.asarray(breathing['smoothed'], dtype=float), float(breathing['f_resp'])
+
     def _breathing_anchors(self, area_of):
         rt = self.main_window.runtime_data
         if rt.gating_signal is None:
@@ -159,26 +188,21 @@ class BreathingSortViewer(QMainWindow):
         valleys = list(gs.get('breathing_manual_valleys') or gs.get('breathing_auto_valleys') or [])
         if peaks and valleys:
             return peaks, valleys
-        if len(area_of) < 30:
+        frames, signal, f_resp = self._breathing_curve(area_of)
+        if frames is None:
             return peaks, valleys
-        frames = np.array(sorted(area_of.keys()), dtype=float)
-        areas = np.array([area_of[int(f)] for f in frames])
         fs = float(rt.metadata.get('frame_rate', 30))
-        breathing = compute_breathing_signal(frames, areas, fs=fs, f_heart=gs.get('f_heart'), cache=gs)
-        f_resp = breathing['f_resp']
-        _, pk, vl = compute_breathing_phases(
-            breathing['smoothed'], frames_arr=frames, breath=fs / f_resp if f_resp > 0 else None
-        )
+        _, pk, vl = compute_breathing_phases(signal, frames_arr=frames, breath=fs / f_resp if f_resp > 0 else None)
         peaks = [int(frames[i]) for i in pk if 0 <= i < len(frames)]
         valleys = [int(frames[i]) for i in vl if 0 <= i < len(frames)]
         return peaks, valleys
 
-    def _signature(self, peaks, valleys, n_bins, artefact):
-        """Identity of the anchors a sort was built from (to detect changes)."""
+    def _signature(self, peaks, valleys, artefact):
+        """Identity of the anchors and method a sort was built from (to detect changes)."""
         return {
             'peaks': sorted(int(p) for p in peaks),
             'valleys': sorted(int(v) for v in valleys),
-            'n_bins': int(n_bins),
+            'method': SORT_METHOD,
             'artefact': bool(artefact),
         }
 
@@ -193,7 +217,6 @@ class BreathingSortViewer(QMainWindow):
         gs = rt.gating_signal
 
         area_of = self._areas()
-        self.n_bins = int(getattr(self.main_window.config.gating, 'breathing_bins', 4))
         self.peaks, self.valleys = self._breathing_anchors(area_of)
         self.has_artefact = bool(gs.get('has_breathing_artefact', True))
 
@@ -203,7 +226,7 @@ class BreathingSortViewer(QMainWindow):
             logger.info('Breathing sort: too few diastolic frames with contours')
             return
 
-        sig = self._signature(self.peaks, self.valleys, self.n_bins, self.has_artefact)
+        sig = self._signature(self.peaks, self.valleys, self.has_artefact)
         cached = gs.get('sort_signature') == sig and gs.get('sort_dia_order') is not None
 
         if cached:
@@ -212,10 +235,9 @@ class BreathingSortViewer(QMainWindow):
             self.sys_sorted = [int(f) for f in gs.get('sort_sys_order', [])]
             self.dia_pos = {int(f): float(p) for f, p in gs.get('sort_dia_pos', [])}
             self.sys_pos = {int(f): float(p) for f, p in gs.get('sort_sys_pos', [])}
-            self.dia_shifts = [float(s) for s in gs.get('sort_dia_shifts', [])]
-            self.sys_shifts = [float(s) for s in gs.get('sort_sys_shifts', [])]
-            self.dia_sorted = self._reconcile(self.dia_sorted, dia, self.dia_pos, self.dia_shifts)
-            self.sys_sorted = self._reconcile(self.sys_sorted, sys, self.sys_pos, self.sys_shifts)
+            self.amplitudes = [float(a) for a in gs.get('sort_amplitudes', [])]
+            self.dia_sorted = self._reconcile(self.dia_sorted, dia, self.dia_pos, area_of)
+            self.sys_sorted = self._reconcile(self.sys_sorted, sys, self.sys_pos, area_of)
         elif not self.has_artefact:
             # No breathing artefact → no correction: just present gated frames in
             # acquisition order for manual shuffling.
@@ -233,10 +255,9 @@ class BreathingSortViewer(QMainWindow):
         """No breathing correction: keep gated frames in acquisition (frame) order."""
         self.dia_sorted = list(dia)
         self.dia_pos = {f: float(f) for f in dia}
-        self.dia_shifts = []
         self.sys_sorted = list(sys) if len(sys) >= 5 else []
         self.sys_pos = {f: float(f) for f in self.sys_sorted}
-        self.sys_shifts = []
+        self.amplitudes = []
 
     def _update_anchor(self):
         """Compute the dia→sys index offset that lines up the two ostium PINS
@@ -270,8 +291,8 @@ class BreathingSortViewer(QMainWindow):
         sys_refs = [f for f in self.sys_sorted if fdd.get(f) is not None and fdd[f].reference is not None]
         # most proximal = ostium = largest breathing-corrected position; picked by
         # corrected position (self.dia_pos/self.sys_pos), NOT raw frame index --
-        # raw frame number stops being a meaningful position once register_phase's
-        # per-bin shifts have reordered frames (see _distance_from_ostium), so a
+        # raw frame number stops being a meaningful position once the breathing
+        # shifts have reordered frames (see _distance_from_ostium), so a
         # reference frame need not be the highest-numbered one to be the most
         # proximal. Kept per-phase even if only one phase has a reference point,
         # so that phase alone can still report a distance-from-ostium (the dia/sys
@@ -324,14 +345,13 @@ class BreathingSortViewer(QMainWindow):
         self, pos_map: dict[int, float], ostium_frame: int | None, frame: int | None
     ) -> float | None:
         """mm distance of `frame` from its phase's ostium pin, along the
-        breathing-corrected pullback axis (register_phase's `corrected`, same axis
-        plotted by test_breathing_sort.plot_shifted_registration) -- pinned so
+        breathing-corrected pullback axis (sort_by_shape's positions) -- pinned so
         `ostium_frame` sits at 0 mm, positive = distal to the ostium (deeper into
         the vessel).
 
         `ostium_frame` is the tail of the phase's sorted list (dia/sys_ostium_pin_frame,
         set in _update_anchor), NOT the raw frame the user marked as the ostium
-        reference point. register_phase's per-bin shifts can be large (hundreds of
+        reference point. Breathing shifts can be large (hundreds of
         frames for a strong breathing artefact) relative to the raw-frame gap
         between candidate frames, so the marked frame is not guaranteed to hold
         the largest corrected position in its phase -- some other, more-distal
@@ -357,43 +377,49 @@ class BreathingSortViewer(QMainWindow):
         return (pos_map[ostium_frame] - pos_map[frame]) * mm_per_frame
 
     def _recompute(self, dia, sys, area_of):
-        Rd = register_phase(
-            np.array(dia, float),
-            np.array([area_of[f] for f in dia], float),
-            self.peaks,
-            self.valleys,
-            n_bins=self.n_bins,
+        """Shape sort of both phases together, they share one shift per breath."""
+        shape_area, ell_of = self._shape()
+        frames, signal, f_resp = self._breathing_curve(area_of)
+        fs = float(self.main_window.runtime_data.metadata.get('frame_rate', 30))
+        sys = [f for f in sys if f in shape_area] if len(sys) >= 5 else []
+        dia = [f for f in dia if f in shape_area]
+        if frames is None:
+            self._acquisition_order(dia, sys)
+            return
+        result = sort_by_shape(
+            dia,
+            sys,
+            shape_area,
+            ell_of,
+            frames,
+            signal,
+            sorted(int(v) for v in self.valleys),
+            fs,
+            breath=fs / f_resp if f_resp > 0 else None,
         )
-        self.dia_sorted = [dia[i] for i in Rd['order']]
-        self.dia_pos = {dia[i]: float(Rd['corrected'][i]) for i in range(len(dia))}
-        self.dia_shifts = [float(s) for s in Rd['shifts']]
+        self.amplitudes = result['amplitudes']
+        self.dia_pos = result['dia_pos']
+        self.sys_pos = result['sys_pos']
+        self.dia_sorted = sorted(dia, key=lambda f: self.dia_pos[f])
+        self.sys_sorted = sorted(sys, key=lambda f: self.sys_pos[f])
+        logger.info(f'Breathing sort: amplitudes per breath (frames) {[round(a) for a in self.amplitudes]}')
 
-        self.sys_sorted, self.sys_pos, self.sys_shifts = [], {}, []
-        if len(sys) >= 5:
-            Rs = register_phase(
-                np.array(sys, float),
-                np.array([area_of[f] for f in sys], float),
-                self.peaks,
-                self.valleys,
-                n_bins=self.n_bins,
-            )
-            self.sys_sorted = [sys[i] for i in Rs['order']]
-            self.sys_pos = {sys[i]: float(Rs['corrected'][i]) for i in range(len(sys))}
-            self.sys_shifts = [float(s) for s in Rs['shifts']]
-
-    def _reconcile(self, order, current_frames, pos_map, shifts):
+    def _reconcile(self, order, current_frames, pos_map, area_of):
         """Drop frames no longer gated and insert newly-gated ones by corrected
         position, preserving the existing (possibly hand-edited) order otherwise."""
         current = set(current_frames)
         new_order = [f for f in order if f in current]
         existing = set(new_order)
+        frames, signal, _ = self._breathing_curve(area_of)
+        valleys = sorted(int(v) for v in self.valleys)
         for f in current_frames:
             if f in existing:
                 continue
-            # corrected position of the new frame from its bin's stored shift
-            b = int(assign_breathing_bins(np.array([f]), self.peaks, self.valleys, self.n_bins)[0])
-            shift = shifts[b] if 0 <= b < len(shifts) else 0.0
-            pos = float(f) + float(shift)
+            # corrected position of the new frame from the stored per-breath amplitudes
+            shift = 0.0
+            if frames is not None:
+                shift = float(breathing_shift(np.array([f]), frames, signal, valleys, self.amplitudes)[0])
+            pos = float(f) + shift
             pos_map[f] = pos
             insert_at = len(new_order)
             for idx, g in enumerate(new_order):
@@ -406,16 +432,16 @@ class BreathingSortViewer(QMainWindow):
     def _store_sort(self):
         """Persist the current sort into gating_signal (auto-saved to the JSON)."""
         gs = self.main_window.runtime_data.gating_signal
-        gs['sort_signature'] = self._signature(self.peaks, self.valleys, self.n_bins, self.has_artefact)
+        gs['sort_signature'] = self._signature(self.peaks, self.valleys, self.has_artefact)
         gs['sort_peaks'] = sorted(int(p) for p in self.peaks)
         gs['sort_valleys'] = sorted(int(v) for v in self.valleys)
-        gs['sort_n_bins'] = int(self.n_bins)
         gs['sort_dia_order'] = [int(f) for f in self.dia_sorted]
         gs['sort_sys_order'] = [int(f) for f in self.sys_sorted]
         gs['sort_dia_pos'] = [[int(f), float(p)] for f, p in self.dia_pos.items()]
         gs['sort_sys_pos'] = [[int(f), float(p)] for f, p in self.sys_pos.items()]
-        gs['sort_dia_shifts'] = [float(s) for s in self.dia_shifts]
-        gs['sort_sys_shifts'] = [float(s) for s in self.sys_shifts]
+        gs['sort_amplitudes'] = [float(a) for a in self.amplitudes]
+        for stale in ('sort_n_bins', 'sort_dia_shifts', 'sort_sys_shifts'):
+            gs.pop(stale, None)
         self.main_window.save_contours_soon()
 
     def _nearest_sys(self, corrected_pos: float) -> int:

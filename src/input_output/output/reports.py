@@ -208,30 +208,53 @@ def _region_and_sector_columns(main_window, contoured_frames, progress=None):
     return columns
 
 
+def _breathing_order(main_window, frames) -> list[int] | None:
+    """Stored breathing-sort order covering exactly these frames, else None."""
+    gs = main_window.runtime_data.gating_signal or {}
+    wanted = {int(f) for f in frames}
+    for key in ('sort_dia_order', 'sort_sys_order'):
+        order = [int(f) for f in gs.get(key) or []]
+        if order and set(order) == wanted and len(order) == len(wanted):
+            return order
+    return None
+
+
+def _sorted_positions(main_window, frames, lumen_x, positions) -> dict[int, float] | None:
+    """Pullback position per frame in the stored breathing-sort order: the k-th frame of
+    the order takes the k-th smallest position. None when no stored order covers the frames."""
+    contoured = [f for f in frames if lumen_x[f] is not None]
+    order = _breathing_order(main_window, contoured)
+    if order is None:
+        return None
+    return dict(zip(order, sorted(positions[f] for f in contoured)))
+
+
 def save_combined_sorted_manual(main_window, report_data) -> None:
     """Always write combined_sorted_manual.csv alongside the report: the gated/tagged
-    frames as one CSV, with no breathing rearrangement.
+    frames as one CSV.
 
-    This is the un-sorted baseline of the file the breathing-sort viewer produces. For IVUS
-    it's the diastolic then systolic gated frames, each in acquisition order; for OCT there
+    For IVUS it's the diastolic then systolic gated frames, each in the stored
+    breathing-sort order when one covers them, else in acquisition order. For OCT there
     is no dia/sys gating, so it's the tagged frames instead. The breathing-sort viewer
-    overwrites this same file with its hand-adjusted ordering (and a breathing-corrected
-    position/distance_from_ostium_mm) when that tool is used — see
+    overwrites this same file with its ordering plus a breathing-corrected
+    position/distance_from_ostium_mm when that tool is closed — see
     breathing_sort_viewer._write_combined_report."""
     if report_data is None or report_data.empty:
         return
     rt = main_window.runtime_data
+    # report_data['frame'] is 1-based (frame + 1); our frame indices are 0-based.
+    by_frame = report_data.set_index('frame')
     if rt.metadata.get('modality') == 'OCT':
         ordered_frames = sorted(rt.tagged_frames)
     else:
-        # Diastole block then systole block — the same combined order the breathing viewer
-        # concatenates, just without reordering within each block.
-        ordered_frames = sorted(rt.gated_frames_dia) + sorted(rt.gated_frames_sys)
+        # Diastole block then systole block, the same combined order the breathing viewer writes.
+        ordered_frames = []
+        for frames in (rt.gated_frames_dia, rt.gated_frames_sys):
+            present = [f for f in frames if (f + 1) in by_frame.index]
+            ordered_frames += _breathing_order(main_window, present) or sorted(present)
     if not ordered_frames:
         return
 
-    # report_data['frame'] is 1-based (frame + 1); our frame indices are 0-based.
-    by_frame = report_data.set_index('frame')
     wanted = [f + 1 for f in ordered_frames if (f + 1) in by_frame.index]
     if not wanted:
         return
@@ -500,13 +523,17 @@ def _save_as_csv(main_window, lumen_x, lumen_y, others: dict):
     ]
     frame_groups = [(suffix, frames) for suffix, frames in frame_groups if frames]
 
+    # z per frame follows the breathing sort when one is stored, so the 3D stack uses it
+    positions = _pullback_positions(main_window)
+    z_of = {suffix: _sorted_positions(main_window, frames, lumen_x, positions) for suffix, frames in frame_groups}
+
     for suffix, frames in frame_groups:
-        save_csv_files(main_window, lumen_x, lumen_y, name=suffix, frames=frames)
+        save_csv_files(main_window, lumen_x, lumen_y, name=suffix, frames=frames, z_of=z_of[suffix])
 
     for key, (xs, ys) in others.items():
         if xs is not None and any(elem is not None for elem in xs):
             for suffix, frames in frame_groups:
-                save_csv_files(main_window, xs, ys, name=f'{key}_{suffix}', frames=frames)
+                save_csv_files(main_window, xs, ys, name=f'{key}_{suffix}', frames=frames, z_of=z_of[suffix])
 
 
 def compute_polygon_metrics(main_window, polygon, frame):
@@ -603,7 +630,11 @@ def closest_points(main_window, polygon, frame):
     return shortest_distance, closest_point_x, closest_point_y
 
 
-def save_csv_files(main_window, lumen_x, lumen_y, name, frames):
+def save_csv_files(main_window, lumen_x, lumen_y, name, frames, z_of: dict[int, float] | None = None):
+    """Contours (and reference points for frame groups) as tab-separated frame, x, y, z rows.
+
+    z_of: pullback position per frame from the breathing sort, else the acquisition position.
+    """
     if not frames:
         logger.warning(f'No frames available for {name} contours, skipping CSV saving.')
         return
@@ -612,6 +643,9 @@ def save_csv_files(main_window, lumen_x, lumen_y, name, frames):
     os.makedirs(csv_out_dir, exist_ok=True)
     img_dim_mm = main_window.runtime_data.metadata['dimension'] * main_window.runtime_data.metadata['resolution']
     positions = _pullback_positions(main_window)
+
+    def z(frame):
+        return z_of[frame] if z_of and frame in z_of else positions[frame]
 
     with open(os.path.join(csv_out_dir, f'{name}_contours.csv'), 'w', newline='') as contours_file:
         contours_writer = csv.writer(contours_file, delimiter='\t')
@@ -624,7 +658,7 @@ def save_csv_files(main_window, lumen_x, lumen_y, name, frames):
                 [abs(y * main_window.runtime_data.metadata['resolution'] - img_dim_mm) for y in lumen_y[frame]],
             )
             for row in rows:
-                csv_row = [frame + 1] + list(row) + [positions[frame] - distance_offset]
+                csv_row = [frame + 1] + list(row) + [z(frame) - distance_offset]
                 contours_writer.writerow(csv_row)
 
     if name in ('diastolic', 'systolic', 'tagged'):
@@ -640,6 +674,6 @@ def save_csv_files(main_window, lumen_x, lumen_y, name, frames):
                             frame + 1,
                             ref[0] * main_window.runtime_data.metadata['resolution'],
                             abs(ref[1] * main_window.runtime_data.metadata['resolution'] - img_dim_mm),
-                            positions[frame] - distance_offset,
+                            z(frame) - distance_offset,
                         ]
                     )

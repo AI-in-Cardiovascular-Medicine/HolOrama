@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 - **Breathing** peaks and valleys are found like the gating diastoles: the valleys are chosen as one chain about one breath apart, with a peak between each pair. Shallow breaths are no longer skipped, so the breathing phase has far fewer holes.
+- **Breathing sort** (Filtered viewer) rewritten:
+  - Each breath gets one displacement, 0 at the valley and largest at the peak, along the breathing curve.
+  - The displacements are chosen so lumen area and elliptic ratio oscillate least along the diastolic and systolic stacks.
+  - A second pass moves single frames up to half a breath to remove leftover islands.
+  - Diastole and systole share the displacements.
+  - Sorts stored by the old bin registration are recomputed once. The `breathing_bins` setting is gone.
+- Contour CSVs and `combined_sorted_manual.csv` follow the stored breathing sort, so the 3D reconstruction uses it. Before, writing a report reset `combined_sorted_manual.csv` to acquisition order, and multimodars up to 0.9.0 kept each frame at its acquisition z anyway.
 
 ## [0.17.0] - 2026-10-28
 

@@ -40,13 +40,11 @@ class GatingSignal(TypedDict, total=False):
     sort_signature: dict[str, Any]
     sort_peaks: list[int]
     sort_valleys: list[int]
-    sort_n_bins: int
     sort_dia_order: list[int]
     sort_sys_order: list[int]
     sort_dia_pos: list[list[float]]
     sort_sys_pos: list[list[float]]
-    sort_dia_shifts: list[float]
-    sort_sys_shifts: list[float]
+    sort_amplitudes: list[float]
 
 
 class RuntimeData:

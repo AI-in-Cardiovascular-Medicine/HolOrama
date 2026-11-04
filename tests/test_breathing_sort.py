@@ -12,9 +12,12 @@ import numpy as np
 
 from signal_processing.breathing_pipeline import (
     assign_breathing_bins,
+    breathing_shift,
     compute_breathing_phases,
     compute_breathing_signal,
+    refine_positions,
     register_phase,
+    sort_by_shape,
 )
 
 
@@ -162,6 +165,68 @@ def test_register_phase_recovers_order():
 def test_register_phase_degenerate():
     R = register_phase(np.array([1.0, 2.0, 3.0]), np.array([1.0, 2.0, 3.0]), [], [], n_bins=4)
     assert list(R['order']) == [0, 1, 2]
+
+
+# ─────────────────────────── shape sort ─────────────────────────
+
+
+def _breathing_pullback(direction=1.0, amplitude=150.0):
+    """Gated frames of a tapering, flattening vessel, shifted by breathing.
+
+    The shift is amplitude times a valley-0, peak-1 bump per breath, distal for direction 1.
+    """
+    n = 2400
+    t = np.arange(n, dtype=float)
+    valleys = list(range(0, n + 1, 240))
+    signal = np.sin(np.pi * (t % 240) / 240.0) ** 2
+    true_pos = lambda f: f - direction * amplitude * np.interp(f, t, signal)  # noqa: E731
+    dia = list(range(10, n - 10, 26))
+    sys = [f + 12 for f in dia]
+    area_of, ell_of = {}, {}
+    for f in dia + sys:
+        z = true_pos(f)
+        area_of[f] = 12.0 - 8.0 * z / n
+        ell_of[f] = 1.0 + 3.0 * z / n
+    return dia, sys, area_of, ell_of, t, signal, valleys, true_pos
+
+
+def test_shape_sort_recovers_order_and_amplitude():
+    dia, sys, area_of, ell_of, t, signal, valleys, true_pos = _breathing_pullback()
+    R = sort_by_shape(dia, sys, area_of, ell_of, t, signal, valleys, fs=30.0, breath=240.0)
+    for frames, pos in ((dia, R['dia_pos']), (sys, R['sys_pos'])):
+        order = sorted(frames, key=pos.get)
+        # the amplitude grid is ~26 frames, near-ties between breaths may stay swapped
+        assert _inv([true_pos(f) for f in order]) < 0.1 * _inv([true_pos(f) for f in frames])
+    assert np.allclose(R['amplitudes'], 150.0, atol=15.0)
+
+
+def test_shape_sort_finds_a_proximal_shift():
+    dia, sys, area_of, ell_of, t, signal, valleys, true_pos = _breathing_pullback(direction=-1.0)
+    R = sort_by_shape(dia, sys, area_of, ell_of, t, signal, valleys, fs=30.0, breath=240.0)
+    order = sorted(dia, key=R['dia_pos'].get)
+    assert _inv([true_pos(f) for f in order]) < 0.1 * _inv([true_pos(f) for f in dia])
+    assert np.allclose(R['amplitudes'], -150.0, atol=15.0)
+
+
+def test_shape_sort_without_breaths_keeps_acquisition_order():
+    R = sort_by_shape([1, 2, 3], [], {1: 1.0, 2: 2.0, 3: 3.0}, {}, np.arange(5.0), np.zeros(5), [], fs=30.0)
+    assert R['amplitudes'] == [] and R['dia_pos'] == {1: 1.0, 2: 2.0, 3: 3.0}
+
+
+def test_refine_moves_an_island_back():
+    z = np.arange(20, dtype=float)
+    shape = np.arange(20, dtype=float)
+    z[5] = 9.5  # frame 5 sits between frames 9 and 10, a round contour in the elliptic part
+    new = refine_positions(z, [shape], window=6.0)
+    assert list(np.argsort(new, kind='stable')) == list(range(20))
+    assert refine_positions(z, [shape], window=2.0)[5] == 9.5  # too far for a small window
+
+
+def test_breathing_shift_is_the_amplitude_at_the_peak():
+    t = np.arange(481, dtype=float)
+    signal = np.sin(np.pi * (t % 240) / 240.0) ** 2
+    shift = breathing_shift(np.array([0.0, 120.0, 240.0, 360.0]), t, signal, [0, 240, 480], [100.0, 50.0])
+    assert np.allclose(shift, [0.0, -100.0, 0.0, -50.0], atol=1e-6)
 
 
 # ─────────────────────────── patient case ─────────────────────────
