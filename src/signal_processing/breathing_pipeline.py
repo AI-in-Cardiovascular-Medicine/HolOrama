@@ -1,12 +1,19 @@
 import numpy as np
 from loguru import logger
 
-from signal_processing.automatic_gating import walk_extrema
+from signal_processing.automatic_gating import track_diastole, walk_extrema
 from signal_processing.gating_pipeline import (
     adjust_for_elliptic_deformation,
     fft_peak_freq,
     lowpass_filter,
 )
+
+# Breath tracker: the gating beat tracker with one breath as the beat. Breathing changes
+# rate more than the heart, so the steps are wider than in gating (tested on 10 NARCO
+# pullbacks against the breathing wave of the aortic pressure)
+BREATH_GAP = (0.6, 1.5)  # valley-valley gap of a regular breath, in breaths
+BREATH_SKIP_GAP = (1.7, 2.5)  # gap of a missed breath, in breaths
+EDGE_PEAK = 0.75  # furthest peak outside the first or last valley, in breaths
 
 
 def adjusted_areas_by_frame(
@@ -227,6 +234,44 @@ def _extract_breathing_signal(
     return lowpass_filter(area_signal, f_cutoff, fs)
 
 
+def track_breaths(breathing_signal: np.ndarray, breath: float) -> tuple[np.ndarray, np.ndarray]:
+    """Peaks and valleys of the breathing signal, valleys chosen as a chain like gating's diastoles.
+
+    The valleys are the track_diastole chain with one breath as the beat, so
+    they stay about one breath apart even where the breathing is shallow. The
+    chain is extended breath by breath towards both ends, where the tracker
+    may stop up to 1.5 breaths short. Each peak is the highest point between
+    two valleys, plus one within EDGE_PEAK breaths outside each end valley.
+    """
+    sig = np.nan_to_num(breathing_signal)
+    valleys, _ = track_diastole(sig, breath, BREATH_GAP, BREATH_SKIP_GAP)
+    empty = np.array([], dtype=int)
+    if not valleys:
+        return empty, empty
+
+    minima = _turning_points(-sig)
+    lo, hi = BREATH_GAP[0] * breath, BREATH_GAP[1] * breath
+    while len(c := minima[(minima >= valleys[0] - hi) & (minima <= valleys[0] - lo)]):
+        valleys.insert(0, int(c[np.argmin(sig[c])]))
+    while len(c := minima[(minima >= valleys[-1] + lo) & (minima <= valleys[-1] + hi)]):
+        valleys.append(int(c[np.argmin(sig[c])]))
+
+    peaks = [a + int(np.argmax(sig[a:b])) for a, b in zip(valleys[:-1], valleys[1:]) if b - a > 2]
+    maxima = _turning_points(sig)
+    before = maxima[(maxima < valleys[0]) & (maxima >= valleys[0] - EDGE_PEAK * breath)]
+    after = maxima[(maxima > valleys[-1]) & (maxima <= valleys[-1] + EDGE_PEAK * breath)]
+    if len(before):
+        peaks.insert(0, int(before[np.argmax(sig[before])]))
+    if len(after):
+        peaks.append(int(after[np.argmax(sig[after])]))
+    return np.array(peaks, dtype=int), np.array(valleys, dtype=int)
+
+
+def _turning_points(x: np.ndarray) -> np.ndarray:
+    """Indices of the local maxima of x (first sample of a flat top)."""
+    return np.flatnonzero((x[1:-1] > x[:-2]) & (x[1:-1] >= x[2:])) + 1
+
+
 def compute_breathing_phases(
     breathing_signal: np.ndarray,
     manual_peaks: list[int] | None = None,
@@ -235,6 +280,7 @@ def compute_breathing_phases(
     swing_fraction: float = 0.10,
     anchor_gap: int = 15,
     manual_only: bool = False,
+    breath: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Per-frame breathing phase in [0, 1), peaks, and valley indices.
 
@@ -242,6 +288,10 @@ def compute_breathing_phases(
     peaks (mid-breath, vessel displaced) -> 0.5.  Phase between anchors is
     linearly interpolated from a monotonically increasing cumulative-phase
     sequence and then wrapped to [0, 1).
+
+    The automatic anchors come from track_breaths when the breath length is
+    known, else from walk_extrema (a swing of ``swing_fraction`` of the
+    peak-to-peak range), which leaves holes where the breathing is shallow.
 
     Manual anchors override the automatic detection (hard anchors): any
     auto-detected extremum within ``anchor_gap`` samples of a manual anchor is
@@ -254,6 +304,7 @@ def compute_breathing_phases(
     manual_peaks/manual_valleys : peak / valley locations **as frame numbers**
         (matched against ``frames_arr``).  If ``frames_arr`` is None they are
         treated as direct indices into ``breathing_signal``.
+    breath : samples per breath (fs / f_resp), None or 0 if unknown.
 
     Returns
     -------
@@ -265,7 +316,12 @@ def compute_breathing_phases(
     n_samples = len(sig_centered)
     phase = np.zeros(n_samples)
 
-    _, auto_peaks, auto_valleys = walk_extrema(sig_centered, swing_fraction=swing_fraction)
+    if manual_only:
+        auto_peaks = auto_valleys = np.array([], dtype=int)
+    elif breath and np.isfinite(breath) and 2 < breath < n_samples:
+        auto_peaks, auto_valleys = track_breaths(sig_centered, breath)
+    else:
+        _, auto_peaks, auto_valleys = walk_extrema(sig_centered, swing_fraction=swing_fraction)
     manual_peak_idx = _frames_to_indices(manual_peaks, frames_arr, n_samples)
     manual_valley_idx = _frames_to_indices(manual_valleys, frames_arr, n_samples)
 
@@ -572,3 +628,261 @@ def _apply_bin_shifts(frames: np.ndarray, bins: np.ndarray, shifts: np.ndarray, 
     for bin_idx in range(n_bins):
         corrected[bins == bin_idx] = frames[bins == bin_idx] + shifts[bin_idx]
     return corrected
+
+
+# ─────────────── shape sort (gated frames only) ────────────────────────
+#
+# The catheter shifts along the vessel by a displacement that is 0 at the
+# breathing valley and largest at the peak, so frames from one breath can land
+# far from their acquisition neighbours. Within each valley-to-valley breath
+# the shift is that breath's amplitude times the breathing signal above the
+# valley line, scaled to 1 at the peak. The amplitudes are chosen so lumen area
+# and elliptic ratio oscillate least along the diastolic and systolic stacks,
+# since a vessel cannot switch back and forth between round and elliptic.
+# A second pass moves single frames a short way to remove leftover islands, and a
+# clean-up moves the few frames that still stand out from both neighbours to
+# wherever in the stack they fit best.
+
+SHAPE_MAX_SHIFT_S = 24.0  # largest peak displacement tried, in seconds of pullback
+SHAPE_GRID_STEPS = 29  # candidate amplitudes from 0 to the largest
+SHAPE_STARTS = (0.0, 0.2, 0.4, 0.7)  # starting amplitudes, as fractions of the largest
+SHAPE_SWEEPS = 4
+REFINE_WINDOW = 0.5  # breaths, how far the fine-tuning may move one frame
+REFINE_COST = 0.3  # variation a move across the whole window must save
+CLEAN_OUTLIER = 5.0  # median steps a frame must stand out from its neighbours to be moved
+CLEAN_MAX_FRACTION = 0.1  # at most this share of a stack is moved by the clean-up
+
+
+def breath_profile(
+    frames: np.ndarray, signal_frames: np.ndarray, signal: np.ndarray, valleys: list[int]
+) -> tuple[np.ndarray, np.ndarray]:
+    """Breath index and the 0-at-valley, 1-at-peak breathing profile at each frame."""
+    frames = np.asarray(frames, dtype=float)
+    signal_frames = np.asarray(signal_frames, dtype=float)
+    signal = np.asarray(signal, dtype=float)
+    v = np.sort(np.asarray(valleys, dtype=float))
+    level = np.interp(frames, signal_frames, signal)
+    at_valley = np.interp(v, signal_frames, signal)
+    breath = np.clip(np.searchsorted(v, frames) - 1, 0, len(v) - 2)
+    profile = np.zeros(len(frames))
+    for j in range(len(v) - 1):
+        slope = (at_valley[j + 1] - at_valley[j]) / (v[j + 1] - v[j])
+        inside = (signal_frames >= v[j]) & (signal_frames <= v[j + 1])
+        if not inside.any():
+            continue
+        top = (signal[inside] - (at_valley[j] + slope * (signal_frames[inside] - v[j]))).max()
+        mine = breath == j
+        profile[mine] = (level[mine] - (at_valley[j] + slope * (frames[mine] - v[j]))) / max(top, 1e-9)
+    return breath, profile
+
+
+def shape_variation(positions: np.ndarray, features: list[np.ndarray]) -> float:
+    """Total variation of each feature along the stack, scaled by the feature's range."""
+    order = np.argsort(positions, kind='stable')
+    return float(sum(np.abs(np.diff(f[order])).sum() / (np.ptp(f) + 1e-9) for f in features))
+
+
+def _stack_features(frames: list[int], area_of: dict[int, float], ell_of: dict[int, float]) -> list[np.ndarray]:
+    features = [np.log([area_of[f] for f in frames])]
+    if all(ell_of.get(f, 0) > 0 for f in frames):
+        features.append(np.log([ell_of[f] for f in frames]))
+    return features
+
+
+def refine_positions(
+    positions: np.ndarray,
+    features: list[np.ndarray],
+    window: float,
+    cost: float = REFINE_COST,
+) -> np.ndarray:
+    """Move single frames within +-window to where the stack's shape variation drops most."""
+    z = np.asarray(positions, dtype=float).copy()
+    n = len(z)
+    if n < 3 or window <= 0:
+        return z
+    F = np.array([f / (np.ptp(f) + 1e-9) for f in features])
+
+    def step(a: int, b: int) -> float:
+        return float(np.abs(F[:, a] - F[:, b]).sum())
+
+    for _ in range(5):
+        moved = 0
+        for i in np.argsort(z, kind='stable'):
+            others = [j for j in np.argsort(z, kind='stable') if j != i]
+            zo = z[others]
+            k = int(np.searchsorted(zo, z[i]))
+            if 0 < k < n - 1:
+                saved = step(i, others[k - 1]) + step(i, others[k]) - step(others[k - 1], others[k])
+            else:
+                saved = step(i, others[0] if k == 0 else others[-1])
+            best, best_z = 0.0, z[i]
+            lo, hi = np.searchsorted(zo, z[i] - window), np.searchsorted(zo, z[i] + window)
+            for m in range(lo, min(hi, n - 1) + 1):
+                if m == 0:
+                    added, new_z = step(i, others[0]), zo[0] - 1.0
+                elif m == n - 1:
+                    added, new_z = step(i, others[-1]), zo[-1] + 1.0
+                else:
+                    a, b = others[m - 1], others[m]
+                    added, new_z = step(i, a) + step(i, b) - step(a, b), 0.5 * (zo[m - 1] + zo[m])
+                if abs(new_z - z[i]) > window:
+                    continue
+                delta = added - saved + cost * abs(new_z - z[i]) / window
+                if delta < best - 1e-9:
+                    best, best_z = delta, new_z
+            if best_z != z[i]:
+                z[i] = best_z
+                moved += 1
+        if not moved:
+            break
+    return z
+
+
+def clean_outliers(
+    positions: np.ndarray,
+    features: list[np.ndarray],
+    outlier: float = CLEAN_OUTLIER,
+    max_fraction: float = CLEAN_MAX_FRACTION,
+) -> np.ndarray:
+    """Move frames that stand out from both stack neighbours to where they fit best.
+
+    A frame stands out when the detour through it (distance to both neighbours minus
+    the distance between them) exceeds `outlier` median steps. It is moved anywhere in
+    the stack if that saves at least one median step.
+    """
+    z = np.asarray(positions, dtype=float).copy()
+    n = len(z)
+    if n < 4:
+        return z
+    F = np.array([f / (np.ptp(f) + 1e-9) for f in features])
+    D = np.abs(F[:, :, None] - F[:, None, :]).sum(axis=0)
+    order = list(np.argsort(z, kind='stable'))
+    moved: set[int] = set()
+
+    # an end frame counts its one neighbour twice (mirrored), otherwise the ends would be
+    # the cheapest place for any frame that fits nowhere
+    def detour(o: list[int], k: int) -> float:
+        i = o[k]
+        if k == 0:
+            return 2 * D[i, o[1]]
+        if k == len(o) - 1:
+            return 2 * D[i, o[-2]]
+        return D[i, o[k - 1]] + D[i, o[k + 1]] - D[o[k - 1], o[k + 1]]
+
+    for _ in range(max(1, int(max_fraction * n))):
+        median_step = float(np.median([D[a, b] for a, b in zip(order[:-1], order[1:])]))
+        detours = np.array([detour(order, k) for k in range(n)])
+        found = False
+        for k in np.argsort(-detours):
+            if detours[k] <= outlier * median_step:
+                break
+            i = order[k]
+            if i in moved:
+                continue
+            rest = order[:k] + order[k + 1 :]
+            costs = [2 * D[i, rest[0]]]
+            costs += [D[i, a] + D[i, b] - D[a, b] for a, b in zip(rest[:-1], rest[1:])]
+            costs.append(2 * D[i, rest[-1]])
+            m = int(np.argmin(costs))
+            if costs[m] < detours[k] - median_step:
+                order = rest[:m] + [i] + rest[m:]
+                moved.add(i)
+                found = True
+                break
+        if not found:
+            break
+
+    # moved frames take evenly spaced positions between their unmoved neighbours
+    k = 0
+    while k < n:
+        if order[k] not in moved:
+            k += 1
+            continue
+        end = k
+        while end < n and order[end] in moved:
+            end += 1
+        gaps = end - k + 1
+        if k > 0 and end < n:
+            before, after = float(z[order[k - 1]]), float(z[order[end]])
+        elif k > 0:
+            before = float(z[order[k - 1]])
+            after = before + gaps
+        else:
+            after = float(z[order[end]])
+            before = after - gaps
+        for j, idx in enumerate(order[k:end]):
+            z[idx] = before + (j + 1) * (after - before) / gaps
+        k = end
+    return z
+
+
+def sort_by_shape(
+    dia: list[int],
+    sys: list[int],
+    area_of: dict[int, float],
+    ell_of: dict[int, float],
+    signal_frames: np.ndarray,
+    signal: np.ndarray,
+    valleys: list[int],
+    fs: float,
+    breath: float | None = None,
+) -> dict:
+    """Breathing-corrected positions of the gated frames from shape smoothness.
+
+    Returns ``amplitudes`` (peak displacement per breath in frames, positive = distal),
+    ``dia_pos`` and ``sys_pos`` (corrected position per frame on the frame axis, proximal = larger).
+    """
+    frames = np.array(list(dia) + list(sys), dtype=float)
+    out: dict = {'amplitudes': [], 'dia_pos': {f: float(f) for f in dia}, 'sys_pos': {f: float(f) for f in sys}}
+    if len(valleys) < 2 or len(dia) < 3:
+        return out
+    breath_idx, profile = breath_profile(frames, signal_frames, signal, valleys)
+    n_breaths = len(valleys) - 1
+    stacks = [(np.arange(len(dia)), _stack_features(dia, area_of, ell_of))]
+    if len(sys) >= 3:
+        stacks.append((len(dia) + np.arange(len(sys)), _stack_features(sys, area_of, ell_of)))
+
+    def variation(amplitudes: np.ndarray) -> float:
+        z = frames - amplitudes[breath_idx] * profile
+        return sum(shape_variation(z[idx], feats) for idx, feats in stacks)
+
+    # one direction for the whole pullback: peaks move distal (+) or proximal (-)
+    best, best_cost = np.zeros(n_breaths), variation(np.zeros(n_breaths))
+    for sign in (1.0, -1.0):
+        grid = sign * np.linspace(0.0, SHAPE_MAX_SHIFT_S * fs, SHAPE_GRID_STEPS)
+        for start in SHAPE_STARTS:
+            amps = np.full(n_breaths, grid[int(round(start * (len(grid) - 1)))])
+            cost = variation(amps)
+            for _ in range(SHAPE_SWEEPS):
+                for j in range(n_breaths):
+                    trial = amps.copy()
+                    costs = []
+                    for a in grid:
+                        trial[j] = a
+                        costs.append(variation(trial))
+                    i = int(np.argmin(costs))
+                    if costs[i] < cost:
+                        amps[j], cost = grid[i], costs[i]
+            if cost < best_cost:
+                best, best_cost = amps.copy(), cost
+
+    z = frames - best[breath_idx] * profile
+    window = REFINE_WINDOW * breath if breath and np.isfinite(breath) else 0.0
+    for idx, feats in stacks:
+        z[idx] = clean_outliers(refine_positions(z[idx], feats, window), feats)
+    out['amplitudes'] = [float(a) for a in best]
+    out['dia_pos'] = {f: float(z[i]) for i, f in enumerate(dia)}
+    if len(stacks) > 1:
+        out['sys_pos'] = {f: float(z[len(dia) + i]) for i, f in enumerate(sys)}
+    return out
+
+
+def breathing_shift(
+    frames: np.ndarray, signal_frames: np.ndarray, signal: np.ndarray, valleys: list[int], amplitudes: list[float]
+) -> np.ndarray:
+    """Shift of each frame (negative = distal) for stored per-breath amplitudes."""
+    frames = np.asarray(frames, dtype=float)
+    if len(valleys) < 2 or len(amplitudes) != len(valleys) - 1:
+        return np.zeros(len(frames))
+    breath_idx, profile = breath_profile(frames, signal_frames, signal, valleys)
+    return -np.asarray(amplitudes, dtype=float)[breath_idx] * profile

@@ -104,7 +104,12 @@ def _robust_z(x: np.ndarray) -> np.ndarray:
     return (x - np.median(x)) / scale
 
 
-def track_diastole(gating_signal: np.ndarray, beat: float) -> tuple[list[int], list[tuple[int, int]]]:
+def track_diastole(
+    gating_signal: np.ndarray,
+    beat: float,
+    normal_gap: tuple[float, float] = NORMAL_GAP,
+    skip_gap: tuple[float, float] = SKIP_GAP,
+) -> tuple[list[int], list[tuple[int, int]]]:
     """Chain of diastoles among the valleys of the gating signal, chosen as a whole.
 
     Deeper valleys score higher (the heart is stillest in diastole). Steps
@@ -114,7 +119,7 @@ def track_diastole(gating_signal: np.ndarray, beat: float) -> tuple[list[int], l
     diastoles. Where no step can bridge to the next valleys (e.g. a long
     stretch without motion), a new chain starts after the gap, which is
     flagged like a skipped beat. Returns the diastoles and the skipped
-    (start, end) intervals.
+    (start, end) intervals. normal_gap and skip_gap set the step windows in beats.
     """
     g = gating_signal
     cand = np.array(_local_minima(g, 1, len(g) - 1))
@@ -126,21 +131,28 @@ def track_diastole(gating_signal: np.ndarray, beat: float) -> tuple[list[int], l
     joins: list[tuple[int, int]] = []
     first = 0
     while first < len(cand) - 1:
-        chain = _best_chain(cand, node, beat, first)
+        chain = _best_chain(cand, node, beat, first, normal_gap, skip_gap)
         if len(chain) < 2:
             first += 1
             continue
         if dia:
             joins.append((dia[-1], int(cand[chain[0]])))
         dia += [int(cand[k]) for k in chain]
-        first = int(np.searchsorted(cand, dia[-1] + NORMAL_GAP[0] * beat))
+        first = int(np.searchsorted(cand, dia[-1] + normal_gap[0] * beat))
     if not dia:
         return [int(cand[np.argmin(g[cand])])], []
-    skipped = [(a, b) for a, b in zip(dia[:-1], dia[1:]) if (b - a) / beat >= SKIP_GAP[0] or (a, b) in joins]
+    skipped = [(a, b) for a, b in zip(dia[:-1], dia[1:]) if (b - a) / beat >= skip_gap[0] or (a, b) in joins]
     return dia, skipped
 
 
-def _best_chain(cand: np.ndarray, node: np.ndarray, beat: float, first: int) -> list[int]:
+def _best_chain(
+    cand: np.ndarray,
+    node: np.ndarray,
+    beat: float,
+    first: int,
+    normal_gap: tuple[float, float] = NORMAL_GAP,
+    skip_gap: tuple[float, float] = SKIP_GAP,
+) -> list[int]:
     """Best chain (candidate indices) starting within 1.5 beats of cand[first].
 
     Prefers chains ending within 1.5 beats of the last candidate. If none
@@ -151,11 +163,11 @@ def _best_chain(cand: np.ndarray, node: np.ndarray, beat: float, first: int) -> 
     for i in range(first, len(cand)):
         for j in range(i + 1, len(cand)):
             gap = (cand[j] - cand[i]) / beat
-            if gap > SKIP_GAP[1]:
+            if gap > skip_gap[1]:
                 break
-            if NORMAL_GAP[0] <= gap <= NORMAL_GAP[1]:
+            if normal_gap[0] <= gap <= normal_gap[1]:
                 steps_by_end.setdefault(j, []).append((i, False, gap))
-            elif gap >= SKIP_GAP[0]:
+            elif gap >= skip_gap[0]:
                 steps_by_end.setdefault(j, []).append((i, True, gap))
 
     start_ok = cand <= cand[first] + 1.5 * beat

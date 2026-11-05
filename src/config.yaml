@@ -41,7 +41,6 @@ gating:
   # Bandpass cuts, as fractions of the detected f_heart
   bandpass_lo_frac: 0.7      # drops the slow pullback trend
   bandpass_hi_frac: 2.2      # keeps the 2nd harmonic, drops speckle noise
-  breathing_bins: 5          # bins per breathing half-cycle for the Filtered sort
 
 report:
   save_as_csv: True

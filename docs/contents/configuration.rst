@@ -109,9 +109,6 @@ Parameters of the image-based gating and breathing algorithms. See
    * - ``bandpass_hi_frac``
      - Upper bandpass cutoff as a fraction of the detected cardiac frequency. It passes the
        2nd harmonic while removing speckle noise.
-   * - ``breathing_bins``
-     - Number of bins per breathing half-cycle used by the *Filtered* (breathing-corrected)
-       sort.
 
 ``report``
 ----------

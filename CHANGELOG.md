@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.18.0] - 2026-10-29
+
+### Changed
+- **Breathing** peaks and valleys are found like the gating diastoles: the valleys are chosen as one chain about one breath apart, with a peak between each pair. Shallow breaths are no longer skipped, so the breathing phase has far fewer holes.
+- **Breathing sort** (Filtered viewer) rewritten:
+  - Each breath gets one displacement, 0 at the valley and largest at the peak, along the breathing curve.
+  - The displacements are chosen so lumen area and elliptic ratio oscillate least along the diastolic and systolic stacks.
+  - A second pass moves single frames up to half a breath to remove leftover islands.
+  - A clean-up then moves the few frames that still stand out from both neighbours (more than 5 median steps in area and elliptic ratio) to wherever in the stack they fit best.
+  - Diastole and systole share the displacements.
+  - Sorts stored by the old bin registration are recomputed once. The `breathing_bins` setting is gone.
+- Contour CSVs and `combined_sorted_manual.csv` follow the stored breathing sort, so the 3D reconstruction uses it. Before, writing a report reset `combined_sorted_manual.csv` to acquisition order, and multimodars up to 0.9.0 kept each frame at its acquisition z anyway.
+
 ## [0.17.0] - 2026-10-28
 
 ### Changed
@@ -567,6 +580,10 @@ Now runs on PyQt6
 - Declared first stable release (after paper publication).
 - Updated citation from medRxiv to *Computer Methods and Programs in Biomedicine*.
 
+[0.18.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.17.0...v0.18.0
+[0.17.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.16.0...v0.17.0
+[0.16.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.15.0...v0.16.0
+[0.15.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.11.0...v0.12.0
@@ -581,7 +598,7 @@ Now runs on PyQt6
 [0.3.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/compare/v1.8.0...v0.1.0 
-[1.8.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.7.0...v1.8.0
+<!-- [1.8.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.6.3...v1.7.0
 [1.6.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.4.0...v1.5.0
@@ -589,4 +606,4 @@ Now runs on PyQt6
 [1.3.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/releases/tag/v1.0.0
+[1.0.0]: https://github.com/AI-in-Cardiovascular-Medicine/AIVUS-CAA/releases/tag/v1.0.0 -->
