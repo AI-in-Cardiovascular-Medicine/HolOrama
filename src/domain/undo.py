@@ -21,6 +21,15 @@ class UndoStack(Generic[T]):
     def clear(self) -> None:
         self._stack.clear()
 
+    def items(self) -> list[T]:
+        """Oldest first, for saving the history in another snapshot."""
+        return list(self._stack)
+
+    def replace(self, items: list[T]) -> None:
+        """Restore a history saved with items()."""
+        self._stack.clear()
+        self._stack.extend(items)
+
     @property
     def can_undo(self) -> bool:
         return bool(self._stack)

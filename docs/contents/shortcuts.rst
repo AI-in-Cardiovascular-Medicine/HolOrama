@@ -265,3 +265,19 @@ Mouse, 3D views (Segmentation, Cut Geometry and Fusion):
    * - :kbd:`LMB` click (pick mode)
      - Pick a point: an outlet point, a split point or a reference marker, depending on
        the view
+
+Fusion module
+-------------
+
+.. list-table::
+   :header-rows: 1
+   :width: 100%
+   :widths: 30 70
+
+   * - Shortcut
+     - Action
+   * - :kbd:`Ctrl+Z`
+     - On the *Branch Labels* tab: undo the last branch deletion. Elsewhere: undo the last
+       smoothing step, else the last point removal (only while nothing is stitched)
+   * - :kbd:`Ctrl` + mouse wheel (sphere brush)
+     - Resize the sphere brush

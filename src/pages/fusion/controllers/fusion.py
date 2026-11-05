@@ -38,6 +38,7 @@ class FusionController(StageController):
         self.data.prox_scaling = scalings['proximal_scaling']
         self.data.distal_scaling = scalings['distal_scaling']
         self.data.aortic_scaling = scalings['aortic_scaling']
+        self.page.case_state.on_scaling_computed(vessel, scalings)
         self.right_half.fusion_column.set_scaling_results(scalings)
 
     def on_apply_scaling(self) -> None:
@@ -79,6 +80,10 @@ class FusionController(StageController):
         )
         if results_out is None:
             return
+        old_results = self.data.results
+        assert old_results is not None  # checked above
+        self.page.case_state.on_scaled(old_results['mesh'], results_out['mesh'])
+        self.page.case_state.on_scaling_applied(vessel, scaling)
         self.data.results = results_out
         self.invalidate_removal()  # stale: re-run Remove Labeled Points on the scaled mesh
         self.page.ccta_geometry.refresh_scene()
@@ -100,6 +105,7 @@ class FusionController(StageController):
             fc.remove_point_keys(),
         )
         if results is not None:
+            self.page.branches.clear_delete_undo()  # its snapshots predate this removal
             self.data.removal_undo.push(before)
             self._set_removed_results(results)
             if self.data.aligned is not None:  # the aligned scene is empty until alignment
@@ -141,8 +147,10 @@ class FusionController(StageController):
         self.clear_removal_undo()
 
     def clear_removal_undo(self) -> None:
+        """Also drops the branch deletion undo: both go stale when `results` is replaced otherwise."""
         self.data.removal_undo.clear()
         self.update_removal_undo_button()
+        self.page.branches.clear_delete_undo()
 
     def update_removal_undo_button(self) -> None:
         self.right_half.fusion_column.set_undo_remove_available(bool(self.data.removal_undo))

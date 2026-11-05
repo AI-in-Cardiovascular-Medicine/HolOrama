@@ -40,6 +40,7 @@ class TreeController(StageController):
         if tree is None:
             return
         self.data.vessel_tree = tree
+        self.page.branches.clear_delete_undo()  # its snapshots hold branches of the old tree
         self.page.cutting.reset()  # slice indices refer to the old tree
 
         self.data.selected_branch = {'rca': 0, 'lca': 0}
@@ -51,6 +52,7 @@ class TreeController(StageController):
         for vessel in ('rca', 'lca'):
             self.left_half.tree_toolbar.set_branches(vessel, self.branch_choices(vessel), 0)
             self.select_branch(vessel, 0)
+        self.page.case_state.on_tree_ready()  # preselects the saved alignment target
         self.left_half.show_scene(FusionScene.VESSEL_TREE)
 
     def branch_choices(self, vessel: str) -> list[tuple[str, int]]:

@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.19.0] - 2026-11-05
+
+### Added
+- **Fusion state file** `<mesh>_fusion_<version>.json`, next to the CCTA mesh, rewritten on every label change: the labels of Label Geometry, Label Branches and Label Overlap Region (lasso edits included), branch names, centerline splits and merges, deleted branches, the pullback loader settings, the alignment (vessel, branch, reference, mode, rotation, ref. point offset) and the computed and applied scaling factors. Labels are stored as vertex indices of the labelled mesh, so a save takes a fraction of a second and the file stays a few MB. Nothing about the scaled mesh, removed points or stitching is stored.
+- Picking a CCTA mesh that has a state file asks to **restore** it: the pipeline reruns up to the alignment and overlap labels with the saved labels and choices, using the current parameter settings, and the deleted branches are deleted again if ticked. The centerline and pullback paths are filled in from the file.
+- **Undo Delete** on the *Branch Labels* tab (also `Ctrl+Z` there): brings back a deleted branch with its mesh, centerline, vessel tree branches, cuts and stitched/final meshes, up to five deletions back. Undo is no longer offered once the mesh, labels, centerlines or tree changed otherwise.
+
+### Changed
+- CI tests on Python 3.11 only, matching `requires-python`.
+
 ## [0.18.0] - 2026-10-29
 
 ### Changed

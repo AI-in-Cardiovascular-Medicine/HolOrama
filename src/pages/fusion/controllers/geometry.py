@@ -75,7 +75,9 @@ class GeometryController(StageController):
         if result is None:
             return
         self.data.centerline_aorta, self.data.centerline_rca, self.data.centerline_lca = result
+        self.page.branches.clear_delete_undo()
         self.data.branch_names = {'rca': {}, 'lca': {}}  # new centerlines, new branch ids
+        self.page.case_state.on_centerlines_prepared()
         self.page.cutting.reset()
         self.refresh_scene()
         self.page.branches.refresh_centerline_scene()
@@ -108,6 +110,7 @@ class GeometryController(StageController):
             return
         self.data.results = results
         self.page.fusion.invalidate_removal()  # stale: based on the previous labeling
+        self.page.case_state.on_label_geometry()  # may put the saved labels in place of the fresh ones
         self.refresh_scene()
         self.left_half.show_scene(FusionScene.CCTA_GEOMETRY)
         self.page.branches.run_label_branches_pair()
@@ -206,6 +209,7 @@ class GeometryController(StageController):
 
         moved = branch_ops.move_points(results, source, dest, inside)
         branch_ops.sync_branch_labels(results, moved, source, dest, self.data.centerline)
+        self.page.case_state.save()
 
         self.refresh_scene()
         self.page.branches.refresh_labels_scene()

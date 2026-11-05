@@ -62,6 +62,7 @@ class AlignmentController(StageController):
         # A PyGeometryPair (dia/sys) or a single PyGeometry (OCT / one IVUS phase), see _phase_geoms.
         self.data.iv_geometry_pair = geometry
         self.data.iv_align_logs = align_logs
+        self.page.case_state.on_pullback_loaded(plan)
 
         # Shown before centerline alignment, so errors can be traced to the dia/sys self-alignment.
         self._add_geometry_pair_meshes(FusionScene.INTRAVASCULAR_LOADED, geometry, 'raw_geom')
@@ -152,7 +153,13 @@ class AlignmentController(StageController):
         if result is None:
             return
         self._apply_align_result(
-            result, vessel, branch, centerline, cl_main, self._resolve_manual_ref_point(cl_main, ref_points[0], 0)
+            result,
+            vessel,
+            branch,
+            centerline,
+            cl_main,
+            self._resolve_manual_ref_point(cl_main, ref_points[0], 0),
+            mode='auto',
         )
 
     def on_align_manual(self) -> None:
@@ -193,7 +200,13 @@ class AlignmentController(StageController):
         # Mark the unshifted reference (offset 0), not ref_point: the IV geometry is placed
         # on ref_point, so marking it would move the dot along with the vessel.
         self._apply_align_result(
-            result, vessel, branch, centerline, cl_main, self._resolve_manual_ref_point(cl_main, main_ref_pt, 0)
+            result,
+            vessel,
+            branch,
+            centerline,
+            cl_main,
+            self._resolve_manual_ref_point(cl_main, main_ref_pt, 0),
+            mode='manual',
         )
 
     def _alignment_branch(self, centerline, branch: int):
@@ -226,6 +239,8 @@ class AlignmentController(StageController):
         vessel_centerline,
         source_centerline,
         ostium_point: tuple[float, float, float],
+        *,
+        mode: str,
     ) -> None:
         """`result` is (aligned_geometry, spacing_mm, total_rotation_deg). `source_centerline` is the
         single-branch centerline passed to the aligner, kept as-is: resampling it to spacing_mm would offset it
@@ -238,6 +253,9 @@ class AlignmentController(StageController):
         self.data.aligned_vessel_centerline = vessel_centerline
         # Prefill the Manual angle with this result so further nudging starts from here.
         self.right_half.intravascular_column.set_manual_rotation_angle(total_rotation_deg)
+        self.page.case_state.on_aligned(
+            vessel=vessel, branch=branch, mode=mode, rotation_deg=total_rotation_deg, point=ostium_point
+        )
 
         viewer = self.left_half.viewer
         viewer.add_points(
@@ -320,6 +338,7 @@ class AlignmentController(StageController):
         centerline = self.data.aligned_vessel_centerline
         if not self.require(centerline is not None, 'Run label_geometry first.'):
             return
+        keys_before = set(self.data.results or {})
         results = self.run(
             'Labeling overlap region…',
             'Overlap region labeled.',
@@ -332,6 +351,7 @@ class AlignmentController(StageController):
         if results is not None:
             self.data.results = results
             self.page.fusion.invalidate_removal()  # stale: re-run Remove Labeled Points
+            self.page.case_state.on_anomalous_labelled(keys_before)
             # proximal/distal/anomalous (shown as overlap)/off_path_points now exist
             self.page.ccta_geometry.refresh_scene()
             # Hide the aligned vessel's own region, which would cover them.

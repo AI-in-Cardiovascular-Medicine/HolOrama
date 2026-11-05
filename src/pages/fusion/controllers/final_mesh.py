@@ -57,6 +57,7 @@ class FinalMeshController(StageController):
         self._remesh_worker = None
         self.data.final_mesh_undo.clear()
         self.set_final_mesh(mesh)
+        self.page.branches.clear_delete_undo()
         self.status_bar.showMessage('Remeshed.')
 
     def _on_remesh_failed(self, progress: QProgressDialog, message: str) -> None:
@@ -79,6 +80,7 @@ class FinalMeshController(StageController):
             return
         self.data.final_mesh_undo.push(before)
         self.set_final_mesh(mesh)
+        self.page.branches.clear_delete_undo()
 
     def set_final_mesh(self, mesh) -> None:
         self.data.final_mesh = mesh
@@ -139,6 +141,7 @@ class FinalMeshController(StageController):
             return
         self.data.final_mesh_undo.push(mesh.vertices.copy())
         self.set_final_mesh(smoothed)
+        self.page.branches.clear_delete_undo()
         self.left_half.viewer.refresh_sphere_hover()
 
     def on_undo_smoothing(self) -> None:

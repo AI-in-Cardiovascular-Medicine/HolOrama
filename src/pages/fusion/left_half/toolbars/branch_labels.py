@@ -12,6 +12,7 @@ class BranchLabelsToolbar(SceneToolbar):
 
     rename_requested = pyqtSignal(str, int)  # vessel ('rca'/'lca'), branch id
     delete_requested = pyqtSignal(str, int, bool)  # vessel, branch id, fill hole
+    undo_delete_requested = pyqtSignal()
 
     def __init__(self, parent=None) -> None:
         self._branch_combo = QComboBox()
@@ -22,6 +23,12 @@ class BranchLabelsToolbar(SceneToolbar):
             'Cut the branch, and every branch growing out of it, off the mesh and the\n'
             'centerline (multimodars remove_branch). The main vessel cannot be deleted.'
         )
+        self._undo_delete_btn = QPushButton('Undo Delete')
+        self._undo_delete_btn.setToolTip(
+            'Bring back the last deleted branch (Ctrl+Z on this tab). Only possible while nothing\n'
+            'else changed the mesh, branch labels, centerlines or vessel tree since.'
+        )
+        self._undo_delete_btn.setEnabled(False)
         self._fill_hole_check = QCheckBox('Fill hole')
         self._fill_hole_check.setChecked(True)
         self._fill_hole_check.setToolTip("Close the ostium with a patch following the parent vessel's wall.")
@@ -32,6 +39,7 @@ class BranchLabelsToolbar(SceneToolbar):
         buttons = QHBoxLayout()
         buttons.addWidget(self._rename_btn)
         buttons.addWidget(self._delete_btn)
+        buttons.addWidget(self._undo_delete_btn)
         layout.addLayout(buttons)
         layout.addWidget(self._fill_hole_check)
 
@@ -46,6 +54,7 @@ class BranchLabelsToolbar(SceneToolbar):
         )
         self._rename_btn.clicked.connect(self._on_rename_clicked)
         self._delete_btn.clicked.connect(self._on_delete_clicked)
+        self._undo_delete_btn.clicked.connect(self.undo_delete_requested.emit)
         self._branch_combo.currentIndexChanged.connect(self._sync_delete_enabled)
         self._sync_delete_enabled()
 
@@ -60,6 +69,9 @@ class BranchLabelsToolbar(SceneToolbar):
         self._branch_combo.setCurrentIndex(index)
         self._branch_combo.blockSignals(False)
         self._sync_delete_enabled()
+
+    def set_undo_delete_available(self, available: bool) -> None:
+        self._undo_delete_btn.setEnabled(available)
 
     def _sync_delete_enabled(self, *_) -> None:
         data = self._branch_combo.currentData()

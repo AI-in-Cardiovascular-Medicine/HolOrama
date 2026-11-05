@@ -266,6 +266,53 @@ class IntravascularColumn(QWidget):
         if path:
             self._input_path_edit.setText(path)
 
+    def input_path(self) -> str:
+        return self._input_path_edit.text()
+
+    def set_input_path(self, path: str) -> None:
+        self._input_path_edit.setText(path)
+
+    def set_load_plan(self, plan: dict) -> None:
+        """Inverse of load_plan(), for a restored case. Missing keys keep their widget value."""
+        if 'mode' in plan:
+            (self._oct_radio if plan['mode'] == 'oct' else self._ivus_radio).setChecked(True)
+        if plan.get('input_path'):
+            self._input_path_edit.setText(plan['input_path'])
+        for key, widget in (('step_rotation_deg', self._step_rotation), ('sample_size', self._sample_size)):
+            if key in plan:
+                widget.setValue(plan[key])
+        if 'n_points' in plan:
+            self._n_points.setValue(plan['n_points'])
+        for key, check in (('diastole', self._dia_check), ('systole', self._sys_check)):
+            if key in plan:
+                check.setChecked(plan[key])
+        for key, edit in (
+            ('label', self._label_oct_edit),
+            ('dia_label', self._label_dia_edit),
+            ('sys_label', self._label_sys_edit),
+        ):
+            if key in plan:
+                edit.setText(plan[key])
+
+    def set_align_settings(self, settings: dict) -> None:
+        """Inverse of align_kwargs() / manual_align_kwargs(). Missing keys keep their widget value."""
+        for key, widget in (
+            ('angle_range_deg', self._angle_range),
+            ('angle_step_deg', self._angle_step),
+            ('index_range', self._index_range),
+        ):
+            if key in settings:
+                widget.setValue(settings[key])
+        if 'watertight' in settings:
+            self._watertight.setChecked(settings['watertight'])
+            self._manual_watertight.setChecked(settings['watertight'])
+
+    def set_align_with_parents(self, checked: bool) -> None:
+        self._with_parents_check.setChecked(checked)
+
+    def set_manual_ref_point_offset(self, offset: int) -> None:
+        self._manual_ref_offset.setValue(offset)
+
     def set_manual_rotation_angle(self, degrees: float) -> None:
         self._manual_rotation_angle.setValue(degrees)
 

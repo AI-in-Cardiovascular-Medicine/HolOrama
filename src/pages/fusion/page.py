@@ -8,6 +8,7 @@ from domain.fusion.runtime_types import FusionRuntimeData
 from domain.fusion.types import FusionScene
 from pages.fusion.controllers.alignment import AlignmentController
 from pages.fusion.controllers.branches import BranchController
+from pages.fusion.controllers.case_state import CaseStateController
 from pages.fusion.controllers.cutting import CutController
 from pages.fusion.controllers.final_mesh import FinalMeshController
 from pages.fusion.controllers.fusion import FusionController
@@ -36,6 +37,7 @@ class FusionPage(QWidget):
         self.fusion = FusionController(self)
         self.final_mesh = FinalMeshController(self)
         self.cutting = CutController(self)
+        self.case_state = CaseStateController(self)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(self.left_half())
@@ -89,11 +91,18 @@ class FusionPage(QWidget):
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
+        self.reset_data()
+        self.status_bar.showMessage('Fusion data cleared.')
+
+    def reset_data(self) -> None:
+        """Clear All Data without asking. The picked file paths stay."""
         self.data = FusionRuntimeData()
         self.final_mesh.reset_smoothing_state()
         self.fusion.update_removal_undo_button()
+        self.branches.update_delete_undo_button()
         self.cutting.reset()
         self.branches.reset()
+        self.case_state.reset()
         self.right_half.intravascular_column.set_centerline_choices([('RCA', 'rca', 0), ('LCA', 'lca', 0)], 'rca', 0)
         self.right_half.intravascular_column.set_reference_choices([])
         for vessel in ('rca', 'lca'):
@@ -102,13 +111,13 @@ class FusionPage(QWidget):
         for scene in FusionScene:
             self.left_half.viewer.clear_scene(scene)
             self.left_half.refresh_toolbar(scene)
-        self.status_bar.showMessage('Fusion data cleared.')
 
     def _connect_signals(self) -> None:
         lh, viewer = self.left_half, self.left_half.viewer
 
         gc = self.right_half.geometry_column
         gc.geometry_files_changed.connect(self.ccta_geometry.on_preview)
+        gc.mesh_selected.connect(self.case_state.on_mesh_selected)
         gc.prepare_centerlines_requested.connect(self.ccta_geometry.on_prepare_centerlines)
         gc.run_label_geometry_requested.connect(self.ccta_geometry.on_label_geometry)
         gc.run_label_branches_requested.connect(self.branches.on_label_branches)
@@ -118,6 +127,7 @@ class FusionPage(QWidget):
         lh.branch_labels_toolbar.lasso_mode_toggled.connect(self.branches.on_lasso_mode_toggled)
         lh.branch_labels_toolbar.rename_requested.connect(self.branches.on_rename_requested)
         lh.branch_labels_toolbar.delete_requested.connect(self.branches.on_delete_requested)
+        lh.branch_labels_toolbar.undo_delete_requested.connect(self.branches.on_undo_delete)
         lh.branch_toolbar.cos_threshold_changed.connect(self.branches.on_cos_threshold_changed)
         lh.branch_toolbar.split_requested.connect(self.branches.on_split_requested)
         lh.branch_toolbar.merge_requested.connect(self.branches.on_merge_requested)
@@ -198,9 +208,12 @@ class FusionPage(QWidget):
             self.ccta_geometry.on_lasso_closed()
 
     def _on_undo_shortcut(self) -> None:
-        """Ctrl+Z: undo smoothing first, then point removals, but only while nothing is stitched (that
-        would drop the stitched mesh). The Undo button next to Remove still does it."""
-        if self.data.final_mesh_undo:
+        """Ctrl+Z: on the Branch Labels tab, undo the last branch deletion. Elsewhere undo smoothing first,
+        then point removals, but only while nothing is stitched (that would drop the stitched mesh).
+        The Undo button next to Remove still does it."""
+        if self.left_half.current_scene() == FusionScene.BRANCH_LABELS:
+            self.branches.on_undo_delete()
+        elif self.data.final_mesh_undo:
             self.final_mesh.on_undo_smoothing()
         elif self.data.stitched is None and self.data.final_mesh is None:
             self.fusion.on_undo_remove_points()

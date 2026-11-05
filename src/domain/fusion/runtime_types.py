@@ -9,6 +9,7 @@ from domain.undo import UndoStack
 
 # Full results snapshots (mesh + every label list), far heavier than a vertex array.
 REMOVAL_UNDO_LIMIT = 5
+BRANCH_DELETION_UNDO_LIMIT = 5  # as heavy: results + stitched dicts per snapshot
 SMOOTHING_UNDO_LIMIT = 20  # vertex snapshots, each a full (N, 3) float array
 
 
@@ -52,6 +53,26 @@ class BranchRemoval:
     removed: list[int]  # the branch and its descendants
 
 
+@dataclass
+class BranchDeletionUndo:
+    """Everything one branch deletion replaced, to put it back (see BranchController.on_undo_delete)."""
+
+    vessel: str
+    removed: list[int]  # the deleted branch and its descendants
+    results: dict
+    centerline: Any  # PyCenterline with the branches
+    tree_branches: dict | None  # that vessel's tree branches before pruning, None without a tree
+    branch_names: dict[int, str]  # that vessel's names
+    cuts: list[CutSpec]
+    selected_branch: int
+    selected_reference_index: int
+    results_points_removed: dict | None
+    removal_undo: list[dict]
+    stitched: dict | None
+    final_mesh: Any | None
+    final_mesh_undo: list[np.ndarray]
+
+
 class FusionRuntimeData:
     """In-memory multimodars objects of the fusion pipeline, grouped by the right-half
     column that produces them."""
@@ -71,6 +92,9 @@ class FusionRuntimeData:
         # User-given branch names per vessel, by branch id (missing = default name).
         # Split/merge reassign branch ids and reset that vessel's names.
         self.branch_names: dict[str, dict[int, str]] = {'rca': {}, 'lca': {}}
+        # State before each branch deletion. Only valid while deletions were the last edits:
+        # cleared whenever the mesh, labels, centerlines or tree change otherwise.
+        self.branch_deletion_undo: UndoStack[BranchDeletionUndo] = UndoStack(BRANCH_DELETION_UNDO_LIMIT)
 
         # -- Column 2: intravascular alignment -------------------------------------------
         self.iv_geometry_pair: Any | None = None  # loaded pullback (PyGeometryPair or PyGeometry)
