@@ -79,7 +79,7 @@ url = "https://download.pytorch.org/whl/cu118"
 explicit = true
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 files = ["src"]
 ignore_missing_imports = true
 
