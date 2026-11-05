@@ -100,6 +100,7 @@ class FusionController(StageController):
             fc.remove_point_keys(),
         )
         if results is not None:
+            self.page.branches.clear_delete_undo()  # its snapshots predate this removal
             self.data.removal_undo.push(before)
             self._set_removed_results(results)
             if self.data.aligned is not None:  # the aligned scene is empty until alignment
@@ -141,8 +142,10 @@ class FusionController(StageController):
         self.clear_removal_undo()
 
     def clear_removal_undo(self) -> None:
+        """Also drops the branch deletion undo: both go stale when `results` is replaced otherwise."""
         self.data.removal_undo.clear()
         self.update_removal_undo_button()
+        self.page.branches.clear_delete_undo()
 
     def update_removal_undo_button(self) -> None:
         self.right_half.fusion_column.set_undo_remove_available(bool(self.data.removal_undo))

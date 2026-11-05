@@ -81,6 +81,14 @@ class CutController(StageController):
         self.data.cut_result = None
         self._tree_cache = None  # same tree object, fewer branches
 
+    def restore_branch_cuts(self, vessel: str, branch_ids, cuts_before: list) -> None:
+        """Undo of drop_branches: bring back the cuts the deleted branches had, keep every current cut."""
+        back = set(branch_ids)
+        returning = [s for s in cuts_before if s.vessel == vessel and s.branch in back and s not in self.data.cuts]
+        self.data.cuts = self.data.cuts + returning
+        self.data.cut_result = None
+        self._tree_cache = None  # same tree object, more branches
+
     def _tree(self) -> tuple | None:
         tree = self.data.vessel_tree
         if tree is None:

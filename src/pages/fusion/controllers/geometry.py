@@ -75,6 +75,7 @@ class GeometryController(StageController):
         if result is None:
             return
         self.data.centerline_aorta, self.data.centerline_rca, self.data.centerline_lca = result
+        self.page.branches.clear_delete_undo()
         self.data.branch_names = {'rca': {}, 'lca': {}}  # new centerlines, new branch ids
         self.page.cutting.reset()
         self.refresh_scene()

@@ -94,5 +94,8 @@ class LeftHalf:
         """Call `callback(scene)` whenever the user or show_scene switches to a tab."""
         self._tabs.currentChanged.connect(lambda index: callback(self._scene_order[index]))
 
+    def current_scene(self) -> FusionScene:
+        return self._scene_order[self._tabs.currentIndex()]
+
     def show_scene(self, scene: FusionScene) -> None:
         self._tabs.setCurrentIndex(self._scene_order.index(scene))

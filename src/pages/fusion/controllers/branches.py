@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import copy
+
 import numpy as np
 from loguru import logger
 from PyQt6.QtWidgets import QInputDialog, QMessageBox
 
 from domain.fusion import display_types as colors
+from domain.fusion.runtime_types import BranchDeletionUndo
 from domain.fusion.types import FusionScene
 from fusion_pipeline import branches as branch_ops
+from fusion_pipeline import geometry as geo
 from fusion_pipeline import multimodars_api as mm_api
 from pages.fusion.controllers.base import StageController
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
@@ -161,6 +165,7 @@ class BranchController(StageController):
             ErrorMessage(self.page, 'No vertices fell inside the lasso.')
             return
         moved = branch_ops.move_points(branches, source, dest, inside)
+        self.clear_delete_undo()  # an undone deletion would silently drop this relabeling
 
         self.refresh_labels_scene()
         stale = ' Re-run Discretize Vessel Tree to use them.' if self.data.vessel_tree is not None else ''
@@ -230,6 +235,25 @@ class BranchController(StageController):
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
+        d = self.data
+        tree = d.vessel_tree
+        # Copied before the call, in case remove_branch touches its inputs (same as point removal).
+        before = BranchDeletionUndo(
+            vessel=vessel,
+            removed=[],
+            results=copy.deepcopy(results),
+            centerline=centerline,
+            tree_branches=dict(getattr(tree, vessel)) if tree is not None else None,
+            branch_names=dict(d.branch_names[vessel]),
+            cuts=list(d.cuts),
+            selected_branch=d.selected_branch[vessel],
+            selected_reference_index=d.selected_reference_index[vessel],
+            results_points_removed=d.results_points_removed,
+            removal_undo=d.removal_undo.items(),
+            stitched=copy.deepcopy(d.stitched),
+            final_mesh=d.final_mesh,
+            final_mesh_undo=d.final_mesh_undo.items(),
+        )
         out = self.run(
             f'Deleting {name}…',
             f'Deleted {name}.',
@@ -247,7 +271,10 @@ class BranchController(StageController):
         removed_names = ', '.join(self.name(vessel, b) for b in removed)
         setattr(self.data, f'centerline_{vessel}', out.centerline)
         self.data.results = out.results
-        self.page.fusion.invalidate_removal()  # stale: the mesh changed
+        # Stale: the mesh changed. Not invalidate_removal(), which would also drop the deletion undo.
+        self.data.results_points_removed = None
+        self.data.removal_undo.clear()
+        self.page.fusion.update_removal_undo_button()
         names = self.data.branch_names[vessel]
         self.data.branch_names[vessel] = {b: n for b, n in names.items() if b not in removed}
         tree = self.data.vessel_tree
@@ -277,7 +304,69 @@ class BranchController(StageController):
         self.page.alignment.refresh_ccta_mesh()
         also = ' from the stitched and final meshes too' if new_final is not None else ''
         also = also or (' from the stitched mesh too' if new_stitched is not None else '')
+        before.removed = removed
+        self.data.branch_deletion_undo.push(before)
+        self.update_delete_undo_button()
         self.status_bar.showMessage(f'Deleted {removed_names}{also}.')
+
+    def on_undo_delete(self) -> None:
+        """Put back what the last branch deletion replaced. Branches keep their ids through a deletion,
+        so names given and cuts added since on the surviving branches are kept."""
+        snap = self.data.branch_deletion_undo.pop()
+        if snap is None:
+            return
+        d, vessel, viewer = self.data, snap.vessel, self.left_half.viewer
+        setattr(d, f'centerline_{vessel}', snap.centerline)
+        d.results = snap.results
+        d.results_points_removed = snap.results_points_removed
+        d.removal_undo.replace(snap.removal_undo)
+        self.page.fusion.update_removal_undo_button()
+        if snap.results_points_removed is not None:
+            self.right_half.fusion_column.set_seam_points_limit(geo.max_seam_points(snap.results_points_removed))
+        d.branch_names[vessel] = {**snap.branch_names, **d.branch_names[vessel]}
+
+        tree = d.vessel_tree
+        if tree is not None and snap.tree_branches is not None:
+            setattr(tree, vessel, snap.tree_branches)
+            tree.calculate_ref_pts()
+            self.page.cutting.restore_branch_cuts(vessel, snap.removed, snap.cuts)
+            if d.selected_branch[vessel] == 0 and snap.selected_branch in snap.removed:
+                d.selected_branch[vessel] = snap.selected_branch
+                d.selected_reference_index[vessel] = snap.selected_reference_index
+            self.page.tree.refresh_scene()
+            self.left_half.refresh_toolbar(FusionScene.VESSEL_TREE)
+
+        d.stitched = snap.stitched
+        if snap.stitched is not None:
+            viewer.add_mesh(
+                FusionScene.CCTA_GEOMETRY, 'stitched_mesh', snap.stitched['mesh'], color=colors.STITCHED_MESH_COLOR
+            )
+        else:
+            viewer.remove_layer(FusionScene.CCTA_GEOMETRY, 'stitched_mesh')
+        if snap.final_mesh is not None:
+            d.final_mesh_undo.replace(snap.final_mesh_undo)
+            self.page.final_mesh.set_final_mesh(snap.final_mesh)
+        else:
+            d.final_mesh = None
+            self.page.final_mesh.reset_smoothing_state()
+            viewer.remove_layer(FusionScene.CCTA_GEOMETRY, 'final_mesh')
+
+        self.page.ccta_geometry.refresh_scene()
+        self.refresh_centerline_scene()
+        self._refresh_name_displays()
+        self.page.alignment.refresh_ccta_mesh()
+        self.update_delete_undo_button()
+        restored = ', '.join(self.name(vessel, b) for b in snap.removed)
+        left = len(d.branch_deletion_undo)
+        self.status_bar.showMessage(f'Restored {restored} ({left} deletion(s) left to undo).')
+
+    def clear_delete_undo(self) -> None:
+        """The mesh, labels, centerlines or tree changed other than by a deletion: the snapshots are stale."""
+        self.data.branch_deletion_undo.clear()
+        self.update_delete_undo_button()
+
+    def update_delete_undo_button(self) -> None:
+        self.left_half.branch_labels_toolbar.set_undo_delete_available(bool(self.data.branch_deletion_undo))
 
     def refresh_centerline_scene(self) -> None:
         """Native VTK version of multimodars' plot_centerline_branches: RCA/LCA colored per branch, sharp
@@ -411,6 +500,7 @@ class BranchController(StageController):
             ErrorMessage(self.page, str(e))
             return
         setattr(self.data, cl_attr, new_cl)
+        self.clear_delete_undo()
         self.data.branch_names[marker['centerline']] = {}  # split reassigns every branch id
         self.page.cutting.reset()
         self.status_bar.showMessage(
@@ -431,6 +521,7 @@ class BranchController(StageController):
             ErrorMessage(self.page, str(e))
             return
         setattr(self.data, cl_attr, new_cl)
+        self.clear_delete_undo()
         self.data.branch_names[cl_name] = {}  # merge reassigns every branch id
         self.page.cutting.reset()
         self.status_bar.showMessage(f'Merged {cl_name.upper()} branches {branch_id_a} and {branch_id_b}.')

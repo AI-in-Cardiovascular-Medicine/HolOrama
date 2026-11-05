@@ -92,6 +92,7 @@ class FusionPage(QWidget):
         self.data = FusionRuntimeData()
         self.final_mesh.reset_smoothing_state()
         self.fusion.update_removal_undo_button()
+        self.branches.update_delete_undo_button()
         self.cutting.reset()
         self.branches.reset()
         self.right_half.intravascular_column.set_centerline_choices([('RCA', 'rca', 0), ('LCA', 'lca', 0)], 'rca', 0)
@@ -118,6 +119,7 @@ class FusionPage(QWidget):
         lh.branch_labels_toolbar.lasso_mode_toggled.connect(self.branches.on_lasso_mode_toggled)
         lh.branch_labels_toolbar.rename_requested.connect(self.branches.on_rename_requested)
         lh.branch_labels_toolbar.delete_requested.connect(self.branches.on_delete_requested)
+        lh.branch_labels_toolbar.undo_delete_requested.connect(self.branches.on_undo_delete)
         lh.branch_toolbar.cos_threshold_changed.connect(self.branches.on_cos_threshold_changed)
         lh.branch_toolbar.split_requested.connect(self.branches.on_split_requested)
         lh.branch_toolbar.merge_requested.connect(self.branches.on_merge_requested)
@@ -198,9 +200,12 @@ class FusionPage(QWidget):
             self.ccta_geometry.on_lasso_closed()
 
     def _on_undo_shortcut(self) -> None:
-        """Ctrl+Z: undo smoothing first, then point removals, but only while nothing is stitched (that
-        would drop the stitched mesh). The Undo button next to Remove still does it."""
-        if self.data.final_mesh_undo:
+        """Ctrl+Z: on the Branch Labels tab, undo the last branch deletion. Elsewhere undo smoothing first,
+        then point removals, but only while nothing is stitched (that would drop the stitched mesh).
+        The Undo button next to Remove still does it."""
+        if self.left_half.current_scene() == FusionScene.BRANCH_LABELS:
+            self.branches.on_undo_delete()
+        elif self.data.final_mesh_undo:
             self.final_mesh.on_undo_smoothing()
         elif self.data.stitched is None and self.data.final_mesh is None:
             self.fusion.on_undo_remove_points()
