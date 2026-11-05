@@ -131,7 +131,14 @@ volume it is the file without its ``.nii``/``.nii.gz`` extension.
 Fusion module
 -------------
 
-The fusion module does not auto-save. It writes two outputs, each from its own button:
+The fusion module keeps its manual work in a state file, rewritten automatically on every
+label change and restored when the same CCTA mesh is picked again (see
+:ref:`fusion-saved-state`):
+
+- ``<mesh>_fusion_<version>.json``, next to the CCTA mesh: labels as vertex indices, branch
+  names and edits, deleted branches, the alignment and the scaling factors.
+
+The geometry itself is only written from its own buttons:
 
 - **Export Final Mesh (STL)…**: the fused, remeshed and smoothed geometry as a single
   ``.stl`` at a path you choose.

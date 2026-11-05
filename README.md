@@ -237,6 +237,7 @@ This application is designed for IVUS, OCT and CCTA images in DICOM or NIfTi for
 - **Scale** the CCTA to the intravascular calibre, replace the overlapping segment and **stitch** the two into one surface, reconnecting side branches that leave it
 - **Remesh and smooth** the result, also locally with a sphere brush
 - **Cut inlets and outlets** flat at any slice of the vessel tree, capped and ready for CFD, and export the cut mesh, every cap and the cut centerlines
+- **Saved state**: labels, branch edits, the alignment and the scaling factors are saved next to the mesh on every change and restored in one go when the mesh is opened again
 
 ## Configuration
 

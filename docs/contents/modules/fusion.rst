@@ -135,6 +135,11 @@ Stage 1: CCTA geometry and centerlines
 before anything has been computed: a quick check that you picked the right files and that
 they share a coordinate system.
 
+If the mesh was worked on before, it has a saved state (see :ref:`fusion-saved-state`) and
+you are asked whether to restore it. **Yes** fills in the centerline and pullback paths and
+reruns the pipeline up to the alignment with your saved labels and choices, so you can
+continue at stage 3.
+
 **2. Prepare the centerlines.** Set the parameters, then click **Prepare Centerlines**.
 
 .. list-table::
@@ -227,6 +232,11 @@ to. Its toolbar works on these labels:
   labels stay, and a stitched or final mesh that already exists loses the branch too (the
   final mesh gets the branch labels from the stitched one by nearest vertex). The patch on
   the final mesh is not remeshed; run **Fix & Remesh** again if it should be.
+- **Undo Delete** (or :kbd:`Ctrl+Z` on this tab): bring back the last deleted branch, with
+  everything the deletion changed (mesh, centerline, vessel tree branches, cuts, stitched
+  and final mesh), up to five deletions back. Undo is only offered while nothing else has
+  changed the mesh, the labels, the centerlines or the vessel tree since: a lasso edit,
+  split, merge, scaling, point removal, remeshing or smoothing ends it.
 
 *Correcting a mislabelled region:* click **Lasso** in the *CCTA Geometry* toolbar, draw a
 closed lasso around the offending points, and choose which region they come from and which
@@ -405,6 +415,36 @@ it doesn't need discretising again.
 Geometry (STL + caps + VTP)…** writes the cut mesh (watertight, caps included) to the chosen file, and next to
 it one STL per cap (``<name>_<cap name>.stl``) and the centerlines as VTP
 (``<name>_centerline_<vessel>.vtp``), cut where a cut hit that vessel.
+
+.. _fusion-saved-state:
+
+Saved state
+-----------
+
+Everything that takes manual work is saved as you go, in ``<mesh>_fusion_<version>.json``
+next to the CCTA mesh. The file is rewritten whenever a label changes (labelling, lasso,
+rename, delete, undo) and after alignment and scaling. It holds:
+
+- the paths of the mesh, the centerlines and the pullback folder
+- the labels of **Label Geometry**, **Label Branches** and **Label Overlap Region**, with
+  your lasso edits
+- branch names, centerline splits and merges, and the deleted branches
+- the pullback loader settings and the alignment: vessel, branch, reference, automatic or
+  manual, rotation and *Ref. point offset*
+- the computed and applied scaling factors, for later analysis
+
+It does not hold the scaled mesh, the removed points or anything after them: those steps
+are quick to redo. A deleted branch's vertices keep their labels in the file, so the file
+always describes the whole original mesh.
+
+**Restoring.** Picking the same mesh again asks whether to restore. **Yes** prepares the
+centerlines, replays the splits and merges, labels the geometry and branches with the saved
+labels, discretises the tree, deletes the deleted branches again (if ticked) and, if an
+alignment was saved, loads the pullback and aligns it the same way (manual with the saved
+angle, automatic with the saved search settings) and labels the overlap region. The
+parameter settings are taken from the columns as they are, so keep them as they were for the
+same branch ids. A step that fails stops the restore there; continue by hand. **No** keeps
+the file until the mesh is labelled again, which overwrites it.
 
 Practical notes
 ---------------
