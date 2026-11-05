@@ -26,6 +26,7 @@ class GeometryColumn(QWidget):
     prepare_centerlines_requested = pyqtSignal()
     run_discretize_tree_requested = pyqtSignal()
     geometry_files_changed = pyqtSignal()  # mesh and/or centerline path(s) changed
+    mesh_selected = pyqtSignal()  # after geometry_files_changed, when the mesh was picked
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -229,6 +230,7 @@ class GeometryColumn(QWidget):
             self.mesh_path = path
             self._mesh_edit.setText(path)
             self.geometry_files_changed.emit()
+            self.mesh_selected.emit()
 
     def _on_browse_centerline(self, key: str) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -238,6 +240,11 @@ class GeometryColumn(QWidget):
             self.centerline_paths[key] = path
             self._centerline_edits[key].setText(path)
             self.geometry_files_changed.emit()
+
+    def set_centerline_path(self, key: str, path: str) -> None:
+        """Without emitting geometry_files_changed: the caller is already handling a file change."""
+        self.centerline_paths[key] = path
+        self._centerline_edits[key].setText(path)
 
     # ------------------------------------------------------------------
     # Param getters (read by FusionPage on the *_requested signals)

@@ -60,6 +60,7 @@ class BranchController(StageController):
         self.data.results = results
         self.page.fusion.clear_removal_undo()  # snapshots carry the old branch ids
         self.refresh_labels_scene()
+        self.page.case_state.on_branches_labelled()
         return True
 
     def _label_layers(self) -> dict[str, tuple[str, int]]:
@@ -166,6 +167,7 @@ class BranchController(StageController):
             return
         moved = branch_ops.move_points(branches, source, dest, inside)
         self.clear_delete_undo()  # an undone deletion would silently drop this relabeling
+        self.page.case_state.save()
 
         self.refresh_labels_scene()
         stale = ' Re-run Discretize Vessel Tree to use them.' if self.data.vessel_tree is not None else ''
@@ -199,6 +201,7 @@ class BranchController(StageController):
         else:
             names.pop(branch, None)
         self._refresh_name_displays()
+        self.page.case_state.save()
         self.status_bar.showMessage(f'Renamed {current} to {self.name(vessel, branch)}.')
 
     def _refresh_name_displays(self) -> None:
@@ -233,8 +236,17 @@ class BranchController(StageController):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
-        if reply != QMessageBox.StandardButton.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
+            self.delete_branch(vessel, branch, fill_hole)
+
+    def delete_branch(self, vessel: str, branch: int, fill_hole: bool) -> None:
+        """on_delete_requested without asking (also replays a saved state's deletions)."""
+        centerline = self.data.centerline(vessel)
+        results = self.data.results
+        if not self.require(results is not None and centerline is not None, 'Run Label Branches first.'):
             return
+        assert results is not None and centerline is not None
+        name = self.name(vessel, branch)
         d = self.data
         tree = d.vessel_tree
         # Copied before the call, in case remove_branch touches its inputs (same as point removal).
@@ -307,6 +319,7 @@ class BranchController(StageController):
         before.removed = removed
         self.data.branch_deletion_undo.push(before)
         self.update_delete_undo_button()
+        self.page.case_state.on_branch_deleted(vessel, branch, fill_hole, name, removed)
         self.status_bar.showMessage(f'Deleted {removed_names}{also}.')
 
     def on_undo_delete(self) -> None:
@@ -356,6 +369,7 @@ class BranchController(StageController):
         self._refresh_name_displays()
         self.page.alignment.refresh_ccta_mesh()
         self.update_delete_undo_button()
+        self.page.case_state.on_branch_restored(vessel, snap.removed)
         restored = ', '.join(self.name(vessel, b) for b in snap.removed)
         left = len(d.branch_deletion_undo)
         self.status_bar.showMessage(f'Restored {restored} ({left} deletion(s) left to undo).')
@@ -491,39 +505,52 @@ class BranchController(StageController):
         if not self.require(marker is not None, 'Click a sharp-angle marker in the scene first.'):
             return
         assert marker is not None
-        cl_attr = 'centerline_rca' if marker['centerline'] == 'rca' else 'centerline_lca'
-        cl = getattr(self.data, cl_attr)
+        self.split_branch(marker['centerline'], marker['branch_id'], marker['point_index'])
+
+    def split_branch(self, vessel: str, branch: int, point_index: int) -> bool:
+        """Split `branch` of `vessel`'s centerline at a point. Also replays a saved state's splits."""
+        cl = self.data.centerline(vessel)
+        if not self.require(cl is not None, 'Prepare centerlines first.'):
+            return False
+        assert cl is not None
         try:
-            new_cl = cl.split_branch(marker['branch_id'], marker['point_index']).orient_by_max_z()
+            new_cl = cl.split_branch(branch, point_index).orient_by_max_z()
         except Exception as e:
             logger.exception('split_branch failed')
             ErrorMessage(self.page, str(e))
-            return
-        setattr(self.data, cl_attr, new_cl)
-        self.clear_delete_undo()
-        self.data.branch_names[marker['centerline']] = {}  # split reassigns every branch id
-        self.page.cutting.reset()
-        self.status_bar.showMessage(
-            f"Split {marker['centerline'].upper()} branch {marker['branch_id']} at point {marker['point_index']}."
-        )
+            return False
+        self._set_edited_centerline(vessel, new_cl)  # split reassigns every branch id
+        self.page.case_state.on_centerline_edit('split', vessel, branch, point_index=point_index)
+        self.status_bar.showMessage(f'Split {vessel.upper()} branch {branch} at point {point_index}.')
         self.refresh_centerline_scene()
         self.run_label_branches_pair()
+        return True
 
     def on_merge_requested(self, cl_name: str, branch_id_a: int, branch_id_b: int) -> None:
-        cl_attr = 'centerline_rca' if cl_name == 'rca' else 'centerline_lca'
-        cl = getattr(self.data, cl_attr)
+        self.merge_branches(cl_name, branch_id_a, branch_id_b)
+
+    def merge_branches(self, vessel: str, branch_a: int, branch_b: int) -> bool:
+        """Merge two branches of `vessel`'s centerline. Also replays a saved state's merges."""
+        cl = self.data.centerline(vessel)
         if not self.require(cl is not None, 'Prepare centerlines first.'):
-            return
+            return False
+        assert cl is not None
         try:
-            new_cl = cl.merge_branches(branch_id_a, branch_id_b).orient_by_max_z()
+            new_cl = cl.merge_branches(branch_a, branch_b).orient_by_max_z()
         except Exception as e:
             logger.exception('merge_branches failed')
             ErrorMessage(self.page, str(e))
-            return
-        setattr(self.data, cl_attr, new_cl)
-        self.clear_delete_undo()
-        self.data.branch_names[cl_name] = {}  # merge reassigns every branch id
-        self.page.cutting.reset()
-        self.status_bar.showMessage(f'Merged {cl_name.upper()} branches {branch_id_a} and {branch_id_b}.')
+            return False
+        self._set_edited_centerline(vessel, new_cl)  # merge reassigns every branch id
+        self.page.case_state.on_centerline_edit('merge', vessel, branch_a, other=branch_b)
+        self.status_bar.showMessage(f'Merged {vessel.upper()} branches {branch_a} and {branch_b}.')
         self.refresh_centerline_scene()
         self.run_label_branches_pair()
+        return True
+
+    def _set_edited_centerline(self, vessel: str, centerline) -> None:
+        """A split/merge result: every branch id changes, so names, cuts and deletion undo go."""
+        setattr(self.data, f'centerline_{vessel}', centerline)
+        self.clear_delete_undo()
+        self.data.branch_names[vessel] = {}
+        self.page.cutting.reset()

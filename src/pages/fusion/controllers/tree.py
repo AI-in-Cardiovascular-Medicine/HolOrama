@@ -52,6 +52,7 @@ class TreeController(StageController):
         for vessel in ('rca', 'lca'):
             self.left_half.tree_toolbar.set_branches(vessel, self.branch_choices(vessel), 0)
             self.select_branch(vessel, 0)
+        self.page.case_state.on_tree_ready()  # preselects the saved alignment target
         self.left_half.show_scene(FusionScene.VESSEL_TREE)
 
     def branch_choices(self, vessel: str) -> list[tuple[str, int]]:
