@@ -1,9 +1,10 @@
 # Build a standalone Windows executable of HolOrama with Nuitka.
 #
-# The compiled build is inference-free: torch / torchvision / tensorflow / nnUNetv2
-# and the whole dev toolchain are excluded (see --nofollow-import-to below). The app
-# runs fully except for "Automatic segmentation", which imports those lazily at call
-# time and will surface an ImportError only if the user triggers it.
+# The build contains the whole app, including Automatic Segmentation (onnxruntime + the
+# bundled ONNX model). The one thing not compiled in is vmtk for Calculate Centerlines: it
+# exists only on conda-forge, so the app sets it up itself on first use (pixi), from the
+# manifest/lock bundled below. Segmentation in the exe runs on the CPU (plain onnxruntime).
+# Only uv is required: the script creates its own build environment in build\venv.
 #
 # Usage: .\build_nuitka.ps1
 # Output: build\nuitka\main.dist\HolOrama.exe
@@ -11,20 +12,29 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$python = '.\.venv\Scripts\python.exe'
+# Build from a dedicated environment, never from the developer's .venv: that one may carry the
+# GPU runtime (segmentation-gpu, ~2 GB of CUDA DLLs) or stray packages Nuitka would follow into
+# the exe. build\venv is the locked core + CPU 'segmentation' extra + Nuitka, nothing else.
+$env:UV_PROJECT_ENVIRONMENT = 'build\venv'
+$env:UV_HTTP_TIMEOUT = '300'
+Write-Host "Syncing the build environment (build\venv) ..." -ForegroundColor Cyan
+uv sync --locked --extra segmentation --group dev
+if ($LASTEXITCODE -ne 0) { throw "uv sync of the build environment failed" }
+Remove-Item Env:UV_PROJECT_ENVIRONMENT
+$python = '.\build\venv\Scripts\python.exe'
 # Read the version from src\version.py so the exe's file/product metadata can't drift
 # from the real release (build_installer.ps1 reads the same source).
 $versionLine = Select-String -Path 'src\version.py' -Pattern "__version__\s*=\s*'([^']+)'" | Select-Object -First 1
 if (-not $versionLine) { throw "Could not read __version__ from src\version.py" }
 $version = $versionLine.Matches[0].Groups[1].Value
 
-# Heavy runtime deps that are only imported lazily (inside Predict.inference) and are
-# NOT needed for anything except automatic segmentation. Also drop the dev toolchain.
+# The installer is CPU-only by design; make sure the GPU runtime never slips in.
+& $python -c "import onnxruntime as o, sys; sys.exit('CUDAExecutionProvider' in o.get_available_providers())"
+if ($LASTEXITCODE -ne 0) { throw "build\venv has onnxruntime-gpu; delete build\venv and rerun." }
+
+# The dev toolchain may be importable from the build venv but must never be followed into the exe.
 $exclude = @(
-    'torch', 'torchvision', 'torchgen', 'functorch',
-    'tensorflow', 'tensorboard', 'keras', 'jax', 'jaxlib',
-    'nnunetv2', 'nnunet', 'batchgenerators', 'dynamic_network_architectures',
-    'pytest', 'pytest_qt', 'pytestqt', 'black', 'mypy', 'ruff', 'pre_commit', 'pylint',
+    'pytest', 'pytest_qt', 'pytestqt', 'black', 'mypy', 'ruff', 'pre_commit', 'nuitka',
     'IPython', 'notebook'
 ) -join ','
 
@@ -46,6 +56,11 @@ $nuitkaArgs = @(
     # The built-in contour presets are read from presets/ next to the executable
     # (domain/intravascular/contour_presets.py and domain/ccta/presets.py).
     '--include-data-dir=src\presets=presets',
+    # The automatic segmentation model, found next to segmentation/onnx_inference.py.
+    '--include-data-files=src\segmentation\weights\ivus_lumen_u2netp.onnx=segmentation\weights\ivus_lumen_u2netp.onnx',
+    # pixi manifest + lock of the vmtk environment, found next to cut_geometry/vmtk.py.
+    '--include-data-files=src\pages\ccta\left_half\cut_geometry\vmtk_env\pixi.toml=pages\ccta\left_half\cut_geometry\vmtk_env\pixi.toml',
+    '--include-data-files=src\pages\ccta\left_half\cut_geometry\vmtk_env\pixi.lock=pages\ccta\left_half\cut_geometry\vmtk_env\pixi.lock',
     # media/ holds the window icon (desktop_img.ico), the About video and the
     # bundled JetBrains Mono cuts in media/fonts (recursive, so fonts come along).
     '--include-data-dir=media=media',

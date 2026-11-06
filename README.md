@@ -61,138 +61,37 @@ Currently spans:
 
 ### Pre-built Windows installer (recommended for most users)
 
-If you just want to run the app — no Python, no coding — download the latest **`HolOrama-Setup-<version>.exe`** from the [**Releases**](https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/releases/latest) page and run it. It installs per-user (no administrator rights), adds Start-Menu and Desktop shortcuts, and bundles everything it needs — logs and settings live in `%LOCALAPPDATA%\HolOrama`, while your analysis outputs are saved next to the files you open.
+If you just want to run the app — no Python, no coding — download the latest **`HolOrama-Setup-<version>.exe`** from the [**Releases**](https://github.com/AI-in-Cardiovascular-Medicine/HolOrama/releases/latest) page and run it. It installs per-user (no administrator rights), adds Start-Menu and Desktop shortcuts, and includes everything, automatic segmentation too — logs and settings live in `%LOCALAPPDATA%\HolOrama`, while your analysis outputs are saved next to the files you open.
 
 > On first launch Windows may show a **"Windows protected your PC"** (SmartScreen) prompt because the installer isn't code-signed — click **More info → Run anyway**.
 
-The packaged build does **not** include automatic AI segmentation (which requires a full PyTorch/TensorFlow install). For segmentation or for development, install from source as described below.
+The only optional component is **vmtk** for *Calculate Centerlines* (CCTA): the app offers to download it into its own environment the first time you use that button (~1.5 GB, once).
 
 ### From source
 
-The easiest way to install from source is via the provided scripts — they handle all platform-specific steps automatically. If you run into problems, follow the step-by-step instructions further below.
-
-### Linux / macOS — script
+Dependencies are managed with [uv](https://docs.astral.sh/uv/) and pinned in `uv.lock`; the install scripts install uv if needed and run `uv sync`. Python 3.11–3.13 on Windows, Linux and macOS.
 
 ```bash
+# Linux / macOS
 bash install.sh
-```
-
-The default install is GPU-ready (CUDA 11.8). Optional flags:
-
-| Flag | Effect |
-|------|--------|
-| `--dev` | Also install dev + docs dependencies (linters, test runner, Sphinx) |
-| `--nnuzoo` | Install nnUZoo from GitHub |
-| `--cpu` | Switch to CPU-only torch (no GPU) |
-| `--cuda 121` | Switch to CUDA 12.1 build instead of the default cu118 |
-
-### Windows — script
-
-First install the [Visual C++ Redistributable 2022 (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe) if not already present, then run in PowerShell:
-
-```powershell
+# Windows (PowerShell; install the Visual C++ Redistributable 2022 x64 first if missing)
 .\install.ps1
 ```
 
-The script automatically applies all Windows-specific fixes (missing OpenMP DLL, `optree` version pin). The default install is GPU-ready (CUDA 11.8). Optional flags:
+| Flag (`install.sh` / `install.ps1`) | Effect |
+|---|---|
+| `--dev` / `-Dev` | Also install dev + docs dependencies (tests, linters, Nuitka, Sphinx) and the pre-commit hooks |
+| `--gpu` / `-Gpu` | Run automatic segmentation on an NVIDIA GPU (onnxruntime-gpu, CUDA 12 + cuDNN as pip wheels; driver ≥ 527.41) |
+| `--no-segmentation` / `-NoSegmentation` | Skip the optional `segmentation` extra (onnxruntime) |
+| `--centerlines` / `-Centerlines` | Set up the vmtk environment for *Calculate Centerlines* now instead of on first use |
 
-| Flag | Effect |
-|------|--------|
-| `-Dev` | Also install dev + docs dependencies (linters, test runner, Sphinx) |
-| `-NnUZoo` | Install nnUZoo from GitHub |
-| `-Cpu` | Switch to CPU-only torch (no GPU) |
-| `-Cuda 121` | Switch to CUDA 12.1 build instead of the default cu118 |
+Without the scripts: `uv sync --extra segmentation` (or `--extra segmentation-gpu`; add `--group dev --group docs` for development). Run the app with `uv run src/main.py`.
 
----
+**How the optional parts work**
+- **Automatic segmentation**: the nnU-Net IVUS lumen model is bundled as a 5 MB ONNX file and runs with onnxruntime — no PyTorch. On the CPU a few seconds per frame; with `--gpu` on an NVIDIA GPU ≈0.2 s per frame, with no CUDA toolkit install (see `segmentation` in `config.yaml`). The Windows installer is CPU-only. `scripts/model_export/` holds the one-off export from the nnU-Net checkpoint.
+- **Centerlines (vmtk)**: vmtk only exists on conda-forge, so it runs in a separate, pinned [pixi](https://pixi.sh) environment (`src/pages/ccta/left_half/cut_geometry/vmtk_env/`) that HolOrama creates on first use — natively, no WSL. Windows x64, Linux x64 and Intel macOS.
 
-### Step-by-step installation (if the scripts fail)
-
-#### Linux / macOS
-
-```bash
-pip install uv
-uv sync
-source .venv/bin/activate
-```
-
-For developers:
-```bash
-uv sync --group dev --group docs
-```
-
-For nnUZoo (automatic segmentation):
-```bash
-uv pip install git+https://github.com/AI-in-Cardiovascular-Medicine/nnUZoo@main
-```
-
-For GPU (CUDA 11.8):
-```bash
-uv pip install --reinstall "torch==2.4.0+cu118" "torchvision==0.19.0+cu118" \
-    --index-url https://download.pytorch.org/whl/cu118
-```
-
-If you plan on using GPU acceleration, install the required NVIDIA drivers and CUDA toolkit beforehand:
-```bash
-sudo apt update && sudo apt upgrade
-sudo apt install build-essential dkms
-sudo ubuntu-drivers autoinstall
-sudo reboot
-nvidia-smi  # verify driver installation
-sudo apt install nvidia-cuda-toolkit
-```
-
-#### Windows — step by step
-
-##### 1. Install Visual C++ Redistributable
-
-Download and install the [Visual C++ Redistributable 2022 (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe) if not already present.
-
-##### 2. Base install
-
-```powershell
-pip install uv
-uv sync
-.\.venv\Scripts\Activate.ps1
-```
-
-##### 3. Fix missing LLVM OpenMP runtime (`libomp140.x86_64.dll`)
-
-PyTorch 2.4.0 on Windows depends on `libomp140.x86_64.dll` which is not bundled in the pip wheel. Run this once after installation:
-
-```python
-import urllib.request, tarfile, io, os, sys
-
-url = 'https://conda.anaconda.org/conda-forge/win-64/llvm-openmp-14.0.0-h2d74725_0.tar.bz2'
-data = urllib.request.urlopen(url).read()
-dest = os.path.join(sys.prefix, 'Lib', 'site-packages', 'torch', 'lib', 'libomp140.x86_64.dll')
-
-with tarfile.open(fileobj=io.BytesIO(data), mode='r:bz2') as t:
-    f = t.extractfile('Library/bin/libomp.dll')
-    with open(dest, 'wb') as out:
-        out.write(f.read())
-print('Done:', dest)
-```
-
-> **Note:** This file will be lost if torch is reinstalled — re-run the script afterwards.
-
-##### 4. Fix `optree` version incompatibility
-
-`optree >= 0.14` is incompatible with `torch 2.4.0` and causes a C-level access violation. Downgrade it:
-
-```bash
-uv pip install "optree==0.13.1"
-```
-
-##### 5. GPU acceleration (CUDA)
-
-Install the CUDA-enabled torch build matching your driver. With CUDA driver ≤ 12.0 (check with `nvidia-smi`), use the CUDA 11.8 build:
-
-```bash
-uv pip install --reinstall "torch==2.4.0+cu118" "torchvision==0.19.0+cu118" \
-    --index-url https://download.pytorch.org/whl/cu118
-```
-
-After installing the CUDA build, re-run the `libomp140.x86_64.dll` script from step 3.
+See the [installation docs](https://holorama.readthedocs.io/en/latest/contents/installation.html) for details and for building the Windows installer yourself.
 
 ## Functionalities
 
@@ -274,20 +173,25 @@ Make sure to quickly check the **src/config.yaml** file and configure everything
 - save_2d: Whether to additionally save each frame's image/mask as an individual NIfTi file.
 - save_3d: Whether to save the full stack of frames as a single 3D NIfTi volume.
 
+**Centerlines** (Calculate Centerlines, CCTA):
+- env_dir: Where the pixi-managed vmtk environment is installed; empty = `vmtk-env` in the per-user data directory.
+- pixi_path: A pixi executable to use; empty = pixi on PATH, else the copy HolOrama downloads.
+
 **Segmentation**:
-- model_file: Path to the (nnU-Net) automatic IVUS lumen segmentation model.
-- model_fold: Model fold to use for inference.
-- normalize: Set to True when using a TensorFlow model that expects normalized input.
+- device: `auto` (NVIDIA GPU if the segmentation-gpu extra is installed and works, else CPU), `cuda` (GPU or refuse) or `cpu`.
+- model_file: Empty = the bundled ONNX model; otherwise a `.onnx` exported with `scripts/model_export/export_onnx.py`.
+- use_mirroring: nnU-Net's test-time mirroring; ~4x slower, noticeably better masks.
+- tile_step_size: Sliding-window overlap as a fraction of the patch size (nnU-Net default 0.5).
+- batch_size: Tiles per network call (2 = one 512x512 frame); larger is not faster on a CPU and can exhaust a 6-8 GB GPU.
+- num_threads: CPU threads for inference; 0 = all cores.
 - input_dir: Input directory used only by `segment_files.py` for batch segmentation.
-- batch_size: Batch size used during inference.
-- conserve_memory: Set to True on devices with less than 32 GB RAM; increases inference time but lowers memory use.
 
 ## Usage
 
 After the config file is set up properly, you can run the application using:
 
 ```bash
-python3 src/main.py
+uv run src/main.py
 ```
 
 This will open a graphical user interface (GUI) in which you have access to the above-mentioned functionalities.

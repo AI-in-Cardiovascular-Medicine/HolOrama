@@ -67,9 +67,7 @@ class _CenterlinePrereqs:
     cut_mesh_outlet: np.ndarray
     rca_points: list[np.ndarray]
     lca_points: list[np.ndarray]
-    venv_path: str
-    build_path: str
-    distro: str
+    env: vmtk.VmtkEnv
     out_dir: str
     stem: str
 
@@ -1070,6 +1068,24 @@ class CctaPage(QWidget):
         prereqs = self._validate_centerline_prereqs()
         if prereqs is None:
             return
+        ready, reason = vmtk.env_ready(prereqs.env)
+        if not ready:
+            supported, unsupported_reason = vmtk.platform_supported()
+            if not supported:
+                ErrorMessage(self, unsupported_reason)
+                return
+            reply = QMessageBox.question(
+                self,
+                'Set up vmtk',
+                f'{reason}\n\nCalculate Centerlines runs vmtk in its own environment. Download and install it '
+                f'now? This needs internet access, about 1.5 GB of disk space in\n{prereqs.env.env_dir}\n'
+                'and takes a few minutes. It is only done once.',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self._start_vmtk_setup_worker(prereqs.env)
+            return
         dialog = CenterlineSmoothingDialog(self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -1078,8 +1094,9 @@ class CctaPage(QWidget):
     def _validate_centerline_prereqs(self) -> _CenterlinePrereqs | None:
         """Every guard Calculate Centerlines needs before it can run: a built cut
         mesh, a case file to derive output paths from, at least one RCA and one LCA
-        outlet point, and a working vmtk install. Shows the relevant ErrorMessage and
-        returns None on the first one that fails."""
+        outlet point. Shows the relevant ErrorMessage and returns None on the first one
+        that fails. Whether the vmtk environment is ready is checked by the caller, since
+        that one is fixable on the spot."""
         if self.data.cut_mesh is None:
             ErrorMessage(self, 'Build the cut geometry first.')
             return None
@@ -1097,23 +1114,13 @@ class CctaPage(QWidget):
             ErrorMessage(self, 'Add at least one LCA outlet point first.')
             return None
 
-        venv_path = self.config.vmtk.venv_path
-        build_path = self.config.vmtk.build_path
-        distro = self.config.vmtk.wsl_distro
-        ok, reason = vmtk.check_vmtk_available(venv_path, build_path, distro)
-        if not ok:
-            ErrorMessage(self, f'vmtk not found. {reason}')
-            return None
-
         return _CenterlinePrereqs(
             cut_mesh=self.data.cut_mesh,
             cut_mesh_inlet=self.data.cut_mesh_inlet,
             cut_mesh_outlet=self.data.cut_mesh_outlet,
             rca_points=rca_points,
             lca_points=lca_points,
-            venv_path=venv_path,
-            build_path=build_path,
-            distro=distro,
+            env=vmtk.VmtkEnv.from_config(self.config),
             out_dir=os.path.dirname(self._source_path),
             stem=os.path.basename(self._source_path),
         )
@@ -1148,17 +1155,15 @@ class CctaPage(QWidget):
             vmtk.write_point_csv(lca_csv, prereqs.lca_points)
 
             paths = vmtk.run_centerlines(
+                prereqs.env,
                 stl_path,
                 prereqs.out_dir,
                 ao_source=prereqs.cut_mesh_inlet,
                 ao_target=prereqs.cut_mesh_outlet,
                 rca_targets=prereqs.rca_points,
                 lca_targets=prereqs.lca_points,
-                venv_path=prereqs.venv_path,
-                build_path=prereqs.build_path,
                 ao_smoothing=ao_smoothing,
                 coronary_smoothing=coronary_smoothing,
-                distro=prereqs.distro,
                 log_cb=print,
             )
             return prereqs.out_dir, paths
@@ -1178,6 +1183,41 @@ class CctaPage(QWidget):
         worker.line_printed.connect(_print_to_console)
         worker.finished_ok.connect(lambda result: self._on_calculate_centerlines_done(progress, result))
         worker.failed.connect(lambda message: self._on_calculate_centerlines_failed(progress, message))
+        self._centerlines_worker = worker
+        worker.start()
+
+    def _start_vmtk_setup_worker(self, env: vmtk.VmtkEnv) -> None:
+        """One-time download/installation of the vmtk environment, off the main thread with
+        pixi's output streamed into a progress dialog. On success Calculate Centerlines
+        continues straight on, so the user does not have to click it again."""
+        progress = QProgressDialog('Setting up vmtk…', None, 0, 0, self)
+        progress.setWindowTitle('Set up vmtk')
+        progress.setMinimumDuration(0)
+        progress.setModal(True)
+        progress.show()
+
+        real_stdout = sys.stdout  # see _start_centerline_worker for why this is captured first
+
+        def _print_to_console(line: str) -> None:
+            real_stdout.write(line + '\n')
+            real_stdout.flush()
+
+        def _done(_result) -> None:
+            progress.close()
+            self._centerlines_worker = None
+            self._on_calculate_centerlines()
+
+        def _failed(message: str) -> None:
+            progress.close()
+            self._centerlines_worker = None
+            logger.error(f'vmtk setup failed: {message}')
+            ErrorMessage(self, f'Setting up vmtk failed:\n{message}')
+
+        worker = StdoutCapturingWorker(vmtk.setup_env, (env,), {'log_cb': print}, parent=self)
+        worker.line_printed.connect(progress.setLabelText)
+        worker.line_printed.connect(_print_to_console)
+        worker.finished_ok.connect(_done)
+        worker.failed.connect(_failed)
         self._centerlines_worker = worker
         worker.start()
 

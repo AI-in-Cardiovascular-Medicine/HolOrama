@@ -40,8 +40,8 @@ on the far left of the window:
      - Multi-label segmentation of coronary CT angiography with a brush tool, 3D volume
        rendering, a lasso tool for removing structures, and construction of a combined
        aortic-root-and-coronaries model from user-defined cut planes, which can then be
-       smoothed and reduced. Further, with a user-supplied vmtk install, centerlines
-       can be installed.
+       smoothed and reduced. Centerlines can then be computed with vmtk, which
+       HolOrama sets up on first use.
    * - :doc:`Fusion <contents/modules/fusion>`
      - A GUI wrapper around the `multimodars <https://pypi.org/project/multimodars>`_
        package: takes the cut CCTA geometry, its centerlines and an IVUS/OCT pullback and

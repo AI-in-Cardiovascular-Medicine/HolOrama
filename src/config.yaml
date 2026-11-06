@@ -52,19 +52,21 @@ save:
   save_2d: False
   save_3d: True
 
-vmtk:
-  # A WSL-native Linux build, not runnable from Windows: both paths are `source`d inside
-  # WSL before every call, as the original bash pipeline did. Needed for Calculate Centerlines.
-  venv_path: 'D:\00_coding\vmtk-env'  # the plain Python venv (bin/activate)
-  build_path: 'D:\00_coding\vmtk\vmtk-build\Install'  # the build itself (vmtk_env.sh, bin/vmtkcenterlines)
-  # Which WSL distro has vmtk's runtime deps (several distors on this machine). Empty = whatever `wsl.exe` picks.
-  wsl_distro: 'Ubuntu'
+centerlines:
+  # Calculate Centerlines runs vmtk in its own conda-forge environment, managed by pixi and set
+  # up on first use (HolOrama offers to download pixi + vmtk, ~1.5 GB on disk). Empty = the defaults.
+  env_dir: ''    # where that environment lives; empty = <per-user data dir>/vmtk-env
+  pixi_path: ''  # a pixi executable to use; empty = pixi on PATH, else the copy HolOrama downloads
 
 segmentation:
-  # model_file: './models/old/u2net_2d_MINMAX_512_best.h5'
-  model_file: './models/nnUNetTrainerU2NetP__nnUNetResEncUNetLPlans__2d'
-  model_fold: 0
-  normalize: False  # True for tensorflow models
+  # Automatic IVUS lumen segmentation (ONNX). Empty = the bundled model;
+  # otherwise a .onnx exported with scripts/model_export/export_onnx.py.
+  model_file: ''
+  # 'auto' = NVIDIA GPU if available (source install with the segmentation-gpu extra), else CPU;
+  # 'cuda' = GPU or refuse; 'cpu' = always CPU. The compiled installer is CPU-only.
+  device: 'auto'
+  use_mirroring: True  # test-time mirroring as in nnU-Net; ~4x slower, noticeably better masks
+  tile_step_size: 0.5  # sliding-window overlap, as in nnU-Net
+  batch_size: 2        # tiles per network call (2 = one 512x512 frame); larger: not faster on CPU, OOM risk on a 6-8 GB GPU
+  num_threads: 0       # CPU threads for inference; 0 = all cores
   input_dir: /home/sebalzer/Documents/Projects/AAOCASeg/IVUSimages  # only for segment_files.py
-  batch_size: 16
-  conserve_memory: True  # True for devices with less than 32 GB RAM (slower inference)

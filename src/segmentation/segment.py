@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Any
 
 import matplotlib.path as mplPath
@@ -18,26 +17,36 @@ def segment(main_window):
         main_window.status_bar.showMessage(main_window.waiting_status)
         return
 
-    model_path = Path(main_window.config.segmentation.model_file)
-    if not model_path.exists():
-        ErrorMessage(
-            main_window,
-            f'Segmentation model not found:\n{model_path}\n\nPlease set segmentation.model_file in config.yaml.',
-        )
+    # Blocks the feature with a specific reason when this install cannot run it (optional
+    # onnxruntime missing, model file missing/unreadable) instead of failing mid-run.
+    available, reason = main_window.predictor.check_available()
+    if not available:
+        ErrorMessage(main_window, f'Automatic segmentation is not available.\n\n{reason}')
         main_window.status_bar.showMessage(main_window.waiting_status)
         return
 
     segment_dialog = FrameRangeDialog(main_window)
+    if not segment_dialog.exec():
+        main_window.status_bar.showMessage(main_window.waiting_status)
+        return
 
-    if segment_dialog.exec():
-        lower_limit, upper_limit = segment_dialog.getInputs()
+    lower_limit, upper_limit = segment_dialog.getInputs()
+    try:
         masks = main_window.predictor(main_window.runtime_data.images, lower_limit, upper_limit)
-        if masks is not None:
-            mask_to_contours(main_window, masks, lower_limit, upper_limit)
-            main_window.contours_drawn = True
-            main_window.display.set_data(main_window.runtime_data.images)
-            main_window.hide_contours_box.setChecked(False)
-            main_window.save_contours_soon()  # a whole frame range was rewritten
+    except Exception as e:  # e.g. out of memory: report instead of crashing the GUI
+        logger.exception('Automatic segmentation failed')
+        ErrorMessage(main_window, f'Automatic segmentation failed:\n{e}')
+        main_window.status_bar.showMessage(main_window.waiting_status)
+        return
+    if masks is None:  # cancelled
+        main_window.status_bar.showMessage(main_window.waiting_status)
+        return
+
+    mask_to_contours(main_window, masks, lower_limit, upper_limit)
+    main_window.contours_drawn = True
+    main_window.display.set_data(main_window.runtime_data.images)
+    main_window.hide_contours_box.setChecked(False)
+    main_window.save_contours_soon()  # a whole frame range was rewritten
 
     SuccessMessage(main_window, 'Automatic segmentation')
     # Every segmented frame needs its metrics computed here: a frame is otherwise only

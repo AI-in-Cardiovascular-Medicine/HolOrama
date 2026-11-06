@@ -164,10 +164,11 @@ why we provided them. However, it is possible to load results from external deep
 models as demonstrated in :ref:`fig-tagging`
 
 .. note::
-   Only available in a source installation, and currently trained for the **IVUS lumen**
-   only. Training set consisted of coronary artery anomalies. The model path and 
-   inference settings are in the ``segmentation`` section of ``config.yaml``. 
-   The packaged Windows binary does not include inference.
+   Currently trained for the **IVUS lumen** only. Training set consisted of coronary artery
+   anomalies. The model is bundled; on the CPU it takes a few seconds per frame, so segment
+   a frame range rather than a whole pullback, or use an NVIDIA GPU (≈0.2 s per frame,
+   see :ref:`segmentation-gpu`); the settings are in the ``segmentation``
+   section of ``config.yaml``.
 
 6. Classify frame
 ~~~~~~~~~~~~~~~~~

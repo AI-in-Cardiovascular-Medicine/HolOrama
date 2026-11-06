@@ -147,11 +147,11 @@ Parameters of the image-based gating and breathing algorithms. See
    * - ``save_3d``
      - Write the full stack of frames as a single 3D NIfTI volume.
 
-``vmtk``
---------
+``centerlines``
+---------------
 
-Only used by **Calculate Centerlines** in the CCTA module. vmtk is installed separately by
-you (see :ref:`install-vmtk`).
+Only used by **Calculate Centerlines** in the CCTA module, which runs vmtk in its own
+pixi-managed environment (see :ref:`install-vmtk`). Both keys can stay empty.
 
 .. list-table::
    :header-rows: 1
@@ -159,19 +159,23 @@ you (see :ref:`install-vmtk`).
 
    * - Key
      - Meaning
-   * - ``venv_path``
-     - Path to the vmtk Python venv (the directory containing ``bin/activate``).
-   * - ``build_path``
-     - Path to the vmtk build (the directory containing ``vmtk_env.sh`` and ``bin/``).
-   * - ``wsl_distro``
-     - Which WSL distribution actually has vmtk's runtime dependencies. Leave empty to use
-       whatever ``wsl.exe`` defaults to.
+   * - ``env_dir``
+     - Where the vmtk environment is installed. Empty = ``vmtk-env`` in the per-user data
+       directory (``%LOCALAPPDATA%\HolOrama`` on Windows).
+   * - ``pixi_path``
+     - A pixi executable to use. Empty = ``pixi`` on ``PATH`` if there is one, otherwise
+       the copy HolOrama downloads on first use.
+
+The ``vmtk`` section of older versions (``venv_path``, ``build_path``, ``wsl_distro``) is
+no longer read and can be deleted.
 
 ``segmentation``
 ----------------
 
-Automatic lumen segmentation. Available only in a source install, see
-:doc:`installation`.
+Automatic IVUS lumen segmentation (ONNX model, CPU or NVIDIA GPU). Configs from before the switch to ONNX
+that still point ``model_file`` at an nnU-Net folder or a Keras ``.h5`` fall back to the
+bundled model; their other old keys (``model_fold``, ``normalize``, ``conserve_memory``) are
+ignored.
 
 .. list-table::
    :header-rows: 1
@@ -180,18 +184,25 @@ Automatic lumen segmentation. Available only in a source install, see
    * - Key
      - Meaning
    * - ``model_file``
-     - Path to the (nnU-Net) automatic IVUS lumen segmentation model.
-   * - ``model_fold``
-     - Which model fold to use for inference.
-   * - ``normalize``
-     - Set to ``True`` when using a TensorFlow model that expects normalised input.
+     - Empty = the bundled model. Otherwise the path to a ``.onnx`` file exported with
+       ``scripts/model_export/export_onnx.py``.
+   * - ``device``
+     - ``'auto'`` (default): NVIDIA GPU if the ``segmentation-gpu`` extra is installed and a
+       test inference succeeds, otherwise the CPU. ``'cuda'``: GPU or refuse. ``'cpu'``:
+       always the CPU. See :ref:`segmentation-gpu`.
+   * - ``use_mirroring``
+     - Test-time mirroring as in nnU-Net (each tile is also predicted flipped and the results
+       averaged). About 4× slower, but noticeably better masks; leave on unless speed matters
+       more.
+   * - ``tile_step_size``
+     - Sliding-window overlap as a fraction of the patch size (nnU-Net's default 0.5).
+   * - ``batch_size``
+     - Tiles per network call. 2 is one 512×512 frame; larger values are not faster on a CPU
+       and can run out of memory on a 6–8 GB GPU.
+   * - ``num_threads``
+     - CPU threads used for inference; 0 = all cores.
    * - ``input_dir``
      - Input directory used only by the batch script ``segment_files.py``.
-   * - ``batch_size``
-     - Batch size used during inference.
-   * - ``conserve_memory``
-     - Set to ``True`` on machines with less than 32 GB RAM. Increases inference time but
-       lowers peak memory use.
 
 Contour presets
 ---------------

@@ -3,6 +3,26 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **Automatic segmentation runs on ONNX Runtime** (CPU) instead of PyTorch + nnU-Net/nnUZoo. The U2Net-P IVUS lumen model is bundled as a 5 MB `.onnx` (`src/segmentation/weights/`), and nnU-Net's 2D inference (crop, z-score, Gaussian sliding window, test-time mirroring) is re-implemented in `segmentation/onnx_inference.py`. It matches `nnUNetPredictor` to 7 pixels in 24 test frames, on the CPU (~4x faster than torch there, a few seconds per frame) and on an NVIDIA GPU (~0.2 s per frame) alike.
+- **GPU segmentation without a CUDA install**: the `segmentation-gpu` extra (`install.ps1 -Gpu`) brings `onnxruntime-gpu` with the CUDA 12 and cuDNN runtimes as pip wheels; only an NVIDIA driver ≥ 527.41 is needed. New `segmentation.device` (`auto`/`cuda`/`cpu`): `auto` verifies the GPU with a test inference and otherwise falls back to the CPU, saying why. The Windows installer stays CPU-only.
+- Only the selected frame range is run through the network; before, nnU-Net segmented the whole pullback every time.
+- The **Windows installer includes automatic segmentation**; it no longer depends on a source install.
+- **Calculate Centerlines runs vmtk natively** from a pinned conda-forge environment managed by [pixi](https://pixi.sh). HolOrama offers to set it up on first use (~1.5 GB, once) and re-syncs it when the pin changes. No WSL, self-built vmtk or paths in `config.yaml`; works on Windows x64, Linux x64 and Intel macOS.
+- `config.yaml`: the `vmtk` section is replaced by `centerlines` (`env_dir`, `pixi_path`, both optional). `segmentation` has `model_file` (empty = bundled), `device`, `use_mirroring`, `tile_step_size`, `batch_size`, `num_threads`; `model_fold`, `normalize` and `conserve_memory` are gone. Old configs keep working: an nnU-Net folder or `.h5` in `model_file` falls back to the bundled model.
+- **Build system**: torch, torchvision, tensorflow, nnUZoo, pylint and seaborn are no longer dependencies; `onnxruntime` is the optional `segmentation` extra. `install.ps1` / `install.sh` are a plain `uv sync --locked` (flags `-Dev`, `-Gpu`, `-NoSegmentation`, `-Centerlines`); `build_nuitka.ps1` builds from its own CPU-only `build\venv`; the numpy 1.26 re-pin, optree pin, libomp download and nnUZoo patching are gone.
+- Python 3.11 – 3.13 supported (was 3.11 only); CI tests 3.11 and 3.13 from `uv.lock` on Linux and Windows.
+
+### Removed
+- TensorFlow/Keras (`.h5`) segmentation models.
+
+### Fixed
+- Automatic segmentation reported success after being cancelled.
+- `run.bat` was a PowerShell snippet and did not run.
+- `PyYAML` was used but not declared as a dependency.
+
 ## [0.19.0] - 2026-11-05
 
 ### Added

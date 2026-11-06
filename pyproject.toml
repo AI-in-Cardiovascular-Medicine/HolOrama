@@ -11,7 +11,7 @@ authors = [
     { name = "cardionaut" },
     { name = "Pooya Mohammadi Kazaj" },
 ]
-requires-python = ">=3.11, <3.12"
+requires-python = ">=3.11, <3.14"
 dependencies = [
     "loguru",
     "tqdm",
@@ -19,9 +19,8 @@ dependencies = [
     "pandas",
     "scipy",
     "scikit-image",
-    "seaborn",
-    "pylint",
     "numpy>=2.0.0",
+    "pyyaml",
     "pydicom==2.4.4",
     "pylibjpeg",
     "pylibjpeg-libjpeg",
@@ -30,15 +29,30 @@ dependencies = [
     "shapely",
     "SimpleITK",
     "opencv-python-headless>=4.9.0.80",
-    "tensorflow>=2.17.0",
-    "torch==2.4.0+cu118",
-    "torchvision==0.19.0+cu118",
     "vtk",
     "trimesh",
     "nibabel",
     "multimodars[meshlab]>=0.9.1",
     "ruamel.yaml>=0.18",
 ]
+
+[project.optional-dependencies]
+# Automatic IVUS segmentation: the nnU-Net model runs as ONNX on the CPU, no torch needed
+# (see src/segmentation/onnx_inference.py). Installed by default by the install scripts and
+# always included in the compiled build; without it the feature reports itself unavailable.
+segmentation = [
+    "onnxruntime>=1.20",
+]
+# Same, on an NVIDIA GPU (Windows/Linux): CUDA 12 + cuDNN 9 come as pip wheels, no CUDA toolkit
+# install needed, only an NVIDIA driver >= 527.41 (Windows) / 525.60 (Linux). Pinned below 1.27,
+# which moved to CUDA 13 (driver >= 580) and would silently drop older workstations to the CPU.
+# Use instead of 'segmentation' (both provide the `onnxruntime` module). Source installs only;
+# the compiled installer is CPU-only.
+segmentation-gpu = [
+    "onnxruntime-gpu[cuda,cudnn]>=1.21,<1.27; sys_platform != 'darwin'",
+]
+# Centerlines (vmtk) are not a Python extra: vmtk only exists on conda-forge and runs in its
+# own pixi-managed environment, see src/pages/ccta/left_half/cut_geometry/vmtk_env/.
 
 [dependency-groups]
 dev = [
@@ -64,19 +78,21 @@ path = "src/version.py"
 
 [tool.uv]
 package = false
+conflicts = [
+    [{ extra = "segmentation" }, { extra = "segmentation-gpu" }],
+]
+constraint-dependencies = [
+    # segmentation-gpu: nvidia-cublas-cu12 12.9.3.13 has no Windows wheel.
+    "nvidia-cublas-cu12<12.9.3; sys_platform == 'win32'",
+    # segmentation-gpu: newer cuDNN fails on the first convolution with onnxruntime-gpu 1.26
+    # (CUDNN_BACKEND_API_FAILED); 9.10.2 is verified on an RTX 3060 (driver 591).
+    "nvidia-cudnn-cu12>=9.5,<9.11",
+]
 environments = [
     "sys_platform == 'win32'",
     "sys_platform == 'linux'",
+    "sys_platform == 'darwin'",
 ]
-
-[tool.uv.sources]
-torch = [{ index = "pytorch-cu118" }]
-torchvision = [{ index = "pytorch-cu118" }]
-
-[[tool.uv.index]]
-name = "pytorch-cu118"
-url = "https://download.pytorch.org/whl/cu118"
-explicit = true
 
 [tool.mypy]
 python_version = "3.11"
