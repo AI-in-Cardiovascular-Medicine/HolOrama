@@ -166,8 +166,8 @@ models as demonstrated in :ref:`fig-tagging`
 .. note::
    Currently trained for the **IVUS lumen** only. Training set consisted of coronary artery
    anomalies. The model is bundled; on the CPU it takes a few seconds per frame, so segment
-   a frame range rather than a whole pullback, or use an NVIDIA GPU (≈0.2 s per frame,
-   see :ref:`segmentation-gpu`); the settings are in the ``segmentation``
+   a frame range rather than a whole pullback, unless a GPU is used (Windows: automatically
+   via DirectML, ≈0.2 s per frame; see :ref:`segmentation-gpu`); the settings are in the ``segmentation``
    section of ``config.yaml``.
 
 6. Classify frame

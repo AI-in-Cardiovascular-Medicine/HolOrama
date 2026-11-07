@@ -39,8 +39,20 @@ from scipy.ndimage import binary_fill_holes, gaussian_filter
 
 # Bundled model, shipped next to this module (and next to the compiled module in the Nuitka build).
 DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / 'weights' / 'ivus_lumen_u2netp.onnx'
-# 'auto': NVIDIA GPU if the onnxruntime-gpu package is installed and CUDA works, else CPU.
-DEVICES = ('auto', 'cpu', 'cuda')
+# 'auto': the first GPU runtime that is installed and passes a test inference, else the CPU.
+DEVICES = ('auto', 'cpu', 'cuda', 'directml')
+_GPU_PROVIDERS = {'cuda': 'CUDAExecutionProvider', 'directml': 'DmlExecutionProvider'}  # in 'auto' order
+_MISSING_RUNTIME = {
+    'cuda': 'CUDA inference needs the "onnxruntime-gpu" package (source installs: install script with '
+    '-Gpu / --gpu, or uv sync --extra segmentation-gpu).',
+    'directml': 'DirectML inference needs the "onnxruntime-directml" package (Windows only; installed '
+    'by the "segmentation" extra there).',
+}
+_INIT_FAILED = {
+    'cuda': "CUDA could not be initialised (no NVIDIA GPU, or the driver is too old: CUDA 12 needs driver "
+    ">= 527.41 on Windows / 525.60 on Linux). See the log for onnxruntime's message.",
+    'directml': "DirectML could not be initialised (no DirectX 12 capable GPU). See the log for onnxruntime's message.",
+}
 
 
 class SegmentationUnavailable(RuntimeError):
@@ -118,58 +130,63 @@ class OnnxSegmenter:
         self.device = str(device or 'auto').lower()
         self._session = None
         self._info: ModelInfo | None = None
-        self.active_device = ''  # 'cuda' or 'cpu' once loaded
+        self.active_device = ''  # 'cuda', 'directml' or 'cpu' once loaded
         self.fallback_reason = ''  # why 'auto' ended up on the CPU although a GPU runtime is installed
 
     # -- loading ---------------------------------------------------------------------------
-    def _create_session(self, ort, providers: list[str | tuple[str, dict[str, str]]]):
-        options = ort.SessionOptions()
+    def _create_session(self, ort, providers: list, options=None):
+        options = options or ort.SessionOptions()
         if self.num_threads:
             options.intra_op_num_threads = int(self.num_threads)
         return ort.InferenceSession(str(self.model_path), options, providers=providers)
 
-    def _try_cuda_session(self, ort):
-        """A session running on the GPU, or (None, reason). onnxruntime silently falls back to
-        the CPU when CUDA cannot be initialised (old driver, missing DLLs), so the providers the
-        session actually got are checked rather than trusted."""
-        if 'CUDAExecutionProvider' not in ort.get_available_providers():
-            return None, (
-                'GPU inference needs the "onnxruntime-gpu" package (source installs: '
-                'install script with -Gpu / --gpu, or uv sync --extra segmentation-gpu).'
-            )
-        if hasattr(ort, 'preload_dlls'):  # CUDA/cuDNN from the nvidia-* pip wheels
-            try:
-                ort.preload_dlls()
-            except Exception as e:  # noqa: BLE001 - reported, then the session attempt decides
-                logger.warning(f'onnxruntime.preload_dlls failed: {e}')
-        # use_tf32=0: TF32 convolutions (RTX 30xx and newer) shift hundreds of mask pixels per
-        # frame away from the validated float32 result; full float32 is still ~30x the CPU.
-        cuda = ('CUDAExecutionProvider', {'use_tf32': '0'})
+    def _try_gpu_session(self, ort, device: str):
+        """A session running on `device` ('cuda' or 'directml'), or (None, reason). onnxruntime
+        silently falls back to the CPU when a GPU provider cannot be initialised or fails on the
+        first run, so the provider the session actually got is checked and a test inference is
+        run with the fallback disabled: 'GPU' then really means GPU."""
+        provider = _GPU_PROVIDERS[device]
+        name = 'CUDA' if device == 'cuda' else 'DirectML'
+        if provider not in ort.get_available_providers():
+            return None, _MISSING_RUNTIME[device]
+        options = ort.SessionOptions()
+        if device == 'cuda':
+            if hasattr(ort, 'preload_dlls'):  # CUDA/cuDNN from the nvidia-* pip wheels
+                try:
+                    ort.preload_dlls()
+                except Exception as e:  # noqa: BLE001 - reported, then the session attempt decides
+                    logger.warning(f'onnxruntime.preload_dlls failed: {e}')
+            # use_tf32=0: TF32 convolutions (RTX 30xx and newer) shift hundreds of mask pixels per
+            # frame away from the validated float32 result; full float32 is still ~16x the CPU.
+            provider_options = {'use_tf32': '0'}
+        else:
+            # high_performance: the discrete GPU on laptops that also have an integrated one
+            # (device 0 is often the iGPU, ~6x slower). The DirectML provider requires the two
+            # session settings below.
+            provider_options = {'performance_preference': 'high_performance'}
+            options.enable_mem_pattern = False
+            options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
         try:
-            session = self._create_session(ort, [cuda, 'CPUExecutionProvider'])
+            session = self._create_session(ort, [(provider, provider_options), 'CPUExecutionProvider'], options)
         except Exception as e:
-            return None, f'Could not start CUDA inference: {e}'
-        if session.get_providers()[0] != 'CUDAExecutionProvider':
-            return None, (
-                'CUDA could not be initialised (no NVIDIA GPU, or the driver is too old: CUDA 12 needs '
-                'driver >= 527.41 on Windows / 525.60 on Linux). See the log for onnxruntime\'s message.'
-            )
-        # A CUDA session can still fail on its first run (e.g. a cuDNN that does not match the
-        # onnxruntime build), and onnxruntime's Python wrapper would then silently rebuild the
-        # session on the CPU. Disable that and run once now, so 'GPU' really means GPU.
+            return None, f'Could not start {name} inference: {e}'
+        if session.get_providers()[0] != provider:
+            return None, _INIT_FAILED[device]
         session.disable_fallback()
         patch = [int(s) for s in session.get_modelmeta().custom_metadata_map.get('patch_size', '512,448').split(',')]
         try:
-            session.run(None, {'image': np.zeros((1, 1, *patch), dtype=np.float32)})
+            # The same shape predict() always uses: DirectML specialises on the first shape it runs.
+            session.run(None, {'image': np.zeros((self.batch_size, 1, *patch), dtype=np.float32)})
         except Exception as e:
-            logger.warning(f'CUDA test inference failed: {e}')
-            return None, f'CUDA inference failed on the GPU ({str(e).splitlines()[0][:200]})'
+            logger.warning(f'{name} test inference failed: {e}')
+            return None, f'{name} inference failed on the GPU ({str(e).splitlines()[0][:200]})'
         return session, ''
 
     def load(self) -> None:
         """Create the onnxruntime session. Raises SegmentationUnavailable with a user-facing
         reason when that is not possible, so callers can block the feature cleanly.
-        device 'auto' uses the GPU when it works and the CPU otherwise; 'cuda' requires the GPU."""
+        device 'auto' tries CUDA, then DirectML (any GPU on Windows), then the CPU; 'cuda' and
+        'directml' require that GPU runtime and refuse otherwise."""
         if self._session is not None:
             return
         if self.device not in DEVICES:
@@ -179,22 +196,33 @@ class OnnxSegmenter:
         ort = _import_onnxruntime()
         if not self.model_path.is_file():
             raise SegmentationUnavailable(f'Segmentation model not found:\n{self.model_path}')
-        session, reason = None, ''
+        session = None
+        reasons: list[str] = []  # only from GPU runtimes that are installed but did not work
         try:
-            if self.device in ('auto', 'cuda'):
-                session, reason = self._try_cuda_session(ort)
-                if session is None and self.device == 'cuda':
-                    raise SegmentationUnavailable(f'segmentation.device is "cuda", but {reason[0].lower()}{reason[1:]}')
+            if self.device in _GPU_PROVIDERS:
+                session, reason = self._try_gpu_session(ort, self.device)
+                if session is None:
+                    raise SegmentationUnavailable(
+                        f'segmentation.device is "{self.device}", but {reason[0].lower()}{reason[1:]}'
+                    )
+            elif self.device == 'auto':
+                for device in _GPU_PROVIDERS:
+                    session, reason = self._try_gpu_session(ort, device)
+                    if session is not None:
+                        break
+                    if reason != _MISSING_RUNTIME[device]:  # installed but unusable: worth reporting
+                        reasons.append(reason)
             if session is None:
                 session = self._create_session(ort, ['CPUExecutionProvider'])
         except SegmentationUnavailable:
             raise
         except Exception as e:  # corrupt file, unsupported opset, CPU without required instructions, ...
             raise SegmentationUnavailable(f'Could not load the segmentation model {self.model_path.name}:\n{e}') from e
-        self.active_device = 'cuda' if session.get_providers()[0] == 'CUDAExecutionProvider' else 'cpu'
-        # Only worth mentioning when a GPU runtime is installed but unusable; the CPU package is
-        # the normal case, not a fallback.
-        self.fallback_reason = reason if self.active_device == 'cpu' and 'onnxruntime-gpu' not in reason else ''
+        provider = session.get_providers()[0]
+        self.active_device = next((d for d, p in _GPU_PROVIDERS.items() if p == provider), 'cpu')
+        # Only worth mentioning when a GPU runtime is installed but unusable; a CPU-only package
+        # (or a machine without a GPU) is a normal setup, not a fallback.
+        self.fallback_reason = ' '.join(reasons) if self.active_device == 'cpu' else ''
         if self.fallback_reason:
             logger.warning(f'Automatic segmentation falls back to the CPU: {self.fallback_reason}')
         logger.info(f'Segmentation model {self.model_path.name} loaded on {self.active_device.upper()}')
@@ -249,7 +277,7 @@ class OnnxSegmenter:
     ) -> np.ndarray | None:
         """Segment `frames` (default: all) of a (frames, y, x) volume. Returns a uint8 label
         volume of the same shape (frames not requested stay 0), or None if progress_cb
-        returned False (cancelled). progress_cb(done, total) is called after each frame."""
+        returned False (cancelled). progress_cb(frames done, total) is called after each network call."""
         self.load()
         info = self.info
         if volume.ndim != 3:
@@ -278,20 +306,32 @@ class OnnxSegmenter:
         for sl in tile_slicers:
             weight[sl] += gaussian
 
-        # Tiles of consecutive frames are batched together; each batch covers whole frames.
-        frames_per_batch = max(1, self.batch_size // len(tile_slicers))
-        for start in range(0, total, frames_per_batch):
-            chunk = todo[start : start + frames_per_batch]
-            padded = [np.pad(cropped[z - z0], pad, mode='constant', constant_values=0) for z in chunk]
-            tiles = np.stack([p[sl] for p in padded for sl in tile_slicers])[:, None]
-            logits = self._run(tiles)
-            for i, z in enumerate(chunk):
-                acc = np.zeros((info.num_classes, *padded_shape), dtype=np.float32)
-                for j, sl in enumerate(tile_slicers):
-                    acc[(slice(None), *sl)] += logits[i * len(tile_slicers) + j] * gaussian
-                acc /= weight
-                seg = acc[(slice(None), *unpad)].argmax(axis=0).astype(np.uint8)
-                out[z, crop[1], crop[2]] = seg
-            if progress_cb is not None and progress_cb(min(start + len(chunk), total), total) is False:
+        # Every network call gets exactly batch_size tiles (the last one padded with zero tiles whose
+        # output is dropped), whatever the frame size: DirectML optimises for the first input shape
+        # it sees and runs any other batch size 2-6x slower. Tiles of consecutive frames share calls.
+        n_tiles = len(tile_slicers)
+        tiles = [(z, j) for z in todo for j in range(n_tiles)]
+        batch = np.zeros((self.batch_size, 1, *patch), dtype=np.float32)
+        padded: dict[int, np.ndarray] = {}  # frames whose tiles are in flight
+        acc: dict[int, np.ndarray] = {}
+        done = 0
+        for start in range(0, len(tiles), self.batch_size):
+            chunk = tiles[start : start + self.batch_size]
+            batch[:] = 0
+            for i, (z, j) in enumerate(chunk):
+                if z not in padded:
+                    padded[z] = np.pad(cropped[z - z0], pad, mode='constant', constant_values=0)
+                batch[i, 0] = padded[z][tile_slicers[j]]
+            logits = self._run(batch)
+            for i, (z, j) in enumerate(chunk):
+                if z not in acc:
+                    acc[z] = np.zeros((info.num_classes, *padded_shape), dtype=np.float32)
+                acc[z][(slice(None), *tile_slicers[j])] += logits[i] * gaussian
+                if j == n_tiles - 1:  # frame complete
+                    frame_acc = acc.pop(z) / weight
+                    del padded[z]
+                    out[z, crop[1], crop[2]] = frame_acc[(slice(None), *unpad)].argmax(axis=0).astype(np.uint8)
+                    done += 1
+            if progress_cb is not None and progress_cb(done, total) is False:
                 return None
         return out

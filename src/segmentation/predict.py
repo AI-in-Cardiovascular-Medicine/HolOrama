@@ -49,7 +49,7 @@ class Predict:
         return True, ''
 
     def _progress_label(self, lower_limit: int, upper_limit: int) -> str:
-        device = 'GPU' if self.segmenter.active_device == 'cuda' else 'CPU'
+        device = {'cuda': 'GPU (CUDA)', 'directml': 'GPU (DirectML)'}.get(self.segmenter.active_device, 'CPU')
         label = f'Segmenting frames {lower_limit + 1} to {upper_limit} on the {device}...'
         if self.segmenter.fallback_reason:
             label += f'\n\nGPU not used: {self.segmenter.fallback_reason}'

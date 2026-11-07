@@ -62,8 +62,8 @@ segmentation:
   # Automatic IVUS lumen segmentation (ONNX). Empty = the bundled model;
   # otherwise a .onnx exported with scripts/model_export/export_onnx.py.
   model_file: ''
-  # 'auto' = NVIDIA GPU if available (source install with the segmentation-gpu extra), else CPU;
-  # 'cuda' = GPU or refuse; 'cpu' = always CPU. The compiled installer is CPU-only.
+  # 'auto' = GPU if one works (Windows: any DirectX 12 GPU via DirectML; NVIDIA via CUDA with the
+  # segmentation-gpu extra), else CPU. 'directml' / 'cuda' = that GPU or refuse; 'cpu' = always CPU.
   device: 'auto'
   use_mirroring: True  # test-time mirroring as in nnU-Net; ~4x slower, noticeably better masks
   tile_step_size: 0.5  # sliding-window overlap, as in nnU-Net

@@ -187,9 +187,10 @@ ignored.
      - Empty = the bundled model. Otherwise the path to a ``.onnx`` file exported with
        ``scripts/model_export/export_onnx.py``.
    * - ``device``
-     - ``'auto'`` (default): NVIDIA GPU if the ``segmentation-gpu`` extra is installed and a
-       test inference succeeds, otherwise the CPU. ``'cuda'``: GPU or refuse. ``'cpu'``:
-       always the CPU. See :ref:`segmentation-gpu`.
+     - ``'auto'`` (default): the first GPU backend that is installed and passes a test
+       inference (CUDA, then DirectML, which is what Windows installs use), otherwise the CPU.
+       ``'cuda'`` / ``'directml'``: that GPU or refuse. ``'cpu'``: always the CPU. See
+       :ref:`segmentation-gpu`.
    * - ``use_mirroring``
      - Test-time mirroring as in nnU-Net (each tile is also predicted flipped and the results
        averaged). About 4× slower, but noticeably better masks; leave on unless speed matters

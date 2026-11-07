@@ -19,8 +19,8 @@ There are two ways to get HolOrama:
      - Windows x64, no Python, ~1 GB disk space
      - `uv <https://docs.astral.sh/uv/>`_ (the install scripts fetch it), Python 3.11–3.13
    * - Automatic AI segmentation
-     - Included (CPU)
-     - Included (CPU, or NVIDIA GPU with ``-Gpu``)
+     - Included (GPU via DirectML if available, else CPU)
+     - Included (Windows: DirectML GPU or CPU; Linux: CPU, NVIDIA GPU with ``--gpu``)
 
 Both contain the same features. Only **Calculate Centerlines** in the CCTA module needs an
 extra component, vmtk, which HolOrama downloads itself the first time you use it; see
@@ -122,18 +122,25 @@ Automatic segmentation
 The IVUS lumen model (nnU-Net, U2Net-P architecture) is bundled as a 5 MB ONNX file and runs
 with `ONNX Runtime <https://onnxruntime.ai>`_: no PyTorch and no nnU-Net installation. The
 results match the original nnU-Net inference (including its test-time mirroring) to a few
-pixels per pullback, on the CPU and on the GPU alike.
+pixels per pullback, and are identical on the CPU and on every GPU backend.
 
-On the CPU expect a few seconds per frame (≈3.4 s on a 16-core desktop with mirroring, ≈1 s
+**On Windows** (installer and source installs) the DirectML build of ONNX Runtime is used:
+it runs on any DirectX 12 GPU (NVIDIA, AMD or Intel) with the normal graphics driver, no CUDA
+install, and picks the high-performance GPU on laptops that also have an integrated one.
+≈0.13–0.25 s per frame on an RTX 3060 laptop GPU, ≈20× the CPU. Without a usable GPU it
+runs on the CPU.
+
+On the CPU alone expect a few seconds per frame (≈3.4 s on a 16-core desktop with mirroring, ≈1 s
 with ``segmentation.use_mirroring: False``), so segment gated frames or a frame range rather
 than whole pullbacks. See :doc:`configuration` for the settings and for using a custom
 model.
 
 .. _segmentation-gpu:
 
-On an NVIDIA GPU (source install)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+CUDA on an NVIDIA GPU (source install)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Mainly for Linux, where DirectML does not exist; on Windows DirectML already uses the GPU.
 Install with ``install.ps1 -Gpu`` / ``install.sh --gpu`` (or ``uv sync --extra
 segmentation-gpu``). This installs ``onnxruntime-gpu`` together with the CUDA 12 and cuDNN
 runtimes as pip packages (about 2.5 GB), so no CUDA toolkit has to be installed; the only
@@ -141,10 +148,11 @@ requirement is an NVIDIA driver ≥ 527.41 on Windows (≥ 525.60 on Linux), i.e
 that reports *CUDA Version: 12.0* or higher in ``nvidia-smi``. With mirroring, a frame takes
 ≈0.2 s on an RTX 3060 laptop GPU, ~16× the CPU.
 
-With ``segmentation.device: 'auto'`` (the default) HolOrama runs a test inference on the
-GPU when the model is loaded and falls back to the CPU if that fails; the progress dialog
-says which one is used and why the GPU was not. ``'cuda'`` refuses to run without the GPU
-instead. The pre-built installer is CPU-only.
+With ``segmentation.device: 'auto'`` (the default) HolOrama tries CUDA, then DirectML,
+running a test inference on the GPU when the model is loaded, and falls back to the CPU if
+none works; the progress dialog says which one is used and why the GPU was not.
+``'cuda'`` / ``'directml'`` refuse to run without that GPU instead. The pre-built installer
+uses DirectML.
 
 .. _install-vmtk:
 
@@ -192,10 +200,13 @@ Setup. From a source checkout:
 
 .. code-block:: powershell
 
-   .\build_nuitka.ps1      # syncs its own build\venv (CPU onnxruntime + Nuitka), then compiles
+   .\build_nuitka.ps1      # syncs its own build\venv (onnxruntime-directml + Nuitka), then compiles
    .\build_installer.ps1   # wrap it into HolOrama-Setup-<version>.exe
 
-The Inno Setup script is ``installer/HolOrama.iss``. vmtk is not compiled in; the
+The Inno Setup script is ``installer/HolOrama.iss``. The build script uses Nuitka's own MinGW
+compiler with a fixed baseline CPU target (x86-64-v2) and ignores ``CFLAGS``-style
+environment variables, so the exe runs on any 64-bit PC, not only on CPUs like the build
+machine's. vmtk is not compiled in; the
 application sets it up on first use from the pixi manifest it ships with (see
 :ref:`install-vmtk`).
 

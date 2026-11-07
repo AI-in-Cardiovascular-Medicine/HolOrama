@@ -2,12 +2,13 @@
 #
 # Installs HolOrama from source into .venv with uv. Everything comes from pyproject.toml / uv.lock;
 # there are no post-install fixes any more (torch, tensorflow and nnUZoo are gone: automatic
-# segmentation runs the bundled ONNX model with onnxruntime).
+# segmentation runs the bundled ONNX model with onnxruntime-directml: any DirectX 12 GPU, i.e.
+# NVIDIA, AMD or Intel, without a CUDA install, else the CPU).
 #
 # -Dev             also install dev + docs dependencies (tests, linters, Nuitka, Sphinx) and the
 #                  pre-commit git hooks
-# -Gpu             run Automatic Segmentation on an NVIDIA GPU (onnxruntime-gpu; CUDA 12 + cuDNN
-#                  come as pip wheels, only an NVIDIA driver >= 527.41 is needed). ~2.5 GB more.
+# -Gpu             use CUDA instead of DirectML (onnxruntime-gpu; CUDA 12 + cuDNN come as pip wheels, NVIDIA
+#                  driver >= 527.41). ~2.5 GB more; DirectML is usually as fast.
 # -NoSegmentation  skip the optional 'segmentation' extra (onnxruntime); Automatic Segmentation
 #                  then reports itself unavailable
 # -Centerlines     also set up the vmtk environment for Calculate Centerlines right away (pixi +

@@ -37,11 +37,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Automatic IVUS segmentation: the nnU-Net model runs as ONNX on the CPU, no torch needed
-# (see src/segmentation/onnx_inference.py). Installed by default by the install scripts and
-# always included in the compiled build; without it the feature reports itself unavailable.
+# Automatic IVUS segmentation: the nnU-Net model runs as ONNX, no torch needed (see
+# src/segmentation/onnx_inference.py). Installed by default by the install scripts and always
+# included in the compiled build; without it the feature reports itself unavailable.
+# On Windows the DirectML build: any DirectX 12 GPU (NVIDIA, AMD, Intel) without a CUDA
+# install, falling back to the CPU; +25 MB. Elsewhere the CPU build.
 segmentation = [
-    "onnxruntime>=1.20",
+    "onnxruntime>=1.20; sys_platform != 'win32'",
+    "onnxruntime-directml>=1.20; sys_platform == 'win32'",
 ]
 # Same, on an NVIDIA GPU (Windows/Linux): CUDA 12 + cuDNN 9 come as pip wheels, no CUDA toolkit
 # install needed, only an NVIDIA driver >= 527.41 (Windows) / 525.60 (Linux). Pinned below 1.27,

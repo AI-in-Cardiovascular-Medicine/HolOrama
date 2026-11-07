@@ -81,14 +81,14 @@ bash install.sh
 | Flag (`install.sh` / `install.ps1`) | Effect |
 |---|---|
 | `--dev` / `-Dev` | Also install dev + docs dependencies (tests, linters, Nuitka, Sphinx) and the pre-commit hooks |
-| `--gpu` / `-Gpu` | Run automatic segmentation on an NVIDIA GPU (onnxruntime-gpu, CUDA 12 + cuDNN as pip wheels; driver ≥ 527.41) |
+| `--gpu` / `-Gpu` | CUDA instead of the default runtime for automatic segmentation (NVIDIA; CUDA 12 + cuDNN as pip wheels, driver ≥ 527.41). Mainly for Linux: on Windows the default DirectML runtime already uses the GPU |
 | `--no-segmentation` / `-NoSegmentation` | Skip the optional `segmentation` extra (onnxruntime) |
 | `--centerlines` / `-Centerlines` | Set up the vmtk environment for *Calculate Centerlines* now instead of on first use |
 
 Without the scripts: `uv sync --extra segmentation` (or `--extra segmentation-gpu`; add `--group dev --group docs` for development). Run the app with `uv run src/main.py`.
 
 **How the optional parts work**
-- **Automatic segmentation**: the nnU-Net IVUS lumen model is bundled as a 5 MB ONNX file and runs with onnxruntime — no PyTorch. On the CPU a few seconds per frame; with `--gpu` on an NVIDIA GPU ≈0.2 s per frame, with no CUDA toolkit install (see `segmentation` in `config.yaml`). The Windows installer is CPU-only. `scripts/model_export/` holds the one-off export from the nnU-Net checkpoint.
+- **Automatic segmentation**: the nnU-Net IVUS lumen model is bundled as a 5 MB ONNX file and runs with onnxruntime — no PyTorch. On Windows (installer and source) it uses any DirectX 12 GPU through DirectML (≈0.2 s per frame, no CUDA install) and falls back to the CPU (a few seconds per frame); on Linux `--gpu` adds CUDA for NVIDIA GPUs (see `segmentation` in `config.yaml`). `scripts/model_export/` holds the one-off export from the nnU-Net checkpoint.
 - **Centerlines (vmtk)**: vmtk only exists on conda-forge, so it runs in a separate, pinned [pixi](https://pixi.sh) environment (`src/pages/ccta/left_half/cut_geometry/vmtk_env/`) that HolOrama creates on first use — natively, no WSL. Windows x64, Linux x64 and Intel macOS.
 
 See the [installation docs](https://holorama.readthedocs.io/en/latest/contents/installation.html) for details and for building the Windows installer yourself.
@@ -178,7 +178,7 @@ Make sure to quickly check the **src/config.yaml** file and configure everything
 - pixi_path: A pixi executable to use; empty = pixi on PATH, else the copy HolOrama downloads.
 
 **Segmentation**:
-- device: `auto` (NVIDIA GPU if the segmentation-gpu extra is installed and works, else CPU), `cuda` (GPU or refuse) or `cpu`.
+- device: `auto` (the first working GPU backend: CUDA with the segmentation-gpu extra, then DirectML on Windows; else CPU), `cuda` / `directml` (that GPU or refuse) or `cpu`.
 - model_file: Empty = the bundled ONNX model; otherwise a `.onnx` exported with `scripts/model_export/export_onnx.py`.
 - use_mirroring: nnU-Net's test-time mirroring; ~4x slower, noticeably better masks.
 - tile_step_size: Sliding-window overlap as a fraction of the patch size (nnU-Net default 0.5).

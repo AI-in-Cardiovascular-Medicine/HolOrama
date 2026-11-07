@@ -50,7 +50,8 @@ def _ring_volume(frames=3, size=320, seed=0):
 
 @pytest.fixture(scope='module')
 def segmenter():
-    s = oi.OnnxSegmenter(use_mirroring=False, batch_size=1)  # one frame per network call
+    # CPU: deterministic everywhere (a GPU-less CI runner may still offer DirectML's slow software adapter)
+    s = oi.OnnxSegmenter(use_mirroring=False, batch_size=1, device='cpu')  # one frame per network call
     s.load()
     return s
 
@@ -121,24 +122,44 @@ def test_invalid_device_is_reported_as_unavailable():
 
 
 def test_cpu_device_never_tries_the_gpu(monkeypatch):
-    monkeypatch.setattr(oi.OnnxSegmenter, '_try_cuda_session', lambda self, ort: pytest.fail('GPU was tried'))
+    monkeypatch.setattr(oi.OnnxSegmenter, '_try_gpu_session', lambda self, ort, d: pytest.fail('GPU was tried'))
     s = oi.OnnxSegmenter(device='cpu')
     s.load()
     assert s.active_device == 'cpu' and s.fallback_reason == ''
 
 
-def test_auto_falls_back_to_cpu_and_cuda_refuses(monkeypatch):
-    monkeypatch.setattr(oi.OnnxSegmenter, '_try_cuda_session', lambda self, ort: (None, 'CUDA test inference failed'))
+def _fake_gpus(monkeypatch, results):
+    """results: device -> reason string for a failing GPU runtime (or the 'missing' text)."""
+    tried = []
+
+    def fake(self, ort, device):
+        tried.append(device)
+        return None, results[device]
+
+    monkeypatch.setattr(oi.OnnxSegmenter, '_try_gpu_session', fake)
+    return tried
+
+
+def test_auto_tries_cuda_then_directml_then_cpu(monkeypatch):
+    tried = _fake_gpus(monkeypatch, {'cuda': oi._MISSING_RUNTIME['cuda'], 'directml': 'DirectML test inference failed'})
     auto = oi.OnnxSegmenter(device='auto')
     auto.load()
-    assert auto.active_device == 'cpu' and 'CUDA test inference failed' in auto.fallback_reason
-    with pytest.raises(oi.SegmentationUnavailable, match='"cuda"'):
-        oi.OnnxSegmenter(device='cuda').load()
+    assert tried == ['cuda', 'directml']
+    assert auto.active_device == 'cpu'
+    # the missing CUDA package is normal; the installed-but-broken DirectML is reported
+    assert auto.fallback_reason == 'DirectML test inference failed'
+
+
+@pytest.mark.parametrize('device', ['cuda', 'directml'])
+def test_explicit_gpu_device_refuses_without_it(monkeypatch, device):
+    _fake_gpus(monkeypatch, {'cuda': 'no CUDA', 'directml': 'no DirectML'})
+    with pytest.raises(oi.SegmentationUnavailable, match=f'"{device}"'):
+        oi.OnnxSegmenter(device=device).load()
 
 
 def test_cpu_only_package_is_not_reported_as_a_fallback(monkeypatch):
-    # The plain CPU package is the normal case (compiled installer), not a degraded GPU setup.
-    monkeypatch.setattr(oi.OnnxSegmenter, '_try_cuda_session', lambda self, ort: (None, 'needs "onnxruntime-gpu"'))
+    # A CPU-only onnxruntime (Linux/macOS default) is a normal setup, not a degraded GPU one.
+    _fake_gpus(monkeypatch, dict(oi._MISSING_RUNTIME))
     s = oi.OnnxSegmenter(device='auto')
     s.load()
     assert s.active_device == 'cpu' and s.fallback_reason == ''
