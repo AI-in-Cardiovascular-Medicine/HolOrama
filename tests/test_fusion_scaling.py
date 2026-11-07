@@ -65,6 +65,50 @@ def test_remaining_vessels_skip_empty_regions(morphs):
     assert len(morphs) == 4
 
 
+@pytest.fixture
+def tree_syncs(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        scaling.mm_api, 'run_sync_tree_to_mesh', lambda tree, old, new: calls.append((tree, old, new)) or tree
+    )
+    return calls
+
+
+def test_tree_follows_the_whole_scaling_once(morphs, tree_syncs):
+    scaling.apply_scaling(
+        _results(),
+        'rca',
+        _scaling(0.5),
+        centerline='rca_cl',
+        centerline_aorta='aorta_cl',
+        opposite_centerline='lca_cl',
+        tree='tree',
+    )
+    # Original mesh (0) to the final one (5 morphs): one sync covers every region.
+    assert tree_syncs == [('tree', 0, 5)]
+
+
+def test_no_tree_no_sync(morphs, tree_syncs):
+    scaling.apply_scaling(
+        _results(), 'rca', _scaling(), centerline='rca_cl', centerline_aorta='aorta_cl', opposite_centerline=None
+    )
+    assert tree_syncs == []
+
+
+def test_failed_scaling_leaves_the_tree_alone(morphs, tree_syncs):
+    with pytest.raises(ValueError):
+        scaling.apply_scaling(
+            _results(),
+            'rca',
+            _scaling(0.5),
+            centerline='rca_cl',
+            centerline_aorta='aorta_cl',
+            opposite_centerline=None,
+            tree='tree',
+        )
+    assert tree_syncs == []
+
+
 def test_remaining_vessels_need_the_opposite_centerline(morphs):
     with pytest.raises(ValueError, match='LCA centerline'):
         scaling.apply_scaling(
