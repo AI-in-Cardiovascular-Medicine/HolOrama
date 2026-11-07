@@ -305,21 +305,15 @@ def run_find_scalings(
 
 
 def run_scale_region(
-    mesh: trimesh.Trimesh, region_points: list, centerline, radius_adjustment_mm: float
+    mesh: trimesh.Trimesh, region_points: list, centerline, diameter_adjustment_mm: float
 ) -> trimesh.Trimesh:
-    """Points move radially by radius_adjustment_mm, so the diameter changes by twice that."""
     return mm.scale_region_centerline_morphing(
-        mesh=mesh, region_points=region_points, centerline=centerline, radius_adjustment_mm=radius_adjustment_mm
+        mesh=mesh, region_points=region_points, centerline=centerline, diameter_adjustment_mm=diameter_adjustment_mm
     )
 
 
 def run_sync_results_to_mesh(results: dict, old_mesh: trimesh.Trimesh, new_mesh: trimesh.Trimesh) -> dict:
     return mm.sync_results_to_mesh(results, old_mesh, new_mesh)
-
-
-def run_sync_tree_to_mesh(tree: Any, old_mesh: trimesh.Trimesh, new_mesh: trimesh.Trimesh) -> Any:
-    """Move a discretized tree's contours, ostium and reference points with the mesh (in place)."""
-    return mm.sync_tree_to_mesh(tree, old_mesh, new_mesh)
 
 
 def run_remove_labeled_points(results: dict, region_keys: list[str] | str) -> dict:

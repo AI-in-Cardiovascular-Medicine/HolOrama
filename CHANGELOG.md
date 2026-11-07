@@ -14,12 +14,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - `config.yaml`: the `vmtk` section is replaced by `centerlines` (`env_dir`, `pixi_path`, both optional). `segmentation` has `model_file` (empty = bundled), `device`, `use_mirroring`, `tile_step_size`, `batch_size`, `num_threads`; `model_fold`, `normalize` and `conserve_memory` are gone. Old configs keep working: an nnU-Net folder or `.h5` in `model_file` falls back to the bundled model.
 - **Build system**: torch, torchvision, tensorflow, nnUZoo, pylint and seaborn are no longer dependencies; `onnxruntime` is the optional `segmentation` extra. `install.ps1` / `install.sh` are a plain `uv sync --locked` (flags `-Dev`, `-Gpu`, `-NoSegmentation`, `-Centerlines`); `build_nuitka.ps1` builds from its own `build\venv` (Python 3.11) with Nuitka's MinGW gcc for the x86-64-v2 baseline, ignoring inherited `CFLAGS`; the numpy 1.26 re-pin, optree pin, libomp download and nnUZoo patching are gone.
 - Python 3.11 – 3.13 supported (was 3.11 only); CI tests 3.11 and 3.13 from `uv.lock` on Linux and Windows.
-
-- **multimodars 0.10.0** (brings trimesh 5.2):
-  - Apply Scaling now also moves the discretized vessel tree onto the scaled mesh (`sync_tree_to_mesh`). Before, the stitch reconnected side branches, and the inlet/outlet cuts sliced, at the unscaled size.
-  - The scaling values are radius changes (the diameter changes by twice the value); the tooltips and docs say so. The values themselves and their effect are unchanged (multimodars renamed `diameter_adjustment_mm` to `radius_adjustment_mm`).
-  - Stitch decides by itself whether the proximal ring is the ostium (`proximal_is_ostium=None`): only when a quarter of it runs over the aorta. Before, it was always treated as the ostium, which broke the proximal stitch when only the overlap was removed.
-  - Reconnecting several side branches to the intravascular wall is more robust (multimodars fix).
+- multimodars stays below 0.10 (`>=0.9.1,<0.10`); 0.10 breaks the fusion pipeline and gets its own update.
 
 ### Removed
 - TensorFlow/Keras (`.h5`) segmentation models.

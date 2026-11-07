@@ -362,14 +362,9 @@ the other coronary and to the aligned coronary's off-path branches (the branches
 on the pullback path, see Label Overlap Region). Set it by hand if they also need scaling, or
 leave it at 0 to skip it entirely.
 
-All values are **radius** changes in millimetres: the surface moves radially by that much,
-so the diameter changes by twice the value.
-
 Click **Apply Scaling to Mesh**. The distal, aortic, proximal and, if non-zero,
 remaining-vessel regions are morphed along their centerlines in that order, each remaining
-vessel around its own centerline. The discretized vessel tree is moved onto the scaled mesh
-as well, so the stitch reconnects side branches and the inlet/outlet cuts use slices at their
-scaled size.
+vessel around its own centerline.
 
 **11. Remove the overlapping points.** In *Remove Labeled Points*, tick which regions to
 drop (``overlap_points`` and ``proximal_points`` by default) and click **Remove**. These
