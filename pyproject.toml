@@ -64,7 +64,10 @@ dev = [
     "black>=26.10.0",
     "mypy",
     "ruff",
-    "nuitka",
+    # >= 4.2: with the Zig compiler Nuitka targets the generic x86-64 baseline. Older versions
+    # compiled for the build machine's CPU, so an exe built on an AVX-512 desktop crashed with
+    # STATUS_ILLEGAL_INSTRUCTION (0xc000001d) on CPUs without it (e.g. Ryzen 5000).
+    "nuitka>=4.2.2",
 ]
 docs = [
     "sphinx",
