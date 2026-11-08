@@ -32,12 +32,33 @@ def test_gaussian_is_peaked_positive_and_scaled():
     assert np.unravel_index(g.argmax(), g.shape) == (32, 24)
 
 
-def test_nonzero_bbox_fills_holes_and_handles_empty():
+def test_nonzero_bbox_ignores_holes_and_handles_empty():
     vol = np.zeros((4, 10, 12))
     vol[1:3, 2:8, 3:9] = 1
     vol[1:3, 4:6, 5:7] = 0  # an interior hole must not shrink the box
     assert oi.nonzero_bbox(vol) == (slice(1, 3), slice(2, 8), slice(3, 9))
     assert oi.nonzero_bbox(np.zeros((2, 3, 4))) == (slice(0, 2), slice(0, 3), slice(0, 4))
+
+
+def test_nonzero_bbox_equals_box_of_hole_filled_mask():
+    # nnU-Net hole-fills before taking the box; skipping the fill must give the same box.
+    from scipy.ndimage import binary_fill_holes
+
+    rng = np.random.default_rng(1)
+    for _ in range(20):
+        vol = (rng.random((6, 20, 24)) > 0.9).astype(np.uint8)
+        filled = binary_fill_holes(vol != 0)
+        assert oi.nonzero_bbox(vol) == oi.nonzero_bbox(filled.astype(np.uint8))
+
+
+@pytest.mark.parametrize('dtype', [np.uint8, np.uint16, np.int16, np.float32])
+def test_zscore_stats_match_numpy(dtype):
+    rng = np.random.default_rng(2)
+    vol = (rng.random((70, 30, 40)) * 250).astype(dtype)  # 70 frames: spans several chunks
+    mean, std = oi.zscore_stats(vol)
+    ref = vol.astype(np.float64)
+    assert mean == pytest.approx(ref.mean(), rel=1e-6)
+    assert std == pytest.approx(ref.std(), rel=1e-6)
 
 
 def _ring_volume(frames=3, size=320, seed=0):

@@ -6,8 +6,8 @@ install fragile and the app impossible to compile. Instead, the network is expor
 ONNX (scripts/model_export/export_onnx.py) and this module reproduces exactly the steps
 nnUNetPredictor.predict_single_npy_array performs for a 2D configuration:
 
-1. crop the (frames, y, x) volume to the bounding box of its non-zero region
-   (binary-hole-filled in 3D), as nnU-Net's crop_to_nonzero does
+1. crop the (frames, y, x) volume to the bounding box of its non-zero region,
+   as nnU-Net's crop_to_nonzero does
 2. z-score normalise with the mean/std of that whole cropped volume
    (resampling is a no-op: the model's target spacing is 1 and frames are fed with spacing 1)
 3. per frame: centre-pad to at least the patch size, tile with a sliding window
@@ -35,7 +35,7 @@ from pathlib import Path
 
 import numpy as np
 from loguru import logger
-from scipy.ndimage import binary_fill_holes, gaussian_filter
+from scipy.ndimage import gaussian_filter
 
 # Bundled model, shipped next to this module (and next to the compiled module in the Nuitka build).
 DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / 'weights' / 'ivus_lumen_u2netp.onnx'
@@ -101,15 +101,43 @@ def compute_steps(image_size: tuple[int, ...], tile_size: tuple[int, ...], tile_
 
 
 def nonzero_bbox(volume: np.ndarray) -> tuple[slice, ...]:
-    """Half-open bounding box of the hole-filled non-zero region (nnU-Net's crop_to_nonzero).
-    An all-zero volume keeps its full extent, as get_bbox_from_mask does."""
-    mask = binary_fill_holes(volume != 0)
+    """Half-open bounding box of the non-zero region: the box nnU-Net's crop_to_nonzero crops
+    to. nnU-Net hole-fills the mask in 3D first, but that cannot change the box: a zero voxel
+    outside the box lies in an all-zero slab that touches the volume's border, so it is never
+    a hole. Skipping the fill saves minutes on a full pullback. An all-zero volume keeps its
+    full extent, as get_bbox_from_mask does."""
+    mask = volume != 0
     slicer = []
     for axis in range(mask.ndim):
         other = tuple(a for a in range(mask.ndim) if a != axis)
         hits = np.flatnonzero(mask.any(axis=other))
         slicer.append(slice(int(hits[0]), int(hits[-1]) + 1) if hits.size else slice(0, mask.shape[axis]))
     return tuple(slicer)
+
+
+def zscore_stats(volume: np.ndarray, chunk: int = 32) -> tuple[np.float32, float]:
+    """Mean and std of the whole volume (float64 accumulation), without a float copy of it."""
+    if volume.dtype.kind in 'ub' and volume.dtype.itemsize <= 2:
+        counts = np.zeros(1 << (8 * volume.dtype.itemsize), dtype=np.int64)
+        for start in range(0, volume.shape[0], chunk):
+            part = volume[start : start + chunk].ravel()
+            counts += np.bincount(part, minlength=counts.size)
+        values = np.arange(counts.size, dtype=np.float64)
+        n = counts.sum()
+        mean = float((counts * values).sum() / n)
+        var = float((counts * (values - mean) ** 2).sum() / n)
+    else:
+        n = volume.size
+        mean = sum(float(volume[s : s + chunk].sum(dtype=np.float64)) for s in range(0, volume.shape[0], chunk)) / n
+        var = (
+            sum(
+                float(((volume[s : s + chunk].astype(np.float64) - mean) ** 2).sum())
+                for s in range(0, volume.shape[0], chunk)
+            )
+            / n
+        )
+    # float32 values, as nnU-Net's normalisation of a float32 image yields.
+    return np.float32(mean), max(float(np.float32(np.sqrt(var))), 1e-8)
 
 
 class OnnxSegmenter:
@@ -284,9 +312,8 @@ class OnnxSegmenter:
             raise ValueError(f'Expected a (frames, y, x) volume, got shape {volume.shape}')
 
         crop = nonzero_bbox(volume)
-        cropped = volume[crop].astype(np.float32)
-        mean, std = cropped.mean(), cropped.std()
-        cropped = (cropped - mean) / max(float(std), 1e-8)
+        cropped = volume[crop]  # a view; frames are normalised one at a time below
+        mean, std = zscore_stats(cropped)
 
         out = np.zeros(volume.shape, dtype=np.uint8)
         z0, z1 = crop[0].start, crop[0].stop
@@ -320,7 +347,8 @@ class OnnxSegmenter:
             batch[:] = 0
             for i, (z, j) in enumerate(chunk):
                 if z not in padded:
-                    padded[z] = np.pad(cropped[z - z0], pad, mode='constant', constant_values=0)
+                    frame = (cropped[z - z0].astype(np.float32) - mean) / std
+                    padded[z] = np.pad(frame, pad, mode='constant', constant_values=0)
                 batch[i, 0] = padded[z][tile_slicers[j]]
             logits = self._run(batch)
             for i, (z, j) in enumerate(chunk):
