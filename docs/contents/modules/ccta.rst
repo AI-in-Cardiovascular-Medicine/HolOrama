@@ -184,8 +184,10 @@ In that tab:
 8. Optional: compute centerlines
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Centerlines are computed with `vmtk <https://vmtk.github.io>`_, which you install yourself;
-see :ref:`install-vmtk`. Everything up to this point works without it.
+Centerlines are computed with `vmtk <https://vmtk.github.io>`_, which HolOrama sets up in its
+own environment the first time you click **Calculate Centerlines** (it asks first; a
+one-time download of about 1.5 GB, see :ref:`install-vmtk`). Everything up to this point
+works without it.
 
 #. Place the outlet points. Click **Add RCA Outlet**, then click on the cut geometry at the
    distal end of the right coronary artery. Do the same with **Add LCA Outlet** for the
@@ -211,9 +213,8 @@ Output, written next to the case file:
 Those ``.vtp`` files and the STL are exactly what the :doc:`fusion` module asks for.
 
 .. note::
-   HolOrama verifies before starting that both vmtk activation scripts exist, that WSL
-   starts, and that all three vmtk executables resolve. A failed check produces a specific
-   error message rather than a silent failure.
+   File paths handed to vmtk may contain spaces but not an apostrophe (``'``); vmtk's own
+   argument parser cannot take one, and HolOrama reports it before starting.
 
 9. Export
 ~~~~~~~~~
@@ -264,9 +265,13 @@ Troubleshooting
    * - The lasso removes more than intended
      - The erase is a projection along the current view direction. Rotate so the unwanted
        structure does not overlap what you want to keep, then :kbd:`Ctrl+Z` and retry.
-   * - **Calculate Centerlines** reports vmtk not found
-     - Check ``vmtk.venv_path``, ``vmtk.build_path`` and ``vmtk.wsl_distro`` in
-       ``config.yaml``; see :ref:`install-vmtk`. The message names the failing check.
+   * - Setting up vmtk fails
+     - It needs internet access to github.com (pixi) and conda.anaconda.org (vmtk). Behind
+       a proxy that blocks those, install `pixi <https://pixi.sh>`_ yourself and set
+       ``centerlines.pixi_path``; see :ref:`install-vmtk`. The message shows pixi's output.
+   * - **Calculate Centerlines** is not available on this platform
+     - vmtk has no conda-forge build for Apple Silicon or Linux ARM. Compute the centerlines
+       on another machine and load the ``.vtp`` files into the Fusion module.
    * - Centerline computation takes very long
      - Run **Reduce Mesh** first. Decimating the surface is the single most effective
        speed-up.

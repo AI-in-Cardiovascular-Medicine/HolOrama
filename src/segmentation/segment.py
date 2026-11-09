@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Any
 
 import matplotlib.path as mplPath
@@ -6,6 +5,7 @@ import numpy as np
 from loguru import logger
 from skimage import measure
 
+from domain.intravascular.segmentation_types import FALLBACK_CONTOUR_RADIUS_MM, FALLBACK_RESOLUTION_MM
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 
@@ -18,26 +18,36 @@ def segment(main_window):
         main_window.status_bar.showMessage(main_window.waiting_status)
         return
 
-    model_path = Path(main_window.config.segmentation.model_file)
-    if not model_path.exists():
-        ErrorMessage(
-            main_window,
-            f'Segmentation model not found:\n{model_path}\n\nPlease set segmentation.model_file in config.yaml.',
-        )
+    # Blocks the feature with a specific reason when this install cannot run it (optional
+    # onnxruntime missing, model file missing/unreadable) instead of failing mid-run.
+    available, reason = main_window.predictor.check_available()
+    if not available:
+        ErrorMessage(main_window, f'Automatic segmentation is not available.\n\n{reason}')
         main_window.status_bar.showMessage(main_window.waiting_status)
         return
 
     segment_dialog = FrameRangeDialog(main_window)
+    if not segment_dialog.exec():
+        main_window.status_bar.showMessage(main_window.waiting_status)
+        return
 
-    if segment_dialog.exec():
-        lower_limit, upper_limit = segment_dialog.getInputs()
+    lower_limit, upper_limit = segment_dialog.getInputs()
+    try:
         masks = main_window.predictor(main_window.runtime_data.images, lower_limit, upper_limit)
-        if masks is not None:
-            mask_to_contours(main_window, masks, lower_limit, upper_limit)
-            main_window.contours_drawn = True
-            main_window.display.set_data(main_window.runtime_data.images)
-            main_window.hide_contours_box.setChecked(False)
-            main_window.save_contours_soon()  # a whole frame range was rewritten
+    except Exception as e:  # e.g. out of memory: report instead of crashing the GUI
+        logger.exception('Automatic segmentation failed')
+        ErrorMessage(main_window, f'Automatic segmentation failed:\n{e}')
+        main_window.status_bar.showMessage(main_window.waiting_status)
+        return
+    if masks is None:  # cancelled
+        main_window.status_bar.showMessage(main_window.waiting_status)
+        return
+
+    mask_to_contours(main_window, masks, lower_limit, upper_limit)
+    main_window.contours_drawn = True
+    main_window.display.set_data(main_window.runtime_data.images)
+    main_window.hide_contours_box.setChecked(False)
+    main_window.save_contours_soon()  # a whole frame range was rewritten
 
     SuccessMessage(main_window, 'Automatic segmentation')
     # Every segmented frame needs its metrics computed here: a frame is otherwise only
@@ -47,41 +57,14 @@ def segment(main_window):
     main_window.status_bar.showMessage(main_window.waiting_status)
 
 
-def mask_to_contours(main_window, masks, lower_limit, upper_limit, config=None):
-    """Extracts contours from masked images.
-
-    When main_window is provided, writes in-place to main_window.runtime_data.frame_data_dct[frame].lumen.
-    When main_window is None (headless), returns a Dict[int, FrameData].
-    """
-    if main_window is not None:
-        config = main_window.config
-    if config is None:
-        logger.error('mask_to_contours: no config available')
-        return None
-
-    num_points = config.intravascular.n_interactive_points
+def mask_to_contours(main_window, masks, lower_limit, upper_limit):
+    """Write the largest lumen contour of each mask in-place to
+    main_window.runtime_data.frame_data_dct[frame].lumen (a catheter-sized circle if empty)."""
+    num_points = main_window.config.intravascular.n_interactive_points
     image_shape = masks.shape[1:3]
     counter = 0
-
-    if main_window is None:
-        from domain.intravascular.io_types import FrameData
-
-        data = {}
-        for frame in range(lower_limit, upper_limit):
-            fd = FrameData()
-            if np.sum(masks[frame, :, :]) > 0:
-                counter += 1
-                contours_frame = label_contours(masks[frame, :, :])
-                keep_lumen_x, keep_lumen_y = downsample(keep_largest_contour(contours_frame, image_shape), num_points)
-                # remove last point after segmentation
-                keep_lumen_x, keep_lumen_y = keep_lumen_x[:-1], keep_lumen_y[:-1]
-                fd.lumen.contours = [(keep_lumen_x, keep_lumen_y)]
-            data[frame] = fd
-        logger.info(f'Found contours in {counter} frames')
-        return data
-
-    resolution = main_window.runtime_data.metadata.get('resolution', 0.1)  # mm/pixel
-    fallback_radius_px = 0.5 / resolution
+    resolution = main_window.runtime_data.metadata.get('resolution', FALLBACK_RESOLUTION_MM)  # mm/pixel
+    fallback_radius_px = FALLBACK_CONTOUR_RADIUS_MM / resolution
 
     for frame in range(lower_limit, upper_limit):
         fd = main_window.runtime_data.frame_data_dct.get(frame)
@@ -98,15 +81,6 @@ def mask_to_contours(main_window, masks, lower_limit, upper_limit, config=None):
         else:
             fd.lumen.contours = [_catheter_fallback_contour(image_shape, fallback_radius_px, num_points)]
     logger.info(f'Found contours in {counter} frames')
-
-
-def _catheter_fallback_contour(image_shape, radius_px, num_points):
-    """Circle at image centre — used when segmentation fails for a frame."""
-    cy, cx = image_shape[0] / 2.0, image_shape[1] / 2.0
-    angles = np.linspace(0, 2 * np.pi, num_points, endpoint=False)
-    x = (cx + radius_px * np.cos(angles)).tolist()
-    y = (cy + radius_px * np.sin(angles)).tolist()
-    return (x, y)
 
 
 def label_contours(image):
@@ -156,3 +130,12 @@ def downsample(contours, num_points):
         downsampled = [downsampled[0][0], downsampled[1][0]]  # remove unnecessary dimension  # type: ignore[assignment]
 
     return downsampled
+
+
+def _catheter_fallback_contour(image_shape, radius_px, num_points):
+    """Circle at the image centre, used when segmentation finds no lumen in a frame."""
+    cy, cx = image_shape[0] / 2.0, image_shape[1] / 2.0
+    angles = np.linspace(0, 2 * np.pi, num_points, endpoint=False)
+    x = (cx + radius_px * np.cos(angles)).tolist()
+    y = (cy + radius_px * np.sin(angles)).tolist()
+    return (x, y)

@@ -26,8 +26,8 @@ Specifically HolOrama spans the following functionalities:
 
 - **Intravascular segmentation.** Draw contours on IVUS/OCT frames (lumen, EEM, calcium,
   side branches and more) with tools designed to record *how certain* you are about a
-  border rather than forcing a single crisp line. On a source install, lumen contours can
-  be pre-segmented automatically and then corrected by hand.
+  border rather than forcing a single crisp line. IVUS lumen contours can be
+  pre-segmented automatically and then corrected by hand.
 - **Motion correction.** IVUS pullbacks carry substantial motion artefacts, from the
   heartbeat and from breathing. HolOrama gates the pullback from the images alone (no ECG
   needed) and can detect and remove the breathing component.
@@ -62,8 +62,7 @@ Frame-by-frame contouring of a pullback.
 - Every contour is a **closed spline**, an **open spline**, or a closed spline carrying an
   **uncertain region** delimited by a start and end point. Uncertainty is part of the
   annotation, not a comment in a spreadsheet.
-- Optional automatic lumen segmentation (source install only, see
-  :doc:`installation`).
+- Automatic IVUS lumen segmentation (bundled model, runs on the CPU).
 - Export: report (metrics per frame), contour CSVs, and image/mask **NIfTI** volumes.
 
 .. image:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/OCT_demo.gif
@@ -94,8 +93,8 @@ Multi-label segmentation and 3D model building on a CT volume.
   everything of one label inside a drawn region: the fast way to remove noise and
   structures the segmentation picked up by mistake.
 - Draw **cut planes** (LVOT and aorta top) and extract the aortic root together with the
-  coronaries as one combined NIfTI mask or STL mesh, then **smooth**, **reduce** and, if
-  you have `vmtk <https://vmtk.github.io>`_ installed, compute **centerlines**.
+  coronaries as one combined NIfTI mask or STL mesh, then **smooth**, **reduce** and compute
+  **centerlines** with `vmtk <https://vmtk.github.io>`_ (set up on first use).
 
 .. image:: https://raw.githubusercontent.com/AI-in-Cardiovascular-Medicine/HolOrama/main/media/CCTA_demo.gif
    :alt: Segmenting and cleaning a CCTA volume in HolOrama
@@ -175,7 +174,7 @@ A first run
 #. Install HolOrama (see :doc:`installation`). With the Windows installer, no coding knowledge is needed.
 #. Launch the application. It opens maximised on the **Intravascular** module.
 #. Optionally check :doc:`configuration` and adjust display sizes, colours, auto-save interval and the
-   optional vmtk paths.
+   segmentation and centerline settings.
 #. Open a case and follow the tutorial for your module:
    :doc:`modules/intravascular`, :doc:`modules/ccta` or :doc:`modules/fusion`.
 

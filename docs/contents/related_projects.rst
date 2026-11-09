@@ -13,9 +13,9 @@ Related projects
      - The fusion engine. HolOrama's :doc:`modules/fusion` module is a graphical front end
        for it; use the package directly if you want to script the same pipeline.
    * - `nnUZoo <https://github.com/AI-in-Cardiovascular-Medicine/nnUZoo>`_
-     - Segmentation model zoo behind the **Automatic Segmentation** button. Installed
-       separately, see :doc:`installation`.
+     - Segmentation model zoo the **Automatic Segmentation** model was trained with. HolOrama
+       ships it exported to ONNX, so nnUZoo is not needed to run it.
    * - `vmtk <https://vmtk.github.io>`_
      - The Vascular Modelling Toolkit, used for centerline extraction in the
-       :doc:`modules/ccta` module. Installed separately by the user, see
+       :doc:`modules/ccta` module. HolOrama installs it on first use, see
        :ref:`install-vmtk`.

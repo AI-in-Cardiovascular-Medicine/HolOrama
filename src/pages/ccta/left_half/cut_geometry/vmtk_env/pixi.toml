@@ -1,0 +1,13 @@
+# The conda-forge environment Calculate Centerlines runs vmtk in. vmtk has no pip wheels, so it
+# lives in its own pixi-managed environment instead of HolOrama's Python environment. HolOrama
+# copies this manifest and pixi.lock into its per-user data dir and runs `pixi install --frozen`
+# there on first use (see ../vmtk.py). To update vmtk: edit here, run `pixi lock` in this folder
+# and commit both files; existing installs are re-synced automatically because the lock changed.
+[workspace]
+name = "holorama-vmtk"
+channels = ["conda-forge"]
+# vmtk 1.5.0 has no osx-arm64 or linux-aarch64 builds on conda-forge.
+platforms = ["win-64", "linux-64", "osx-64"]
+
+[dependencies]
+vmtk = "1.5.*"

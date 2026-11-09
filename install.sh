@@ -1,70 +1,68 @@
 #!/usr/bin/env bash
-# Usage: ./install.sh [--dev] [--nnuzoo] [--cpu] [--cuda 121]
-# Default installs CUDA 11.8 (cu118) torch -- GPU-ready out of the box.
-# --dev            also install dev + docs dependencies (linters, tests, sphinx)
-# --nnuzoo         install nnUZoo from GitHub
-# --cpu            install CPU-only torch instead (overrides default GPU build)
-# --cuda 121       switch to CUDA 12.1 build instead of the default cu118
-set -e
+# Usage: ./install.sh [--dev] [--gpu] [--no-segmentation] [--centerlines]
+#
+# Installs HolOrama from source into .venv with uv. Everything comes from pyproject.toml / uv.lock;
+# there are no post-install fixes any more (torch, tensorflow and nnUZoo are gone: automatic
+# segmentation runs the bundled ONNX model with onnxruntime).
+#
+# --dev              also install dev + docs dependencies (tests, linters, Nuitka, Sphinx) and the
+#                    pre-commit git hooks
+# --gpu              run Automatic Segmentation on an NVIDIA GPU (onnxruntime-gpu; CUDA 12 + cuDNN
+#                    come as pip wheels, only an NVIDIA driver >= 525.60 is needed). ~2.5 GB more.
+# --no-segmentation  skip the optional 'segmentation' extra (onnxruntime); Automatic Segmentation
+#                    then reports itself unavailable
+# --centerlines      also set up the vmtk environment for Calculate Centerlines right away (pixi +
+#                    conda-forge, ~1.5 GB; Linux x64 and Intel macOS only). Without it, the app
+#                    offers to do this on first use.
+set -euo pipefail
 
 DEV_DEPS=false
-NNUZOO=false
-CPU=false
-CUDA=""
+SEGMENTATION=true
+GPU=false
+CENTERLINES=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --dev)    DEV_DEPS=true; shift ;;
-        --nnuzoo) NNUZOO=true;   shift ;;
-        --cpu)    CPU=true;      shift ;;
-        --cuda)   CUDA="$2";     shift 2 ;;
-        *) echo "Unknown option: $1"; echo "Usage: $0 [--dev] [--nnuzoo] [--cpu] [--cuda 121]"; exit 1 ;;
+        --dev)             DEV_DEPS=true;      shift ;;
+        --gpu)             GPU=true;           shift ;;
+        --no-segmentation) SEGMENTATION=false; shift ;;
+        --centerlines)     CENTERLINES=true;   shift ;;
+        *) echo "Unknown option: $1"; echo "Usage: $0 [--dev] [--gpu] [--no-segmentation] [--centerlines]"; exit 1 ;;
     esac
 done
 
 # -- 1. Ensure uv is available ------------------------------------------------
 if ! command -v uv &>/dev/null; then
-    echo "uv not found -- installing via pip..."
-    pip install uv
+    echo "uv not found -- installing it (https://docs.astral.sh/uv/)..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
 fi
 
-# -- 2. Install project dependencies (uv auto-creates .venv) ------------------
-# pyqt6-qt6 is ~900 MB; increase timeout for slow connections
+# -- 2. Install the locked environment (uv creates .venv and fetches Python if needed) --
+# pyqt6-qt6 is large; increase the timeout for slow connections
 export UV_HTTP_TIMEOUT=300
 
-SYNC_ARGS=("sync")
+SYNC_ARGS=("sync" "--locked")
+if $GPU; then SYNC_ARGS+=("--extra" "segmentation-gpu")
+elif $SEGMENTATION; then SYNC_ARGS+=("--extra" "segmentation"); fi
 if $DEV_DEPS; then SYNC_ARGS+=("--group" "dev" "--group" "docs"); fi
 uv "${SYNC_ARGS[@]}"
 
 PYTHON="./.venv/bin/python"
 
-# -- 3. Optional: nnUZoo ------------------------------------------------------
-if $NNUZOO; then
-    echo "Installing nnUZoo..."
-    uv pip install --python "$PYTHON" git+https://github.com/AI-in-Cardiovascular-Medicine/nnUZoo@main
+# -- 3. Dev: pre-commit git hooks ---------------------------------------------
+if $DEV_DEPS; then
+    echo "Installing pre-commit git hooks..."
+    "$PYTHON" -m pre_commit install
 fi
 
-# -- 4. Override torch build if requested -------------------------------------
-if $CPU; then
-    echo "Switching to CPU-only torch build..."
-    uv pip install --python "$PYTHON" --reinstall \
-        "torch==2.4.0" "torchvision==0.19.0" \
-        --index-url https://download.pytorch.org/whl/cpu
-elif [[ "$CUDA" == "121" ]]; then
-    echo "Switching to CUDA 12.1 torch build..."
-    uv pip install --python "$PYTHON" --reinstall \
-        "torch==2.4.0+cu121" "torchvision==0.19.0+cu121" \
-        --index-url https://download.pytorch.org/whl/cu121
-elif [[ -n "$CUDA" ]]; then
-    echo "Unknown CUDA version '$CUDA'. Use 121 (cu118 is the default)."; exit 1
+# -- 4. Optional: vmtk environment for Calculate Centerlines ------------------
+if $CENTERLINES; then
+    echo "Setting up the vmtk environment (pixi + conda-forge)..."
+    "$PYTHON" -c "import sys; sys.path.insert(0, 'src'); from pages.ccta.left_half.cut_geometry import vmtk; vmtk.setup_env(vmtk.VmtkEnv.from_config(None))"
 fi
-# default (cu118) already installed by uv sync
-
-# -- 5. Re-pin numpy (nnunetv2 and torch cuda installs upgrade it to 2.x) ------
-# torch 2.4.0 was built against numpy 1.x C API; numpy 2.x breaks torch.from_numpy
-echo "Re-pinning numpy to 1.26.4 (torch 2.4.0 / numpy 1.x compatibility)..."
-uv pip install --python "$PYTHON" "numpy==1.26.4"
 
 echo ""
 echo "Done. Run the app with:"
-echo "  source .venv/bin/activate && python3 src/main.py"
+echo "  uv run src/main.py"
+echo "(or: source .venv/bin/activate && python src/main.py)"

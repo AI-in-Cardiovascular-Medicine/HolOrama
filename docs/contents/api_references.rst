@@ -36,14 +36,14 @@ All application code lives under ``src/``::
     │   │   ├── left_half/       tri-plane viewer, VTK 3D renderer, cut-geometry viewer
     │   │   ├── right_half/      mask panel, brush panel, STL extraction panel
     │   │   ├── cut_geometry.py  mask → mesh, inlet/outlet location
-    │   │   └── vmtk_runner.py   drives an external vmtk install for centerlines
+    │   │   └── vmtk.py          runs vmtk for centerlines in its pixi environment (vmtk_env/)
     │   └── fusion/
     │       ├── controllers/     one controller per pipeline stage (geometry, branches, tree,
     │       │                    alignment, fusion, final mesh, cuts)
     │       ├── left_half/       shared 3D viewer and per-scene toolbars
     │       ├── right_half/      the three pipeline columns
     │       └── page.py          builds the views and wires their signals to the controllers
-    ├── segmentation/        automatic segmentation: nnUZoo wrapper, mask→contour
+    ├── segmentation/        automatic segmentation: ONNX nnU-Net inference, mask→contour
     ├── signal_processing/   cardiac gating and breathing analysis: signal preparation,
     │                        automatic gating, the interactive gating plot
     └── tools/               Qt-independent helpers: geometry, painting, lasso, knot resampling

@@ -14,16 +14,17 @@ There are two ways to get HolOrama:
      - :ref:`From source <install-source>`
    * - Who it is for
      - Anyone who just wants to use the application (no coding experience needed)
-     - Developers, and anyone who needs automatic segmentation
+     - Developers; Linux and macOS users
    * - Requirements
-     - Windows, no Python, ~1 GB disk space
-     - Python toolchain, ~10 GB disk for the GPU stack
+     - Windows x64, no Python, ~1 GB disk space
+     - `uv <https://docs.astral.sh/uv/>`_ (the install scripts fetch it), Python 3.11–3.13
    * - Automatic AI segmentation
-     - Not included
-     - Included
+     - Included (GPU via DirectML if available, else CPU)
+     - Included (Windows: DirectML GPU or CPU; Linux: CPU, NVIDIA GPU with ``--gpu``)
 
-Everything else (contouring, gating, breathing correction, CCTA segmentation, the 3D
-tools and the whole fusion pipeline) is identical in both.
+Both contain the same features. Only **Calculate Centerlines** in the CCTA module needs an
+extra component, vmtk, which HolOrama downloads itself the first time you use it; see
+:ref:`install-vmtk`.
 
 .. _install-binary:
 
@@ -43,26 +44,22 @@ it.
    On first launch Windows may show a **"Windows protected your PC"** (SmartScreen) prompt,
    because the installer is not code-signed. Click **More info → Run anyway**.
 
-.. warning::
-   The packaged build deliberately excludes PyTorch/TensorFlow/nnUNetv2, so the
-   **Automatic Segmentation** button is not available. Install from source if you need it.
-
 .. _install-source:
 
 Install from source
 -------------------
 
-The project uses `uv <https://docs.astral.sh/uv/>`_ for dependency management. The
-provided install scripts handle every platform-specific step; use them first and fall back
-to the :ref:`step-by-step instructions <install-manual>` only if a script fails.
+The project uses `uv <https://docs.astral.sh/uv/>`_ for dependency management; every
+dependency is pinned in ``uv.lock``. The install scripts only call ``uv sync``, so a manual
+install is the same one command.
 
-Windows script
-~~~~~~~~~~~~~~~~
+Windows
+~~~~~~~
 
 #. Install the `Visual C++ Redistributable 2022 (x64)
    <https://aka.ms/vs/17/release/vc_redist.x64.exe>`_ if it is not already present.
 
-#. Clone the repository and run the installer script from PowerShell:
+#. Clone the repository and run the install script from PowerShell:
 
    .. code-block:: powershell
 
@@ -70,30 +67,8 @@ Windows script
       cd HolOrama
       .\install.ps1
 
-The script creates a ``.venv``, installs all dependencies and applies both Windows-specific
-fixes automatically (the missing OpenMP DLL and the ``optree`` version pin, see
-:ref:`install-manual`). The default install is GPU-ready (CUDA 11.8).
-
-.. list-table::
-   :header-rows: 1
-   :widths: 22 78
-
-   * - Flag
-     - Effect
-   * - ``-Dev``
-     - Also install the development and documentation dependencies (linters, test runner,
-       Sphinx)
-   * - ``-NnUZoo``
-     - Install nnUZoo from GitHub (required for automatic segmentation)
-   * - ``-Cpu``
-     - CPU-only PyTorch instead of the CUDA build
-   * - ``-Cuda 121``
-     - Use the CUDA 12.1 build instead of the default cu118
-
-With ``-Dev`` the script also installs the ``pre-commit`` git hooks.
-
-Linux / macOS script
-~~~~~~~~~~~~~~~~~~~~~~
+Linux / macOS
+~~~~~~~~~~~~~
 
 .. code-block:: bash
 
@@ -101,184 +76,110 @@ Linux / macOS script
    cd HolOrama
    bash install.sh
 
+Options
+~~~~~~~
+
 .. list-table::
    :header-rows: 1
-   :widths: 22 78
+   :widths: 28 72
 
-   * - Flag
+   * - Flag (``install.ps1`` / ``install.sh``)
      - Effect
-   * - ``--dev``
-     - Also install the development and documentation dependencies (linters, test runner,
-       Sphinx)
-   * - ``--nnuzoo``
-     - Install nnUZoo from GitHub (required for automatic segmentation)
-   * - ``--cpu``
-     - CPU-only PyTorch instead of the CUDA build
-   * - ``--cuda 121``
-     - Use the CUDA 12.1 build instead of the default cu118
+   * - ``-Dev`` / ``--dev``
+     - Also install the development and documentation dependencies (tests, linters, Nuitka,
+       Sphinx) and the ``pre-commit`` git hooks.
+   * - ``-Gpu`` / ``--gpu``
+     - Run **Automatic Segmentation** on an NVIDIA GPU (``segmentation-gpu`` extra instead of
+       ``segmentation``). See :ref:`segmentation-gpu`.
+   * - ``-NoSegmentation`` / ``--no-segmentation``
+     - Skip the optional ``segmentation`` extra (``onnxruntime``). **Automatic Segmentation**
+       then tells you it is unavailable; everything else works.
+   * - ``-Centerlines`` / ``--centerlines``
+     - Set up the vmtk environment for **Calculate Centerlines** right away instead of on
+       first use (see :ref:`install-vmtk`).
 
-The usage line at the top of each install script lists the same options.
+Without the scripts, the equivalent is:
+
+.. code-block:: bash
+
+   uv sync --extra segmentation                              # users
+   uv sync --extra segmentation-gpu                          # users with an NVIDIA GPU
+   uv sync --extra segmentation --group dev --group docs     # developers
 
 Running the application
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-With the virtual environment active:
-
 .. code-block:: bash
 
-   python3 src/main.py
+   uv run src/main.py
 
+(or activate ``.venv`` and run ``python src/main.py``; on Windows ``run.bat`` does the same).
 The graphical interface opens maximised on the Intravascular module.
 
-.. _install-manual:
+Automatic segmentation
+----------------------
 
-Step-by-step installation (if the scripts fail)
------------------------------------------------
+The IVUS lumen model (nnU-Net, U2Net-P architecture) is bundled as a 5 MB ONNX file and runs
+with `ONNX Runtime <https://onnxruntime.ai>`_: no PyTorch and no nnU-Net installation. The
+results match the original nnU-Net inference (including its test-time mirroring) to a few
+pixels per pullback, and are identical on the CPU and on every GPU backend.
 
-Windows
-~~~~~~~
+**On Windows** (installer and source installs) the DirectML build of ONNX Runtime is used:
+it runs on any DirectX 12 GPU (NVIDIA, AMD or Intel) with the normal graphics driver, no CUDA
+install, and picks the high-performance GPU on laptops that also have an integrated one.
+≈0.13–0.25 s per frame on an RTX 3060 laptop GPU, ≈20× the CPU. Without a usable GPU it
+runs on the CPU.
 
-**1. Visual C++ Redistributable**
+On the CPU alone expect a few seconds per frame (≈3.4 s on a 16-core desktop with mirroring, ≈1 s
+with ``segmentation.use_mirroring: False``), so segment gated frames or a frame range rather
+than whole pullbacks. See :doc:`configuration` for the settings and for using a custom
+model.
 
-Download and install the `Visual C++ Redistributable 2022 (x64)
-<https://aka.ms/vs/17/release/vc_redist.x64.exe>`_ if it is not already present.
+.. _segmentation-gpu:
 
-**2. Base install**
+CUDA on an NVIDIA GPU (source install)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: powershell
+Mainly for Linux, where DirectML does not exist; on Windows DirectML already uses the GPU.
+Install with ``install.ps1 -Gpu`` / ``install.sh --gpu`` (or ``uv sync --extra
+segmentation-gpu``). This installs ``onnxruntime-gpu`` together with the CUDA 12 and cuDNN
+runtimes as pip packages (about 2.5 GB), so no CUDA toolkit has to be installed; the only
+requirement is an NVIDIA driver ≥ 527.41 on Windows (≥ 525.60 on Linux), i.e. any driver
+that reports *CUDA Version: 12.0* or higher in ``nvidia-smi``. With mirroring, a frame takes
+≈0.2 s on an RTX 3060 laptop GPU, ~16× the CPU.
 
-   pip install uv
-   uv sync
-   .\.venv\Scripts\Activate.ps1
-
-**3. Fix the missing LLVM OpenMP runtime (**\ ``libomp140.x86_64.dll``\ **)**
-
-PyTorch 2.4.0 on Windows depends on ``libomp140.x86_64.dll``, which is not bundled in the
-pip wheel. Run this once after installation:
-
-.. code-block:: python
-
-   import urllib.request, tarfile, io, os, sys
-
-   url = 'https://conda.anaconda.org/conda-forge/win-64/llvm-openmp-14.0.0-h2d74725_0.tar.bz2'
-   data = urllib.request.urlopen(url).read()
-   dest = os.path.join(sys.prefix, 'Lib', 'site-packages', 'torch', 'lib', 'libomp140.x86_64.dll')
-
-   with tarfile.open(fileobj=io.BytesIO(data), mode='r:bz2') as t:
-       f = t.extractfile('Library/bin/libomp.dll')
-       with open(dest, 'wb') as out:
-           out.write(f.read())
-   print('Done:', dest)
-
-.. note::
-   This file is lost whenever torch is reinstalled; re-run the snippet afterwards.
-
-**4. Fix the** ``optree`` **version incompatibility**
-
-``optree >= 0.14`` is incompatible with ``torch 2.4.0`` and causes a C-level access
-violation. Downgrade it:
-
-.. code-block:: powershell
-
-   uv pip install "optree==0.13.1"
-
-**5. GPU acceleration (optional)**
-
-Install the CUDA-enabled torch build matching your driver. With a CUDA driver ≤ 12.0
-(check with ``nvidia-smi``) use the CUDA 11.8 build:
-
-.. code-block:: powershell
-
-   uv pip install --reinstall "torch==2.4.0+cu118" "torchvision==0.19.0+cu118" `
-       --index-url https://download.pytorch.org/whl/cu118
-
-After installing the CUDA build, re-run the ``libomp140.x86_64.dll`` snippet from step 3.
-
-Linux / macOS
-~~~~~~~~~~~~~
-
-.. code-block:: bash
-
-   pip install uv
-   uv sync                      # creates .venv and installs all dependencies
-   source .venv/bin/activate
-
-Development and documentation dependencies:
-
-.. code-block:: bash
-
-   uv sync --group dev --group docs
-
-nnUZoo, for automatic segmentation:
-
-.. code-block:: bash
-
-   uv pip install git+https://github.com/AI-in-Cardiovascular-Medicine/nnUZoo@main
-
-GPU (CUDA 11.8):
-
-.. code-block:: bash
-
-   uv pip install --reinstall "torch==2.4.0+cu118" "torchvision==0.19.0+cu118" \
-       --index-url https://download.pytorch.org/whl/cu118
-
-If you plan to use GPU acceleration, install the NVIDIA drivers and CUDA toolkit
-beforehand:
-
-.. code-block:: bash
-
-   sudo apt update && sudo apt upgrade
-   sudo apt install build-essential dkms
-   sudo ubuntu-drivers autoinstall
-   sudo reboot
-   nvidia-smi  # verify the driver installation
-   sudo apt install nvidia-cuda-toolkit
+With ``segmentation.device: 'auto'`` (the default) HolOrama tries CUDA, then DirectML,
+running a test inference on the GPU when the model is loaded, and falls back to the CPU if
+none works; the progress dialog says which one is used and why the GPU was not.
+``'cuda'`` / ``'directml'`` refuse to run without that GPU instead. The pre-built installer
+uses DirectML.
 
 .. _install-vmtk:
 
-Optional: vmtk, for CCTA centerlines
-------------------------------------
+vmtk, for CCTA centerlines
+--------------------------
 
-**Calculate Centerlines** in the :doc:`CCTA module <modules/ccta>` drives `vmtk
-<https://vmtk.github.io>`_, the Vascular Modelling Toolkit. vmtk is **not** bundled with
-HolOrama. Its build is too involved to ship inside a binary, so installing it is left to
-you. Everything else in the CCTA module works without it; only centerline computation is
-disabled.
+**Calculate Centerlines** in the :doc:`CCTA module <modules/ccta>` runs `vmtk
+<https://vmtk.github.io>`_, the Vascular Modelling Toolkit. vmtk is only distributed through
+conda-forge, so it cannot be part of HolOrama's own environment or of the compiled
+application. Instead HolOrama keeps it in a separate environment managed by `pixi
+<https://pixi.sh>`_:
 
-If you do not want to install vmtk, you can still use the Fusion module by supplying
+- The first time you click **Calculate Centerlines**, HolOrama asks whether to set vmtk up.
+  It downloads pixi (if it is not already installed) and the exact, pinned vmtk environment
+  into ``%LOCALAPPDATA%\HolOrama\vmtk-env`` (``~/HolOrama/vmtk-env`` on Linux/macOS). This
+  needs internet access, takes a few minutes and about 1.5 GB of disk space, and happens once.
+- When a new HolOrama version pins a different vmtk, the environment is re-synced the same
+  way on next use.
+- vmtk then runs natively (no WSL, no compiling). Available on Windows x64, Linux x64 and
+  Intel macOS; vmtk has no conda-forge build for Apple Silicon or Linux ARM.
+
+The location and the pixi executable can be changed in ``config.yaml`` (``centerlines``
+section, see :doc:`configuration`). From a source checkout, ``install.ps1 -Centerlines`` /
+``install.sh --centerlines`` sets the environment up ahead of time.
+
+Everything else in the CCTA module works without vmtk, and the Fusion module also accepts
 centerlines (``.vtp``) computed elsewhere.
-
-Current integration
-~~~~~~~~~~~~~~~~~~~
-
-HolOrama expects a **WSL-native Linux vmtk build** and invokes it through ``wsl.exe``.
-Before each call it sources two scripts, exactly as a manual vmtk session would:
-
-#. the vmtk Python venv's ``bin/activate``
-#. the vmtk build's ``vmtk_env.sh``
-
-and then runs ``vmtkcenterlines`` → ``vmtkcenterlinesmoothing`` → ``vmtksurfacewriter``.
-
-Point HolOrama at your install in ``config.yaml``:
-
-.. code-block:: yaml
-
-   vmtk:
-     venv_path: 'D:\path\to\vmtk-env'                 # the venv containing bin/activate
-     build_path: 'D:\path\to\vmtk-build\Install'      # the build containing vmtk_env.sh
-     wsl_distro: 'Ubuntu'                             # '' = whatever wsl.exe defaults to
-
-``wsl_distro`` matters when several distributions are installed side by side: the default
-one is not necessarily the one vmtk was built against.
-
-Before running anything, HolOrama verifies that both activation scripts exist, that WSL
-starts, and that all three vmtk executables resolve on ``PATH`` after sourcing them. If any
-check fails you get a specific error message instead of a silent failure.
-
-.. note::
-   Because the runner always shells out to ``wsl.exe``, centerline computation currently
-   requires Windows with WSL. On Linux, compute the centerlines with your native vmtk
-   install and load the resulting ``.vtp`` files directly into the Fusion module.
 
 Verifying the installation
 --------------------------
@@ -295,11 +196,25 @@ Building the binary yourself
 ----------------------------
 
 The release binary is compiled with `Nuitka <https://nuitka.net/>`_ and wrapped by Inno
-Setup. From a source checkout with the dev dependencies installed:
+Setup. From a source checkout:
 
 .. code-block:: powershell
 
-   .\build_nuitka.ps1      # compile the standalone (inference-free) application
+   .\build_nuitka.ps1      # syncs its own build\venv (onnxruntime-directml + Nuitka), then compiles
    .\build_installer.ps1   # wrap it into HolOrama-Setup-<version>.exe
 
-The Inno Setup script is ``installer/HolOrama.iss``.
+The Inno Setup script is ``installer/HolOrama.iss``. The build script uses Nuitka's own MinGW
+compiler with a fixed baseline CPU target (x86-64-v2) and ignores ``CFLAGS``-style
+environment variables, so the exe runs on any 64-bit PC, not only on CPUs like the build
+machine's. vmtk is not compiled in; the
+application sets it up on first use from the pixi manifest it ships with (see
+:ref:`install-vmtk`).
+
+Updating the segmentation model
+-------------------------------
+
+The bundled ``src/segmentation/weights/ivus_lumen_u2netp.onnx`` was exported from the
+trained nnU-Net checkpoint with ``scripts/model_export/export_onnx.py`` and checked against
+nnU-Net's own predictor with ``scripts/model_export/verify_onnx.py``. Those two scripts are
+the only part of the project that still needs PyTorch and nnUZoo; see
+``scripts/model_export/README.md``.

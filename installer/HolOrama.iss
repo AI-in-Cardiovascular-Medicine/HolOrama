@@ -59,5 +59,23 @@ Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{a
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
+[Code]
+// Installing over an older version must not keep its files. A stale package folder
+// can break startup, e.g. a leftover pytz\ data folder from 0.17.0 imports as an empty
+// namespace package and pandas then fails with "Can't determine version for pytz".
+// Only an existing HolOrama install is cleared, never an unrelated folder the user picked.
+// Settings and logs live in %LOCALAPPDATA%\HolOrama and are not touched.
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  AppDir: String;
+begin
+  if CurStep = ssInstall then
+  begin
+    AppDir := ExpandConstant('{app}');
+    if FileExists(AppDir + '\{#MyAppExeName}') then
+      DelTree(AppDir + '\*', False, True, True);
+  end;
+end;
+
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
