@@ -168,7 +168,6 @@ Make sure to quickly check the **src/config.yaml** file and configure everything
 
 **Save**:
 - autosave_interval: Auto-save interval in ms for contours/tags (IVUS/OCT) and the mask (CCTA).
-- save_niftis: Which frames to save as NIfTi when exporting — `'contoured'`, `'all'` or `'none'`.
 - save_2d: Whether to additionally save each frame's image/mask as an individual NIfTi file.
 - save_3d: Whether to save the full stack of frames as a single 3D NIfTi volume.
 

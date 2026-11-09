@@ -18,7 +18,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Removed
 - TensorFlow/Keras (`.h5`) segmentation models.
-- The batch script `segmentation/segment_files.py` (hard-wired to the NARCO folder layout) and its `config.yaml` keys `segmentation.input_dir` and `save.nifti_dir`.
+- The batch script `segmentation/segment_files.py` (hard-wired to the NARCO folder layout) and its `config.yaml` key `segmentation.input_dir`.
+- `config.yaml` keys `save.nifti_dir` and `save.save_niftis`, unused since the NIfTI export moved to **File → Save NIfTis** (frame selection per menu entry, output next to the opened file).
 
 ### Fixed
 - The Windows exe could crash on start (0xc000001d, illegal instruction) on CPUs without the build machine's features (e.g. AVX-512); builds now target a fixed x86-64 baseline.

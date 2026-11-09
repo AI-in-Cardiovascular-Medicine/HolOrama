@@ -47,7 +47,6 @@ report:
 
 save:
   autosave_interval: 15000  # in ms
-  save_niftis: 'none'  # which frames to save as NIfTi: 'contoured', 'all', 'none'
   save_2d: False
   save_3d: True
 

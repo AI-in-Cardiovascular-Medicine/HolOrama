@@ -137,8 +137,6 @@ Parameters of the image-based gating and breathing algorithms. See
    * - ``autosave_interval``
      - Auto-save interval in milliseconds for contours/tags (Intravascular) and the mask
        (CCTA). Default 10000.
-   * - ``save_niftis``
-     - Which frames the batch export writes: ``'contoured'``, ``'all'`` or ``'none'``.
    * - ``save_2d``
      - Also write each frame's image/mask as an individual 2-D NIfTI file.
    * - ``save_3d``
