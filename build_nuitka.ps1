@@ -127,12 +127,28 @@ try {
     & $python @nuitkaArgs
     if ($LASTEXITCODE -ne 0) { throw "Nuitka build failed with exit code $LASTEXITCODE" }
 
-    # Everything segmentation needs at runtime must have made it into the dist.
     $dist = 'build\nuitka\main.dist'
+
+    # pymeshlab loads its filters at import from DLL plugins in pymeshlab\lib\plugins and binds
+    # one MeshSet method per filter. Nuitka can't see these runtime loads, so without this copy
+    # the exe has no filters (AttributeError on e.g. meshing_repair_non_manifold_edges).
+    # The plugins also link DLLs from the pymeshlab folder that pmeshlab.pyd itself doesn't,
+    # so copy those too (pymeshlab puts its folder on PATH). Skip DLLs Nuitka already placed.
+    $meshlabSrc = & $python -c "import pymeshlab, pathlib; print(pathlib.Path(pymeshlab.__file__).parent)"
+    if ($LASTEXITCODE -ne 0) { throw "Could not locate pymeshlab in build\venv" }
+    $meshlabDst = Join-Path $dist 'pymeshlab'
+    Copy-Item (Join-Path $meshlabSrc 'lib') $meshlabDst -Recurse -Force
+    $distDlls = @(Get-ChildItem $dist -Filter *.dll | ForEach-Object { $_.Name.ToLower() })
+    Get-ChildItem $meshlabSrc -Filter *.dll |
+        Where-Object { $_.Name.ToLower() -notin $distDlls -and $_.Name -ne 'opengl32sw.dll' } |
+        Copy-Item -Destination $meshlabDst -Force
+
+    # Everything segmentation needs at runtime must have made it into the dist.
     $required = @(
         'segmentation\weights\ivus_lumen_u2netp.onnx',
         'pages\ccta\left_half\cut_geometry\vmtk_env\pixi.toml',
-        'pages\ccta\left_half\cut_geometry\vmtk_env\pixi.lock'
+        'pages\ccta\left_half\cut_geometry\vmtk_env\pixi.lock',
+        'pymeshlab\lib\plugins\filter_clean.dll'
     )
     $missing = @($required | Where-Object { -not (Test-Path (Join-Path $dist $_)) })
     foreach ($dll in 'onnxruntime.dll', 'DirectML.dll', 'onnxruntime_providers_shared.dll') {
