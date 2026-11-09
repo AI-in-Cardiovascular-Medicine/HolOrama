@@ -6,24 +6,25 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [0.20.0] - 2026-11-07
 
 ### Changed
-- **Automatic segmentation runs on ONNX Runtime** (CPU) instead of PyTorch + nnU-Net/nnUZoo. The U2Net-P IVUS lumen model is bundled as a 5 MB `.onnx` (`src/segmentation/weights/`), and nnU-Net's 2D inference (crop, z-score, Gaussian sliding window, test-time mirroring) is re-implemented in `segmentation/onnx_inference.py`. It matches `nnUNetPredictor` to 7 pixels in 24 test frames, on the CPU (~4x faster than torch there, a few seconds per frame) and on an NVIDIA GPU (~0.2 s per frame) alike.
-- **GPU segmentation, also in the Windows installer**: on Windows the `segmentation` extra is `onnxruntime-directml` (+25 MB), which runs on any DirectX 12 GPU (NVIDIA, AMD, Intel) with the normal graphics driver and picks the discrete GPU on hybrid laptops; ~0.13–0.25 s per frame on an RTX 3060 laptop GPU, identical masks to the CPU. The `segmentation-gpu` extra (`install.ps1 -Gpu`) instead brings CUDA (`onnxruntime-gpu` with CUDA 12 + cuDNN as pip wheels, NVIDIA driver ≥ 527.41), mainly for Linux. New `segmentation.device` (`auto`/`cuda`/`directml`/`cpu`): `auto` verifies each GPU backend with a test inference and otherwise falls back to the CPU, saying why.
-- Only the selected frame range is run through the network; before, nnU-Net segmented the whole pullback every time.
-- The **Windows installer includes automatic segmentation**; it no longer depends on a source install.
-- **Calculate Centerlines runs vmtk natively** from a pinned conda-forge environment managed by [pixi](https://pixi.sh). HolOrama offers to set it up on first use (~1.5 GB, once) and re-syncs it when the pin changes. No WSL, self-built vmtk or paths in `config.yaml`; works on Windows x64, Linux x64 and Intel macOS.
-- `config.yaml`: the `vmtk` section is replaced by `centerlines` (`env_dir`, `pixi_path`, both optional). `segmentation` has `model_file` (empty = bundled), `device`, `use_mirroring`, `tile_step_size`, `batch_size`, `num_threads`; `model_fold`, `normalize` and `conserve_memory` are gone. Old configs keep working: an nnU-Net folder or `.h5` in `model_file` falls back to the bundled model.
-- **Build system**: torch, torchvision, tensorflow, nnUZoo, pylint and seaborn are no longer dependencies; `onnxruntime` is the optional `segmentation` extra. `install.ps1` / `install.sh` are a plain `uv sync --locked` (flags `-Dev`, `-Gpu`, `-NoSegmentation`, `-Centerlines`); `build_nuitka.ps1` builds from its own `build\venv` (Python 3.11) with Nuitka's MinGW gcc for the x86-64-v2 baseline, ignoring inherited `CFLAGS`; the numpy 1.26 re-pin, optree pin, libomp download and nnUZoo patching are gone.
-- Python 3.11 – 3.13 supported (was 3.11 only); CI tests 3.11 and 3.13 from `uv.lock` on Linux and Windows.
-- multimodars stays below 0.10 (`>=0.9.1,<0.10`); 0.10 breaks the fusion pipeline and gets its own update.
+- **Automatic segmentation runs on ONNX Runtime** instead of PyTorch + nnU-Net/nnUZoo. The U2Net-P IVUS lumen model is bundled as a 5 MB `.onnx`, and nnU-Net's 2D inference is re-implemented in `segmentation/onnx_inference.py`. It matches `nnUNetPredictor` to 7 pixels in 24 test frames and runs ~4x faster than torch on the CPU (a few seconds per frame).
+- **GPU segmentation, also in the Windows installer**, which no longer needs a source install for segmentation. On Windows the `segmentation` extra is `onnxruntime-directml` (+25 MB): any DirectX 12 GPU (NVIDIA, AMD, Intel) with the normal driver, ~0.13–0.25 s per frame on an RTX 3060 laptop GPU, masks identical to the CPU. The `segmentation-gpu` extra (`install.ps1 -Gpu`) brings CUDA instead (`onnxruntime-gpu`, CUDA 12 + cuDNN as pip wheels, NVIDIA driver ≥ 527.41), mainly for Linux. New `segmentation.device` (`auto`/`cuda`/`directml`/`cpu`): `auto` test-runs each GPU backend and otherwise falls back to the CPU, saying why.
+- Only the selected frame range is segmented; nnU-Net segmented the whole pullback every time.
+- **Calculate Centerlines runs vmtk natively** from a pinned conda-forge environment managed by [pixi](https://pixi.sh), set up on first use (~1.5 GB, once) and re-synced when the pin changes. No WSL, self-built vmtk or `config.yaml` paths; works on Windows x64, Linux x64 and Intel macOS.
+- `config.yaml`: `centerlines` (`env_dir`, `pixi_path`, both optional) replaces `vmtk`. `segmentation` has `model_file` (empty = bundled), `device`, `use_mirroring`, `tile_step_size`, `batch_size`, `num_threads`; `model_fold`, `normalize` and `conserve_memory` are gone. Old configs keep working: an nnU-Net folder or `.h5` in `model_file` falls back to the bundled model.
+- **Build system**: torch, torchvision, tensorflow, nnUZoo, pylint and seaborn are no longer dependencies; `onnxruntime` is the optional `segmentation` extra. `install.ps1` / `install.sh` are a plain `uv sync --locked` (flags `-Dev`, `-Gpu`, `-NoSegmentation`, `-Centerlines`). `build_nuitka.ps1` builds from its own `build\venv` (Python 3.11) with Nuitka's MinGW gcc for x86-64-v2. The numpy 1.26 re-pin, optree pin, libomp download and nnUZoo patching are gone.
+- Python 3.11 – 3.13 supported (was 3.11 only); CI tests 3.11 and 3.13 on Linux and Windows.
+- multimodars stays at `>=0.9.1,<0.10`; 0.10 breaks the fusion pipeline and gets its own update.
 
 ### Removed
 - TensorFlow/Keras (`.h5`) segmentation models.
 
 ### Fixed
-- The Windows exe could crash on start (0xc000001d, illegal instruction) on PCs without the build machine's CPU features (e.g. AVX-512); builds now target a fixed x86-64 baseline.
+- The Windows exe could crash on start (0xc000001d, illegal instruction) on CPUs without the build machine's features (e.g. AVX-512); builds now target a fixed x86-64 baseline.
 - Automatic segmentation reported success after being cancelled.
 - `run.bat` was a PowerShell snippet and did not run.
 - `PyYAML` was used but not declared as a dependency.
+- Fusion's Fix & Remesh and Export Cut Geometry failed in the Windows exe (`MeshSet` had no `meshing_repair_non_manifold_edges`): Nuitka missed pymeshlab's filter plugins; `build_nuitka.ps1` now copies them into the dist.
+- Installing over an older version kept its files, and a leftover `pytz\` folder from 0.17.0 crashed the exe on start (pandas: `Can't determine version for pytz`). The installer now clears an existing HolOrama install folder first.
 
 ## [0.19.0] - 2026-11-05
 
