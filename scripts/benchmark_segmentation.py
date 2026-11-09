@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 from loguru import logger  # noqa: E402
 
-from segmentation.onnx_inference import DEVICES, OnnxSegmenter, nonzero_bbox, zscore_stats  # noqa: E402
+from segmentation.onnx_inference import DEVICES, PRECISIONS, OnnxSegmenter, nonzero_bbox, zscore_stats  # noqa: E402
 
 
 def read_pullback(path: Path) -> np.ndarray:
@@ -43,6 +43,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('pullback', type=Path)
     parser.add_argument('--device', choices=DEVICES, default='auto')
+    parser.add_argument(
+        '--precision', choices=PRECISIONS, default='auto', help='GPU precision; the CPU always runs fp32'
+    )
     parser.add_argument('--frames', default=None, help='start:stop (0-based, stop excluded); default all')
     parser.add_argument('--batch-size', type=int, default=2)
     parser.add_argument('--no-mirroring', action='store_true', help='skip test-time mirroring (4x fewer network calls)')
@@ -62,11 +65,13 @@ def main() -> None:
         start, stop = int(a or 0), int(b or volume.shape[0])
     frames = range(start, stop)
 
-    seg = OnnxSegmenter(device=args.device, batch_size=args.batch_size, use_mirroring=not args.no_mirroring)
+    seg = OnnxSegmenter(
+        device=args.device, precision=args.precision, batch_size=args.batch_size, use_mirroring=not args.no_mirroring
+    )
     t = time.perf_counter()
     seg.load()
     print(
-        f'model load  {time.perf_counter() - t:7.2f} s   device: {seg.active_device}'
+        f'model load  {time.perf_counter() - t:7.2f} s   device: {seg.active_device} ({seg.active_precision})'
         + (f'  (GPU not used: {seg.fallback_reason})' if seg.fallback_reason else '')
     )
 

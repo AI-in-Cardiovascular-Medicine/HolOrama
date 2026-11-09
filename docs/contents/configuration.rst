@@ -191,6 +191,13 @@ ignored.
        inference (CUDA, then DirectML, which is what Windows installs use), otherwise the CPU.
        ``'cuda'`` / ``'directml'``: that GPU or refuse. ``'cpu'``: always the CPU. See
        :ref:`segmentation-gpu`.
+   * - ``precision``
+     - GPU only, the CPU always runs float32. ``'auto'`` (default): float16 when it runs
+       clearly faster than float32 on this GPU (measured at model load), else float32.
+       ``'fp16'``: always float16, from the ``<model>_fp16.onnx`` copy next to the model
+       (``scripts/model_export/convert_fp16.py``). ``'fp32'``: always full precision.
+       float16 was 1.3× (DirectML) to 1.5× (CUDA) faster on a Quadro RTX 4000 and moved
+       2–4 border pixels per frame. Without an ``_fp16`` copy the GPU runs float32.
    * - ``use_mirroring``
      - Test-time mirroring as in nnU-Net (each tile is also predicted flipped and the results
        averaged). About 4× slower, but noticeably better masks; leave on unless speed matters

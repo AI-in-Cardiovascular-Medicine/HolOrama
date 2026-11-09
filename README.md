@@ -179,6 +179,7 @@ Make sure to quickly check the **src/config.yaml** file and configure everything
 
 **Segmentation**:
 - device: `auto` (the first working GPU backend: CUDA with the segmentation-gpu extra, then DirectML on Windows; else CPU), `cuda` / `directml` (that GPU or refuse) or `cpu`.
+- precision: GPU only (the CPU runs fp32). `auto` = fp16 when it is clearly faster on this GPU, else fp32; `fp16` = the model's `_fp16.onnx` copy (~1.3-1.5x faster, a few border pixels per frame differ); `fp32` = full precision.
 - model_file: Empty = the bundled ONNX model; otherwise a `.onnx` exported with `scripts/model_export/export_onnx.py`.
 - use_mirroring: nnU-Net's test-time mirroring; ~4x slower, noticeably better masks.
 - tile_step_size: Sliding-window overlap as a fraction of the patch size (nnU-Net default 0.5).

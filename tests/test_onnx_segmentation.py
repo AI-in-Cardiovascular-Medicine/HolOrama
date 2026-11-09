@@ -5,6 +5,7 @@ scripts/model_export/verify_onnx.py (it needs torch + nnUZoo, which the app no l
 these tests cover the pieces that can drift without torch: nnU-Net's helper maths, the
 frame-range / cancel / error behaviour, and loading the bundled model."""
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -184,6 +185,108 @@ def test_cpu_only_package_is_not_reported_as_a_fallback(monkeypatch):
     s = oi.OnnxSegmenter(device='auto')
     s.load()
     assert s.active_device == 'cpu' and s.fallback_reason == ''
+
+
+def test_invalid_precision_is_reported_as_unavailable():
+    with pytest.raises(oi.SegmentationUnavailable, match='segmentation.precision'):
+        oi.OnnxSegmenter(precision='int8').load()
+
+
+def test_fp16_model_path_sits_next_to_the_model():
+    assert oi.fp16_model_path('C:/m/ivus.onnx').as_posix() == 'C:/m/ivus_fp16.onnx'
+    assert oi.fp16_model_path(oi.DEFAULT_MODEL_PATH).name == 'ivus_lumen_u2netp_fp16.onnx'
+
+
+def test_bundled_fp16_model_keeps_float32_io_and_metadata():
+    import onnxruntime as ort
+
+    fp32 = ort.InferenceSession(str(oi.DEFAULT_MODEL_PATH), providers=['CPUExecutionProvider'])
+    fp16 = ort.InferenceSession(str(oi.fp16_model_path(oi.DEFAULT_MODEL_PATH)), providers=['CPUExecutionProvider'])
+    assert [i.type for i in fp16.get_inputs()] == ['tensor(float)']
+    assert [o.type for o in fp16.get_outputs()] == ['tensor(float)']
+    meta32, meta16 = fp32.get_modelmeta().custom_metadata_map, fp16.get_modelmeta().custom_metadata_map
+    assert {k: v for k, v in meta16.items() if k != 'precision'} == meta32
+
+
+def test_fp16_masks_agree_with_fp32(segmenter):
+    # The fp16 copy runs on the CPU too (slowly), which checks it belongs to the fp32 model.
+    fp16 = oi.OnnxSegmenter(oi.fp16_model_path(oi.DEFAULT_MODEL_PATH), use_mirroring=False, batch_size=1, device='cpu')
+    vol = _ring_volume()
+    ref, out = segmenter.predict(vol), fp16.predict(vol)
+    assert ref is not None and out is not None
+    assert (ref != out).sum() <= 0.001 * ref.size  # a few border pixels at most
+
+
+class _FakeSession:
+    def __init__(self, path):
+        self.path = Path(path)
+
+
+@pytest.fixture
+def fake_gpu(monkeypatch, tmp_path):
+    """A DirectML 'GPU' whose sessions are _FakeSession(model path); returns (segmenter factory,
+    per-precision call times, list of created models)."""
+    model = tmp_path / 'm.onnx'
+    model.touch()
+    oi.fp16_model_path(model).touch()
+    times = {'fp32': 1.0, 'fp16': 0.5}
+    created, broken = [], set()
+
+    def gpu_session(self, ort, device, path, fp16):
+        created.append(Path(path).name)
+        if fp16 and 'fp16' in broken:
+            return None, 'fp16 broken'
+        return _FakeSession(path), ''
+
+    monkeypatch.setattr(oi.OnnxSegmenter, '_gpu_session', gpu_session)
+    monkeypatch.setattr(oi.OnnxSegmenter, '_test_input', lambda self, session: None)
+    monkeypatch.setattr(oi, '_median_run_time', lambda s, x: times['fp16' if s.path.stem.endswith('_fp16') else 'fp32'])
+    ort = SimpleNamespace(get_available_providers=lambda: ['DmlExecutionProvider', 'CPUExecutionProvider'])
+
+    def run(precision):
+        s = oi.OnnxSegmenter(model, precision=precision)
+        session, reason = s._try_gpu_session(ort, 'directml')
+        assert reason == ''
+        return s, session
+
+    return SimpleNamespace(run=run, model=model, times=times, created=created, broken=broken)
+
+
+def test_auto_precision_takes_fp16_only_when_clearly_faster(fake_gpu):
+    s, session = fake_gpu.run('auto')
+    assert s.active_precision == 'fp16' and session.path.name == 'm_fp16.onnx'
+    fake_gpu.times['fp16'] = 0.95  # 5% faster: not worth the changed border pixels
+    s, session = fake_gpu.run('auto')
+    assert s.active_precision == 'fp32' and session.path.name == 'm.onnx'
+
+
+def test_fp32_precision_never_loads_the_fp16_model(fake_gpu):
+    s, session = fake_gpu.run('fp32')
+    assert s.active_precision == 'fp32' and fake_gpu.created == ['m.onnx']
+
+
+def test_fp16_precision_skips_the_timing(fake_gpu):
+    fake_gpu.times['fp16'] = 5.0
+    s, session = fake_gpu.run('fp16')
+    assert s.active_precision == 'fp16' and session.path.name == 'm_fp16.onnx'
+
+
+@pytest.mark.parametrize('precision', ['auto', 'fp16'])
+def test_missing_or_broken_fp16_model_keeps_fp32(fake_gpu, precision):
+    fake_gpu.broken.add('fp16')
+    s, session = fake_gpu.run(precision)
+    assert s.active_precision == 'fp32' and session.path.name == 'm.onnx'
+    fake_gpu.broken.clear()
+    oi.fp16_model_path(fake_gpu.model).unlink()
+    s, session = fake_gpu.run(precision)
+    assert s.active_precision == 'fp32' and session.path.name == 'm.onnx'
+
+
+def test_cpu_runs_fp32_whatever_the_precision():
+    s = oi.OnnxSegmenter(device='cpu', precision='fp16')
+    s.load()
+    assert s.active_device == 'cpu' and s.active_precision == 'fp32'
+    assert 'precision' not in s._session.get_modelmeta().custom_metadata_map  # set only in the fp16 copy
 
 
 def test_old_configs_fall_back_to_bundled_model():

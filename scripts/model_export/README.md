@@ -9,6 +9,7 @@ still needs PyTorch and nnUZoo. Nothing here is needed to run, test or build the
 |---|---|
 | `export_onnx.py` | Rebuilds the network exactly as `nnUNetPredictor` does for inference, exports it to ONNX and stores what the runtime needs (patch size, mirror axes, normalisation, labels) as ONNX metadata. |
 | `verify_onnx.py` | Runs `nnUNetPredictor` and HolOrama's ONNX pipeline on the same frames and compares the masks (Dice, differing pixels, run time). |
+| `convert_fp16.py` | Writes the float16 copy `<model>_fp16.onnx` that GPUs use (`segmentation.precision`). Needs only `onnx` and `onnxconverter-common`. |
 
 ## Throwaway export environment (Windows)
 
@@ -41,6 +42,21 @@ Result for the bundled model (`nnUNetTrainerU2NetP__nnUNetResEncUNetLPlans__2d`,
 - mean Dice 0.99999 (min 0.99976), 7 differing pixels in total: nnU-Net accumulates the
   tile logits in float16, the ONNX pipeline in float32
 - nnUNetPredictor (torch 2.4 CPU) 12.3 s/frame, onnxruntime 3.1 s/frame (16 cores)
+
+## float16 copy for GPUs
+
+After every export, regenerate the float16 copy (it must match the fp32 model next to it):
+
+```powershell
+& $py scripts\model_export\convert_fp16.py src\segmentation\weights\ivus_lumen_u2netp.onnx
+uv run python scripts\benchmark_segmentation.py <pullback.dcm> --precision fp32 --frames 0:200 --save fp32.npy
+uv run python scripts\benchmark_segmentation.py <pullback.dcm> --precision fp16 --frames 0:200 --save fp16.npy
+```
+
+Result for the bundled model on NARCO_391 (1163 frames, 512×512), Quadro RTX 4000, against
+the float32 masks: CUDA 2.6 differing pixels per frame (max 9, min Dice 0.99985) at 1.5x the
+speed, DirectML 3.6 (max 16, min Dice 0.99976) at 1.33x. All differing pixels lay on the lumen
+border, no frame gained or lost a lumen region.
 
 Only 2D models with z-score normalisation, target spacing 1 and no transpose are supported;
 `export_onnx.py` refuses anything else.

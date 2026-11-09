@@ -38,6 +38,7 @@ class Predict:
             batch_size=getattr(seg, 'batch_size', 2),
             num_threads=getattr(seg, 'num_threads', 0),
             device=getattr(seg, 'device', 'auto'),
+            precision=getattr(seg, 'precision', 'auto'),
         )
 
     def check_available(self) -> tuple[bool, str]:
@@ -49,7 +50,8 @@ class Predict:
         return True, ''
 
     def _progress_label(self, lower_limit: int, upper_limit: int) -> str:
-        device = {'cuda': 'GPU (CUDA)', 'directml': 'GPU (DirectML)'}.get(self.segmenter.active_device, 'CPU')
+        backend = {'cuda': 'CUDA', 'directml': 'DirectML'}.get(self.segmenter.active_device)
+        device = f'GPU ({backend}, {self.segmenter.active_precision})' if backend else 'CPU'
         label = f'Segmenting frames {lower_limit + 1} to {upper_limit} on the {device}...'
         if self.segmenter.fallback_reason:
             label += f'\n\nGPU not used: {self.segmenter.fallback_reason}'
