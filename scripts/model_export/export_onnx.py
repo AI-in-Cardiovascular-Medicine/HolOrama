@@ -35,26 +35,6 @@ from onnxconverter_common import float16
 SUPPORTED_NORMALIZATION = {'ZScoreNormalization': 'zscore'}
 
 
-def write_fp16_copy(model: onnx.ModelProto, output: Path) -> Path:
-    """Save the float16 copy of `model` as <output>_fp16.onnx (the name onnx_inference.fp16_model_path
-    expects). Every operator runs in float16, Resize included: the converter's default keeps Resize
-    in float32, which adds two casts per upsampling and made the network slower. Input and output
-    stay float32, so the inference code around the network is unchanged. Metadata is copied."""
-    path = output.with_name(f'{output.stem}_fp16{output.suffix}')
-    metadata = {p.key: p.value for p in model.metadata_props}
-    with warnings.catch_warnings():
-        # "float32 number ... will be truncated": a few tiny weights below float16's range, harmless
-        warnings.simplefilter('ignore', UserWarning)
-        converted = float16.convert_float_to_float16(model, keep_io_types=True, op_block_list=[])
-    del converted.metadata_props[:]
-    for key, value in {**metadata, 'precision': 'fp16'}.items():
-        entry = converted.metadata_props.add()
-        entry.key, entry.value = key, value
-    onnx.checker.check_model(converted)
-    onnx.save(converted, str(path))
-    return path
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('model_folder', type=Path)
@@ -122,6 +102,26 @@ def main() -> None:
     if not args.no_fp16:
         fp16_path = write_fp16_copy(model, args.output)
         print(f'Wrote {fp16_path} ({fp16_path.stat().st_size / 1e6:.1f} MB)')
+
+
+def write_fp16_copy(model: onnx.ModelProto, output: Path) -> Path:
+    """Save the float16 copy of `model` as <output>_fp16.onnx (the name onnx_inference.fp16_model_path
+    expects). Every operator runs in float16, Resize included: the converter's default keeps Resize
+    in float32, which adds two casts per upsampling and made the network slower. Input and output
+    stay float32, so the inference code around the network is unchanged. Metadata is copied."""
+    path = output.with_name(f'{output.stem}_fp16{output.suffix}')
+    metadata = {p.key: p.value for p in model.metadata_props}
+    with warnings.catch_warnings():
+        # "float32 number ... will be truncated": a few tiny weights below float16's range, harmless
+        warnings.simplefilter('ignore', UserWarning)
+        converted = float16.convert_float_to_float16(model, keep_io_types=True, op_block_list=[])
+    del converted.metadata_props[:]
+    for key, value in {**metadata, 'precision': 'fp16'}.items():
+        entry = converted.metadata_props.add()
+        entry.key, entry.value = key, value
+    onnx.checker.check_model(converted)
+    onnx.save(converted, str(path))
+    return path
 
 
 if __name__ == '__main__':

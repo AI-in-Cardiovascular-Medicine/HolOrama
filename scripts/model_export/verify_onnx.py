@@ -23,11 +23,8 @@ import torch
 from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src'))
+from domain.intravascular.segmentation_types import SegmentationSettings  # noqa: E402
 from segmentation.onnx_inference import OnnxSegmenter  # noqa: E402
-
-
-def natural_key(path: Path):
-    return [int(t) if t.isdigit() else t for t in re.split(r'(\d+)', path.name)]
 
 
 def main() -> None:
@@ -63,7 +60,8 @@ def main() -> None:
     reference = predictor.predict_single_npy_array(volume[None].astype(np.float32), {'spacing': [1, 1, 1]})
     t_ref = time.perf_counter() - t
 
-    segmenter = OnnxSegmenter(args.onnx, use_mirroring=not args.no_mirroring)
+    settings = SegmentationSettings(model_file=str(args.onnx), device='cpu', use_mirroring=not args.no_mirroring)
+    segmenter = OnnxSegmenter(settings)
     segmenter.load()
     t = time.perf_counter()
     ours = segmenter.predict(volume)
@@ -88,6 +86,10 @@ def main() -> None:
     if np.mean(dices) < args.min_dice:
         sys.exit(f'FAILED: mean dice {np.mean(dices):.5f} < {args.min_dice}')
     print('OK')
+
+
+def natural_key(path: Path):
+    return [int(t) if t.isdigit() else t for t in re.split(r'(\d+)', path.name)]
 
 
 if __name__ == '__main__':

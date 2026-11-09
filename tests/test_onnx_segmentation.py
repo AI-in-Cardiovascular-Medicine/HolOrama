@@ -1,10 +1,12 @@
 """The ONNX re-implementation of nnU-Net's 2D inference (src/segmentation/onnx_inference.py).
 
 Numerical parity with nnUNetPredictor itself is checked once per exported model by
-scripts/model_export/verify_onnx.py (it needs torch + nnUZoo, which the app no longer has);
-these tests cover the pieces that can drift without torch: nnU-Net's helper maths, the
-frame-range / cancel / error behaviour, and loading the bundled model."""
+scripts/model_export/verify_onnx.py (it needs torch + nnUZoo, which the app no longer has).
+These tests cover the pieces that can drift without torch: nnU-Net's helper maths, the
+frame-range / cancel / error behaviour, the GPU and precision choice, and loading the bundled
+model."""
 
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,8 +15,11 @@ import pytest
 
 pytest.importorskip('onnxruntime')
 
+from domain.intravascular.segmentation_types import SegmentationSettings  # noqa: E402
 from segmentation import onnx_inference as oi  # noqa: E402
-from segmentation.predict import Predict, resolve_model_path  # noqa: E402
+from segmentation.predict import Predict  # noqa: E402
+
+CPU_ONE_FRAME_PER_CALL = SegmentationSettings(use_mirroring=False, batch_size=1, device='cpu')
 
 
 def test_compute_steps_matches_nnunet_examples():
@@ -42,7 +47,7 @@ def test_nonzero_bbox_ignores_holes_and_handles_empty():
 
 
 def test_nonzero_bbox_equals_box_of_hole_filled_mask():
-    # nnU-Net hole-fills before taking the box; skipping the fill must give the same box.
+    # nnU-Net hole-fills before taking the box, skipping the fill must give the same box.
     from scipy.ndimage import binary_fill_holes
 
     rng = np.random.default_rng(1)
@@ -62,18 +67,10 @@ def test_zscore_stats_match_numpy(dtype):
     assert std == pytest.approx(ref.std(), rel=1e-6)
 
 
-def _ring_volume(frames=3, size=320, seed=0):
-    rng = np.random.default_rng(seed)
-    yy, xx = np.mgrid[:size, :size] - size / 2
-    r = np.hypot(yy, xx)
-    ring = ((r > 60) & (r < 80)) * 180.0
-    return np.stack([ring + rng.normal(30, 10, (size, size)) for _ in range(frames)]).clip(0, 255).astype(np.uint8)
-
-
 @pytest.fixture(scope='module')
 def segmenter():
     # CPU: deterministic everywhere (a GPU-less CI runner may still offer DirectML's slow software adapter)
-    s = oi.OnnxSegmenter(use_mirroring=False, batch_size=1, device='cpu')  # one frame per network call
+    s = oi.OnnxSegmenter(CPU_ONE_FRAME_PER_CALL)
     s.load()
     return s
 
@@ -107,89 +104,68 @@ def test_all_zero_frames_are_background(segmenter):
 
 
 def test_cancel_returns_none(segmenter):
-    calls = []
-
-    def progress(done, total):
-        calls.append((done, total))
-        return False
-
+    progress = _CancellingProgress()
     assert segmenter.predict(_ring_volume(), progress_cb=progress) is None
-    assert calls == [(1, 3)]
+    assert progress.calls == [(1, 3)]
 
 
 def test_missing_model_is_reported_as_unavailable(tmp_path):
-    s = oi.OnnxSegmenter(tmp_path / 'nope.onnx')
+    s = oi.OnnxSegmenter(SegmentationSettings(model_file=str(tmp_path / 'nope.onnx')))
     with pytest.raises(oi.SegmentationUnavailable, match='not found'):
         s.load()
 
 
 def test_missing_onnxruntime_is_reported_as_unavailable(monkeypatch):
-    import builtins
-
-    real_import = builtins.__import__
-
-    def fake_import(name, *args, **kwargs):
-        if name == 'onnxruntime':
-            raise ImportError('no onnxruntime')
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, '__import__', fake_import)
+    monkeypatch.setitem(sys.modules, 'onnxruntime', None)  # makes `import onnxruntime` raise ImportError
     ok, reason = Predict(None, config=SimpleNamespace(segmentation=SimpleNamespace())).check_available()
     assert not ok and 'onnxruntime' in reason
 
 
 def test_invalid_device_is_reported_as_unavailable():
     with pytest.raises(oi.SegmentationUnavailable, match='segmentation.device'):
-        oi.OnnxSegmenter(device='tpu').load()
+        oi.OnnxSegmenter(SegmentationSettings(device='tpu')).load()
 
 
 def test_cpu_device_never_tries_the_gpu(monkeypatch):
-    monkeypatch.setattr(oi.OnnxSegmenter, '_try_gpu_session', lambda self, ort, d: pytest.fail('GPU was tried'))
-    s = oi.OnnxSegmenter(device='cpu')
+    gpus = _FakeGpus({})
+    monkeypatch.setattr(oi.OnnxSegmenter, '_try_gpu_session', gpus.try_gpu_session)
+    s = oi.OnnxSegmenter(SegmentationSettings(device='cpu'))
     s.load()
+    assert gpus.tried == []
     assert s.active_device == 'cpu' and s.fallback_reason == ''
 
 
-def _fake_gpus(monkeypatch, results):
-    """results: device -> reason string for a failing GPU runtime (or the 'missing' text)."""
-    tried = []
-
-    def fake(self, ort, device):
-        tried.append(device)
-        return None, results[device]
-
-    monkeypatch.setattr(oi.OnnxSegmenter, '_try_gpu_session', fake)
-    return tried
-
-
 def test_auto_tries_cuda_then_directml_then_cpu(monkeypatch):
-    tried = _fake_gpus(monkeypatch, {'cuda': oi._MISSING_RUNTIME['cuda'], 'directml': 'DirectML test inference failed'})
-    auto = oi.OnnxSegmenter(device='auto')
+    gpus = _FakeGpus({'cuda': oi._MISSING_RUNTIME['cuda'], 'directml': 'DirectML test inference failed'})
+    monkeypatch.setattr(oi.OnnxSegmenter, '_try_gpu_session', gpus.try_gpu_session)
+    auto = oi.OnnxSegmenter(SegmentationSettings(device='auto'))
     auto.load()
-    assert tried == ['cuda', 'directml']
+    assert gpus.tried == ['cuda', 'directml']
     assert auto.active_device == 'cpu'
-    # the missing CUDA package is normal; the installed-but-broken DirectML is reported
+    # the missing CUDA package is normal, the installed-but-broken DirectML is reported
     assert auto.fallback_reason == 'DirectML test inference failed'
 
 
 @pytest.mark.parametrize('device', ['cuda', 'directml'])
 def test_explicit_gpu_device_refuses_without_it(monkeypatch, device):
-    _fake_gpus(monkeypatch, {'cuda': 'no CUDA', 'directml': 'no DirectML'})
+    gpus = _FakeGpus({'cuda': 'no CUDA', 'directml': 'no DirectML'})
+    monkeypatch.setattr(oi.OnnxSegmenter, '_try_gpu_session', gpus.try_gpu_session)
     with pytest.raises(oi.SegmentationUnavailable, match=f'"{device}"'):
-        oi.OnnxSegmenter(device=device).load()
+        oi.OnnxSegmenter(SegmentationSettings(device=device)).load()
 
 
 def test_cpu_only_package_is_not_reported_as_a_fallback(monkeypatch):
     # A CPU-only onnxruntime (Linux/macOS default) is a normal setup, not a degraded GPU one.
-    _fake_gpus(monkeypatch, dict(oi._MISSING_RUNTIME))
-    s = oi.OnnxSegmenter(device='auto')
+    gpus = _FakeGpus(dict(oi._MISSING_RUNTIME))
+    monkeypatch.setattr(oi.OnnxSegmenter, '_try_gpu_session', gpus.try_gpu_session)
+    s = oi.OnnxSegmenter(SegmentationSettings(device='auto'))
     s.load()
     assert s.active_device == 'cpu' and s.fallback_reason == ''
 
 
 def test_invalid_precision_is_reported_as_unavailable():
     with pytest.raises(oi.SegmentationUnavailable, match='segmentation.precision'):
-        oi.OnnxSegmenter(precision='int8').load()
+        oi.OnnxSegmenter(SegmentationSettings(precision='int8')).load()
 
 
 def test_fp16_model_path_sits_next_to_the_model():
@@ -210,46 +186,21 @@ def test_bundled_fp16_model_keeps_float32_io_and_metadata():
 
 def test_fp16_masks_agree_with_fp32(segmenter):
     # The fp16 copy runs on the CPU too (slowly), which checks it belongs to the fp32 model.
-    fp16 = oi.OnnxSegmenter(oi.fp16_model_path(oi.DEFAULT_MODEL_PATH), use_mirroring=False, batch_size=1, device='cpu')
+    fp16_file = str(oi.fp16_model_path(oi.DEFAULT_MODEL_PATH))
+    fp16 = oi.OnnxSegmenter(SegmentationSettings(model_file=fp16_file, use_mirroring=False, batch_size=1, device='cpu'))
     vol = _ring_volume()
     ref, out = segmenter.predict(vol), fp16.predict(vol)
     assert ref is not None and out is not None
     assert (ref != out).sum() <= 0.001 * ref.size  # a few border pixels at most
 
 
-class _FakeSession:
-    def __init__(self, path):
-        self.path = Path(path)
-
-
 @pytest.fixture
 def fake_gpu(monkeypatch, tmp_path):
-    """A DirectML 'GPU' whose sessions are _FakeSession(model path); returns (segmenter factory,
-    per-precision call times, list of created models)."""
-    model = tmp_path / 'm.onnx'
-    model.touch()
-    oi.fp16_model_path(model).touch()
-    times = {'fp32': 1.0, 'fp16': 0.5}
-    created, broken = [], set()
-
-    def gpu_session(self, ort, device, path, fp16):
-        created.append(Path(path).name)
-        if fp16 and 'fp16' in broken:
-            return None, 'fp16 broken'
-        return _FakeSession(path), ''
-
-    monkeypatch.setattr(oi.OnnxSegmenter, '_gpu_session', gpu_session)
-    monkeypatch.setattr(oi.OnnxSegmenter, '_test_input', lambda self, session: None)
-    monkeypatch.setattr(oi, '_median_run_time', lambda s, x: times['fp16' if s.path.stem.endswith('_fp16') else 'fp32'])
-    ort = SimpleNamespace(get_available_providers=lambda: ['DmlExecutionProvider', 'CPUExecutionProvider'])
-
-    def run(precision):
-        s = oi.OnnxSegmenter(model, precision=precision)
-        session, reason = s._try_gpu_session(ort, 'directml')
-        assert reason == ''
-        return s, session
-
-    return SimpleNamespace(run=run, model=model, times=times, created=created, broken=broken)
+    gpu = _FakeGpuSessions(tmp_path)
+    monkeypatch.setattr(oi.OnnxSegmenter, '_gpu_session', gpu.gpu_session)
+    monkeypatch.setattr(oi.OnnxSegmenter, '_test_input', gpu.test_input)
+    monkeypatch.setattr(oi, '_median_run_time', gpu.median_run_time)
+    return gpu
 
 
 def test_auto_precision_takes_fp16_only_when_clearly_faster(fake_gpu):
@@ -273,26 +224,112 @@ def test_fp16_precision_skips_the_timing(fake_gpu):
 
 @pytest.mark.parametrize('precision', ['auto', 'fp16'])
 def test_missing_or_broken_fp16_model_keeps_fp32(fake_gpu, precision):
-    fake_gpu.broken.add('fp16')
+    fake_gpu.fp16_broken = True
     s, session = fake_gpu.run(precision)
     assert s.active_precision == 'fp32' and session.path.name == 'm.onnx'
-    fake_gpu.broken.clear()
+    fake_gpu.fp16_broken = False
     oi.fp16_model_path(fake_gpu.model).unlink()
     s, session = fake_gpu.run(precision)
     assert s.active_precision == 'fp32' and session.path.name == 'm.onnx'
 
 
 def test_cpu_runs_fp32_whatever_the_precision():
-    s = oi.OnnxSegmenter(device='cpu', precision='fp16')
+    s = oi.OnnxSegmenter(SegmentationSettings(device='cpu', precision='fp16'))
     s.load()
     assert s.active_device == 'cpu' and s.active_precision == 'fp32'
     assert 'precision' not in s._session.get_modelmeta().custom_metadata_map  # set only in the fp16 copy
 
 
+def test_settings_from_config_fill_in_missing_and_empty_keys():
+    defaults = SegmentationSettings()
+    assert SegmentationSettings.from_config(SimpleNamespace()) == defaults
+    assert SegmentationSettings.from_config(SimpleNamespace(segmentation=SimpleNamespace())) == defaults
+    section = SimpleNamespace(model_file=None, device='cuda', batch_size=4, input_dir='/old/key')  # stale key ignored
+    settings = SegmentationSettings.from_config(SimpleNamespace(segmentation=section))
+    assert settings == SegmentationSettings(device='cuda', batch_size=4)
+
+
+def test_bundled_config_matches_the_settings_defaults():
+    import yaml
+
+    config = yaml.safe_load((Path(__file__).resolve().parents[1] / 'src' / 'config.yaml').read_text(encoding='utf-8'))
+    section = SimpleNamespace(**config['segmentation'])
+    assert SegmentationSettings.from_config(SimpleNamespace(segmentation=section)) == SegmentationSettings()
+
+
 def test_old_configs_fall_back_to_bundled_model():
-    assert resolve_model_path('') == oi.DEFAULT_MODEL_PATH
-    assert resolve_model_path(None) == oi.DEFAULT_MODEL_PATH
+    assert oi.resolve_model_path('') == oi.DEFAULT_MODEL_PATH
+    assert oi.resolve_model_path(None) == oi.DEFAULT_MODEL_PATH
     # pre-ONNX configs pointed at an nnU-Net folder or a Keras .h5
-    assert resolve_model_path('./models/nnUNetTrainerU2NetP__nnUNetResEncUNetLPlans__2d') == oi.DEFAULT_MODEL_PATH
-    assert resolve_model_path('./models/old/u2net.h5') == oi.DEFAULT_MODEL_PATH
-    assert str(resolve_model_path('C:/models/custom.onnx')).endswith('custom.onnx')
+    assert oi.resolve_model_path('./models/nnUNetTrainerU2NetP__nnUNetResEncUNetLPlans__2d') == oi.DEFAULT_MODEL_PATH
+    assert oi.resolve_model_path('./models/old/u2net.h5') == oi.DEFAULT_MODEL_PATH
+    assert str(oi.resolve_model_path('C:/models/custom.onnx')).endswith('custom.onnx')
+
+
+def _ring_volume(frames=3, size=320, seed=0):
+    rng = np.random.default_rng(seed)
+    yy, xx = np.mgrid[:size, :size] - size / 2
+    r = np.hypot(yy, xx)
+    ring = ((r > 60) & (r < 80)) * 180.0
+    return np.stack([ring + rng.normal(30, 10, (size, size)) for _ in range(frames)]).clip(0, 255).astype(np.uint8)
+
+
+class _CancellingProgress:
+    """predict() progress callback that records its calls and cancels at the first one."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[int, int]] = []
+
+    def __call__(self, done: int, total: int) -> bool:
+        self.calls.append((done, total))
+        return False
+
+
+class _FakeGpus:
+    """Stands in for OnnxSegmenter._try_gpu_session: every GPU fails with the given reason."""
+
+    def __init__(self, reasons: dict[str, str]) -> None:
+        self.reasons = reasons
+        self.tried: list[str] = []
+
+    def try_gpu_session(self, ort, device):
+        self.tried.append(device)
+        return None, self.reasons[device]
+
+
+class _FakeSession:
+    def __init__(self, path) -> None:
+        self.path = Path(path)
+
+
+class _FakeGpuSessions:
+    """A DirectML 'GPU' whose sessions are _FakeSession(model path), with a set run time per
+    precision. Stands in for OnnxSegmenter._gpu_session, ._test_input and _median_run_time."""
+
+    def __init__(self, tmp_path: Path) -> None:
+        self.model = tmp_path / 'm.onnx'
+        self.model.touch()
+        oi.fp16_model_path(self.model).touch()
+        self.times = {'fp32': 1.0, 'fp16': 0.5}
+        self.created: list[str] = []
+        self.fp16_broken = False
+        self.ort = SimpleNamespace(get_available_providers=lambda: ['DmlExecutionProvider', 'CPUExecutionProvider'])
+
+    def run(self, precision: str):
+        """(segmenter, session) after choosing the DirectML session at this precision."""
+        s = oi.OnnxSegmenter(SegmentationSettings(model_file=str(self.model), precision=precision))
+        session, reason = s._try_gpu_session(self.ort, 'directml')
+        assert reason == ''
+        return s, session
+
+    def gpu_session(self, ort, device, path, fp16):
+        self.created.append(Path(path).name)
+        if fp16 and self.fp16_broken:
+            return None, 'fp16 broken'
+        return _FakeSession(path), ''
+
+    def test_input(self, session):
+        return None
+
+    def median_run_time(self, session, x):
+        return self.times['fp16' if session.path.stem.endswith('_fp16') else 'fp32']

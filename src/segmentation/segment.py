@@ -5,6 +5,7 @@ import numpy as np
 from loguru import logger
 from skimage import measure
 
+from domain.intravascular.segmentation_types import FALLBACK_CONTOUR_RADIUS_MM, FALLBACK_RESOLUTION_MM
 from pages.intravascular.popup_windows.frame_range_dialog import FrameRangeDialog
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 
@@ -62,8 +63,8 @@ def mask_to_contours(main_window, masks, lower_limit, upper_limit):
     num_points = main_window.config.intravascular.n_interactive_points
     image_shape = masks.shape[1:3]
     counter = 0
-    resolution = main_window.runtime_data.metadata.get('resolution', 0.1)  # mm/pixel
-    fallback_radius_px = 0.5 / resolution
+    resolution = main_window.runtime_data.metadata.get('resolution', FALLBACK_RESOLUTION_MM)  # mm/pixel
+    fallback_radius_px = FALLBACK_CONTOUR_RADIUS_MM / resolution
 
     for frame in range(lower_limit, upper_limit):
         fd = main_window.runtime_data.frame_data_dct.get(frame)
@@ -80,15 +81,6 @@ def mask_to_contours(main_window, masks, lower_limit, upper_limit):
         else:
             fd.lumen.contours = [_catheter_fallback_contour(image_shape, fallback_radius_px, num_points)]
     logger.info(f'Found contours in {counter} frames')
-
-
-def _catheter_fallback_contour(image_shape, radius_px, num_points):
-    """Circle at image centre — used when segmentation fails for a frame."""
-    cy, cx = image_shape[0] / 2.0, image_shape[1] / 2.0
-    angles = np.linspace(0, 2 * np.pi, num_points, endpoint=False)
-    x = (cx + radius_px * np.cos(angles)).tolist()
-    y = (cy + radius_px * np.sin(angles)).tolist()
-    return (x, y)
 
 
 def label_contours(image):
@@ -138,3 +130,12 @@ def downsample(contours, num_points):
         downsampled = [downsampled[0][0], downsampled[1][0]]  # remove unnecessary dimension  # type: ignore[assignment]
 
     return downsampled
+
+
+def _catheter_fallback_contour(image_shape, radius_px, num_points):
+    """Circle at the image centre, used when segmentation finds no lumen in a frame."""
+    cy, cx = image_shape[0] / 2.0, image_shape[1] / 2.0
+    angles = np.linspace(0, 2 * np.pi, num_points, endpoint=False)
+    x = (cx + radius_px * np.cos(angles)).tolist()
+    y = (cy + radius_px * np.sin(angles)).tolist()
+    return (x, y)
