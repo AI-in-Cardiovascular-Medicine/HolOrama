@@ -56,39 +56,12 @@ def segment(main_window):
     main_window.status_bar.showMessage(main_window.waiting_status)
 
 
-def mask_to_contours(main_window, masks, lower_limit, upper_limit, config=None):
-    """Extracts contours from masked images.
-
-    When main_window is provided, writes in-place to main_window.runtime_data.frame_data_dct[frame].lumen.
-    When main_window is None (headless), returns a Dict[int, FrameData].
-    """
-    if main_window is not None:
-        config = main_window.config
-    if config is None:
-        logger.error('mask_to_contours: no config available')
-        return None
-
-    num_points = config.intravascular.n_interactive_points
+def mask_to_contours(main_window, masks, lower_limit, upper_limit):
+    """Write the largest lumen contour of each mask in-place to
+    main_window.runtime_data.frame_data_dct[frame].lumen (a catheter-sized circle if empty)."""
+    num_points = main_window.config.intravascular.n_interactive_points
     image_shape = masks.shape[1:3]
     counter = 0
-
-    if main_window is None:
-        from domain.intravascular.io_types import FrameData
-
-        data = {}
-        for frame in range(lower_limit, upper_limit):
-            fd = FrameData()
-            if np.sum(masks[frame, :, :]) > 0:
-                counter += 1
-                contours_frame = label_contours(masks[frame, :, :])
-                keep_lumen_x, keep_lumen_y = downsample(keep_largest_contour(contours_frame, image_shape), num_points)
-                # remove last point after segmentation
-                keep_lumen_x, keep_lumen_y = keep_lumen_x[:-1], keep_lumen_y[:-1]
-                fd.lumen.contours = [(keep_lumen_x, keep_lumen_y)]
-            data[frame] = fd
-        logger.info(f'Found contours in {counter} frames')
-        return data
-
     resolution = main_window.runtime_data.metadata.get('resolution', 0.1)  # mm/pixel
     fallback_radius_px = 0.5 / resolution
 

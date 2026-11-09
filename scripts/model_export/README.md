@@ -7,9 +7,8 @@ still needs PyTorch and nnUZoo. Nothing here is needed to run, test or build the
 
 | Script | Purpose |
 |---|---|
-| `export_onnx.py` | Rebuilds the network exactly as `nnUNetPredictor` does for inference, exports it to ONNX and stores what the runtime needs (patch size, mirror axes, normalisation, labels) as ONNX metadata. |
+| `export_onnx.py` | Rebuilds the network exactly as `nnUNetPredictor` does for inference, exports it to ONNX and stores what the runtime needs (patch size, mirror axes, normalisation, labels) as ONNX metadata. Also writes the float16 copy `<model>_fp16.onnx` that GPUs use (`segmentation.precision`). |
 | `verify_onnx.py` | Runs `nnUNetPredictor` and HolOrama's ONNX pipeline on the same frames and compares the masks (Dice, differing pixels, run time). |
-| `convert_fp16.py` | Writes the float16 copy `<model>_fp16.onnx` that GPUs use (`segmentation.precision`). Needs only `onnx` and `onnxconverter-common`. |
 
 ## Throwaway export environment (Windows)
 
@@ -23,7 +22,7 @@ git clone --depth 1 --branch 0.1.0 https://github.com/AI-in-Cardiovascular-Medic
 # and the dynamic_network_architectures import in nnunetv2/nets/segmentation/u2net.py
 uv venv -p 3.11 $env:TEMP\export-env
 uv pip install --python $env:TEMP\export-env\Scripts\python.exe "torch==2.4.0" --index-url https://download.pytorch.org/whl/cpu
-uv pip install --python $env:TEMP\export-env\Scripts\python.exe $env:TEMP\nnuzoo "numpy==1.26.4" "optree==0.13.1" onnx onnxruntime
+uv pip install --python $env:TEMP\export-env\Scripts\python.exe $env:TEMP\nnuzoo "numpy==1.26.4" "optree==0.13.1" onnx onnxconverter-common onnxruntime
 # torch 2.4.0 on Windows also needs libomp140.x86_64.dll in torch\lib (conda-forge llvm-openmp 14)
 ```
 
@@ -45,10 +44,11 @@ Result for the bundled model (`nnUNetTrainerU2NetP__nnUNetResEncUNetLPlans__2d`,
 
 ## float16 copy for GPUs
 
-After every export, regenerate the float16 copy (it must match the fp32 model next to it):
+`export_onnx.py` writes `ivus_lumen_u2netp_fp16.onnx` next to the exported model, with every
+operator in float16 and float32 input and output. Commit both files together. Check it against
+the float32 model on a real pullback:
 
 ```powershell
-& $py scripts\model_export\convert_fp16.py src\segmentation\weights\ivus_lumen_u2netp.onnx
 uv run python scripts\benchmark_segmentation.py <pullback.dcm> --precision fp32 --frames 0:200 --save fp32.npy
 uv run python scripts\benchmark_segmentation.py <pullback.dcm> --precision fp16 --frames 0:200 --save fp16.npy
 ```

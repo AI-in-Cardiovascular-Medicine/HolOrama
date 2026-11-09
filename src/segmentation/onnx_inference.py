@@ -20,7 +20,7 @@ scripts/model_export/verify_onnx.py. The only intentional difference: nnU-Net ac
 logits in float16, this module in float32, which can flip a handful of borderline pixels.
 
 On a GPU the network can run in float16 from a converted copy of the model next to it
-(<name>_fp16.onnx, scripts/model_export/convert_fp16.py), with float32 input and output, so
+(<name>_fp16.onnx, written by scripts/model_export/export_onnx.py), with float32 input and output, so
 everything around the network stays float32. On a 1163 frame pullback this moved 2 to 4 border
 pixels per frame (min Dice 0.9998) for 1.3x (DirectML) to 1.5x (CUDA) faster segmentation on a
 Quadro RTX 4000. The CPU always runs float32.

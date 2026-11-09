@@ -137,9 +137,6 @@ Parameters of the image-based gating and breathing algorithms. See
    * - ``autosave_interval``
      - Auto-save interval in milliseconds for contours/tags (Intravascular) and the mask
        (CCTA). Default 10000.
-   * - ``nifti_dir``
-     - Default output directory for images/segmentations exported by the batch script
-       ``segment_files.py``.
    * - ``save_niftis``
      - Which frames the batch export writes: ``'contoured'``, ``'all'`` or ``'none'``.
    * - ``save_2d``
@@ -195,7 +192,7 @@ ignored.
      - GPU only, the CPU always runs float32. ``'auto'`` (default): float16 when it runs
        clearly faster than float32 on this GPU (measured at model load), else float32.
        ``'fp16'``: always float16, from the ``<model>_fp16.onnx`` copy next to the model
-       (``scripts/model_export/convert_fp16.py``). ``'fp32'``: always full precision.
+       (written by ``scripts/model_export/export_onnx.py``). ``'fp32'``: always full precision.
        float16 was 1.3× (DirectML) to 1.5× (CUDA) faster on a Quadro RTX 4000 and moved
        2–4 border pixels per frame. Without an ``_fp16`` copy the GPU runs float32.
    * - ``use_mirroring``
@@ -209,8 +206,6 @@ ignored.
        and can run out of memory on a 6–8 GB GPU.
    * - ``num_threads``
      - CPU threads used for inference; 0 = all cores.
-   * - ``input_dir``
-     - Input directory used only by the batch script ``segment_files.py``.
 
 Contour presets
 ---------------

@@ -168,7 +168,6 @@ Make sure to quickly check the **src/config.yaml** file and configure everything
 
 **Save**:
 - autosave_interval: Auto-save interval in ms for contours/tags (IVUS/OCT) and the mask (CCTA).
-- nifti_dir: Default output directory for images/segmentations exported from `segment_files.py`.
 - save_niftis: Which frames to save as NIfTi when exporting — `'contoured'`, `'all'` or `'none'`.
 - save_2d: Whether to additionally save each frame's image/mask as an individual NIfTi file.
 - save_3d: Whether to save the full stack of frames as a single 3D NIfTi volume.
@@ -185,8 +184,6 @@ Make sure to quickly check the **src/config.yaml** file and configure everything
 - tile_step_size: Sliding-window overlap as a fraction of the patch size (nnU-Net default 0.5).
 - batch_size: Tiles per network call (2 = one 512x512 frame); larger is not faster on a CPU and can exhaust a 6-8 GB GPU.
 - num_threads: CPU threads for inference; 0 = all cores.
-- input_dir: Input directory used only by `segment_files.py` for batch segmentation.
-
 ## Usage
 
 After the config file is set up properly, you can run the application using:

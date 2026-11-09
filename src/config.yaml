@@ -47,7 +47,6 @@ report:
 
 save:
   autosave_interval: 15000  # in ms
-  nifti_dir: './models/app_niftis'
   save_niftis: 'none'  # which frames to save as NIfTi: 'contoured', 'all', 'none'
   save_2d: False
   save_3d: True
@@ -73,4 +72,3 @@ segmentation:
   tile_step_size: 0.5  # sliding-window overlap, as in nnU-Net
   batch_size: 2        # tiles per network call (2 = one 512x512 frame); larger: not faster on CPU, OOM risk on a 6-8 GB GPU
   num_threads: 0       # CPU threads for inference; 0 = all cores
-  input_dir: /home/sebalzer/Documents/Projects/AAOCASeg/IVUSimages  # only for segment_files.py
