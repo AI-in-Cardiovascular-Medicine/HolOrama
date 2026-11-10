@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.20.1] - 2026-11-07
 
 ### Changed
 - **multimodars 0.10.1** (was 0.9.1, brings trimesh 5.2):
@@ -14,6 +14,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 - Apply Scaling ignored Lasso edits on the Branch Labels tab: every coronary vertex was morphed around the nearest point of any branch. Each vertex now follows the branch it is labelled with (multimodars `branch_points`).
 - Apply Scaling now also moves the discretized vessel tree onto the scaled mesh. Before, the stitch reconnected side branches, and the inlet/outlet cuts sliced, at the unscaled size.
+- Scrolling to a frame with a self-intersecting contour crashed the lumen metrics (`'MultiPolygon' object has no attribute 'exterior'`). The largest loop is now measured, also in the report metrics, which skipped such frames silently.
 
 ## [0.20.0] - 2026-11-07
 
