@@ -89,7 +89,7 @@ Without the scripts: `uv sync --extra segmentation` (or `--extra segmentation-gp
 
 **How the optional parts work**
 - **Automatic segmentation**: the nnU-Net IVUS lumen model is bundled as a 5 MB ONNX file and runs with onnxruntime — no PyTorch. On Windows (installer and source) it uses any DirectX 12 GPU through DirectML (≈0.2 s per frame, no CUDA install) and falls back to the CPU (a few seconds per frame); on Linux `--gpu` adds CUDA for NVIDIA GPUs (see `segmentation` in `config.yaml`). `scripts/model_export/` holds the one-off export from the nnU-Net checkpoint.
-- **Centerlines (vmtk)**: vmtk only exists on conda-forge, so it runs in a separate, pinned [pixi](https://pixi.sh) environment (`src/pages/ccta/left_half/cut_geometry/vmtk_env/`) that HolOrama creates on first use — natively, no WSL. Windows x64, Linux x64 and Intel macOS.
+- **Centerlines (vmtk)**: vmtk only exists on conda-forge, so it runs in a separate, pinned [pixi](https://pixi.sh) environment (`src/centerlines/vmtk_env/`) that HolOrama creates on first use — natively, no WSL. Windows x64, Linux x64 and Intel macOS.
 
 See the [installation docs](https://holorama.readthedocs.io/en/latest/contents/installation.html) for details and for building the Windows installer yourself.
 

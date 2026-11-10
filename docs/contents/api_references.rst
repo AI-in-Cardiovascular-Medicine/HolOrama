@@ -20,6 +20,8 @@ All application code lives under ``src/``::
     │   ├── intravascular/   RuntimeData, FrameData, contour types and presets, undo snapshots
     │   ├── ccta/            CctaRuntimeData, VolumeGeometry, label presets, display constants
     │   └── fusion/          FusionRuntimeData, FusionScene, display colours
+    ├── centerlines/         Qt-free Calculate Centerlines: the pixi-managed vmtk environment
+    │                        (vmtk_env/) and the vmtk steps run in it
     ├── fusion_pipeline/     Qt-free fusion logic: multimodars wrappers, mesh, branch, scaling and cut logic
     ├── gui/                 app-level wiring: Master window, page switching, menu bar,
     │                        keyboard shortcuts, the stdout-streaming worker thread
@@ -35,8 +37,7 @@ All application code lives under ``src/``::
     │   ├── ccta/
     │   │   ├── left_half/       tri-plane viewer, VTK 3D renderer, cut-geometry viewer
     │   │   ├── right_half/      mask panel, brush panel, STL extraction panel
-    │   │   ├── cut_geometry.py  mask → mesh, inlet/outlet location
-    │   │   └── vmtk.py          runs vmtk for centerlines in its pixi environment (vmtk_env/)
+    │   │   └── cut_geometry/    mask → mesh, inlet/outlet location, cut-state sidecar, viewer
     │   └── fusion/
     │       ├── controllers/     one controller per pipeline stage (geometry, branches, tree,
     │       │                    alignment, fusion, final mesh, cuts)
@@ -62,8 +63,8 @@ Design principles
   and pixmap helpers.
 - ``input_output/`` has no GUI imports, so it can be exercised headlessly in tests or CLI
   scripts.
-- ``fusion_pipeline/`` holds the fusion logic without Qt imports. ``pages/fusion/`` calls it
-  and only handles widgets, dialogs and drawing.
+- ``fusion_pipeline/`` and ``centerlines/`` hold logic without Qt imports. ``pages/fusion/``
+  and ``pages/ccta/`` call them and only handle widgets, dialogs and drawing.
 - Long-running work (CCTA volume loading, vmtk centerlines, fusion remeshing) runs in a
   worker thread behind a progress dialog that streams the worker's output, so a slow step
   is distinguishable from a frozen one.

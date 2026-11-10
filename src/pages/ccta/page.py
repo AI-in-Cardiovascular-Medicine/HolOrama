@@ -5,9 +5,9 @@ import sys
 import tempfile
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from functools import partial
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, TextIO, cast
 
 import numpy as np
 import trimesh
@@ -25,6 +25,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from centerlines import environment as vmtk_env
+from centerlines.vmtk import compute_centerlines
+from domain.ccta.centerline_types import CenterlineInputs, SmoothingParams, VmtkEnv
 from domain.ccta.presets import CctaPreset, active_ccta_preset, set_active_ccta_preset
 from domain.ccta.io_types import VolumeGeometry, geometry_from_spacing
 from domain.ccta.runtime_types import CctaRuntimeData
@@ -37,7 +40,7 @@ from input_output.input.ccta_io import (
 )
 from input_output.output.stl_export import export_nifti, export_stl
 from input_output.preset_library import CCTA, load_library
-from pages.ccta.left_half.cut_geometry import geometry as cut_geometry, vmtk
+from pages.ccta.left_half.cut_geometry import geometry as cut_geometry
 from pages.ccta.left_half.cut_geometry import state_io as cut_state_io
 from pages.ccta.left_half.cut_geometry.dialogs.centerline_smoothing_dialog import CenterlineSmoothingDialog
 from gui.progress_worker import StdoutCapturingWorker
@@ -56,22 +59,6 @@ if TYPE_CHECKING:
 _CutPlanes = tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
 
 
-@dataclass
-class _CenterlinePrereqs:
-    """Everything _start_centerline_worker needs, gathered and validated up front by
-    _validate_centerline_prereqs so the two concerns — can we run this? and actually
-    running it — don't have to be read together as one function."""
-
-    cut_mesh: trimesh.Trimesh
-    cut_mesh_inlet: np.ndarray
-    cut_mesh_outlet: np.ndarray
-    rca_points: list[np.ndarray]
-    lca_points: list[np.ndarray]
-    env: vmtk.VmtkEnv
-    out_dir: str
-    stem: str
-
-
 class CctaPage(QWidget):
     def __init__(self, config: SimpleNamespace, status_bar) -> None:
         super().__init__()
@@ -84,6 +71,7 @@ class CctaPage(QWidget):
         self._cut_state_dirty: bool = False
         self._cut_labels: tuple[int, int, int] | None = None  # (cor, aorta, lv) from the last Build Cut Geometry
         self._centerlines_worker: StdoutCapturingWorker | None = None
+        self._console: TextIO | None = None  # the real stdout while a vmtk worker captures it
         self._remesh_worker: StdoutCapturingWorker | None = None
 
         common_cfg = config.common
@@ -232,15 +220,7 @@ class CctaPage(QWidget):
         try:
             if mode == 'dicom':
                 progress.setLabelText('Scanning folder...')
-
-                def _cb(current: int, total: int) -> None:
-                    if progress.maximum() == 0:
-                        progress.setMaximum(total)
-                    progress.setValue(current)
-                    progress.setLabelText(f'Reading slice {current} / {total}...')
-                    QApplication.processEvents()
-
-                return read_ct_volume(path, progress_cb=_cb)
+                return read_ct_volume(path, progress_cb=partial(self._on_slice_read, progress))
             progress.setLabelText('Reading NIfTI...')
             QApplication.processEvents()
             return read_nifti_volume(path)
@@ -250,6 +230,13 @@ class CctaPage(QWidget):
             return None
         finally:
             progress.close()
+
+    def _on_slice_read(self, progress: QProgressDialog, current: int, total: int) -> None:
+        if progress.maximum() == 0:
+            progress.setMaximum(total)
+        progress.setValue(current)
+        progress.setLabelText(f'Reading slice {current} / {total}...')
+        QApplication.processEvents()
 
     def _apply_loaded_volume(self, volume: np.ndarray, metadata: dict, mode: str) -> None:
         """Push a freshly-read volume into this page's displays/data and report it on
@@ -947,10 +934,6 @@ class CctaPage(QWidget):
         mesh_in = self.data.cut_mesh
         before = len(mesh_in.faces)
 
-        def _do_work() -> tuple[trimesh.Trimesh, np.ndarray, np.ndarray]:
-            mesh = cut_geometry.remesh_mesh(mesh_in, target_edge_length_mm, iterations)
-            return (mesh, *self._locate_inlet_outlet(mesh, planes))
-
         progress = QProgressDialog('Remeshing…', None, 0, 0, self)
         progress.setWindowTitle('Remesh')
         progress.setMinimumDuration(0)
@@ -958,15 +941,24 @@ class CctaPage(QWidget):
         progress.show()
         self.status_bar.showMessage('Remeshing…')
 
-        worker = StdoutCapturingWorker(_do_work, (), {}, parent=self)
+        worker = StdoutCapturingWorker(
+            self._remesh_and_locate, (mesh_in, target_edge_length_mm, iterations, planes), {}, parent=self
+        )
         worker.line_printed.connect(progress.setLabelText)
-        worker.finished_ok.connect(lambda result: self._on_remesh_done(progress, result, before))
-        worker.failed.connect(lambda message: self._on_remesh_failed(progress, message))
+        worker.finished_ok.connect(partial(self._on_remesh_done, progress, before))
+        worker.failed.connect(partial(self._on_remesh_failed, progress))
         self._remesh_worker = worker
         worker.start()
 
+    def _remesh_and_locate(
+        self, mesh: trimesh.Trimesh, target_edge_length_mm: float, iterations: int, planes: _CutPlanes
+    ) -> tuple[trimesh.Trimesh, np.ndarray, np.ndarray]:
+        """Runs in the remesh worker thread: the remeshed mesh with its new inlet and outlet."""
+        remeshed = cut_geometry.remesh_mesh(mesh, target_edge_length_mm, iterations)
+        return (remeshed, *self._locate_inlet_outlet(remeshed, planes))
+
     def _on_remesh_done(
-        self, progress: QProgressDialog, result: tuple[trimesh.Trimesh, np.ndarray, np.ndarray], before: int
+        self, progress: QProgressDialog, before: int, result: tuple[trimesh.Trimesh, np.ndarray, np.ndarray]
     ) -> None:
         progress.close()
         self._remesh_worker = None
@@ -1065,44 +1057,30 @@ class CctaPage(QWidget):
     def _on_calculate_centerlines(self) -> None:
         if self._centerlines_worker is not None and self._centerlines_worker.isRunning():
             return
-        prereqs = self._validate_centerline_prereqs()
-        if prereqs is None:
+        inputs = self._centerline_inputs()
+        if inputs is None:
             return
-        ready, reason = vmtk.env_ready(prereqs.env)
+        env = vmtk_env.env_from_config(self.config)
+        ready, reason = vmtk_env.env_ready(env)
         if not ready:
-            supported, unsupported_reason = vmtk.platform_supported()
-            if not supported:
-                ErrorMessage(self, unsupported_reason)
-                return
-            reply = QMessageBox.question(
-                self,
-                'Set up vmtk',
-                f'{reason}\n\nCalculate Centerlines runs vmtk in its own environment. Download and install it '
-                f'now? This needs internet access, about 1.5 GB of disk space in\n{prereqs.env.env_dir}\n'
-                'and takes a few minutes. It is only done once.',
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.Yes,
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                self._start_vmtk_setup_worker(prereqs.env)
+            self._offer_vmtk_setup(env, reason)
             return
         dialog = CenterlineSmoothingDialog(self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        self._start_centerline_worker(prereqs, dialog.aorta_params(), dialog.coronary_params())
+        self._start_centerline_worker(env, inputs, dialog.aorta_params(), dialog.coronary_params())
 
-    def _validate_centerline_prereqs(self) -> _CenterlinePrereqs | None:
-        """Every guard Calculate Centerlines needs before it can run: a built cut
-        mesh, a case file to derive output paths from, at least one RCA and one LCA
-        outlet point. Shows the relevant ErrorMessage and returns None on the first one
-        that fails. Whether the vmtk environment is ready is checked by the caller, since
-        that one is fixable on the spot."""
+    def _centerline_inputs(self) -> CenterlineInputs | None:
+        """Every guard Calculate Centerlines needs before it can run: a built cut mesh, a case
+        file to derive output paths from, at least one RCA and one LCA outlet point. Shows the
+        relevant ErrorMessage and returns None on the first one that fails. Whether the vmtk
+        environment is ready is checked by the caller, since that one is fixable on the spot."""
         if self.data.cut_mesh is None:
             ErrorMessage(self, 'Build the cut geometry first.')
             return None
         assert self.data.cut_mesh_inlet is not None and self.data.cut_mesh_outlet is not None
         if self._source_path is None:
-            ErrorMessage(self, 'No case file loaded — cannot determine where to write centerlines.')
+            ErrorMessage(self, 'No case file loaded, cannot determine where to write centerlines.')
             return None
 
         rca_points = self._cut_viewer.rca_points_world()
@@ -1114,117 +1092,75 @@ class CctaPage(QWidget):
             ErrorMessage(self, 'Add at least one LCA outlet point first.')
             return None
 
-        return _CenterlinePrereqs(
+        return CenterlineInputs(
             cut_mesh=self.data.cut_mesh,
-            cut_mesh_inlet=self.data.cut_mesh_inlet,
-            cut_mesh_outlet=self.data.cut_mesh_outlet,
+            inlet=self.data.cut_mesh_inlet,
+            outlet=self.data.cut_mesh_outlet,
             rca_points=rca_points,
             lca_points=lca_points,
-            env=vmtk.VmtkEnv.from_config(self.config),
             out_dir=os.path.dirname(self._source_path),
             stem=os.path.basename(self._source_path),
         )
 
-    def _start_centerline_worker(
-        self,
-        prereqs: _CenterlinePrereqs,
-        ao_smoothing: vmtk.SmoothingParams,
-        coronary_smoothing: vmtk.SmoothingParams,
-    ) -> None:
-        """Runs vmtk in a background QThread. This can take minutes — vmtkcenterlines'
-        Voronoi-diagram step is slow and often silent — so running it on the main
-        thread would freeze the whole app with no way to tell "slow" from "stuck".
-        StdoutCapturingWorker forwards every print() line (vmtk_runner streams vmtk's
-        own output plus its own start/finish/heartbeat markers) live to both the
-        console and the progress dialog."""
-        stl_path = os.path.join(prereqs.out_dir, f'{prereqs.stem}_root_smooth.stl')
-        ao_csv = os.path.join(prereqs.out_dir, 'ao.csv')
-        rca_csv = os.path.join(prereqs.out_dir, 'rca.csv')
-        lca_csv = os.path.join(prereqs.out_dir, 'lca.csv')
+    def _offer_vmtk_setup(self, env: VmtkEnv, reason: str) -> None:
+        supported, unsupported_reason = vmtk_env.platform_supported()
+        if not supported:
+            ErrorMessage(self, unsupported_reason)
+            return
+        reply = QMessageBox.question(
+            self,
+            'Set up vmtk',
+            f'{reason}\n\nCalculate Centerlines runs vmtk in its own environment. Download and install it '
+            f'now? This needs internet access, about 1.5 GB of disk space in\n{env.env_dir}\n'
+            'and takes a few minutes. It is only done once.',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self._start_vmtk_setup_worker(env)
 
-        progress = QProgressDialog('Computing centerlines…', None, 0, 0, self)
-        progress.setWindowTitle('Calculate Centerlines')
-        progress.setMinimumDuration(0)
-        progress.setModal(True)
-        progress.show()
-
-        def _do_work() -> tuple[str, dict[str, str]]:
-            prereqs.cut_mesh.export(stl_path)
-            vmtk.write_point_csv(ao_csv, [prereqs.cut_mesh_inlet, prereqs.cut_mesh_outlet])
-            vmtk.write_point_csv(rca_csv, prereqs.rca_points)
-            vmtk.write_point_csv(lca_csv, prereqs.lca_points)
-
-            paths = vmtk.run_centerlines(
-                prereqs.env,
-                stl_path,
-                prereqs.out_dir,
-                ao_source=prereqs.cut_mesh_inlet,
-                ao_target=prereqs.cut_mesh_outlet,
-                rca_targets=prereqs.rca_points,
-                lca_targets=prereqs.lca_points,
-                ao_smoothing=ao_smoothing,
-                coronary_smoothing=coronary_smoothing,
-                log_cb=print,
-            )
-            return prereqs.out_dir, paths
-
-        # Capture the real stdout *before* the worker starts and redirects it —
-        # StdoutCapturingWorker swaps sys.stdout for its own capture object for the
-        # run's duration, so connecting straight to print() here would have each
-        # printed line re-enter the capture and re-emit forever.
-        real_stdout = sys.stdout
-
-        def _print_to_console(line: str) -> None:
-            real_stdout.write(line + '\n')
-            real_stdout.flush()
-
-        worker = StdoutCapturingWorker(_do_work, (), {}, parent=self)
-        worker.line_printed.connect(progress.setLabelText)
-        worker.line_printed.connect(_print_to_console)
-        worker.finished_ok.connect(lambda result: self._on_calculate_centerlines_done(progress, result))
-        worker.failed.connect(lambda message: self._on_calculate_centerlines_failed(progress, message))
-        self._centerlines_worker = worker
-        worker.start()
-
-    def _start_vmtk_setup_worker(self, env: vmtk.VmtkEnv) -> None:
-        """One-time download/installation of the vmtk environment, off the main thread with
+    def _start_vmtk_setup_worker(self, env: VmtkEnv) -> None:
+        """One-time download and installation of the vmtk environment, off the main thread with
         pixi's output streamed into a progress dialog. On success Calculate Centerlines
         continues straight on, so the user does not have to click it again."""
-        progress = QProgressDialog('Setting up vmtk…', None, 0, 0, self)
-        progress.setWindowTitle('Set up vmtk')
-        progress.setMinimumDuration(0)
-        progress.setModal(True)
-        progress.show()
+        progress = self._open_centerline_progress('Set up vmtk', 'Setting up vmtk…')
+        worker = StdoutCapturingWorker(vmtk_env.setup_env, (env,), {'log_cb': print}, parent=self)
+        worker.finished_ok.connect(partial(self._on_vmtk_setup_done, progress))
+        worker.failed.connect(partial(self._on_vmtk_setup_failed, progress))
+        self._start_centerline_thread(worker, progress)
 
-        real_stdout = sys.stdout  # see _start_centerline_worker for why this is captured first
-
-        def _print_to_console(line: str) -> None:
-            real_stdout.write(line + '\n')
-            real_stdout.flush()
-
-        def _done(_result) -> None:
-            progress.close()
-            self._centerlines_worker = None
-            self._on_calculate_centerlines()
-
-        def _failed(message: str) -> None:
-            progress.close()
-            self._centerlines_worker = None
-            logger.error(f'vmtk setup failed: {message}')
-            ErrorMessage(self, f'Setting up vmtk failed:\n{message}')
-
-        worker = StdoutCapturingWorker(vmtk.setup_env, (env,), {'log_cb': print}, parent=self)
-        worker.line_printed.connect(progress.setLabelText)
-        worker.line_printed.connect(_print_to_console)
-        worker.finished_ok.connect(_done)
-        worker.failed.connect(_failed)
-        self._centerlines_worker = worker
-        worker.start()
-
-    def _on_calculate_centerlines_done(self, progress: QProgressDialog, result: tuple[str, dict[str, str]]) -> None:
+    def _on_vmtk_setup_done(self, progress: QProgressDialog, _result: None) -> None:
         progress.close()
         self._centerlines_worker = None
-        out_dir, paths = result
+        self._on_calculate_centerlines()
+
+    def _on_vmtk_setup_failed(self, progress: QProgressDialog, message: str) -> None:
+        progress.close()
+        self._centerlines_worker = None
+        logger.error(f'vmtk setup failed: {message}')
+        ErrorMessage(self, f'Setting up vmtk failed:\n{message}')
+
+    def _start_centerline_worker(
+        self,
+        env: VmtkEnv,
+        inputs: CenterlineInputs,
+        ao_smoothing: SmoothingParams,
+        coronary_smoothing: SmoothingParams,
+    ) -> None:
+        """Runs vmtk in a background QThread. This can take minutes (vmtkcenterlines'
+        Voronoi-diagram step is slow and often silent), so running it on the main thread would
+        freeze the whole app with no way to tell slow from stuck."""
+        progress = self._open_centerline_progress('Calculate Centerlines', 'Computing centerlines…')
+        worker = StdoutCapturingWorker(
+            compute_centerlines, (env, inputs, ao_smoothing, coronary_smoothing), {'log_cb': print}, parent=self
+        )
+        worker.finished_ok.connect(partial(self._on_calculate_centerlines_done, progress, inputs.out_dir))
+        worker.failed.connect(partial(self._on_calculate_centerlines_failed, progress))
+        self._start_centerline_thread(worker, progress)
+
+    def _on_calculate_centerlines_done(self, progress: QProgressDialog, out_dir: str, paths: dict[str, str]) -> None:
+        progress.close()
+        self._centerlines_worker = None
         self._cut_viewer.set_centerlines(paths)  # so the user can check the result before trusting it
         self.status_bar.showMessage(f'Centerlines saved to {out_dir}')
 
@@ -1233,3 +1169,27 @@ class CctaPage(QWidget):
         self._centerlines_worker = None
         logger.error(f'Centerline calculation failed: {message}')
         ErrorMessage(self, f'Centerline calculation failed: {message}')
+
+    def _open_centerline_progress(self, title: str, label: str) -> QProgressDialog:
+        progress = QProgressDialog(label, None, 0, 0, self)
+        progress.setWindowTitle(title)
+        progress.setMinimumDuration(0)
+        progress.setModal(True)
+        progress.show()
+        return progress
+
+    def _start_centerline_thread(self, worker: StdoutCapturingWorker, progress: QProgressDialog) -> None:
+        """Start a vmtk worker with every print() line shown live in the progress dialog and the
+        console. The real stdout is kept before the worker starts: StdoutCapturingWorker swaps
+        sys.stdout for its own capture object while running, so writing to sys.stdout from the
+        line signal would re-enter the capture and re-emit forever."""
+        self._console = sys.stdout
+        worker.line_printed.connect(progress.setLabelText)
+        worker.line_printed.connect(self._print_to_console)
+        self._centerlines_worker = worker
+        worker.start()
+
+    def _print_to_console(self, line: str) -> None:
+        if self._console is not None:
+            self._console.write(line + '\n')
+            self._console.flush()
