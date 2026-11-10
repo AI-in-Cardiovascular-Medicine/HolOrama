@@ -70,3 +70,37 @@ def test_remaining_vessels_need_the_opposite_centerline(morphs):
         scaling.apply_scaling(
             _results(), 'rca', _scaling(0.5), centerline='rca_cl', centerline_aorta='aorta_cl', opposite_centerline=None
         )
+
+
+def test_branch_vertices_follow_their_label_not_the_nearest_branch(morphs):
+    # 'moved' was lassoed from branch 2 to branch 1, so it must be morphed around branch 1.
+    results = {
+        **_results(),
+        'distal_points': ['a0', 'moved', 'b2', 'unlabelled'],
+        'rca_branches': {0: ['a0'], 1: ['moved'], 2: ['b2']},
+    }
+    whole = _Centerline()
+    scaling.apply_scaling(
+        results, 'rca', _scaling(), centerline=whole, centerline_aorta='aorta_cl', opposite_centerline=None
+    )
+    distal = [(region, cl) for region, cl, adjustment in morphs if adjustment == 1.0]
+    assert distal == [(['a0'], 'branch 0'), (['moved'], 'branch 1'), (['b2'], 'branch 2'), (['unlabelled'], whole)]
+
+
+def test_labels_of_branches_the_centerline_lacks_use_the_whole_centerline():
+    whole = _Centerline(ids=[0])
+    parts = scaling.branch_parts(['x', 'y'], whole, {0: ['x'], 5: ['y']})
+    assert parts == [(['x'], 'branch 0'), (['y'], whole)]
+
+
+class _Centerline:
+    """Stands in for PyCenterline: get_branch returns a label instead of a centerline."""
+
+    def __init__(self, ids=(0, 1, 2)) -> None:
+        self.ids = list(ids)
+
+    def branch_ids(self) -> list[int]:
+        return self.ids
+
+    def get_branch(self, branch: int) -> str:
+        return f'branch {branch}'

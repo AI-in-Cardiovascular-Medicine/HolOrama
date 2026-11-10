@@ -55,7 +55,7 @@ segmentation-gpu = [
     "onnxruntime-gpu[cuda,cudnn]>=1.21,<1.27; sys_platform != 'darwin'",
 ]
 # Centerlines (vmtk) are not a Python extra: vmtk only exists on conda-forge and runs in its
-# own pixi-managed environment, see src/pages/ccta/left_half/cut_geometry/vmtk_env/.
+# own pixi-managed environment, see src/centerlines/vmtk_env/.
 
 [dependency-groups]
 dev = [

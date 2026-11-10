@@ -96,9 +96,9 @@ try {
         '--include-data-files=src\segmentation\weights\ivus_lumen_u2netp.onnx=segmentation\weights\ivus_lumen_u2netp.onnx',
         # Its float16 copy, used on GPUs (segmentation.precision).
         '--include-data-files=src\segmentation\weights\ivus_lumen_u2netp_fp16.onnx=segmentation\weights\ivus_lumen_u2netp_fp16.onnx',
-        # pixi manifest + lock of the vmtk environment, found next to cut_geometry/vmtk.py.
-        '--include-data-files=src\pages\ccta\left_half\cut_geometry\vmtk_env\pixi.toml=pages\ccta\left_half\cut_geometry\vmtk_env\pixi.toml',
-        '--include-data-files=src\pages\ccta\left_half\cut_geometry\vmtk_env\pixi.lock=pages\ccta\left_half\cut_geometry\vmtk_env\pixi.lock',
+        # pixi manifest + lock of the vmtk environment, found next to centerlines/environment.py.
+        '--include-data-files=src\centerlines\vmtk_env\pixi.toml=centerlines\vmtk_env\pixi.toml',
+        '--include-data-files=src\centerlines\vmtk_env\pixi.lock=centerlines\vmtk_env\pixi.lock',
         # media/ holds the window icon (desktop_img.ico), the About video and the
         # bundled JetBrains Mono cuts in media/fonts (recursive, so fonts come along).
         '--include-data-dir=media=media',
@@ -149,8 +149,8 @@ try {
     $required = @(
         'segmentation\weights\ivus_lumen_u2netp.onnx',
         'segmentation\weights\ivus_lumen_u2netp_fp16.onnx',
-        'pages\ccta\left_half\cut_geometry\vmtk_env\pixi.toml',
-        'pages\ccta\left_half\cut_geometry\vmtk_env\pixi.lock',
+        'centerlines\vmtk_env\pixi.toml',
+        'centerlines\vmtk_env\pixi.lock',
         'pymeshlab\lib\plugins\filter_clean.dll'
     )
     $missing = @($required | Where-Object { -not (Test-Path (Join-Path $dist $_)) })
