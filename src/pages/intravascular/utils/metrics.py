@@ -4,7 +4,7 @@ from loguru import logger
 from PyQt6.QtCore import QLineF, Qt
 from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import QGraphicsTextItem
-from shapely.geometry import Polygon
+from shapely.geometry import MultiPolygon, Polygon
 
 from domain.intravascular.contour_presets import active_preset
 from domain.intravascular.io_types import FrameData, Measurements
@@ -78,12 +78,8 @@ class MetricsMixin:
             logger.warning("unscaled_lumen is not in the expected (x_coords, y_coords) format.")
             return
 
-        # list(zip(x, y)) converts ( [x1, x2], [y1, y2] ) -> [ (x1, y1), (x2, y2) ]
-        poly = Polygon(list(zip(x, y)))
-
-        if not poly.is_valid:
-            poly = poly.buffer(0)  # fix self-intersecting splines without raising
-        if not poly.is_valid or poly.area == 0:
+        poly = contour_polygon(x, y)
+        if poly is None:
             logger.warning("Invalid or zero-area polygon created. Skipping metrics.")
             return
 
@@ -182,10 +178,8 @@ class MetricsMixin:
                 x_full, y_full = geom.to_unscaled(sf)
                 if len(x_full) < 3:
                     continue
-                poly = Polygon(list(zip(x_full, y_full)))
-                if not poly.is_valid:
-                    poly = poly.buffer(0)
-                if poly.is_valid and poly.area > 0:
+                poly = contour_polygon(x_full, y_full)
+                if poly is not None:
                     compute_polygon_metrics(self.main_window, poly, frame_idx)
                     closest_points(self.main_window, poly, frame_idx)
             except Exception as exc:
@@ -348,3 +342,18 @@ class MetricsMixin:
                         self.graphics_scene.addItem(self.phase_text)
             except Exception:
                 pass
+
+
+def contour_polygon(x: Sequence[float], y: Sequence[float]) -> Polygon | None:
+    """The contour as a valid polygon, None if it has no area.
+
+    A self-intersecting spline (a figure-8 loop) splits into several polygons when repaired.
+    The largest one is kept, so the metrics always get a single exterior ring."""
+    poly = Polygon(list(zip(x, y)))
+    if not poly.is_valid:
+        poly = poly.buffer(0)
+    if isinstance(poly, MultiPolygon):
+        poly = max(poly.geoms, key=lambda part: part.area)
+    if not isinstance(poly, Polygon) or not poly.is_valid or poly.area == 0:
+        return None
+    return poly

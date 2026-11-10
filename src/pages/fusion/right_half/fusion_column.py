@@ -66,7 +66,10 @@ class FusionColumn(QWidget):
             spin.setRange(-20.0, 20.0)
             spin.setDecimals(2)
             spin.setSingleStep(0.1)
-            spin.setToolTip('Auto-filled by "Compute Scaling Factors" — adjust freely before applying.')
+            spin.setToolTip(
+                'Radius change in mm (the diameter changes by twice this). Auto-filled by '
+                '"Compute Scaling Factors" — adjust freely before applying.'
+            )
             self._scaling_spinboxes[key] = spin
             layout.addLayout(row(text, spin))
 

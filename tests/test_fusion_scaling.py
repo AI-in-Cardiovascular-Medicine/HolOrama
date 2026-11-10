@@ -4,12 +4,19 @@ from fusion_pipeline import scaling
 
 
 @pytest.fixture
-def morphs(monkeypatch):
+def passed_labels() -> list:
+    """The branch_points of every morph, in order."""
+    return []
+
+
+@pytest.fixture
+def morphs(monkeypatch, passed_labels):
     """Record every morph as (region, centerline, adjustment); each sync bumps a mesh version."""
     calls = []
 
-    def fake_scale(mesh, region, centerline, adjustment):
+    def fake_scale(mesh, region, centerline, adjustment, branch_points=None):
         calls.append((list(region), centerline, adjustment))
+        passed_labels.append(branch_points)
         return mesh + 1
 
     def fake_sync(results, old_mesh, new_mesh):
@@ -72,35 +79,63 @@ def test_remaining_vessels_need_the_opposite_centerline(morphs):
         )
 
 
-def test_branch_vertices_follow_their_label_not_the_nearest_branch(morphs):
-    # 'moved' was lassoed from branch 2 to branch 1, so it must be morphed around branch 1.
-    results = {
-        **_results(),
-        'distal_points': ['a0', 'moved', 'b2', 'unlabelled'],
-        'rca_branches': {0: ['a0'], 1: ['moved'], 2: ['b2']},
-    }
-    whole = _Centerline()
+def test_coronary_regions_pass_their_vessels_branch_labels(morphs, passed_labels):
+    # Lasso edits live in {vessel}_branches, multimodars morphs each vertex around its labelled branch.
+    results = {**_results(), 'rca_branches': {0: ['d', 'p', 'o'], 1: []}, 'lca_branches': {0: ['l']}}
     scaling.apply_scaling(
-        results, 'rca', _scaling(), centerline=whole, centerline_aorta='aorta_cl', opposite_centerline=None
+        results, 'rca', _scaling(0.5), centerline='rca_cl', centerline_aorta='aorta_cl', opposite_centerline='lca_cl'
     )
-    distal = [(region, cl) for region, cl, adjustment in morphs if adjustment == 1.0]
-    assert distal == [(['a0'], 'branch 0'), (['moved'], 'branch 1'), (['b2'], 'branch 2'), (['unlabelled'], whole)]
+    rca, lca = results['rca_branches'], results['lca_branches']
+    # distal, aortic, proximal, opposite vessel, off-path
+    assert passed_labels == [rca, None, rca, lca, rca]
 
 
-def test_labels_of_branches_the_centerline_lacks_use_the_whole_centerline():
-    whole = _Centerline(ids=[0])
-    parts = scaling.branch_parts(['x', 'y'], whole, {0: ['x'], 5: ['y']})
-    assert parts == [(['x'], 'branch 0'), (['y'], whole)]
+def test_without_branch_labels_nothing_is_passed(morphs, passed_labels):
+    scaling.apply_scaling(
+        _results(), 'rca', _scaling(), centerline='rca_cl', centerline_aorta='aorta_cl', opposite_centerline=None
+    )
+    assert passed_labels == [None, None, None]
 
 
-class _Centerline:
-    """Stands in for PyCenterline: get_branch returns a label instead of a centerline."""
+@pytest.fixture
+def tree_syncs(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        scaling.mm_api, 'run_sync_tree_to_mesh', lambda tree, old, new: calls.append((tree, old, new)) or tree
+    )
+    return calls
 
-    def __init__(self, ids=(0, 1, 2)) -> None:
-        self.ids = list(ids)
 
-    def branch_ids(self) -> list[int]:
-        return self.ids
+def test_tree_follows_the_whole_scaling_once(morphs, tree_syncs):
+    scaling.apply_scaling(
+        _results(),
+        'rca',
+        _scaling(0.5),
+        centerline='rca_cl',
+        centerline_aorta='aorta_cl',
+        opposite_centerline='lca_cl',
+        tree='tree',
+    )
+    # Original mesh (0) to the final one (5 morphs): one sync covers every region.
+    assert tree_syncs == [('tree', 0, 5)]
 
-    def get_branch(self, branch: int) -> str:
-        return f'branch {branch}'
+
+def test_no_tree_no_sync(morphs, tree_syncs):
+    scaling.apply_scaling(
+        _results(), 'rca', _scaling(), centerline='rca_cl', centerline_aorta='aorta_cl', opposite_centerline=None
+    )
+    assert tree_syncs == []
+
+
+def test_failed_scaling_leaves_the_tree_alone(morphs, tree_syncs):
+    with pytest.raises(ValueError):
+        scaling.apply_scaling(
+            _results(),
+            'rca',
+            _scaling(0.5),
+            centerline='rca_cl',
+            centerline_aorta='aorta_cl',
+            opposite_centerline=None,
+            tree='tree',
+        )
+    assert tree_syncs == []
