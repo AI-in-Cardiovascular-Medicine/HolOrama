@@ -77,6 +77,7 @@ class FusionController(StageController):
             centerline=centerline,
             centerline_aorta=self.data.centerline_aorta,
             opposite_centerline=opposite_centerline,
+            tree=self.data.vessel_tree,  # moved onto the scaled mesh, for the stitch and the cuts
         )
         if results_out is None:
             return
@@ -89,6 +90,8 @@ class FusionController(StageController):
         self.page.ccta_geometry.refresh_scene()
         self.page.branches.refresh_labels_scene()  # scaled mesh + its synced branch labels
         self.page.alignment.refresh_ccta_mesh()
+        if self.data.vessel_tree is not None:
+            self.page.tree.refresh_scene()  # the tree's contours were synced to the scaled mesh
 
     def on_remove_points(self) -> None:
         fc = self.right_half.fusion_column
@@ -177,16 +180,15 @@ class FusionController(StageController):
         snapshot = self.data.results_points_removed
         assert aligned_geom is not None and snapshot is not None
 
-        def _run():
-            # Stitch mutates results in place, so pass a copy to keep the snapshot reusable.
-            results = copy.deepcopy(snapshot)
-            # The tree (discretized before scaling/removal, as multimodars expects) lets the
-            # stitch reconnect side branches leaving the removed segment. It is only read.
-            return mm_api.run_stitch(
-                aligned_geom, results['mesh'], results, tree=self.data.vessel_tree, **fc.stitch_kwargs()
-            )
-
-        stitched = self.run('Stitching CCTA to intravascular…', 'Stitched.', _run)
+        stitched = self.run(
+            'Stitching CCTA to intravascular…',
+            'Stitched.',
+            _stitch_copy,
+            aligned_geom,
+            snapshot,
+            self.data.vessel_tree,
+            fc.stitch_kwargs(),
+        )
         if stitched is None:
             return
         self.clear_stitch_outputs()
@@ -196,3 +198,13 @@ class FusionController(StageController):
         viewer.isolate_layer(FusionScene.CCTA_GEOMETRY, 'stitched_mesh')
         self.left_half.refresh_toolbar(FusionScene.CCTA_GEOMETRY)
         self.left_half.show_scene(FusionScene.CCTA_GEOMETRY)
+
+
+def _stitch_copy(aligned_geom, snapshot: dict, tree, stitch_kwargs: dict) -> dict:
+    """Stitch a copy of `snapshot`, since the stitch mutates results in place.
+
+    The tree (discretized before removal, as multimodars expects, and synced to the scaled mesh
+    by Apply Scaling) lets the stitch reconnect side branches leaving the removed segment at
+    their scaled size. It is only read."""
+    results = copy.deepcopy(snapshot)
+    return mm_api.run_stitch(aligned_geom, results['mesh'], results, tree=tree, **stitch_kwargs)

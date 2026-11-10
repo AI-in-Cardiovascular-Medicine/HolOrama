@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **multimodars 0.10.1** (was 0.9.1, brings trimesh 5.2):
+  - The scaling values are radius changes (the diameter changes by twice the value), and the tooltips and docs now say so. The values and their effect are unchanged (multimodars renamed `diameter_adjustment_mm` to `radius_adjustment_mm`).
+  - Stitch decides by itself whether the proximal ring is the ostium (`proximal_is_ostium=None`): only when a quarter of it runs over the aorta. Before, it was always treated as the ostium, which broke the proximal stitch when only the overlap was removed.
+  - Reconnecting several side branches to the intravascular wall is more robust (multimodars fix).
+
+### Fixed
+- Apply Scaling ignored Lasso edits on the Branch Labels tab: every coronary vertex was morphed around the nearest point of any branch. Each vertex now follows the branch it is labelled with (multimodars `branch_points`).
+- Apply Scaling now also moves the discretized vessel tree onto the scaled mesh. Before, the stitch reconnected side branches, and the inlet/outlet cuts sliced, at the unscaled size.
+
 ## [0.20.0] - 2026-11-07
 
 ### Changed
