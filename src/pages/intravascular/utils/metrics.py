@@ -8,8 +8,8 @@ from shapely.geometry import MultiPolygon, Polygon
 
 from domain.intravascular.contour_presets import active_preset
 from domain.intravascular.io_types import FrameData, Measurements
+from input_output.output.branch_metrics import branch_diameters
 from input_output.output.reports import (
-    branch_diameters,
     closest_points,
     compute_polygon_metrics,
     farthest_points,

@@ -180,7 +180,7 @@ def orthogonal_width(
     return width, origin + pos * d + v_from * n, origin + pos * d + v_to * n
 
 
-def _branch_axis(
+def branch_axis(
     xs: Sequence[float],
     ys: Sequence[float],
     lumen_xs: Sequence[float] | None,
@@ -222,7 +222,7 @@ def branch_diameter(
     """
     if closed:
         return farthest_pair(branch_region(xs, ys, True, None, None, samples)) if len(xs) >= 3 else None
-    axis = _branch_axis(xs, ys, lumen_xs, lumen_ys, centroid, samples)
+    axis = branch_axis(xs, ys, lumen_xs, lumen_ys, centroid, samples)
     return orthogonal_width(*axis, samples) if axis is not None else None
 
 
@@ -240,7 +240,7 @@ def branch_landmark(
     the axis inside the region, the one reaching furthest out (to the arc) is taken, and its
     midpoint returned. None without a lumen, or if the axis misses the region.
     """
-    axis = _branch_axis(xs, ys, lumen_xs, lumen_ys, centroid, samples)
+    axis = branch_axis(xs, ys, lumen_xs, lumen_ys, centroid, samples)
     if axis is None:
         return None
     region, origin, tip = axis

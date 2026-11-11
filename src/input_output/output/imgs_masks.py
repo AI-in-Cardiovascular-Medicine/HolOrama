@@ -427,7 +427,7 @@ def _scaled_frame_view(frame_data, factor: float):
     )
 
 
-def _frame_regions(frame_data, image_shape, preset: ContourPreset) -> dict[str, np.ndarray]:
+def frame_regions(frame_data, image_shape, preset: ContourPreset) -> dict[str, np.ndarray]:
     """Every contour type's region on one frame, by id, each on its own (not layered).
 
     Angular sectors are wedges about the image centre (the catheter); every other open
@@ -486,7 +486,7 @@ def frame_region_metrics(
     covers (`<id>_angle`, in degrees about the lumen centroid — the angle a calcification
     or lipid pool is read off an image as).
 
-    Each region is read and clipped to its container by the same _frame_regions as
+    Each region is read and clipped to its container by the same frame_regions as
     contours_to_mask, so the area of anything lying in the EEM is a subset of `wall` and
     a caller's plaque/wall fraction stays in 0..1. Rasterizing rather than taking a
     polygon area is what makes those measurable at all: calcium/lipid are usually drawn
@@ -511,7 +511,7 @@ def frame_region_metrics(
     px_area = float(resolution) ** 2
     cx, cy = frame_data.centroid if frame_data.centroid is not None else (image_shape[1] / 2.0, image_shape[0] / 2.0)
 
-    regions = _frame_regions(frame_data, image_shape, preset)
+    regions = frame_regions(frame_data, image_shape, preset)
     lumen_mask = regions[ContourType.LUMEN.value]
     has_eem = bool(frame_data.eem.contours)
     eem_mask = regions[ContourType.EEM.value]
@@ -537,7 +537,7 @@ def contours_to_mask(images, contoured_frames, data, preset: ContourPreset | Non
     Every contour type is painted as its preset `label` (0 is the background), bottom to
     top by layer (see ContourPreset.paint_order), so where two regions overlap the higher
     layer is what the mask shows. Each region is first clipped to the type it lies in (see
-    _frame_regions) — plaques to the vessel wall, say. With the default preset:
+    frame_regions) — plaques to the vessel wall, say. With the default preset:
 
     1  lumen       - the top layer
     9  wire shadow - guide-wire angular shadow, under the lumen and over everything else
@@ -568,7 +568,7 @@ def contours_to_mask(images, contoured_frames, data, preset: ContourPreset | Non
         if fd is None:
             continue
 
-        regions = _frame_regions(fd, image_shape, preset)
+        regions = frame_regions(fd, image_shape, preset)
         fm = np.zeros(image_shape, dtype=np.uint8)
         for defn in paint_order:
             fm[regions[defn.type.value]] = defn.label

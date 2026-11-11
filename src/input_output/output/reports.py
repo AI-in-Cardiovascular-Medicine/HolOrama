@@ -9,13 +9,15 @@ from PyQt6.QtWidgets import QApplication, QProgressDialog
 from shapely.errors import TopologicalError
 from shapely.geometry import Polygon
 
-from domain.intravascular.types import BranchMeasurement, ContourType
+from domain.intravascular.types import ContourType
 from domain.intravascular.contour_presets import active_preset
 from domain.intravascular.io_types import iter_sectors
-from input_output.output.imgs_masks import closes_on_lumen, frame_region_metrics, lumen_knots, measured_types
+from input_output.output.annotations import pullback_annotations
+from input_output.output.branch_metrics import branch_diameters
+from input_output.output.imgs_masks import closes_on_lumen, frame_region_metrics, measured_types
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 from tools.angle import combined_sweep
-from tools.branch_arc import branch_diameter, farthest_pair
+from tools.branch_arc import farthest_pair
 
 
 def _pullback_positions(main_window) -> np.ndarray:
@@ -595,46 +597,6 @@ def farthest_points(main_window, exterior_coords, frame):
     return longest_distance, farthest_point_x, farthest_point_y
 
 
-def branch_diameters(main_window, frame, samples: int) -> list[BranchMeasurement]:
-    """Every side branch's diameter (mm) on `frame`, with the two ends of its line (unscaled px).
-
-    A side branch is any type closed against the lumen (see closes_on_lumen), measured by
-    tools.branch_arc.branch_diameter on splines sampled at `samples` points. Each type's
-    largest is stored as its measurements.major_axis, None if it has no contour to measure.
-    """
-    fd = main_window.runtime_data.frame_data_dct.get(frame)
-    if fd is None:
-        return []
-    preset = active_preset()
-    resolution = main_window.runtime_data.metadata['resolution']
-    lumen = lumen_knots(fd.lumen)
-    lumen_xs, lumen_ys = lumen if lumen is not None else (None, None)
-
-    diameters = []
-    for defn in preset.spline_types:
-        if not closes_on_lumen(defn, preset):
-            continue
-        contour_obj = fd.contour(defn.type)
-        largest = None
-        for idx, entry in enumerate(contour_obj.contours):
-            if not entry or not entry[0]:
-                continue
-            closed = contour_obj.closed[idx] if idx < len(contour_obj.closed) else True
-            try:
-                measured = branch_diameter(entry[0], entry[1], closed, lumen_xs, lumen_ys, fd.centroid, samples)
-            except Exception as exc:
-                logger.debug(f'Frame {frame}: {defn.type.value} diameter failed: {exc}')
-                continue
-            if measured is None:
-                continue
-            diameter = measured[0] * resolution
-            start, end = ((float(p[0]), float(p[1])) for p in measured[1:])
-            diameters.append(BranchMeasurement(defn.type.value, idx, closed, diameter, start, end))
-            largest = diameter if largest is None else max(largest, diameter)
-        contour_obj.measurements.major_axis = largest
-    return diameters
-
-
 def closest_points(main_window, polygon, frame):
     contour = polygon.exterior.coords
     num_points = len(contour)
@@ -681,9 +643,10 @@ def closest_points(main_window, polygon, frame):
 
 
 def save_csv_files(main_window, lumen_x, lumen_y, name, frames, z_of: dict[int, float] | None = None):
-    """Contours (and reference points for frame groups) as tab-separated frame, x, y, z rows.
+    """Contours (and reference points and annotations for frame groups) as tab-separated rows.
 
-    z_of: pullback position per frame from the breathing sort, else the acquisition position.
+    Every point is written as frame (1-based), x and y in mm (y flipped), z. z_of: pullback position
+    per frame from the breathing sort, else the acquisition position.
     """
     if not frames:
         logger.warning(f'No frames available for {name} contours, skipping CSV saving.')
@@ -691,25 +654,24 @@ def save_csv_files(main_window, lumen_x, lumen_y, name, frames, z_of: dict[int, 
     csv_out_dir = os.path.join(main_window.file_name + '_csv_files')
     logger.info(f'Saving {name} contours to {csv_out_dir}')
     os.makedirs(csv_out_dir, exist_ok=True)
-    img_dim_mm = main_window.runtime_data.metadata['dimension'] * main_window.runtime_data.metadata['resolution']
+    resolution = main_window.runtime_data.metadata['resolution']
+    img_dim_mm = main_window.runtime_data.metadata['dimension'] * resolution
     positions = _pullback_positions(main_window)
+    distance_offset = positions[frames[0]]
 
     def z(frame):
         return z_of[frame] if z_of and frame in z_of else positions[frame]
 
+    def point(frame, x, y) -> tuple[float, float, float]:
+        return x * resolution, abs(y * resolution - img_dim_mm), z(frame) - distance_offset
+
     with open(os.path.join(csv_out_dir, f'{name}_contours.csv'), 'w', newline='') as contours_file:
         contours_writer = csv.writer(contours_file, delimiter='\t')
-        distance_offset = positions[frames[0]]
         for frame in frames:
             if lumen_x[frame] is None:
                 continue
-            rows = zip(
-                [x * main_window.runtime_data.metadata['resolution'] for x in lumen_x[frame]],
-                [abs(y * main_window.runtime_data.metadata['resolution'] - img_dim_mm) for y in lumen_y[frame]],
-            )
-            for row in rows:
-                csv_row = [frame + 1] + list(row) + [z(frame) - distance_offset]
-                contours_writer.writerow(csv_row)
+            for x, y in zip(lumen_x[frame], lumen_y[frame]):
+                contours_writer.writerow([frame + 1, *point(frame, x, y)])
 
     if name in ('diastolic', 'systolic', 'tagged'):
         ref_file_name = f'{name}_reference_points.csv'
@@ -719,11 +681,19 @@ def save_csv_files(main_window, lumen_x, lumen_y, name, frames, z_of: dict[int, 
                 fd = main_window.runtime_data.frame_data_dct.get(frame)
                 ref = fd.reference if fd else None
                 if ref is not None:
-                    reference_writer.writerow(
+                    reference_writer.writerow([frame + 1, *point(frame, ref[0], ref[1])])
+
+        # Read by multimodars as Frame.annotations: frame, kind, role, group, x, y, z.
+        with open(os.path.join(csv_out_dir, f'{name}_annotations.csv'), 'w', newline='') as annotations_file:
+            annotations_writer = csv.writer(annotations_file, delimiter='\t')
+            for annotation in pullback_annotations(main_window, frames, _image_shape(main_window)):
+                for x, y in annotation.points:
+                    annotations_writer.writerow(
                         [
-                            frame + 1,
-                            ref[0] * main_window.runtime_data.metadata['resolution'],
-                            abs(ref[1] * main_window.runtime_data.metadata['resolution'] - img_dim_mm),
-                            z(frame) - distance_offset,
+                            annotation.frame + 1,
+                            annotation.kind,
+                            annotation.role,
+                            annotation.group,
+                            *point(annotation.frame, x, y),
                         ]
                     )
