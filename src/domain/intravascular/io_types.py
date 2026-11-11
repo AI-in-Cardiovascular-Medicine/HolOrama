@@ -102,6 +102,7 @@ class FrameData:
     measurement_1: Optional[Measure] = None
     measurement_2: Optional[Measure] = None
     reference: Optional[Tuple[float, float]] = None
+    reference_auto: bool = False  # set from a side branch, not by hand (see branch_references)
     centroid: Optional[Tuple[float, float]] = None
     closest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
     farthest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
@@ -161,6 +162,7 @@ FRAME_ANNOTATION_FIELDS = (
     'measurement_1',
     'measurement_2',
     'reference',
+    'reference_auto',
     'centroid',
     'closest_points',
     'farthest_points',

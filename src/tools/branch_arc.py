@@ -180,6 +180,31 @@ def orthogonal_width(
     return width, origin + pos * d + v_from * n, origin + pos * d + v_to * n
 
 
+def _branch_axis(
+    xs: Sequence[float],
+    ys: Sequence[float],
+    lumen_xs: Sequence[float] | None,
+    lumen_ys: Sequence[float] | None,
+    centroid: tuple[float, float] | None,
+    samples: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """An open branch's region and its axis, from the lumen `centroid` to the middle of the arc.
+
+    None without a lumen to close the arc against. The centroid falls back to the lumen's mean point.
+    """
+    if len(xs) < 2 or lumen_xs is None or lumen_ys is None or len(lumen_xs) < 3:
+        return None
+    region = branch_region(xs, ys, False, lumen_xs, lumen_ys, samples)
+    if centroid is None:
+        origin = np.column_stack(sample_spline(lumen_xs, lumen_ys, True, samples)).mean(axis=0)
+    else:
+        origin = np.asarray(centroid, dtype=float)
+    arc = np.column_stack(sample_spline(xs, ys, False, samples))
+    length = _length(arc)
+    middle = np.array([np.interp(length[-1] / 2, length, arc[:, i]) for i in (0, 1)])
+    return region, origin, middle
+
+
 def branch_diameter(
     xs: Sequence[float],
     ys: Sequence[float],
@@ -195,24 +220,43 @@ def branch_diameter(
     fills, orthogonal to the axis from the lumen `centroid` to the middle of the arc (see
     orthogonal_width). None for an open arc without a lumen to close it against.
     """
-    if len(xs) < (3 if closed else 2):
-        return None
-    region = branch_region(xs, ys, closed, lumen_xs, lumen_ys, samples)
     if closed:
-        return farthest_pair(region)
-    if lumen_xs is None or lumen_ys is None or len(lumen_xs) < 3:
+        return farthest_pair(branch_region(xs, ys, True, None, None, samples)) if len(xs) >= 3 else None
+    axis = _branch_axis(xs, ys, lumen_xs, lumen_ys, centroid, samples)
+    return orthogonal_width(*axis, samples) if axis is not None else None
+
+
+def branch_landmark(
+    xs: Sequence[float],
+    ys: Sequence[float],
+    lumen_xs: Sequence[float] | None,
+    lumen_ys: Sequence[float] | None,
+    centroid: tuple[float, float] | None,
+    samples: int,
+) -> np.ndarray | None:
+    """Where a reference point goes on an open branch: the centre of its region along its axis.
+
+    The axis is the diameter's (lumen `centroid` to the middle of the arc). Of the stretches of
+    the axis inside the region, the one reaching furthest out (to the arc) is taken, and its
+    midpoint returned. None without a lumen, or if the axis misses the region.
+    """
+    axis = _branch_axis(xs, ys, lumen_xs, lumen_ys, centroid, samples)
+    if axis is None:
         return None
-    if centroid is None:
-        lumen = np.column_stack(sample_spline(lumen_xs, lumen_ys, True, samples))
-        origin = lumen.mean(axis=0)
-    else:
-        origin = np.asarray(centroid, dtype=float)
-    arc = np.column_stack(sample_spline(xs, ys, False, samples))
-    length = _length(arc)
-    middle = np.array(
-        [
-            np.interp(length[-1] / 2, length, arc[:, 0]),
-            np.interp(length[-1] / 2, length, arc[:, 1]),
-        ]
-    )
-    return orthogonal_width(region, origin, middle, samples)
+    region, origin, tip = axis
+    direction = tip - origin
+    norm = float(np.hypot(*direction))
+    if norm == 0:
+        return None
+    d = direction / norm
+    rel = region - origin
+    u, v = rel @ d, rel @ np.array([-d[1], d[0]])
+    u1, v1 = np.roll(u, -1), np.roll(v, -1)
+    crosses = (v <= 0) != (v1 <= 0)
+    if not crosses.any():
+        return None
+    us = np.sort(u[crosses] + (0 - v[crosses]) * (u1[crosses] - u[crosses]) / (v1[crosses] - v[crosses]))
+    if len(us) < 2:
+        return None
+    inner, outer = us[-2], us[-1]
+    return origin + (inner + outer) / 2 * d

@@ -209,6 +209,7 @@ def _build_frame_data(
             measurement_1=_build_measure(frame_raw.get('measurement_1')),
             measurement_2=_build_measure(frame_raw.get('measurement_2')),
             reference=frame_raw.get('reference'),
+            reference_auto=bool(frame_raw.get('reference_auto', False)),
             centroid=frame_raw.get('centroid'),
             closest_points=frame_raw.get('closest_points'),
             farthest_points=frame_raw.get('farthest_points'),

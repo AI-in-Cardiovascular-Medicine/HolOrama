@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import QApplication, QProgressDialog
 from shapely.errors import TopologicalError
 from shapely.geometry import Polygon
 
-from domain.intravascular.types import ContourType
+from domain.intravascular.types import BranchMeasurement, ContourType
 from domain.intravascular.contour_presets import active_preset
 from domain.intravascular.io_types import iter_sectors
 from input_output.output.imgs_masks import closes_on_lumen, frame_region_metrics, lumen_knots, measured_types
@@ -595,7 +595,7 @@ def farthest_points(main_window, exterior_coords, frame):
     return longest_distance, farthest_point_x, farthest_point_y
 
 
-def branch_diameters(main_window, frame, samples: int) -> list[tuple[str, float, tuple, tuple]]:
+def branch_diameters(main_window, frame, samples: int) -> list[BranchMeasurement]:
     """Every side branch's diameter (mm) on `frame`, with the two ends of its line (unscaled px).
 
     A side branch is any type closed against the lumen (see closes_on_lumen), measured by
@@ -628,7 +628,8 @@ def branch_diameters(main_window, frame, samples: int) -> list[tuple[str, float,
             if measured is None:
                 continue
             diameter = measured[0] * resolution
-            diameters.append((defn.type.value, diameter, tuple(measured[1]), tuple(measured[2])))
+            start, end = ((float(p[0]), float(p[1])) for p in measured[1:])
+            diameters.append(BranchMeasurement(defn.type.value, idx, closed, diameter, start, end))
             largest = diameter if largest is None else max(largest, diameter)
         contour_obj.measurements.major_axis = largest
     return diameters

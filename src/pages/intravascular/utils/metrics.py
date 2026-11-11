@@ -16,6 +16,7 @@ from input_output.output.reports import (
 )
 
 # Internal imports based on your file structure
+from pages.intravascular.utils.branch_references import update_branch_references
 from tools.geometry import get_qt_pen
 
 # Bundled and registered in main.py; hardcoded here (rather than read from the app-wide
@@ -112,20 +113,20 @@ class MetricsMixin:
                 pen,
             )
 
-            for key, _, start, end in branches:
+            for branch in branches:
                 branch_pen = get_qt_pen('yellow', self.point_thickness * 2, self.alpha_contour)
                 self.graphics_scene.addLine(
                     QLineF(
-                        start[0] * self.scaling_factor,
-                        start[1] * self.scaling_factor,
-                        end[0] * self.scaling_factor,
-                        end[1] * self.scaling_factor,
+                        branch.start[0] * self.scaling_factor,
+                        branch.start[1] * self.scaling_factor,
+                        branch.end[0] * self.scaling_factor,
+                        branch.end[1] * self.scaling_factor,
                     ),
                     branch_pen,
                 )
 
             ell = (longest_d / shortest_d) if shortest_d else 0
-            branch_d = max((diameter for _, diameter, _, _ in branches), default=None)
+            branch_d = max((branch.diameter for branch in branches), default=None)
             self.build_frame_metrics_text(
                 lumen_area, lumen_circumf, ell, longest_d, shortest_d, eem_area, pct, branch_d, update_phase=False
             )
@@ -151,6 +152,8 @@ class MetricsMixin:
         as the user visits each frame, leaving both overviews blank in the meantime.
         """
         self.compute_all_frame_metrics()
+        if update_branch_references(self.main_window):  # needs the centroids just computed
+            self.main_window.save_contours_soon()
         try:
             self.main_window.longitudinal_view.plot_areas()
         except Exception as exc:

@@ -60,3 +60,15 @@ class ContourConfig:
     alpha: int
     n_points_contour: int
     n_interactive_points: int
+
+
+@dataclass(frozen=True)
+class BranchMeasurement:
+    """One side-branch contour's diameter on a frame (see reports.branch_diameters)."""
+
+    key: str  # its contour type id
+    index: int  # which of that type's contours on the frame
+    closed: bool  # False once it was cut at the lumen it leaves (tools.branch_arc)
+    diameter: float  # mm
+    start: Tuple[float, float]  # the diameter line's ends, unscaled px
+    end: Tuple[float, float]

@@ -24,6 +24,7 @@ from domain.intravascular.io_types import Contour, Measure, is_contour_key, sect
 from tools.knot_resampling import KnotHistory
 from domain.intravascular.undo import push_contour_snapshot
 from input_output.output.imgs_masks import closes_on_lumen, contours_to_mask, lumen_knots
+from pages.intravascular.utils.branch_references import update_branch_references
 from pages.intravascular.utils.contours_gui import refresh_overviews, step_selected_contour_knots
 from pages.intravascular.utils.metrics import MetricsMixin
 from segmentation.segment import downsample
@@ -561,7 +562,6 @@ class Display(QGraphicsView, MetricsMixin):
             if update_contours:
                 self._draw_contours_frame()
                 self._draw_measure()
-                self._draw_reference()
                 self._draw_angle_sectors()
                 self._draw_open_spline_edge_lines()
 
@@ -570,6 +570,10 @@ class Display(QGraphicsView, MetricsMixin):
                 self._maybe_compute_metrics(
                     self._first_spline_contour(ContourType.LUMEN), self._first_spline_contour(ContourType.EEM)
                 )
+                # After the metrics, which give the lumen centroid the reference is placed from.
+                if update_branch_references(self.main_window):
+                    self.main_window.save_contours_soon()
+                self._draw_reference()
                 self.update_active_contour()
             else:
                 for it in old_overlays:
@@ -1333,6 +1337,7 @@ class Display(QGraphicsView, MetricsMixin):
         fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
         if fd:
             fd.reference = None
+            fd.reference_auto = False
             self.main_window.save_contours_soon()
         self.display_image(update_contours=True)
         if self.active_segmentation_tool == SegmentationTool.OPEN_SPLINE:
@@ -1344,10 +1349,9 @@ class Display(QGraphicsView, MetricsMixin):
 
     def _handle_reference_placement(self, pos):
         """Save the reference point, then exit."""
-        self.main_window.runtime_data.frame_data_dct[self.frame].reference = (
-            pos.x() / self.scaling_factor,
-            pos.y() / self.scaling_factor,
-        )
+        fd = self.main_window.runtime_data.frame_data_dct[self.frame]
+        fd.reference = (pos.x() / self.scaling_factor, pos.y() / self.scaling_factor)
+        fd.reference_auto = False  # placed by hand, so never moved by a side branch
         self.reference_mode = False
         self.main_window.display.setCursor(Qt.CursorShape.ArrowCursor)
         self.main_window.save_contours_soon()
