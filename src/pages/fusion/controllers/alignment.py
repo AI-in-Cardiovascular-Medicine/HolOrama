@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import numpy as np
+import trimesh
 from loguru import logger
+from PyQt6.QtGui import QColor
 
 from domain.fusion import display_types as colors
 from domain.fusion.types import FusionScene
+from domain.intravascular.contour_presets import active_preset
+from domain.intravascular.types import ContourType
+from fusion_pipeline import annotations as iv_annotations
 from fusion_pipeline import branches as branch_ops
 from fusion_pipeline import geometry as geo
 from fusion_pipeline import multimodars_api as mm_api
+from input_output.output.annotations import KIND_NAMES
+from input_output.output.branch_metrics import branch_keys
 from pages.fusion.controllers.base import StageController
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
@@ -95,7 +102,82 @@ class AlignmentController(StageController):
                 viewer.add_mesh(
                     scene, f'{key}_wall', wall_mesh, color=colors.IV_WALL_COLOR, opacity=colors.IV_WALL_OPACITY
                 )
+            self._add_annotation_layers(scene, key, geom, color)
         self.left_half.refresh_toolbar(scene)
+
+    def _add_annotation_layers(self, scene: FusionScene, key: str, geom, phase_color) -> None:
+        """The phase's side branches, plaques, EEM and reference points, as moved with their frames
+        (see fusion_pipeline.annotations). Each in its intravascular preset colour, tinted by the phase."""
+        viewer = self.left_half.viewer
+        preset = active_preset()
+
+        def tinted(type_id: str | None) -> tuple[int, int, int]:
+            defn = preset.get(type_id) if type_id else None
+            base = QColor(defn.color).getRgb()[:3] if defn is not None else phase_color
+            t = colors.IV_ANNOTATION_PHASE_TINT
+            r, g, b = (int(round((1 - t) * c + t * p)) for c, p in zip(base, phase_color))
+            return r, g, b
+
+        eem = iv_annotations.contour_points(geom, 'Eem')
+        if len(eem):
+            viewer.add_points(
+                scene, f'{key}_eem', eem, color=tinted(ContourType.EEM.value), size=colors.IV_EEM_POINT_SIZE
+            )
+
+        placed = iv_annotations.placed_annotations(geom)
+        if not placed:
+            return
+        normals = iv_annotations.frame_normals(geom)
+        spacing = iv_annotations.frame_spacing(geom)
+        type_of_kind = {kind: type_id for type_id, kind in KIND_NAMES.items()}
+        branch_types = branch_keys(preset)
+        branch_color = tinted(branch_types[0] if branch_types else None)
+
+        branch = iv_annotations.region_points(placed, iv_annotations.SIDEBRANCH)
+        if len(branch):
+            viewer.add_points(scene, f'{key}_branch', branch, color=branch_color, size=colors.IV_ANNOTATION_POINT_SIZE)
+        tubes = iv_annotations.branch_tubes(placed, normals, colors.IV_BRANCH_TUBE_SECTIONS)
+        if tubes:
+            viewer.add_mesh(
+                scene,
+                f'{key}_branch_tubes',
+                trimesh.util.concatenate(tubes),
+                color=branch_color,
+                opacity=colors.IV_BRANCH_TUBE_OPACITY,
+            )
+
+        plaque_kinds = sorted(
+            {a.kind for a in placed if a.role == 'region'} - {iv_annotations.SIDEBRANCH, iv_annotations.REFERENCE}
+        )
+        for kind in plaque_kinds:
+            rng = np.random.default_rng(0)  # the same blob every time the layer is rebuilt
+            blob = iv_annotations.plaque_blob(placed, kind, normals, spacing, colors.IV_PLAQUE_POINTS_PER_MM2, rng)
+            if len(blob):
+                viewer.add_points(
+                    scene,
+                    f'{key}_{kind}',
+                    blob,
+                    color=tinted(type_of_kind.get(kind, kind)),
+                    size=colors.IV_ANNOTATION_POINT_SIZE,
+                )
+
+        references, automatic = iv_annotations.reference_points(placed)
+        if len(references):
+            viewer.add_points(
+                scene,
+                f'{key}_references',
+                references,
+                color=colors.IV_REFERENCE_COLOR,
+                size=colors.IV_REFERENCE_POINT_SIZE,
+            )
+            viewer.add_labels(
+                scene,
+                f'{key}_reference_labels',
+                references,
+                ['Ref (auto)' if auto else 'Ref' for auto in automatic],
+                color=colors.IV_REFERENCE_COLOR,
+                font_size=colors.IV_REFERENCE_LABEL_SIZE,
+            )
 
     def _selected_align_centerline(self, vessel: str, branch: int):
         """(centerline, references, selected_index) for the chosen vessel/branch. The centerline is the

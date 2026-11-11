@@ -37,6 +37,15 @@ __all__ = [
     'ALIGNED_CCTA_MESH_COLOR',
     'ALIGNED_CCTA_MESH_OPACITY',
     'BOUNDARY_RING_POINT_SIZE',
+    'IV_ANNOTATION_PHASE_TINT',
+    'IV_ANNOTATION_POINT_SIZE',
+    'IV_PLAQUE_POINTS_PER_MM2',
+    'IV_BRANCH_TUBE_OPACITY',
+    'IV_BRANCH_TUBE_SECTIONS',
+    'IV_EEM_POINT_SIZE',
+    'IV_REFERENCE_COLOR',
+    'IV_REFERENCE_POINT_SIZE',
+    'IV_REFERENCE_LABEL_SIZE',
     'CUT_MESH_COLOR',
     'CUT_MESH_OPACITY',
     'CUT_CAP_COLOR',
@@ -136,6 +145,17 @@ ALIGNED_CENTERLINE_COLOR = (0, 200, 0)  # green
 ALIGNED_CCTA_MESH_COLOR = (160, 160, 160)  # gray
 ALIGNED_CCTA_MESH_OPACITY = 0.35
 BOUNDARY_RING_POINT_SIZE = 8.0
+# Intravascular annotations (side branches, plaques, EEM, references), in their preset colour
+# mixed with the phase colour by IV_ANNOTATION_PHASE_TINT (0 = preset colour, 1 = phase colour)
+IV_ANNOTATION_PHASE_TINT = 0.35
+IV_ANNOTATION_POINT_SIZE = 3.0
+IV_PLAQUE_POINTS_PER_MM2 = 40.0  # density of the filled plaque blobs
+IV_BRANCH_TUBE_OPACITY = 0.7
+IV_BRANCH_TUBE_SECTIONS = 24
+IV_EEM_POINT_SIZE = 2.0
+IV_REFERENCE_COLOR = (255, 255, 0)  # yellow, as on the intravascular page
+IV_REFERENCE_POINT_SIZE = 12.0
+IV_REFERENCE_LABEL_SIZE = 14
 
 # Inlets & Outlets
 CUT_MESH_COLOR = (220, 220, 220)  # light gray

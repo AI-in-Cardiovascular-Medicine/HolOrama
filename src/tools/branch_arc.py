@@ -12,7 +12,7 @@ import numpy as np
 from tools.spline import sample_spline
 
 
-def _inside(points: np.ndarray, polygon: np.ndarray) -> np.ndarray:
+def inside_polygon(points: np.ndarray, polygon: np.ndarray) -> np.ndarray:
     """Even-odd test of `points` (N, 2) against the closed `polygon` (M, 2)."""
     x0, y0 = polygon[:, 0], polygon[:, 1]
     x1, y1 = np.roll(x0, -1), np.roll(y0, -1)
@@ -67,7 +67,7 @@ def trim_outside_lumen(
     branch = np.column_stack(sample_spline(xs, ys, True, samples))[:-1]  # the last sample repeats the first
     lumen = np.column_stack(sample_spline(lumen_xs, lumen_ys, True, samples))[:-1]
 
-    outside = ~_inside(branch, lumen)
+    outside = ~inside_polygon(branch, lumen)
     if outside.all() or not outside.any():
         return None
 
