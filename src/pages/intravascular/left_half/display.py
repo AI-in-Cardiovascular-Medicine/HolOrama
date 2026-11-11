@@ -1171,7 +1171,11 @@ class Display(QGraphicsView, MetricsMixin):
         if lumen is None:
             return
         xs, ys = contour_obj.contours[index][0], contour_obj.contours[index][1]
-        arc = trim_outside_lumen(xs, ys, lumen[0], lumen[1], self.knots_for(ct))
+        try:  # called mid mouse release, which must still finish
+            arc = trim_outside_lumen(xs, ys, lumen[0], lumen[1], self.n_points_contour, self.knot_count_range)
+        except Exception as e:
+            logger.warning(f'Could not trim {ct.value} to the lumen on frame {self.frame + 1}: {e}')
+            return
         if arc is None:
             return
         contour_obj.contours[index] = [arc[0], arc[1]]

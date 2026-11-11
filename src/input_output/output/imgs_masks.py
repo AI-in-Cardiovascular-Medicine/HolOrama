@@ -318,8 +318,10 @@ def _lumen_closed_mask(contour_obj, lumen_obj, lumen_mask, image_shape):
             if is_closed or lumen is None:
                 combined |= _closed_polygon_mask(xs, ys, image_shape)
                 continue
-            px, py = close_against_lumen(xs, ys, lumen[0], lumen[1])
-            combined |= _polygon_mask(np.column_stack([py, px]), image_shape) & ~lumen_mask
+            arc = np.column_stack(_smooth_contour(xs, ys, is_closed=False))
+            border = np.column_stack(_smooth_contour(lumen[0], lumen[1], is_closed=True))
+            polygon = close_against_lumen(arc, border)
+            combined |= _polygon_mask(polygon[:, ::-1], image_shape) & ~lumen_mask
         except Exception:
             continue
     return combined
