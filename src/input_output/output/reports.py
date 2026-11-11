@@ -1,7 +1,6 @@
 import csv
 import math
 import os
-from itertools import combinations
 
 import numpy as np
 import pandas as pd
@@ -13,9 +12,10 @@ from shapely.geometry import Polygon
 from domain.intravascular.types import ContourType
 from domain.intravascular.contour_presets import active_preset
 from domain.intravascular.io_types import iter_sectors
-from input_output.output.imgs_masks import frame_region_metrics, measured_types
+from input_output.output.imgs_masks import closes_on_lumen, frame_region_metrics, lumen_knots, measured_types
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
 from tools.angle import combined_sweep
+from tools.branch_arc import branch_diameter, farthest_pair
 
 
 def _pullback_positions(main_window) -> np.ndarray:
@@ -404,6 +404,17 @@ def compute_all(main_window, contoured_frames, progress=None, save_as_csv=True):
     for column, values in region_columns.items():
         report_data[column] = values
 
+    # Each side branch's largest diameter on the frame, stored on its contour by branch_diameters.
+    for frame in contoured_frames:
+        branch_diameters(main_window, frame, main_window.display.n_points_contour)
+    preset = active_preset()
+    for defn in preset.spline_types:
+        if closes_on_lumen(defn, preset):
+            report_data[f'{defn.type.value}_diameter'] = [
+                main_window.runtime_data.frame_data_dct[frame].contour(defn.type).measurements.major_axis
+                for frame in contoured_frames
+            ]
+
     # The hand measurements come last of the per-frame columns, ahead of the pullback's own
     # parameters that report() appends after them.
     for index in (1, 2):
@@ -552,14 +563,13 @@ def compute_polygon_metrics(main_window, polygon, frame):
 
 
 def farthest_points(main_window, exterior_coords, frame):
-    max_distance: float = 0
+    points = np.asarray(exterior_coords, dtype=float)
+    max_distance = 0.0
     farthest_points = None
-
-    for point1, point2 in combinations(exterior_coords, 2):
-        distance = math.dist(point1, point2)
-        if distance > max_distance:
-            max_distance = distance
-            farthest_points = (point1, point2)
+    if len(points) >= 2:
+        max_distance, point1, point2 = farthest_pair(points)
+        if max_distance > 0:
+            farthest_points = (tuple(point1), tuple(point2))
 
     longest_distance = max_distance * main_window.runtime_data.metadata['resolution']
 
@@ -583,6 +593,45 @@ def farthest_points(main_window, exterior_coords, frame):
         )
 
     return longest_distance, farthest_point_x, farthest_point_y
+
+
+def branch_diameters(main_window, frame, samples: int) -> list[tuple[str, float, tuple, tuple]]:
+    """Every side branch's diameter (mm) on `frame`, with the two ends of its line (unscaled px).
+
+    A side branch is any type closed against the lumen (see closes_on_lumen), measured by
+    tools.branch_arc.branch_diameter on splines sampled at `samples` points. Each type's
+    largest is stored as its measurements.major_axis, None if it has no contour to measure.
+    """
+    fd = main_window.runtime_data.frame_data_dct.get(frame)
+    if fd is None:
+        return []
+    preset = active_preset()
+    resolution = main_window.runtime_data.metadata['resolution']
+    lumen = lumen_knots(fd.lumen)
+    lumen_xs, lumen_ys = lumen if lumen is not None else (None, None)
+
+    diameters = []
+    for defn in preset.spline_types:
+        if not closes_on_lumen(defn, preset):
+            continue
+        contour_obj = fd.contour(defn.type)
+        largest = None
+        for idx, entry in enumerate(contour_obj.contours):
+            if not entry or not entry[0]:
+                continue
+            closed = contour_obj.closed[idx] if idx < len(contour_obj.closed) else True
+            try:
+                measured = branch_diameter(entry[0], entry[1], closed, lumen_xs, lumen_ys, fd.centroid, samples)
+            except Exception as exc:
+                logger.debug(f'Frame {frame}: {defn.type.value} diameter failed: {exc}')
+                continue
+            if measured is None:
+                continue
+            diameter = measured[0] * resolution
+            diameters.append((defn.type.value, diameter, tuple(measured[1]), tuple(measured[2])))
+            largest = diameter if largest is None else max(largest, diameter)
+        contour_obj.measurements.major_axis = largest
+    return diameters
 
 
 def closest_points(main_window, polygon, frame):

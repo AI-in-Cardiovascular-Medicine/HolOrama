@@ -23,7 +23,7 @@ from domain.intravascular.display_types import BRUSH_DEFAULT_RADIUS_PX, BRUSH_FO
 from domain.intravascular.io_types import Contour, Measure, is_contour_key, sector_points, set_sector_points
 from tools.knot_resampling import KnotHistory
 from domain.intravascular.undo import push_contour_snapshot
-from input_output.output.imgs_masks import closes_on_lumen, contours_to_mask
+from input_output.output.imgs_masks import closes_on_lumen, contours_to_mask, lumen_knots
 from pages.intravascular.utils.contours_gui import refresh_overviews, step_selected_contour_knots
 from pages.intravascular.utils.metrics import MetricsMixin
 from segmentation.segment import downsample
@@ -1167,7 +1167,7 @@ class Display(QGraphicsView, MetricsMixin):
         is_closed = contour_obj.closed[index] if index < len(contour_obj.closed) else True
         if index >= len(contour_obj.contours) or not is_closed:
             return
-        lumen = next((e for e in fd.lumen.contours if e and len(e[0]) >= 3), None)
+        lumen = lumen_knots(fd.lumen)
         if lumen is None:
             return
         xs, ys = contour_obj.contours[index][0], contour_obj.contours[index][1]

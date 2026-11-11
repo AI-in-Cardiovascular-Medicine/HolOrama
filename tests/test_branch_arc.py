@@ -7,7 +7,7 @@ import yaml
 
 from domain.intravascular.io_types import Contour, FrameData
 from input_output.output.imgs_masks import contours_to_mask
-from tools.branch_arc import trim_outside_lumen
+from tools.branch_arc import branch_diameter, trim_outside_lumen
 
 with open(Path(__file__).resolve().parents[1] / 'src' / 'config.yaml', encoding='utf-8') as _f:
     _CONFIG = yaml.safe_load(_f)['intravascular']
@@ -54,3 +54,21 @@ def test_open_arc_fills_like_the_closed_branch():
     opened = _mask(trim_outside_lumen(*BRANCH, *LUMEN, SAMPLES, KNOT_RANGE), False)
     assert ((closed == BRANCH_LABEL) ^ (opened == BRANCH_LABEL)).sum() < 20
     assert ((closed == LUMEN_LABEL) == (opened == LUMEN_LABEL)).all()
+
+
+def test_closed_branch_diameter_is_its_longest_distance():
+    diameter, start, end = branch_diameter(*BRANCH, True, *LUMEN, (250, 250), SAMPLES)
+    assert abs(diameter - 80) < 0.5
+    assert abs(np.hypot(*(start - end)) - diameter) < 1e-9
+
+
+def test_open_branch_diameter_is_the_widest_chord_across_the_axis():
+    arc = trim_outside_lumen(*BRANCH, *LUMEN, SAMPLES, KNOT_RANGE)
+    diameter, start, end = branch_diameter(*arc, False, *LUMEN, (250, 250), SAMPLES)
+    assert abs(diameter - 80) < 1.0
+    assert abs(start[0] - end[0]) < 1e-6  # orthogonal to the horizontal axis lumen centroid -> arc middle
+
+
+def test_open_branch_without_a_lumen_has_no_diameter():
+    arc = trim_outside_lumen(*BRANCH, *LUMEN, SAMPLES, KNOT_RANGE)
+    assert branch_diameter(*arc, False, None, None, None, SAMPLES) is None

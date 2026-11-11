@@ -84,7 +84,7 @@ def main_window(tmp_path):
     return SimpleNamespace(
         image_displayed=True,
         runtime_data=runtime,
-        display=SimpleNamespace(get_full_contour_list=get_full_contour_list),
+        display=SimpleNamespace(get_full_contour_list=get_full_contour_list, n_points_contour=200),
         config=SimpleNamespace(report=SimpleNamespace(save_as_csv=False, plot=False)),
         file_name=str(tmp_path / 'case'),
     )

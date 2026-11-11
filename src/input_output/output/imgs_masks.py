@@ -10,7 +10,7 @@ from domain.intravascular.types import ContourType
 from domain.intravascular.contour_presets import ContourPreset, ContourTypeDef, active_preset
 from domain.intravascular.io_types import iter_sectors
 from tools.angle import contains_angle, sector_from_points
-from tools.branch_arc import close_against_lumen
+from tools.branch_arc import branch_region
 from tools.spline import sample_spline
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
@@ -301,13 +301,19 @@ def closes_on_lumen(defn: ContourTypeDef, preset: ContourPreset) -> bool:
     return lumen is not None and defn.layer < lumen.layer
 
 
+def lumen_knots(lumen_obj) -> tuple[list[float], list[float]] | None:
+    """The knots of a frame's lumen contour, None while it has none to close a branch against."""
+    return next(((e[0], e[1]) for e in lumen_obj.contours if e and len(e[0]) >= 3), None)
+
+
 def _lumen_closed_mask(contour_obj, lumen_obj, lumen_mask, image_shape):
     """Mask of a type whose open arcs are closed against the lumen border (see closes_on_lumen).
 
     A closed contour is filled as drawn. An open one fills the strip between it and the
     lumen, or just its own chord while no lumen is drawn.
     """
-    lumen = next((e for e in lumen_obj.contours if e and len(e[0]) >= 3), None)
+    lumen = lumen_knots(lumen_obj)
+    lumen_xs, lumen_ys = lumen if lumen is not None else (None, None)
     combined = np.zeros(image_shape, dtype=bool)
     for idx, entry in enumerate(contour_obj.contours):
         try:
@@ -315,13 +321,9 @@ def _lumen_closed_mask(contour_obj, lumen_obj, lumen_mask, image_shape):
             if not xs or not ys:
                 continue
             is_closed = contour_obj.closed[idx] if idx < len(contour_obj.closed) else True
-            if is_closed or lumen is None:
-                combined |= _closed_polygon_mask(xs, ys, image_shape)
-                continue
-            arc = np.column_stack(_smooth_contour(xs, ys, is_closed=False))
-            border = np.column_stack(_smooth_contour(lumen[0], lumen[1], is_closed=True))
-            polygon = close_against_lumen(arc, border)
-            combined |= _polygon_mask(polygon[:, ::-1], image_shape) & ~lumen_mask
+            polygon = branch_region(xs, ys, is_closed, lumen_xs, lumen_ys, _N_INTERP)
+            region = _polygon_mask(polygon[:, ::-1], image_shape)
+            combined |= region if is_closed else region & ~lumen_mask
         except Exception:
             continue
     return combined

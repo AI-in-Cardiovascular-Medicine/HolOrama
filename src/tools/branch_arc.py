@@ -106,3 +106,113 @@ def close_against_lumen(arc: np.ndarray, lumen: np.ndarray) -> np.ndarray:
     forward = (i_end + np.arange((i_start - i_end) % n + 1)) % n
     backward = (i_end - np.arange((i_end - i_start) % n + 1)) % n
     return min((np.vstack([arc, lumen[path]]) for path in (forward, backward)), key=_area)
+
+
+def branch_region(
+    xs: Sequence[float],
+    ys: Sequence[float],
+    closed: bool,
+    lumen_xs: Sequence[float] | None,
+    lumen_ys: Sequence[float] | None,
+    samples: int,
+) -> np.ndarray:
+    """Closed polygon (N, 2) a branch contour fills, splines sampled at `samples` points.
+
+    A closed contour is its own polygon. An open arc is closed against the lumen (see
+    close_against_lumen), or by its own chord while there is no lumen.
+    """
+    arc = np.column_stack(sample_spline(xs, ys, closed, samples))
+    if closed or lumen_xs is None or lumen_ys is None or len(lumen_xs) < 3:
+        return arc
+    lumen = np.column_stack(sample_spline(lumen_xs, lumen_ys, True, samples))
+    return close_against_lumen(arc, lumen)
+
+
+def farthest_pair(points: np.ndarray) -> tuple[float, np.ndarray, np.ndarray]:
+    """Longest distance between any two of `points` (N, 2), and those two points."""
+    diff = points[:, None, :] - points[None, :, :]
+    dist = np.hypot(diff[..., 0], diff[..., 1])
+    i, j = np.unravel_index(int(np.argmax(dist)), dist.shape)
+    return float(dist[i, j]), points[i], points[j]
+
+
+def orthogonal_width(
+    region: np.ndarray, origin: np.ndarray, tip: np.ndarray, samples: int
+) -> tuple[float, np.ndarray, np.ndarray] | None:
+    """Widest chord across `region` orthogonal to the axis origin->tip, and its two ends.
+
+    Chords are laid at `samples` positions along the axis, over the region's whole extent
+    along it. Each is measured inside the region only, so a chord crossing a dent counts
+    its longest inside stretch. None if the axis has no direction.
+    """
+    axis = tip - origin
+    norm = float(np.hypot(*axis))
+    if norm == 0:
+        return None
+    d = axis / norm
+    n = np.array([-d[1], d[0]])
+    rel = region - origin
+    u, v = rel @ d, rel @ n
+    u1, v1 = np.roll(u, -1), np.roll(v, -1)
+
+    best: tuple[float, float, float, float] | None = None  # width, u, v_from, v_to
+    for pos in np.linspace(u.min(), u.max(), samples)[1:-1]:
+        straddles = (u <= pos) != (u1 <= pos)
+        if not straddles.any():
+            continue
+        vs = np.sort(
+            v[straddles] + (pos - u[straddles]) * (v1[straddles] - v[straddles]) / (u1[straddles] - u[straddles])
+        )
+        widths = vs[1::2] - vs[0::2][: len(vs) // 2]
+        if not len(widths):
+            continue
+        k = int(np.argmax(widths))
+        if best is None or widths[k] > best[0]:
+            best = (
+                float(widths[k]),
+                float(pos),
+                float(vs[2 * k]),
+                float(vs[2 * k + 1]),
+            )
+    if best is None:
+        return None
+    width, pos, v_from, v_to = best
+    return width, origin + pos * d + v_from * n, origin + pos * d + v_to * n
+
+
+def branch_diameter(
+    xs: Sequence[float],
+    ys: Sequence[float],
+    closed: bool,
+    lumen_xs: Sequence[float] | None,
+    lumen_ys: Sequence[float] | None,
+    centroid: tuple[float, float] | None,
+    samples: int,
+) -> tuple[float, np.ndarray, np.ndarray] | None:
+    """A side branch's diameter in pixels and the two ends of the line it is measured on.
+
+    Closed: its longest distance, as the lumen's. Open: the widest chord across the region it
+    fills, orthogonal to the axis from the lumen `centroid` to the middle of the arc (see
+    orthogonal_width). None for an open arc without a lumen to close it against.
+    """
+    if len(xs) < (3 if closed else 2):
+        return None
+    region = branch_region(xs, ys, closed, lumen_xs, lumen_ys, samples)
+    if closed:
+        return farthest_pair(region)
+    if lumen_xs is None or lumen_ys is None or len(lumen_xs) < 3:
+        return None
+    if centroid is None:
+        lumen = np.column_stack(sample_spline(lumen_xs, lumen_ys, True, samples))
+        origin = lumen.mean(axis=0)
+    else:
+        origin = np.asarray(centroid, dtype=float)
+    arc = np.column_stack(sample_spline(xs, ys, False, samples))
+    length = _length(arc)
+    middle = np.array(
+        [
+            np.interp(length[-1] / 2, length, arc[:, 0]),
+            np.interp(length[-1] / 2, length, arc[:, 1]),
+        ]
+    )
+    return orthogonal_width(region, origin, middle, samples)
