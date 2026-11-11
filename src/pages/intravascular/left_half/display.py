@@ -23,7 +23,7 @@ from domain.intravascular.display_types import BRUSH_DEFAULT_RADIUS_PX, BRUSH_FO
 from domain.intravascular.io_types import Contour, Measure, is_contour_key, sector_points, set_sector_points
 from tools.knot_resampling import KnotHistory
 from domain.intravascular.undo import push_contour_snapshot
-from input_output.output.imgs_masks import contours_to_mask
+from input_output.output.imgs_masks import closes_on_lumen, contours_to_mask
 from pages.intravascular.utils.contours_gui import refresh_overviews, step_selected_contour_knots
 from pages.intravascular.utils.metrics import MetricsMixin
 from segmentation.segment import downsample
@@ -46,6 +46,7 @@ from tools.geometry import (
     SplineGeometry,
     get_qt_pen,
 )
+from tools.branch_arc import trim_outside_lumen
 from tools.painting import BrushCursor
 
 
@@ -1143,11 +1144,40 @@ class Display(QGraphicsView, MetricsMixin):
                         pass
                 lst = self._ensure_finalized_list_for_key(key, self.active_contour_index + 1)
                 lst[self.active_contour_index] = self.working_spline
+                self._trim_over_lumen(self.active_contour_index)
 
             self._interrupt_drawing_mode()
             self.main_window.save_contours_soon()
 
             refresh_overviews(self.main_window)
+
+    def _trim_over_lumen(self, index: int) -> None:
+        """Cut closed contour `index` of the active type to the open arc outside the lumen, if it crosses it.
+
+        Only for types closed against the lumen (a side branch, see closes_on_lumen). The arc ends on
+        the crossings with the lumen as it is now, and its region is filled back to the lumen border.
+        """
+        ct = self.active_contour_type
+        preset = active_preset()
+        defn = preset.get(ct)
+        fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
+        if defn is None or fd is None or not closes_on_lumen(defn, preset):
+            return
+        contour_obj = fd.contour(self.contour_key(ct))
+        is_closed = contour_obj.closed[index] if index < len(contour_obj.closed) else True
+        if index >= len(contour_obj.contours) or not is_closed:
+            return
+        lumen = next((e for e in fd.lumen.contours if e and len(e[0]) >= 3), None)
+        if lumen is None:
+            return
+        xs, ys = contour_obj.contours[index][0], contour_obj.contours[index][1]
+        arc = trim_outside_lumen(xs, ys, lumen[0], lumen[1], self.knots_for(ct))
+        if arc is None:
+            return
+        contour_obj.contours[index] = [arc[0], arc[1]]
+        contour_obj.closed[index] = False
+        contour_obj.sync_open_ends(index)
+        self._base_mask_cache = None
 
     ################################################################################################
     # measure and reference point, to be refactored into contour manipulation methods
@@ -2017,6 +2047,7 @@ class Display(QGraphicsView, MetricsMixin):
                 if self.active_point.color == self.end_color and ci < len(contour_obj.end_coords):
                     if label_idx is not None and label_idx < len(contour_obj.end_coords[ci]):
                         contour_obj.end_coords[ci][label_idx] = new_val
+                self._trim_over_lumen(ci)
 
                 mask_active = (
                     getattr(self.main_window, 'mask_mode_box', None) and self.main_window.mask_mode_box.isChecked()

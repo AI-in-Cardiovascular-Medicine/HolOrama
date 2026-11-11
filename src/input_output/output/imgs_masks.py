@@ -10,6 +10,7 @@ from domain.intravascular.types import ContourType
 from domain.intravascular.contour_presets import ContourPreset, ContourTypeDef, active_preset
 from domain.intravascular.io_types import iter_sectors
 from tools.angle import contains_angle, sector_from_points
+from tools.branch_arc import close_against_lumen
 from tools.spline import sample_spline
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
@@ -287,6 +288,43 @@ def _contained_mask(contour_obj, centroid_x, centroid_y, image_shape, lumen_mask
     return combined if in_lumen else combined & ~lumen_mask
 
 
+def closes_on_lumen(defn: ContourTypeDef, preset: ContourPreset) -> bool:
+    """Whether an open contour of this type is closed against the lumen (a side branch).
+
+    True for a spline type lying in nothing, other than the lumen and the EEM, layered under
+    the lumen. It has no container to fill outwards to, so its open arc fills inwards to the
+    lumen instead. Being under the lumen, its part inside the lumen never shows anyway.
+    """
+    if defn.inside is not None or defn.is_angle or defn.type in (ContourType.LUMEN, ContourType.EEM):
+        return False
+    lumen = preset.get(ContourType.LUMEN)
+    return lumen is not None and defn.layer < lumen.layer
+
+
+def _lumen_closed_mask(contour_obj, lumen_obj, lumen_mask, image_shape):
+    """Mask of a type whose open arcs are closed against the lumen border (see closes_on_lumen).
+
+    A closed contour is filled as drawn. An open one fills the strip between it and the
+    lumen, or just its own chord while no lumen is drawn.
+    """
+    lumen = next((e for e in lumen_obj.contours if e and len(e[0]) >= 3), None)
+    combined = np.zeros(image_shape, dtype=bool)
+    for idx, entry in enumerate(contour_obj.contours):
+        try:
+            xs, ys = entry[0], entry[1]
+            if not xs or not ys:
+                continue
+            is_closed = contour_obj.closed[idx] if idx < len(contour_obj.closed) else True
+            if is_closed or lumen is None:
+                combined |= _closed_polygon_mask(xs, ys, image_shape)
+                continue
+            px, py = close_against_lumen(xs, ys, lumen[0], lumen[1])
+            combined |= _polygon_mask(np.column_stack([py, px]), image_shape) & ~lumen_mask
+        except Exception:
+            continue
+    return combined
+
+
 def _contour_obj_to_mask(contour_obj, centroid_x, centroid_y, image_shape):
     """
     Convert a Contour dataclass to a boolean mask.
@@ -405,6 +443,8 @@ def _frame_regions(frame_data, image_shape, preset: ContourPreset) -> dict[str, 
         contour_obj = frame_data.contour(key)
         if defn.is_angle:
             mask = _angle_sector_mask(contour_obj, image_shape, height / 2.0, width / 2.0)
+        elif closes_on_lumen(defn, preset):
+            mask = _lumen_closed_mask(contour_obj, frame_data.lumen, lumen_mask, image_shape)
         elif defn.inside is None:
             mask = _contour_obj_to_mask(contour_obj, cx, cy, image_shape)
         elif not contour_obj.contours:
