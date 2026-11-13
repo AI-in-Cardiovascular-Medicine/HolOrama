@@ -49,13 +49,11 @@ def test_eem_comes_from_its_extra():
     assert iv.contour_points(_geometry(), 'Wall').shape == (0, 3)
 
 
-def test_case_references_and_their_default(tmp_path):
+def test_case_references_with_their_auto_flag(tmp_path):
     (tmp_path / 'systolic_reference_points.csv').write_text('89\t1\t2\t3\t1\n368\t4\t5\t6\t0\n')
     (tmp_path / 'tagged_reference_points.csv').write_text('7\t1\t2\t3\n')  # no auto column, as before
     systolic = iv.read_case_references(str(tmp_path), 'systolic')
     assert systolic == [iv.CaseReference(89, True), iv.CaseReference(368, False)]
-    assert iv.default_reference(systolic) == 368  # the first placed by hand, not the first row
-    assert iv.default_reference([iv.CaseReference(89, True)]) == 89
     assert iv.read_case_references(str(tmp_path), 'tagged') == [iv.CaseReference(7, False)]
     assert iv.read_case_references(str(tmp_path), 'diastolic') == []
 

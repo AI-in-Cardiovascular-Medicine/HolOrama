@@ -15,13 +15,17 @@ def column(qt_app, tmp_path):
     return widget
 
 
-def test_each_phase_lists_its_references_and_defaults_to_the_first_placed_by_hand(column):
+def test_each_phase_lists_its_references_and_defaults_to_multimodars_most_proximal(column):
     plan = column.load_plan()
-    assert (plan['dia_reference_frame'], plan['sys_reference_frame']) == (408, 368)
+    assert (plan['dia_reference_frame'], plan['sys_reference_frame']) == (None, None)  # multimodars decides
     combo = column._sys_ref_combo
-    assert [combo.itemText(i) for i in range(combo.count())] == ['Frame 89 (auto)', 'Frame 368 (by hand)']
+    assert [combo.itemText(i) for i in range(combo.count())] == [
+        'Most proximal (default)',
+        'Frame 89 (auto)',
+        'Frame 368 (by hand)',
+    ]
 
-    combo.setCurrentIndex(0)
+    combo.setCurrentIndex(1)
     assert column.load_plan()['sys_reference_frame'] == 89
 
 

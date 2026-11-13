@@ -179,13 +179,21 @@ class AlignmentController(StageController):
 
         references, status = iv_annotations.reference_points(geom, self._auto_frames.get(phase_key, set()))
         if len(references):
-            viewer.add_points(
-                scene,
-                f'{key}_references',
-                references,
-                color=colors.IV_REFERENCE_COLOR,
-                size=colors.IV_REFERENCE_POINT_SIZE,
-            )
+            # The master is highlighted on its own, like the selected reference of the vessel tree.
+            is_master = np.array([kind == 'master' for kind in status])
+            for layer, points, color, size in (
+                ('references', references[~is_master], colors.IV_REFERENCE_COLOR, colors.IV_REFERENCE_POINT_SIZE),
+                (
+                    'master_reference',
+                    references[is_master],
+                    colors.IV_MASTER_REFERENCE_COLOR,
+                    colors.SELECTED_REF_POINT_SIZE,
+                ),
+            ):
+                if len(points):
+                    viewer.add_points(scene, f'{key}_{layer}', points, color=color, size=size)
+                else:
+                    viewer.remove_layer(scene, f'{key}_{layer}')
             viewer.add_labels(
                 scene,
                 f'{key}_reference_labels',

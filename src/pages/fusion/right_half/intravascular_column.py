@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from fusion_pipeline.annotations import CaseReference, default_reference, read_case_references
+from fusion_pipeline.annotations import CaseReference, read_case_references
 from pages.fusion.widgets import row
 
 
@@ -322,7 +322,8 @@ class IntravascularColumn(QWidget):
         }
 
     def _refresh_load_references(self, *_) -> None:
-        """List each phase's references of the chosen case folder, preselecting the default anchor."""
+        """List each phase's references of the chosen case folder after multimodars' default (the most
+        proximal), which is preselected."""
         folder = self._input_path_edit.text()
         for phase, combo in (
             ('diastolic', self._dia_ref_combo),
@@ -330,7 +331,7 @@ class IntravascularColumn(QWidget):
             ('tagged', self._oct_ref_combo),
         ):
             references = read_case_references(folder, phase) if folder else []
-            _fill_references(combo, references, default_reference(references))
+            _fill_references(combo, references, None, default_item=_MOST_PROXIMAL)
 
     def set_pullback_references(self, references: list[CaseReference], anchor: int | None) -> None:
         """The loaded pullback's references for Align to Centerline, its load `anchor` (a frame) preselected."""
@@ -475,16 +476,21 @@ class IntravascularColumn(QWidget):
 
 
 _ANCHOR_TIP = (
-    'The reference this phase is loaded around: diastole and systole are paired and trimmed to\n'
-    'their overlap at it, and turned so it points right. Pick the same landmark in both phases.\n'
-    'Defaults to the first reference placed by hand.'
+    'The reference this phase is loaded around: diastole and systole are paired at it, and turned\n'
+    'so it points right. Pick the same landmark in both phases. Defaults to the most proximal one.'
 )
+_MOST_PROXIMAL = 'Most proximal (default)'
 
 
-def _fill_references(combo: QComboBox, references: list[CaseReference], selected: int | None) -> None:
-    """One item per reference (data: its frame), `selected` preselected, without emitting."""
+def _fill_references(
+    combo: QComboBox, references: list[CaseReference], selected: int | None, default_item: str | None = None
+) -> None:
+    """One item per reference (data: its frame), after `default_item` (data None) if given, `selected`
+    preselected (the default item when None), without emitting."""
     combo.blockSignals(True)
     combo.clear()
+    if default_item is not None and references:
+        combo.addItem(default_item, None)
     for reference in references:
         combo.addItem(f'Frame {reference.frame} ({"auto" if reference.auto else "by hand"})', reference.frame)
     combo.setEnabled(bool(references))

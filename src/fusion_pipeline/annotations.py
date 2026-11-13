@@ -79,14 +79,6 @@ def read_case_references(folder: str, phase: str) -> list[CaseReference]:
     return [CaseReference(int(float(row[0])), len(row) > 4 and row[4].strip() == '1') for row in rows]
 
 
-def default_reference(references: list[CaseReference]) -> int | None:
-    """The reference preselected as master: the first placed by hand, else the first."""
-    for reference in references:
-        if not reference.auto:
-            return reference.frame
-    return references[0].frame if references else None
-
-
 def read_case_structures(folder: str, phase: str) -> dict[str, np.ndarray] | None:
     """Every `{type}_{phase}_contours.csv` that is not a pipe, as numpy_to_inputdata takes it:
     type -> rows [frame, x, y, z, contour, closed]. None if the phase has none.
