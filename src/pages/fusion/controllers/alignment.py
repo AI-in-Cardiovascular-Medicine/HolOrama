@@ -139,8 +139,10 @@ class AlignmentController(StageController):
     def _add_annotation_layers(self, scene: FusionScene, key: str, geom, phase_color, phase_key: str) -> None:
         """The phase's EEM, structures (side branches, calcium, ...) and reference points, as moved with
         their frames (see fusion_pipeline.annotations). Each in its intravascular preset colour, tinted by
-        the phase. In-wall structures also get a mesh, hidden until switched on."""
+        the phase. In-wall structures are shown as a mesh, their cloud hidden behind it. The aligned scene
+        starts with only the meshes, side branches and master reference, the rest can be switched on."""
         viewer = self.left_half.viewer
+        everything = scene != FusionScene.INTRAVASCULAR_ALIGNED
         preset = active_preset()
         type_of_kind = {kind: type_id for type_id, kind in KIND_NAMES.items()}
 
@@ -154,7 +156,12 @@ class AlignmentController(StageController):
         eem = iv_annotations.contour_points(geom, 'Eem')
         if len(eem):
             viewer.add_points(
-                scene, f'{key}_eem', eem, color=tinted(ContourType.EEM.value), size=colors.IV_EEM_POINT_SIZE
+                scene,
+                f'{key}_eem',
+                eem,
+                color=tinted(ContourType.EEM.value),
+                size=colors.IV_EEM_POINT_SIZE,
+                visible=everything,
             )
 
         for kind, points in sorted(iv_annotations.structure_points(geom).items()):
@@ -183,17 +190,24 @@ class AlignmentController(StageController):
         if len(references):
             # The master is highlighted on its own, like the selected reference of the vessel tree.
             is_master = np.array([kind == 'master' for kind in status])
-            for layer, points, color, size in (
-                ('references', references[~is_master], colors.IV_REFERENCE_COLOR, colors.IV_REFERENCE_POINT_SIZE),
+            for layer, points, color, size, visible in (
+                (
+                    'references',
+                    references[~is_master],
+                    colors.IV_REFERENCE_COLOR,
+                    colors.IV_REFERENCE_POINT_SIZE,
+                    everything,
+                ),
                 (
                     'master_reference',
                     references[is_master],
                     colors.IV_MASTER_REFERENCE_COLOR,
                     colors.SELECTED_REF_POINT_SIZE,
+                    True,
                 ),
             ):
                 if len(points):
-                    viewer.add_points(scene, f'{key}_{layer}', points, color=color, size=size)
+                    viewer.add_points(scene, f'{key}_{layer}', points, color=color, size=size, visible=visible)
                 else:
                     viewer.remove_layer(scene, f'{key}_{layer}')
             viewer.add_labels(
@@ -203,6 +217,7 @@ class AlignmentController(StageController):
                 [_REFERENCE_LABELS[kind] for kind in status],
                 color=colors.IV_REFERENCE_COLOR,
                 font_size=colors.IV_REFERENCE_LABEL_SIZE,
+                visible=everything,
             )
 
     def _selected_align_centerline(self, vessel: str, branch: int):
@@ -372,6 +387,7 @@ class AlignmentController(StageController):
             np.array(source_centerline.points_as_tuples()),
             color=colors.ALIGNED_CENTERLINE_COLOR,
             size=colors.POINT_SIZE,
+            visible=False,
         )
         viewer.add_points(
             FusionScene.INTRAVASCULAR_ALIGNED,
@@ -379,6 +395,7 @@ class AlignmentController(StageController):
             np.array([ostium_point]),
             color=colors.TREE_REF_COLORS[0],
             size=colors.SELECTED_REF_POINT_SIZE,
+            visible=False,
         )
         # geom_a/geom_b are assumed diastole/systole (load_plan label order) to match the colors.
         self._add_geometry_pair_meshes(FusionScene.INTRAVASCULAR_ALIGNED, self.data.aligned, 'aligned_geom')
@@ -396,6 +413,7 @@ class AlignmentController(StageController):
             self.data.results['mesh'],
             color=colors.ALIGNED_CCTA_MESH_COLOR,
             opacity=colors.ALIGNED_CCTA_MESH_OPACITY,
+            visible=False,
         )
         self._refresh_boundary_rings()
         self.left_half.refresh_toolbar(FusionScene.INTRAVASCULAR_ALIGNED)
@@ -423,7 +441,7 @@ class AlignmentController(StageController):
                     points,
                     color=color,
                     size=colors.BOUNDARY_RING_POINT_SIZE,
-                    visible=was_visible.get(key, True),
+                    visible=was_visible.get(key, False),
                 )
             ring_number += 1
 
