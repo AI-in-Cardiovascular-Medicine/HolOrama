@@ -82,18 +82,3 @@ class BranchRun:
     widest: Dict[int, BranchMeasurement]  # per frame, its widest branch leaving the lumen
     reference_frame: int  # the frame where that branch is widest
     landmark: Tuple[float, float]  # where its reference point goes on that frame, unscaled px
-
-
-@dataclass(frozen=True)
-class FrameAnnotation:
-    """One annotation of a frame as exported for multimodars (see input_output.output.annotations).
-
-    `kind` and `role` are multimodars' AnnotationKind / AnnotationRole names, a kind it does not
-    know is kept as a custom one. Points are unscaled px (x, y).
-    """
-
-    frame: int
-    kind: str
-    role: str
-    group: int
-    points: Tuple[Tuple[float, float], ...]

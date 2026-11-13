@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from fusion_pipeline.annotations import CaseReference, default_reference, read_case_references
 from pages.fusion.widgets import row
 
 
@@ -33,6 +34,7 @@ class IntravascularColumn(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._default_dir: str = ''
+        self._pullback_anchor: int | None = None  # the loaded pullback's anchor frame
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 6, 8, 8)
@@ -93,18 +95,25 @@ class IntravascularColumn(QWidget):
         self._sys_check.setChecked(True)
         self._label_sys_edit = QLineEdit('aligned_sys')
         ivus_layout.addLayout(_checkbox_row(self._sys_check, self._label_sys_edit))
+        # Which reference of each phase anchors the loading (pairing, trimming, orientation).
+        self._dia_ref_combo, self._sys_ref_combo, self._oct_ref_combo = QComboBox(), QComboBox(), QComboBox()
+        for combo in (self._dia_ref_combo, self._sys_ref_combo, self._oct_ref_combo):
+            combo.setToolTip(_ANCHOR_TIP)
+        ivus_layout.addLayout(row('Diastole anchor:', self._dia_ref_combo))
+        ivus_layout.addLayout(row('Systole anchor:', self._sys_ref_combo))
         layout.addWidget(self._ivus_phase_widget)
 
         # OCT: a single label field.
         self._oct_label_widget = QWidget()
-        oct_layout = QHBoxLayout(self._oct_label_widget)
+        oct_layout = QVBoxLayout(self._oct_label_widget)
         oct_layout.setContentsMargins(0, 0, 0, 0)
         self._label_oct_edit = QLineEdit('tagged')
-        oct_layout.addWidget(QLabel('Label:'))
-        oct_layout.addWidget(self._label_oct_edit, 1)
+        oct_layout.addLayout(row('Label:', self._label_oct_edit))
+        oct_layout.addLayout(row('Anchor:', self._oct_ref_combo))
         layout.addWidget(self._oct_label_widget)
 
         self._ivus_radio.toggled.connect(self._on_modality_toggled)
+        self._input_path_edit.textChanged.connect(self._refresh_load_references)
 
         self._step_rotation = QDoubleSpinBox()
         self._step_rotation.setRange(0.01, 45.0)
@@ -171,6 +180,13 @@ class IntravascularColumn(QWidget):
         )
         self._ref_index_combo.currentIndexChanged.connect(self._on_ref_index_changed)
         layout.addLayout(row('Reference:', self._ref_index_combo))
+
+        self._iv_ref_combo = QComboBox()
+        self._iv_ref_combo.setToolTip(
+            'Which reference of the loaded pullback (diastole for a pair) is placed on the reference\n'
+            'above. Systole follows diastole. Listed once the pullback is loaded.'
+        )
+        layout.addLayout(row('Pullback reference:', self._iv_ref_combo))
 
         self._ref_labels = {
             'main': QLabel('Main: —'),
@@ -293,6 +309,42 @@ class IntravascularColumn(QWidget):
         ):
             if key in plan:
                 edit.setText(plan[key])
+        for key, combo in self._anchor_combos().items():
+            if plan.get(key) is not None:
+                _select_frame(combo, plan[key])
+
+    def _anchor_combos(self) -> dict[str, QComboBox]:
+        """load_plan key -> the anchor picker it is read from."""
+        return {
+            'dia_reference_frame': self._dia_ref_combo,
+            'sys_reference_frame': self._sys_ref_combo,
+            'reference_frame': self._oct_ref_combo,
+        }
+
+    def _refresh_load_references(self, *_) -> None:
+        """List each phase's references of the chosen case folder, preselecting the default anchor."""
+        folder = self._input_path_edit.text()
+        for phase, combo in (
+            ('diastolic', self._dia_ref_combo),
+            ('systolic', self._sys_ref_combo),
+            ('tagged', self._oct_ref_combo),
+        ):
+            references = read_case_references(folder, phase) if folder else []
+            _fill_references(combo, references, default_reference(references))
+
+    def set_pullback_references(self, references: list[CaseReference], anchor: int | None) -> None:
+        """The loaded pullback's references for Align to Centerline, its load `anchor` (a frame) preselected."""
+        self._pullback_anchor = anchor
+        _fill_references(self._iv_ref_combo, references, anchor)
+
+    def pullback_reference_frame(self) -> int | None:
+        """The reference to place on the centerline instead of the load anchor, None to keep the anchor.
+
+        None rather than the anchor's frame, because multimodars re-anchors on an explicit frame,
+        which also moves the three-point rotation's reference to its nearest lumen point.
+        """
+        frame = self._iv_ref_combo.currentData()
+        return None if frame == self._pullback_anchor else frame
 
     def set_align_settings(self, settings: dict) -> None:
         """Inverse of align_kwargs() / manual_align_kwargs(). Missing keys keep their widget value."""
@@ -306,6 +358,8 @@ class IntravascularColumn(QWidget):
         if 'watertight' in settings:
             self._watertight.setChecked(settings['watertight'])
             self._manual_watertight.setChecked(settings['watertight'])
+        if settings.get('reference_frame') is not None:
+            _select_frame(self._iv_ref_combo, settings['reference_frame'])
 
     def set_align_with_parents(self, checked: bool) -> None:
         self._with_parents_check.setChecked(checked)
@@ -384,13 +438,20 @@ class IntravascularColumn(QWidget):
             'n_points': self._n_points.value(),
         }
         if self._oct_radio.isChecked():
-            return {'mode': 'oct', 'label': self._label_oct_edit.text(), **common}
+            return {
+                'mode': 'oct',
+                'label': self._label_oct_edit.text(),
+                'reference_frame': self._oct_ref_combo.currentData(),
+                **common,
+            }
         return {
             'mode': 'ivus',
             'diastole': self._dia_check.isChecked(),
             'systole': self._sys_check.isChecked(),
             'dia_label': self._label_dia_edit.text(),
             'sys_label': self._label_sys_edit.text(),
+            'dia_reference_frame': self._dia_ref_combo.currentData(),
+            'sys_reference_frame': self._sys_ref_combo.currentData(),
             **common,
         }
 
@@ -400,6 +461,7 @@ class IntravascularColumn(QWidget):
             'angle_step_deg': self._angle_step.value(),
             'index_range': self._index_range.value(),
             'watertight': self._watertight.isChecked(),
+            'reference_frame': self.pullback_reference_frame(),
         }
 
     def manual_rotation_angle_deg(self) -> float:
@@ -409,7 +471,32 @@ class IntravascularColumn(QWidget):
         return self._manual_ref_offset.value()
 
     def manual_align_kwargs(self) -> dict:
-        return {'watertight': self._manual_watertight.isChecked()}
+        return {'watertight': self._manual_watertight.isChecked(), 'reference_frame': self.pullback_reference_frame()}
+
+
+_ANCHOR_TIP = (
+    'The reference this phase is loaded around: diastole and systole are paired and trimmed to\n'
+    'their overlap at it, and turned so it points right. Pick the same landmark in both phases.\n'
+    'Defaults to the first reference placed by hand.'
+)
+
+
+def _fill_references(combo: QComboBox, references: list[CaseReference], selected: int | None) -> None:
+    """One item per reference (data: its frame), `selected` preselected, without emitting."""
+    combo.blockSignals(True)
+    combo.clear()
+    for reference in references:
+        combo.addItem(f'Frame {reference.frame} ({"auto" if reference.auto else "by hand"})', reference.frame)
+    combo.setEnabled(bool(references))
+    combo.blockSignals(False)
+    if selected is not None:
+        _select_frame(combo, selected)
+
+
+def _select_frame(combo: QComboBox, frame: int) -> None:
+    index = combo.findData(frame)
+    if index >= 0:
+        combo.setCurrentIndex(index)
 
 
 def _checkbox_row(checkbox: QCheckBox, widget: QWidget) -> QHBoxLayout:

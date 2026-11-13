@@ -12,7 +12,7 @@ from shapely.geometry import Polygon
 from domain.intravascular.types import ContourType
 from domain.intravascular.contour_presets import active_preset
 from domain.intravascular.io_types import iter_sectors
-from input_output.output.annotations import pullback_annotations
+from input_output.output.structure_contours import frame_contours, structure_types
 from input_output.output.branch_metrics import branch_diameters
 from input_output.output.imgs_masks import closes_on_lumen, frame_region_metrics, measured_types
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage, SuccessMessage
@@ -439,11 +439,7 @@ def compute_all(main_window, contoured_frames, progress=None, save_as_csv=True):
     # Save CSVs for lumen and for other contours if present. Uses tagged/dia/sys.
     if save_as_csv:
         _advance(progress, 'Saving contour CSVs...')
-        others = {
-            defn.type.value: build_xy_lists(_full_list(defn.type.value, main_window, defn.type))
-            for defn in measured_types(active_preset())
-        }
-        _save_as_csv(main_window, lumen_x, lumen_y, {'eem': (eem_x, eem_y), **others})
+        _save_as_csv(main_window, lumen_x, lumen_y, {'eem': (eem_x, eem_y)})
 
     return report_data
 
@@ -526,8 +522,9 @@ def _full_list(name, main_window, contour_type):
 
 
 def _save_as_csv(main_window, lumen_x, lumen_y, others: dict):
-    """The lumen contours, one file per frame group, then every other spline type's the
-    same way (`others`: {id: (x lists, y lists)}) where it is drawn on any frame."""
+    """The lumen contours, one file per frame group, then the tube-like `others` ({id: (x lists,
+    y lists)}, the EEM) the same way where drawn on any frame, then every other structure (see
+    save_structure_csv)."""
     rt = main_window.runtime_data
     frame_groups = [
         ('diastolic', rt.gated_frames_dia),
@@ -547,6 +544,9 @@ def _save_as_csv(main_window, lumen_x, lumen_y, others: dict):
         if xs is not None and any(elem is not None for elem in xs):
             for suffix, frames in frame_groups:
                 save_csv_files(main_window, xs, ys, name=f'{key}_{suffix}', frames=frames, z_of=z_of[suffix])
+
+    for suffix, frames in frame_groups:
+        save_structure_csv(main_window, suffix, frames, z_of=z_of[suffix])
 
 
 def compute_polygon_metrics(main_window, polygon, frame):
@@ -642,28 +642,36 @@ def closest_points(main_window, polygon, frame):
     return shortest_distance, closest_point_x, closest_point_y
 
 
-def save_csv_files(main_window, lumen_x, lumen_y, name, frames, z_of: dict[int, float] | None = None):
-    """Contours (and reference points and annotations for frame groups) as tab-separated rows.
-
-    Every point is written as frame (1-based), x and y in mm (y flipped), z. z_of: pullback position
-    per frame from the breathing sort, else the acquisition position.
-    """
-    if not frames:
-        logger.warning(f'No frames available for {name} contours, skipping CSV saving.')
-        return
+def _csv_dir(main_window) -> str:
     csv_out_dir = os.path.join(main_window.file_name + '_csv_files')
-    logger.info(f'Saving {name} contours to {csv_out_dir}')
     os.makedirs(csv_out_dir, exist_ok=True)
+    return csv_out_dir
+
+
+def _csv_point(main_window, frames, z_of: dict[int, float] | None):
+    """(frame, x, y) in unscaled px -> (x, y, z) as every CSV row holds them: mm, y flipped, z from
+    the first of `frames`. z_of: pullback position per frame from the breathing sort, else the
+    acquisition position."""
     resolution = main_window.runtime_data.metadata['resolution']
     img_dim_mm = main_window.runtime_data.metadata['dimension'] * resolution
     positions = _pullback_positions(main_window)
     distance_offset = positions[frames[0]]
 
-    def z(frame):
-        return z_of[frame] if z_of and frame in z_of else positions[frame]
-
     def point(frame, x, y) -> tuple[float, float, float]:
-        return x * resolution, abs(y * resolution - img_dim_mm), z(frame) - distance_offset
+        z = z_of[frame] if z_of and frame in z_of else positions[frame]
+        return x * resolution, abs(y * resolution - img_dim_mm), z - distance_offset
+
+    return point
+
+
+def save_csv_files(main_window, lumen_x, lumen_y, name, frames, z_of: dict[int, float] | None = None):
+    """Contours (and reference points for frame groups) as tab-separated frame (1-based), x, y, z rows."""
+    if not frames:
+        logger.warning(f'No frames available for {name} contours, skipping CSV saving.')
+        return
+    csv_out_dir = _csv_dir(main_window)
+    logger.info(f'Saving {name} contours to {csv_out_dir}')
+    point = _csv_point(main_window, frames, z_of)
 
     with open(os.path.join(csv_out_dir, f'{name}_contours.csv'), 'w', newline='') as contours_file:
         contours_writer = csv.writer(contours_file, delimiter='\t')
@@ -674,26 +682,38 @@ def save_csv_files(main_window, lumen_x, lumen_y, name, frames, z_of: dict[int, 
                 contours_writer.writerow([frame + 1, *point(frame, x, y)])
 
     if name in ('diastolic', 'systolic', 'tagged'):
+        # Every reference of the phase, with whether it was set from a side branch (1) or by hand (0).
         ref_file_name = f'{name}_reference_points.csv'
         with open(os.path.join(csv_out_dir, ref_file_name), 'w', newline='') as reference_file:
             reference_writer = csv.writer(reference_file, delimiter='\t')
-            for frame in frames:
+            for frame in sorted(frames):
                 fd = main_window.runtime_data.frame_data_dct.get(frame)
                 ref = fd.reference if fd else None
                 if ref is not None:
-                    reference_writer.writerow([frame + 1, *point(frame, ref[0], ref[1])])
+                    reference_writer.writerow([frame + 1, *point(frame, ref[0], ref[1]), int(fd.reference_auto)])
 
-        # Read by multimodars as Frame.annotations: frame, kind, role, group, x, y, z.
-        with open(os.path.join(csv_out_dir, f'{name}_annotations.csv'), 'w', newline='') as annotations_file:
-            annotations_writer = csv.writer(annotations_file, delimiter='\t')
-            for annotation in pullback_annotations(main_window, frames, _image_shape(main_window)):
-                for x, y in annotation.points:
-                    annotations_writer.writerow(
-                        [
-                            annotation.frame + 1,
-                            annotation.kind,
-                            annotation.role,
-                            annotation.group,
-                            *point(annotation.frame, x, y),
-                        ]
-                    )
+
+def save_structure_csv(main_window, phase: str, frames, z_of: dict[int, float] | None = None) -> None:
+    """Every structure that is not a pipe (side branches, plaques, ...), one `{type}_{phase}_contours.csv`
+    per type drawn in `frames`: tab-separated frame, x, y, z, contour, closed rows (see
+    structure_contours). A type with no contour in the phase gets no file."""
+    if not frames:
+        return
+    preset = active_preset()
+    image_shape = _image_shape(main_window)
+    samples = main_window.display.n_points_contour
+    point = _csv_point(main_window, frames, z_of)
+    fdd = main_window.runtime_data.frame_data_dct
+    for defn in structure_types(preset):
+        rows = [
+            [frame + 1, *point(frame, x, y), index, int(closed)]
+            for frame in frames
+            if fdd.get(frame) is not None
+            for index, (points, closed) in enumerate(frame_contours(fdd[frame], defn, preset, image_shape, samples))
+            for x, y in points
+        ]
+        if not rows:
+            continue
+        path = os.path.join(_csv_dir(main_window), f'{defn.type.value}_{phase}_contours.csv')
+        with open(path, 'w', newline='') as file:
+            csv.writer(file, delimiter='\t').writerows(rows)

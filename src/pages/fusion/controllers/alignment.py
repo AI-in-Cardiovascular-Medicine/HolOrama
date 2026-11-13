@@ -15,13 +15,27 @@ from fusion_pipeline import annotations as iv_annotations
 from fusion_pipeline import branches as branch_ops
 from fusion_pipeline import geometry as geo
 from fusion_pipeline import multimodars_api as mm_api
-from input_output.output.annotations import KIND_NAMES
-from input_output.output.branch_metrics import branch_keys
+from input_output.output.structure_contours import KIND_NAMES
 from pages.fusion.controllers.base import StageController
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 
+# What a reference in the viewer is: the one the geometry is anchored on, or else how it was set.
+_REFERENCE_LABELS = {'master': 'Ref (master)', 'auto': 'Ref (auto)', 'hand': 'Ref'}
+
+
+def _case_phases(plan: dict) -> dict[str, str]:
+    """Phase key of the loaded geometry ('a', and 'b' for a pair) -> exported phase name, see geo.phases."""
+    if plan['mode'] == 'oct':
+        return {'a': 'tagged'}
+    if plan['diastole'] and plan['systole']:
+        return {'a': 'diastolic', 'b': 'systolic'}
+    return {'a': 'diastolic' if plan['diastole'] else 'systolic'}
+
 
 class AlignmentController(StageController):
+    # Per loaded phase key, the frames whose reference was set from a side branch (from the case files).
+    _auto_frames: dict[str, set[int]] = {}
+
     def on_load_pullback(self) -> None:
         ic = self.right_half.intravascular_column
         plan = ic.load_plan()
@@ -37,7 +51,12 @@ class AlignmentController(StageController):
         if plan['mode'] == 'oct':
             # OCT: single geometry loaded from the exported tagged-frame arrays.
             result = self.run(
-                'Loading OCT pullback…', 'Pullback loaded.', mm_api.run_from_array, labels=plan['label'], **common
+                'Loading OCT pullback…',
+                'Pullback loaded.',
+                mm_api.run_from_array,
+                labels=plan['label'],
+                reference_frame=plan.get('reference_frame'),
+                **common,
             )
         else:
             dia, sys = plan['diastole'], plan['systole']
@@ -50,6 +69,7 @@ class AlignmentController(StageController):
                     'Pullback loaded.',
                     mm_api.run_from_file_singlepair,
                     labels=[plan['dia_label'], plan['sys_label']],
+                    reference_frames=(plan.get('dia_reference_frame'), plan.get('sys_reference_frame')),
                     **common,
                 )
             else:
@@ -61,6 +81,7 @@ class AlignmentController(StageController):
                     mm_api.run_from_file_single,
                     label=label,
                     diastole=dia,
+                    reference_frame=plan.get('dia_reference_frame' if dia else 'sys_reference_frame'),
                     **common,
                 )
         if result is None:
@@ -70,6 +91,16 @@ class AlignmentController(StageController):
         self.data.iv_geometry_pair = geometry
         self.data.iv_align_logs = align_logs
         self.page.case_state.on_pullback_loaded(plan)
+        # Which references were set from a side branch: multimodars keeps the points, not that flag.
+        self._auto_frames = {
+            key: {r.frame for r in iv_annotations.read_case_references(plan['input_path'], phase) if r.auto}
+            for key, phase in _case_phases(plan).items()
+        }
+        # Align to Centerline places one of the primary geometry's references, its master by default.
+        primary = geo.primary_geometry(geometry)
+        ic.set_pullback_references(
+            iv_annotations.geometry_references(primary, self._auto_frames.get('a', set())), primary.master_reference
+        )
 
         # Shown before centerline alignment, so errors can be traced to the dia/sys self-alignment.
         self._add_geometry_pair_meshes(FusionScene.INTRAVASCULAR_LOADED, geometry, 'raw_geom')
@@ -102,14 +133,16 @@ class AlignmentController(StageController):
                 viewer.add_mesh(
                     scene, f'{key}_wall', wall_mesh, color=colors.IV_WALL_COLOR, opacity=colors.IV_WALL_OPACITY
                 )
-            self._add_annotation_layers(scene, key, geom, color)
+            self._add_annotation_layers(scene, key, geom, color, phase_key)
         self.left_half.refresh_toolbar(scene)
 
-    def _add_annotation_layers(self, scene: FusionScene, key: str, geom, phase_color) -> None:
-        """The phase's side branches, plaques, EEM and reference points, as moved with their frames
-        (see fusion_pipeline.annotations). Each in its intravascular preset colour, tinted by the phase."""
+    def _add_annotation_layers(self, scene: FusionScene, key: str, geom, phase_color, phase_key: str) -> None:
+        """The phase's EEM, structures (side branches, calcium, ...) and reference points, as moved with
+        their frames (see fusion_pipeline.annotations). Each in its intravascular preset colour, tinted by
+        the phase. In-wall structures also get a mesh, hidden until switched on."""
         viewer = self.left_half.viewer
         preset = active_preset()
+        type_of_kind = {kind: type_id for type_id, kind in KIND_NAMES.items()}
 
         def tinted(type_id: str | None) -> tuple[int, int, int]:
             defn = preset.get(type_id) if type_id else None
@@ -124,44 +157,27 @@ class AlignmentController(StageController):
                 scene, f'{key}_eem', eem, color=tinted(ContourType.EEM.value), size=colors.IV_EEM_POINT_SIZE
             )
 
-        placed = iv_annotations.placed_annotations(geom)
-        if not placed:
-            return
-        normals = iv_annotations.frame_normals(geom)
-        spacing = iv_annotations.frame_spacing(geom)
-        type_of_kind = {kind: type_id for type_id, kind in KIND_NAMES.items()}
-        branch_types = branch_keys(preset)
-        branch_color = tinted(branch_types[0] if branch_types else None)
-
-        branch = iv_annotations.region_points(placed, iv_annotations.SIDEBRANCH)
-        if len(branch):
-            viewer.add_points(scene, f'{key}_branch', branch, color=branch_color, size=colors.IV_ANNOTATION_POINT_SIZE)
-        tubes = iv_annotations.branch_tubes(placed, normals, colors.IV_BRANCH_TUBE_SECTIONS)
-        if tubes:
-            viewer.add_mesh(
-                scene,
-                f'{key}_branch_tubes',
-                trimesh.util.concatenate(tubes),
-                color=branch_color,
-                opacity=colors.IV_BRANCH_TUBE_OPACITY,
-            )
-
-        plaque_kinds = sorted(
-            {a.kind for a in placed if a.role == 'region'} - {iv_annotations.SIDEBRANCH, iv_annotations.REFERENCE}
-        )
-        for kind in plaque_kinds:
-            rng = np.random.default_rng(0)  # the same blob every time the layer is rebuilt
-            blob = iv_annotations.plaque_blob(placed, kind, normals, spacing, colors.IV_PLAQUE_POINTS_PER_MM2, rng)
-            if len(blob):
-                viewer.add_points(
+        for kind, points in sorted(iv_annotations.structure_points(geom).items()):
+            color = tinted(type_of_kind.get(kind, kind))
+            viewer.add_points(scene, f'{key}_{kind}', points, color=color, size=colors.IV_ANNOTATION_POINT_SIZE)
+            if kind == iv_annotations.SIDEBRANCH:
+                continue  # side branches only show where a vessel leaves, they are not meshed
+            try:
+                meshes = mm_api.structure_meshes(geom, kind)
+            except Exception as e:
+                logger.warning(f'Could not mesh {kind} for {key}: {e}')
+                continue
+            if meshes:
+                viewer.add_mesh(
                     scene,
-                    f'{key}_{kind}',
-                    blob,
-                    color=tinted(type_of_kind.get(kind, kind)),
-                    size=colors.IV_ANNOTATION_POINT_SIZE,
+                    f'{key}_{kind}_mesh',
+                    trimesh.util.concatenate(meshes),
+                    color=color,
+                    opacity=colors.IV_STRUCTURE_MESH_OPACITY,
+                    visible=False,
                 )
 
-        references, automatic = iv_annotations.reference_points(placed)
+        references, status = iv_annotations.reference_points(geom, self._auto_frames.get(phase_key, set()))
         if len(references):
             viewer.add_points(
                 scene,
@@ -174,7 +190,7 @@ class AlignmentController(StageController):
                 scene,
                 f'{key}_reference_labels',
                 references,
-                ['Ref (auto)' if auto else 'Ref' for auto in automatic],
+                [_REFERENCE_LABELS[kind] for kind in status],
                 color=colors.IV_REFERENCE_COLOR,
                 font_size=colors.IV_REFERENCE_LABEL_SIZE,
             )

@@ -1,9 +1,8 @@
 """Side branches measured over the pullback: diameters, the widest branch per frame, and runs.
 
 A side branch is any type closed against the lumen (see imgs_masks.closes_on_lumen). The runs
-are what both the automatic reference points (pages.intravascular.utils.branch_references)
-and the exported annotations (input_output.output.annotations) are built from, so both agree
-on which frames show one branch and which of them is its reference frame.
+are what the automatic reference points (pages.intravascular.utils.branch_references) are
+built from: which frames show one branch and which of them is its reference frame.
 """
 
 from __future__ import annotations

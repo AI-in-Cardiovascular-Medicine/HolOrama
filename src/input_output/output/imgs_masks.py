@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import QApplication, QProgressDialog
 
 from domain.intravascular.types import ContourType
 from domain.intravascular.contour_presets import ContourPreset, ContourTypeDef, active_preset
-from domain.intravascular.io_types import iter_sectors
+from domain.intravascular.io_types import Contour, iter_sectors
 from tools.angle import contains_angle, sector_from_points
 from tools.branch_arc import branch_region
 from tools.spline import sample_spline
@@ -435,42 +435,69 @@ def frame_regions(frame_data, image_shape, preset: ContourPreset) -> dict[str, n
     clipped to that one's region (see _contained_mask), so the containers are worked out
     first.
     """
-    height, width = image_shape
-    cx, cy = frame_data.centroid if frame_data.centroid is not None else (width / 2.0, height / 2.0)
-    lumen_mask = _contour_obj_to_mask(frame_data.lumen, cx, cy, image_shape)
+    lumen_mask = _contour_obj_to_mask(frame_data.lumen, *_centroid(frame_data, image_shape), image_shape)
     regions: dict[str, np.ndarray] = {ContourType.LUMEN.value: lumen_mask}
 
     def region(defn: ContourTypeDef) -> np.ndarray:
         key = defn.type.value
-        if key in regions:
-            return regions[key]
-        contour_obj = frame_data.contour(key)
-        if defn.is_angle:
-            mask = _angle_sector_mask(contour_obj, image_shape, height / 2.0, width / 2.0)
-        elif closes_on_lumen(defn, preset):
-            mask = _lumen_closed_mask(contour_obj, frame_data.lumen, lumen_mask, image_shape)
-        elif defn.inside is None:
-            mask = _contour_obj_to_mask(contour_obj, cx, cy, image_shape)
-        elif not contour_obj.contours:
-            mask = np.zeros(image_shape, dtype=bool)
-        else:
-            container = preset[defn.inside]
-            drawn = bool(frame_data.contour(container.type).contours)
-            mask = _contained_mask(
-                contour_obj,
-                cx,
-                cy,
-                image_shape,
-                lumen_mask,
-                region(container) if drawn else None,
-                in_lumen=container.type == ContourType.LUMEN,
+        if key not in regions:
+            container = _container_mask(frame_data, defn, preset, region)
+            regions[key] = _region(
+                frame_data.contour(key), defn, frame_data, image_shape, preset, lumen_mask, container
             )
-        regions[key] = mask
-        return mask
+        return regions[key]
 
     for defn in preset.types:
         region(defn)
     return regions
+
+
+def contour_regions(frame_data, defn: ContourTypeDef, image_shape, preset: ContourPreset) -> list[np.ndarray]:
+    """The region each of the frame's `defn` contours fills on its own, in contour order.
+
+    The same region as in the exported mask (see frame_regions), one contour at a time, so an open
+    arc is closed against its container and a ring round the lumen is the ring between it and the
+    container.
+    """
+    regions = frame_regions(frame_data, image_shape, preset)
+    container = _container_mask(frame_data, defn, preset, lambda d: regions[d.type.value])
+    contour_obj = frame_data.contour(defn.type)
+    out = []
+    for index, entry in enumerate(contour_obj.contours):
+        closed = contour_obj.closed[index] if index < len(contour_obj.closed) else True
+        single = Contour(contours=[entry], closed=[closed])
+        out.append(_region(single, defn, frame_data, image_shape, preset, regions[ContourType.LUMEN.value], container))
+    return out
+
+
+def _centroid(frame_data, image_shape) -> tuple[float, float]:
+    """The lumen centroid, the image centre while there is none."""
+    height, width = image_shape
+    return frame_data.centroid if frame_data.centroid is not None else (width / 2.0, height / 2.0)
+
+
+def _container_mask(frame_data, defn: ContourTypeDef, preset: ContourPreset, region_of) -> np.ndarray | None:
+    """The region `defn` lies in (from `region_of`), None if it lies in nothing or that is not drawn."""
+    if defn.inside is None or defn.is_angle:
+        return None
+    container = preset[defn.inside]
+    return region_of(container) if frame_data.contour(container.type).contours else None
+
+
+def _region(contour_obj, defn, frame_data, image_shape, preset, lumen_mask, container_mask) -> np.ndarray:
+    """What `contour_obj` (contours of type `defn`) fills on the frame, see frame_regions."""
+    height, width = image_shape
+    if defn.is_angle:
+        return _angle_sector_mask(contour_obj, image_shape, height / 2.0, width / 2.0)
+    if closes_on_lumen(defn, preset):
+        return _lumen_closed_mask(contour_obj, frame_data.lumen, lumen_mask, image_shape)
+    cx, cy = _centroid(frame_data, image_shape)
+    if defn.inside is None:
+        return _contour_obj_to_mask(contour_obj, cx, cy, image_shape)
+    if not contour_obj.contours:
+        return np.zeros(image_shape, dtype=bool)
+    in_lumen = preset[defn.inside].type == ContourType.LUMEN
+    return _contained_mask(contour_obj, cx, cy, image_shape, lumen_mask, container_mask, in_lumen=in_lumen)
 
 
 def measured_types(preset: ContourPreset) -> tuple[ContourTypeDef, ...]:

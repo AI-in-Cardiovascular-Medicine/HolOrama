@@ -16,6 +16,8 @@ import trimesh
 import multimodars as mm
 from loguru import logger
 
+from fusion_pipeline.annotations import read_case_structures
+
 
 def load_centerline(path: str, name: str) -> Any:
     return mm.load_centerline(path, name)  # type: ignore[attr-defined]
@@ -128,17 +130,22 @@ def run_from_array(
     watertight: bool = False,
     write_obj: bool = False,
     smooth: bool = True,
+    reference_frame: int | None = None,
 ) -> tuple[Any, Any]:
-    # Tab-delimited, as written by the report exporter. Rows: [frame, x, y, z].
+    """OCT: the tagged frames. `reference_frame` is the master reference (frame as in the CSV
+    files), None for multimodars' default (the most proximal)."""
+    # Tab-delimited, as written by the report exporter. Contours [frame, x, y, z], references
+    # [frame, x, y, z, auto], structures [frame, x, y, z, contour, closed].
     oct_raw = np.genfromtxt(os.path.join(input_path, "tagged_contours.csv"), delimiter='\t')
-    oct_ref = np.genfromtxt(os.path.join(input_path, "tagged_reference_points.csv"), delimiter='\t')
+    oct_ref = np.atleast_2d(np.genfromtxt(os.path.join(input_path, "tagged_reference_points.csv"), delimiter='\t'))
 
     oct_input = mm.numpy_to_inputdata(
         lumen_arr=oct_raw,
-        ref_point=oct_ref,
-        record=None,
+        reference_points=oct_ref,
         diastole=True,
         label=labels,
+        structures=read_case_structures(input_path, 'tagged'),
+        master_reference=reference_frame,
     )
 
     return mm.from_array_single(
@@ -166,8 +173,10 @@ def run_from_file_single(
     watertight: bool = False,
     write_obj: bool = False,
     smooth: bool = True,
+    reference_frame: int | None = None,
 ) -> tuple[Any, Any]:
-    # `diastole` picks which phase of the IVUS CSV folder to read.
+    """One IVUS phase of a case folder (`diastole` picks which). `reference_frame` is its master
+    reference, None for the most proximal."""
     return mm.from_file_single(
         input_path=input_path,
         labels=[label],
@@ -179,6 +188,7 @@ def run_from_file_single(
         watertight=watertight,
         write_obj=write_obj,
         smooth=smooth,
+        master_references=[reference_frame],
     )
 
 
@@ -193,7 +203,10 @@ def run_from_file_singlepair(
     watertight: bool = False,
     write_obj: bool = False,
     smooth: bool = True,
+    reference_frames: tuple[int | None, int | None] = (None, None),
 ) -> tuple[Any, tuple[Any, Any]]:
+    """Diastole and systole of a case folder as a pair, aligned to each other around their master
+    references `reference_frames` (diastole, systole). Pick the same landmark in both."""
     return mm.from_file_singlepair(
         input_path=input_path,
         labels=labels,
@@ -204,6 +217,7 @@ def run_from_file_singlepair(
         watertight=watertight,
         write_obj=write_obj,
         smooth=smooth,
+        master_references=list(reference_frames),
     )
 
 
@@ -222,14 +236,18 @@ def run_align_combined(
     watertight: bool = True,
     output_dir: str = 'output/aligned',
     align_wall_anomalous: bool = False,
+    reference_frame: int | None = None,
 ) -> tuple[Any, float, float]:
     """Returns (aligned_geometry, spacing_mm, total_rotation_deg).
+
+    `reference_frame` is the reference of the primary geometry placed on main_ref_pt (frame as in
+    the CSV files), None for the one the pullback was loaded with.
 
     Use `centerline` as-is afterwards. Resampling it to spacing_mm anchors at index 0, not
     at main_ref_pt, so it would not match the grid the frames were placed on."""
     return mm.align_combined(
         centerline,
-        geometry,
+        _reanchored(geometry, reference_frame),
         main_ref_pt,
         counterclockwise_ref_pt,
         clockwise_ref_pt,
@@ -252,19 +270,37 @@ def run_align_manual(
     *,
     watertight: bool = True,
     align_wall_anomalous: bool = False,
+    reference_frame: int | None = None,
 ) -> tuple[Any, float, float]:
     """Only works for elliptic vessels (anomalous coronaries).
 
     Returns (aligned_geometry, spacing_mm, total_rotation_deg), see run_align_combined."""
     return mm.align_manual(
         centerline,
-        geometry,
+        _reanchored(geometry, reference_frame),
         rotation_angle_deg,
         ref_point,
         write=False,
         watertight=watertight,
         align_wall_anomalous=align_wall_anomalous,
     )
+
+
+def structure_meshes(geometry, kind: str) -> list[trimesh.Trimesh]:
+    """One closed mesh per cluster of an in-wall structure kind's point cloud (convex hulls)."""
+    return mm.structure_to_trimesh(geometry, kind)
+
+
+def _reanchored(geometry, reference_frame: int | None):
+    """`geometry` with the reference at `reference_frame` as its master, the one placed on the
+    centerline, unchanged for None. A pair gets it on diastole and is realigned to systole around it."""
+    if reference_frame is None:
+        return geometry
+    if hasattr(geometry, 'set_master_references'):
+        geometry.set_master_references(master_a=reference_frame)
+    else:
+        geometry.master_reference = reference_frame
+    return geometry
 
 
 def run_label_anomalous_region(centerline, frames, results: dict, *, branch_id: int = 0) -> dict:
