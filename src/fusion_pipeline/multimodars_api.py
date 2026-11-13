@@ -382,9 +382,14 @@ def run_stitch(
     seam_points_a: int = 2,
     seam_points_b: int = 4,
     tree: Any | None = None,
+    centerlines: dict[str, Any] | None = None,
+    branch_cut_slices: dict[tuple[str, int], int] | None = None,
+    proximal_cut_slice: int | None = None,
+    distal_cut_slice: int | None = None,
 ) -> dict:
-    """With `tree` (the vessel tree before removal), side branches leaving the removed
-    segment are reconnected to the intravascular wall."""
+    """With `tree` (the vessel tree before removal) and the vessel `centerlines`, the end rims
+    are cut flat at tree slices and side branches leaving the removed segment are reconnected
+    to the intravascular wall. The *_cut_slice(s) choose those slices (see run_stitch_cut_targets)."""
     return mm.stitch_ccta_to_intravascular(
         iv_mesh,
         mesh,
@@ -397,7 +402,17 @@ def run_stitch(
         seam_points_a=seam_points_a,
         seam_points_b=seam_points_b,
         tree=tree,
+        centerlines=centerlines,
+        branch_cut_slices=branch_cut_slices,
+        proximal_cut_slice=proximal_cut_slice,
+        distal_cut_slice=distal_cut_slice,
     )
+
+
+def run_stitch_cut_targets(iv_geometry, results: dict, tree: Any) -> dict:
+    """What run_stitch with `tree` would cut: 'distal' and 'proximal' (None for the ostium) as
+    (vessel, branch, default slice), 'side_branches' as [(vessel, branch)] (default slice 0)."""
+    return mm.stitch_cut_targets(iv_geometry, results, tree)
 
 
 def run_remesh(

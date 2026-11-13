@@ -42,6 +42,32 @@ class CutResult:
     key: tuple = ()  # source mesh + specs this was computed from, see CutController
 
 
+StitchCutKey = str | tuple[str, int]  # 'proximal' / 'distal' rim, or a side branch (vessel, branch)
+
+
+@dataclass(frozen=True)
+class StitchCutTarget:
+    """A cut the stitch makes at a tree slice (multimodars stitch_cut_targets): an end rim
+    or a side branch it reconnects, on the slices of (vessel, branch)."""
+
+    key: StitchCutKey
+    vessel: str
+    branch: int
+    default: int | None  # the slice taken without a choice, None if there is none
+
+
+@dataclass
+class StitchCuts:
+    """The stitch's cut targets with the slices chosen for them."""
+
+    targets: list[StitchCutTarget]
+    # What they were found on: (results_points_removed, vessel tree, aligned geometry), by identity.
+    inputs: tuple[Any, Any, Any]
+    chosen: dict[StitchCutKey, int] = field(default_factory=dict)
+    selected: int = 0  # index into targets
+    not_reconnected: dict[StitchCutKey, str] = field(default_factory=dict)  # why, from the last stitch
+
+
 @dataclass
 class BranchRemoval:
     """What deleting a side branch leaves behind (see fusion_pipeline.branches.remove_branch)."""
@@ -117,6 +143,8 @@ class FusionRuntimeData:
         # Copies of `results` before each Remove Labeled Points, for undo.
         # Cleared whenever `results` is replaced otherwise, since they would be stale.
         self.removal_undo: UndoStack[dict] = UndoStack(REMOVAL_UNDO_LIMIT)
+        # Where the stitch cuts the end rims and side branches, see StitchCutController.
+        self.stitch_cuts: StitchCuts | None = None
         self.stitched: dict | None = None  # result of stitch_ccta_to_intravascular
         self.final_mesh: Any | None = None  # trimesh.Trimesh after remesh/smoothing
         # Previous final_mesh vertices for undoing smoothing, which keeps faces.

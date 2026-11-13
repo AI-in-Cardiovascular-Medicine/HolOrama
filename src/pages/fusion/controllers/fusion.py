@@ -9,6 +9,7 @@ from domain.fusion.types import FusionScene
 from fusion_pipeline import geometry as geo
 from fusion_pipeline import multimodars_api as mm_api
 from fusion_pipeline import scaling as scaling_ops
+from fusion_pipeline import stitch_cuts as cut_ops
 from pages.fusion.controllers.base import StageController
 
 
@@ -130,6 +131,7 @@ class FusionController(StageController):
             self.page.branches.refresh_labels_scene()
             self.page.alignment.refresh_ccta_mesh()
             self.update_removal_undo_button()
+            self.page.stitch_cuts.refresh()
         self.status_bar.showMessage(f'Undid point removal ({len(self.data.removal_undo)} left).')
 
     def _set_removed_results(self, results: dict) -> None:
@@ -142,12 +144,14 @@ class FusionController(StageController):
         self.page.branches.refresh_labels_scene()
         self.page.alignment.refresh_ccta_mesh()
         self.update_removal_undo_button()
+        self.page.stitch_cuts.refresh()
 
     def invalidate_removal(self) -> None:
         """`results` was replaced by something other than a removal: the post-removal
         snapshot and the removal undo stack no longer match it."""
         self.data.results_points_removed = None
         self.clear_removal_undo()
+        self.page.stitch_cuts.refresh()
 
     def clear_removal_undo(self) -> None:
         """Also drops the branch deletion undo: both go stale when `results` is replaced otherwise."""
@@ -180,14 +184,21 @@ class FusionController(StageController):
         snapshot = self.data.results_points_removed
         assert aligned_geom is not None and snapshot is not None
 
+        d = self.data
+        kwargs = fc.stitch_kwargs()
+        if d.vessel_tree is not None:
+            # The tree's centerlines: the cut side branches move back along them to the wall.
+            centerlines = {'rca': d.centerline_rca, 'lca': d.centerline_lca}
+            kwargs['centerlines'] = {v: cl for v, cl in centerlines.items() if cl is not None}
+            kwargs.update(cut_ops.stitch_kwargs(self.page.stitch_cuts.current()))
         stitched = self.run(
             'Stitching CCTA to intravascular…',
             'Stitched.',
             _stitch_copy,
             aligned_geom,
             snapshot,
-            self.data.vessel_tree,
-            fc.stitch_kwargs(),
+            d.vessel_tree,
+            kwargs,
         )
         if stitched is None:
             return
@@ -198,6 +209,7 @@ class FusionController(StageController):
         viewer.isolate_layer(FusionScene.CCTA_GEOMETRY, 'stitched_mesh')
         self.left_half.refresh_toolbar(FusionScene.CCTA_GEOMETRY)
         self.left_half.show_scene(FusionScene.CCTA_GEOMETRY)
+        self.page.stitch_cuts.on_stitched(stitched)
 
 
 def _stitch_copy(aligned_geom, snapshot: dict, tree, stitch_kwargs: dict) -> dict:

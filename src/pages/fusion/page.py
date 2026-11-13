@@ -13,6 +13,7 @@ from pages.fusion.controllers.cutting import CutController
 from pages.fusion.controllers.final_mesh import FinalMeshController
 from pages.fusion.controllers.fusion import FusionController
 from pages.fusion.controllers.geometry import GeometryController
+from pages.fusion.controllers.stitch_cuts import StitchCutController
 from pages.fusion.controllers.tree import TreeController
 from pages.fusion.left_half.left_half import LeftHalf
 from pages.fusion.right_half.right_half import RightHalf
@@ -37,6 +38,7 @@ class FusionPage(QWidget):
         self.fusion = FusionController(self)
         self.final_mesh = FinalMeshController(self)
         self.cutting = CutController(self)
+        self.stitch_cuts = StitchCutController(self)
         self.case_state = CaseStateController(self)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -101,6 +103,7 @@ class FusionPage(QWidget):
         self.fusion.update_removal_undo_button()
         self.branches.update_delete_undo_button()
         self.cutting.reset()
+        self.stitch_cuts.reset()
         self.branches.reset()
         self.case_state.reset()
         self.right_half.intravascular_column.set_centerline_choices([('RCA', 'rca', 0), ('LCA', 'lca', 0)], 'rca', 0)
@@ -154,6 +157,11 @@ class FusionPage(QWidget):
         ct.rename_requested.connect(self.cutting.on_rename)
         ct.remove_requested.connect(self.cutting.on_remove)
 
+        at = lh.alignment_toolbar
+        at.target_selected.connect(self.stitch_cuts.select)
+        at.step_requested.connect(self.stitch_cuts.on_step)
+        at.default_requested.connect(self.stitch_cuts.on_default)
+
         ic = self.right_half.intravascular_column
         ic.run_load_requested.connect(self.alignment.on_load_pullback)
         ic.run_align_requested.connect(self.alignment.on_align)
@@ -192,6 +200,8 @@ class FusionPage(QWidget):
         # The cuts replay lazily, here and on export, not on every upstream mesh change.
         if scene == FusionScene.INLETS_OUTLETS:
             self.cutting.refresh()
+        elif scene == FusionScene.INTRAVASCULAR_ALIGNED:
+            self.stitch_cuts.refresh()
 
     def _on_point_picked(self, x: float, y: float, z: float, scene_value: str) -> None:
         if scene_value == FusionScene.CENTERLINE_BRANCHES.value:
@@ -200,6 +210,8 @@ class FusionPage(QWidget):
             self.cutting.on_point_picked(x, y, z)
         elif scene_value == FusionScene.VESSEL_TREE.value:
             self.tree.on_point_picked(x, y, z)
+        elif scene_value == FusionScene.INTRAVASCULAR_ALIGNED.value:
+            self.stitch_cuts.on_point_picked(x, y, z)
 
     def _on_lasso_closed(self) -> None:
         if self.left_half.branch_labels_toolbar.lasso_active():
