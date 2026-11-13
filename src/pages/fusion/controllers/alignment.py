@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import trimesh
 from loguru import logger
 from PyQt6.QtGui import QColor
 
@@ -15,6 +14,7 @@ from fusion_pipeline import annotations as iv_annotations
 from fusion_pipeline import branches as branch_ops
 from fusion_pipeline import geometry as geo
 from fusion_pipeline import multimodars_api as mm_api
+from fusion_pipeline.structure_mesh import structure_mesh
 from input_output.output.structure_contours import KIND_NAMES
 from pages.fusion.controllers.base import StageController
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
@@ -159,23 +159,25 @@ class AlignmentController(StageController):
 
         for kind, points in sorted(iv_annotations.structure_points(geom).items()):
             color = tinted(type_of_kind.get(kind, kind))
-            viewer.add_points(scene, f'{key}_{kind}', points, color=color, size=colors.IV_ANNOTATION_POINT_SIZE)
-            if kind == iv_annotations.SIDEBRANCH:
-                continue  # side branches only show where a vessel leaves, they are not meshed
-            try:
-                meshes = mm_api.structure_meshes(geom, kind)
-            except Exception as e:
-                logger.warning(f'Could not mesh {kind} for {key}: {e}')
-                continue
-            if meshes:
+            mesh = None
+            if kind != iv_annotations.SIDEBRANCH:  # side branches only show where a vessel leaves
+                try:
+                    mesh = structure_mesh(geom, kind)
+                except Exception as e:
+                    logger.warning(f'Could not mesh {kind} for {key}: {e}')
+            if mesh is not None:
                 viewer.add_mesh(
-                    scene,
-                    f'{key}_{kind}_mesh',
-                    trimesh.util.concatenate(meshes),
-                    color=color,
-                    opacity=colors.IV_STRUCTURE_MESH_OPACITY,
-                    visible=False,
+                    scene, f'{key}_{kind}_mesh', mesh, color=color, opacity=colors.IV_STRUCTURE_MESH_OPACITY
                 )
+            # The cloud the mesh is built from, hidden behind a mesh but kept to check it against.
+            viewer.add_points(
+                scene,
+                f'{key}_{kind}',
+                points,
+                color=color,
+                size=colors.IV_ANNOTATION_POINT_SIZE,
+                visible=mesh is None,
+            )
 
         references, status = iv_annotations.reference_points(geom, self._auto_frames.get(phase_key, set()))
         if len(references):

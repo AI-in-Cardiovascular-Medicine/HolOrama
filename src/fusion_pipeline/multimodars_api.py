@@ -138,11 +138,14 @@ def run_from_array(
     # [frame, x, y, z, auto], structures [frame, x, y, z, contour, closed].
     oct_raw = np.genfromtxt(os.path.join(input_path, "tagged_contours.csv"), delimiter='\t')
     oct_ref = np.atleast_2d(np.genfromtxt(os.path.join(input_path, "tagged_reference_points.csv"), delimiter='\t'))
+    eem_path = os.path.join(input_path, "eem_tagged_contours.csv")
+    oct_eem = np.genfromtxt(eem_path, delimiter='\t') if os.path.isfile(eem_path) else None
 
     oct_input = mm.numpy_to_inputdata(
         lumen_arr=oct_raw,
         reference_points=oct_ref,
         diastole=True,
+        eem_arr=oct_eem,
         label=labels,
         structures=read_case_structures(input_path, 'tagged'),
         master_reference=reference_frame,
@@ -284,11 +287,6 @@ def run_align_manual(
         watertight=watertight,
         align_wall_anomalous=align_wall_anomalous,
     )
-
-
-def structure_meshes(geometry, kind: str) -> list[trimesh.Trimesh]:
-    """One closed mesh per cluster of an in-wall structure kind's point cloud (convex hulls)."""
-    return mm.structure_to_trimesh(geometry, kind)
 
 
 def _reanchored(geometry, reference_frame: int | None):
