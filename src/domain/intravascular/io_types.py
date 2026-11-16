@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import dataclass, field, fields, is_dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -146,14 +146,27 @@ def is_contour_key(key: str) -> bool:
 
 
 def frame_to_dict(frame_data: FrameData) -> dict:
-    """One frame as saved: its fields, each contour as its own key (the legacy layout)."""
+    """One frame as saved: its fields, each contour as its own key (the legacy layout).
+
+    Shares the frame's lists instead of copying them like asdict, which is most of a save's
+    time on a long pullback. Serialize the result before the frame changes again.
+    """
     raw: dict = {}
-    for key, value in asdict(frame_data).items():
+    for key, value in _plain(frame_data).items():
         if key == 'contours':
             raw.update(value)
         else:
             raw[key] = value
     return raw
+
+
+def _plain(value):
+    """`value` with every dataclass in it turned into a dict, lists and tuples kept as they are."""
+    if is_dataclass(value) and not isinstance(value, type):
+        return {f.name: _plain(getattr(value, f.name)) for f in fields(value)}
+    if isinstance(value, dict):
+        return {k: _plain(v) for k, v in value.items()}
+    return value
 
 
 # Everything drawn on a frame plus the values derived from the lumen, but not the phase or OCT label
