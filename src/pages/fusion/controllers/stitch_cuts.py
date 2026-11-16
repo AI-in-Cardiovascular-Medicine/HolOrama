@@ -55,8 +55,12 @@ class StitchCutController(StageController):
                 d.stitch_cuts = None
             else:
                 same_tree = old is not None and old.inputs[1] is inputs[1]
-                chosen = cut_ops.keep_choices(old, targets) if same_tree else {}
+                if same_tree:
+                    chosen = cut_ops.keep_choices(old, targets)
+                else:  # a restored case brings its saved slices
+                    chosen = self.page.case_state.take_stitch_choices(targets)
                 d.stitch_cuts = StitchCuts(targets, inputs, chosen)
+                self.page.case_state.on_stitch_choices_changed(d.stitch_cuts)
                 if targets:
                     self.viewer.set_layer_visible(SCENE, 'ccta_mesh', True)  # the mesh to pick on
         return d.stitch_cuts
@@ -114,12 +118,14 @@ class StitchCutController(StageController):
         if target is not None and cuts is not None:
             cuts.chosen.pop(target.key, None)
             self._draw()
+            self.page.case_state.on_stitch_choices_changed(cuts)
 
     def _choose(self, target: StitchCutTarget, idx: int) -> None:
         cuts = self.data.stitch_cuts
         assert cuts is not None
         cuts.chosen[target.key] = idx
         self._draw()
+        self.page.case_state.on_stitch_choices_changed(cuts)
 
     # ------------------------------------------------------------------
     # Display

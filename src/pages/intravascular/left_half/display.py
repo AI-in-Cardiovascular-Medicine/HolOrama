@@ -1148,6 +1148,9 @@ class Display(QGraphicsView, MetricsMixin):
                     else:
                         # start/end already set by _close_current_spline
                         pass
+                # Only closing on the start point or a double-click set the flag. Stopping otherwise left none,
+                # and a missing flag reads as closed, so the trim below took an open branch for a closed one.
+                contour_obj.reserve(self.active_contour_index, closed=not is_open)
                 lst = self._ensure_finalized_list_for_key(key, self.active_contour_index + 1)
                 lst[self.active_contour_index] = self.working_spline
                 self._trim_over_lumen(self.active_contour_index)
@@ -1185,6 +1188,7 @@ class Display(QGraphicsView, MetricsMixin):
         if arc is None:
             return
         contour_obj.contours[index] = [arc[0], arc[1]]
+        contour_obj.reserve(index)  # a contour saved without its closed flags
         contour_obj.closed[index] = False
         contour_obj.sync_open_ends(index)
         self._base_mask_cache = None

@@ -41,3 +41,31 @@ def keep_choices(old: StitchCuts | None, targets: list[StitchCutTarget]) -> dict
     branch_of = {t.key: (t.vessel, t.branch) for t in targets}
     old_branch = {t.key: (t.vessel, t.branch) for t in old.targets}
     return {key: idx for key, idx in old.chosen.items() if key in branch_of and branch_of[key] == old_branch[key]}
+
+
+def saved_choices(cuts: StitchCuts | None) -> list[dict]:
+    """The chosen slices as the case state saves them, with the branch each target is on."""
+    if cuts is None:
+        return []
+    branch_of = {t.key: (t.vessel, t.branch) for t in cuts.targets}
+    return [
+        {
+            'key': list(key) if isinstance(key, tuple) else key,
+            'vessel': branch_of[key][0],
+            'branch': branch_of[key][1],
+            'slice': idx,
+        }
+        for key, idx in cuts.chosen.items()
+        if key in branch_of
+    ]
+
+
+def choices_from_saved(saved: list[dict], targets: list[StitchCutTarget]) -> dict:
+    """The saved slices for `targets` still on the same branch (see keep_choices)."""
+    old_targets, chosen = [], {}
+    for entry in saved:
+        raw = entry['key']
+        key = (raw[0], int(raw[1])) if isinstance(raw, list) else raw
+        old_targets.append(StitchCutTarget(key, entry['vessel'], int(entry['branch']), None))
+        chosen[key] = int(entry['slice'])
+    return keep_choices(StitchCuts(old_targets, (None, None, None), chosen), targets)

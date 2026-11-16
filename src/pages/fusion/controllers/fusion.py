@@ -101,17 +101,19 @@ class FusionController(StageController):
         # Taken before the call, in case remove_labeled_points_from_mesh touches its input.
         before = copy.deepcopy(self.data.results)
         assert before is not None
+        keys = fc.remove_point_keys()
         results = self.run(
             'Removing labeled points…',
             'Points removed.',
             mm_api.run_remove_labeled_points,
             self.data.results,
-            fc.remove_point_keys(),
+            keys,
         )
         if results is not None:
             self.page.branches.clear_delete_undo()  # its snapshots predate this removal
             self.data.removal_undo.push(before)
             self._set_removed_results(results)
+            self.page.case_state.on_points_removed(keys)
             if self.data.aligned is not None:  # the aligned scene is empty until alignment
                 self.left_half.show_scene(FusionScene.INTRAVASCULAR_ALIGNED)
 
@@ -119,6 +121,7 @@ class FusionController(StageController):
         results = self.data.removal_undo.pop()
         if results is None:
             return
+        self.page.case_state.on_removal_undone()
         # With removals left, the restored state is a post-removal one Stitch can start from.
         # Otherwise it is the labelled mesh from before any removal.
         if self.data.removal_undo:
@@ -152,6 +155,7 @@ class FusionController(StageController):
         self.data.results_points_removed = None
         self.clear_removal_undo()
         self.page.stitch_cuts.refresh()
+        self.page.case_state.on_removal_invalidated()
 
     def clear_removal_undo(self) -> None:
         """Also drops the branch deletion undo: both go stale when `results` is replaced otherwise."""
@@ -185,7 +189,8 @@ class FusionController(StageController):
         assert aligned_geom is not None and snapshot is not None
 
         d = self.data
-        kwargs = fc.stitch_kwargs()
+        settings = fc.stitch_kwargs()
+        kwargs = dict(settings)
         if d.vessel_tree is not None:
             # The tree's centerlines: the cut side branches move back along them to the wall.
             centerlines = {'rca': d.centerline_rca, 'lca': d.centerline_lca}
@@ -210,6 +215,7 @@ class FusionController(StageController):
         self.left_half.refresh_toolbar(FusionScene.CCTA_GEOMETRY)
         self.left_half.show_scene(FusionScene.CCTA_GEOMETRY)
         self.page.stitch_cuts.on_stitched(stitched)
+        self.page.case_state.on_stitched(settings, d.stitch_cuts)
 
 
 def _stitch_copy(aligned_geom, snapshot: dict, tree, stitch_kwargs: dict) -> dict:

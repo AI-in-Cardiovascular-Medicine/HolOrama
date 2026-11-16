@@ -76,6 +76,7 @@ def controller(qt_app, found):
         left_half=SimpleNamespace(alignment_toolbar=toolbar, viewer=Mock(), refresh_toolbar=Mock()),
         status_bar=Mock(),
         branches=SimpleNamespace(name=lambda vessel, branch: f'{vessel.upper()} {branch}'),
+        case_state=Mock(take_stitch_choices=Mock(side_effect=lambda targets: {})),
     )
     ctrl = StitchCutController(page)
     ctrl.refresh()
@@ -136,3 +137,24 @@ def test_side_branches_left_loose_are_marked_with_the_reason(controller):
     item = toolbar._targets.item(2)
     assert item.text().startswith('⚠ RCA 3')
     assert 'lumen' in item.toolTip()
+
+
+def test_saved_choices_round_trip_for_targets_on_the_same_branch():
+    targets = [StitchCutTarget('distal', 'rca', 0, 7), StitchCutTarget(('rca', 3), 'rca', 3, 0)]
+    saved = stitch_cuts.saved_choices(StitchCuts(targets, (None, None, None), chosen={'distal': 9, ('rca', 3): 2}))
+    assert saved == [
+        {'key': 'distal', 'vessel': 'rca', 'branch': 0, 'slice': 9},
+        {'key': ['rca', 3], 'vessel': 'rca', 'branch': 3, 'slice': 2},
+    ]
+    assert stitch_cuts.choices_from_saved(saved, targets) == {'distal': 9, ('rca', 3): 2}
+    moved = [StitchCutTarget('distal', 'rca', 5, 1)]  # the rim is on another branch now
+    assert stitch_cuts.choices_from_saved(saved, moved) == {}
+
+
+def test_a_restored_case_brings_its_slices_and_choices_are_reported(controller):
+    ctrl, _ = controller
+    case_state = ctrl.page.case_state
+    case_state.take_stitch_choices.assert_called_once()
+    ctrl.select(1)
+    ctrl.on_point_picked(1.0, 0.0, 4.9)
+    assert case_state.on_stitch_choices_changed.call_args.args[0].chosen == {'distal': 5}

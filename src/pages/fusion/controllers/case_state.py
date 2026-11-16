@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import dataclasses
 import os
 
 import numpy as np
 from PyQt6.QtWidgets import QCheckBox, QMessageBox
 
+from domain.fusion.runtime_types import CutSpec, StitchCuts, StitchCutTarget
 from fusion_pipeline import case_state as cs
+from fusion_pipeline import stitch_cuts as cut_ops
 from pages.fusion.controllers.base import StageController
 from version import version_file_str
 
@@ -87,7 +90,7 @@ class CaseStateController(StageController):
         waiting_deletions = (pending.get('deleted_branches') or []) + self._deferred_deletions
         if waiting_deletions:
             out['deleted_branches'] = waiting_deletions + out.get('deleted_branches', [])
-        for key in ('alignment', 'pullback_plan', 'centerline_edits', 'scaling'):
+        for key in ('alignment', 'pullback_plan', 'centerline_edits', 'scaling', 'removals', 'stitch', 'cuts'):
             if not out.get(key) and pending.get(key):
                 out[key] = pending[key]
         return out
@@ -118,6 +121,7 @@ class CaseStateController(StageController):
         self.page.reset_data()  # a restore starts from scratch, like a fresh case
         state['replay_deletions'] = delete_again
         self._pending = state
+        self._prefill_settings(state)
         if self._apply_paths(state):
             self._run_pipeline(state)
 
@@ -131,6 +135,8 @@ class CaseStateController(StageController):
             'Restore fusion state',
             f'This mesh has a saved fusion state ({filename}).\n\nRestore it? This will {steps}, '
             'with the saved labels, branch edits and alignment and the current parameter settings.\n'
+            'The saved removal regions, stitch settings, stitch cut slices and Inlets & Outlets cuts are filled '
+            'in for you to run.\n'
             'No keeps the file until this mesh is labelled again, which overwrites it.',
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             self.page,
@@ -216,8 +222,11 @@ class CaseStateController(StageController):
         self._centerline_edits = []
 
     def on_centerline_edit(self, op: str, vessel: str, branch: int, **params) -> None:
-        """A split (point_index) or merge (other) of a prepared centerline, replayed in order on restore."""
+        """A split (point_index) or merge (other) of a prepared centerline, replayed in order on restore.
+        The branch ids change, so the cuts are dropped (see BranchController._set_edited_centerline)."""
         self._centerline_edits.append({'op': op, 'vessel': vessel, 'branch': branch, **params})
+        if self._state.get('cuts'):
+            self._state['cuts'] = []
         self.save()
 
     def on_label_geometry(self) -> None:
@@ -307,6 +316,7 @@ class CaseStateController(StageController):
         """The vessel tree exists: delete the saved deleted branches again, select the saved alignment target
         and fill in its settings."""
         self._replay_deletions()
+        self._restore_cuts()
         pending = self._pending or {}
         alignment = pending.get('alignment')
         if not alignment or pending.get('alignment_prefilled'):
@@ -378,6 +388,67 @@ class CaseStateController(StageController):
         if self._index is not None:
             self._index.follow(old_mesh, new_mesh)
             self._present = None
+
+    def on_points_removed(self, keys: list[str]) -> None:
+        """Remove Labeled Points ran with the region `keys`."""
+        self._state.setdefault('removals', []).append(list(keys))
+        self.save()
+
+    def on_removal_undone(self) -> None:
+        removals = self._state.get('removals') or []
+        if removals:
+            removals.pop()
+            self.save()
+
+    def on_removal_invalidated(self) -> None:
+        """The removals no longer apply (the mesh was scaled), they are redone by hand."""
+        if self._state.get('removals'):
+            self._state['removals'] = []
+            self.save()
+
+    def on_stitched(self, settings: dict, cuts: StitchCuts | None) -> None:
+        """Stitch ran with `settings` (the Stitch group) and the slices chosen in `cuts`."""
+        self._state['stitch'] = {'settings': dict(settings), 'cut_slices': cut_ops.saved_choices(cuts)}
+        self.save()
+
+    def on_stitch_choices_changed(self, cuts: StitchCuts | None) -> None:
+        """A stitch cut slice was chosen or set back to the default."""
+        chosen = cut_ops.saved_choices(cuts)
+        if not chosen and 'stitch' not in self._state:
+            return
+        self._state.setdefault('stitch', {})['cut_slices'] = chosen
+        self.save()
+
+    def take_stitch_choices(self, targets: list[StitchCutTarget]) -> dict:
+        """The restored stitch cut slices for `targets` on the same branch, once. {} without a restore."""
+        stitch = (self._pending or {}).pop('stitch', None)
+        if not stitch:
+            return {}
+        self._state['stitch'] = dict(stitch)  # its slices are updated by on_stitch_choices_changed
+        return cut_ops.choices_from_saved(stitch.get('cut_slices') or [], targets)
+
+    def on_cuts_changed(self, cuts: list[CutSpec]) -> None:
+        """The Inlets & Outlets cuts changed."""
+        self._state['cuts'] = [dataclasses.asdict(spec) for spec in cuts]
+        self.save()
+
+    def _restore_cuts(self) -> None:
+        """Put the saved Inlets & Outlets cuts back once the tree exists, else record that there are none."""
+        saved = (self._pending or {}).pop('cuts', None)
+        if saved:
+            self.page.cutting.restore_saved([CutSpec(**spec) for spec in saved])
+        self.on_cuts_changed(self.data.cuts)
+
+    def _prefill_settings(self, state: dict) -> None:
+        """Fill in the saved removal keys and stitch settings. The steps are not rerun: they
+        depend on scaling, which is redone by hand."""
+        fc = self.right_half.fusion_column
+        removals = state.get('removals') or []
+        if removals:
+            fc.set_remove_point_keys(removals[-1])
+        settings = (state.get('stitch') or {}).get('settings')
+        if settings:
+            fc.set_stitch_kwargs(settings)
 
 
 def _with_deleted(branch_ids: dict, deleted: list[dict]) -> dict[str, list[int]]:
