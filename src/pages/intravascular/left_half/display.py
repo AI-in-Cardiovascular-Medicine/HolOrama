@@ -538,6 +538,7 @@ class Display(QGraphicsView, MetricsMixin):
         if update_image:
             self._remove_image_items(image_types)
             self.active_point = None
+            self.active_point_index = None  # the knot is gone, so is any drag of it
 
             display_data, h, w, bpl, qfmt = self._prepare_display_data()
             display_data, bpl, qfmt = self._apply_colormap_if_enabled(display_data, w)
@@ -893,6 +894,7 @@ class Display(QGraphicsView, MetricsMixin):
         self.append_contour_mode = False
         self._contour_close_committed = False
         self.active_point = None
+        self.active_point_index = None
         if was_drawing and (
             self.active_contour_type
             in (
@@ -1988,10 +1990,13 @@ class Display(QGraphicsView, MetricsMixin):
             self._drag_angle_handle(self.mapToScene(event.pos()))
             return
         if event.buttons() == Qt.MouseButton.LeftButton:
+            if self.active_point_index is not None and (self.active_point is None or self.working_spline is None):
+                # A redraw replaced the dragged knot: drop the drag rather than move a knot that is gone.
+                self.active_point_index = None
+                return
             if self.active_point_index is not None:
                 item = self.active_point
-                assert item is not None
-                assert self.working_spline is not None
+                assert item is not None and self.working_spline is not None
                 new_scene_pos = self.mapToScene(event.pos())
 
                 item.update_pos(new_scene_pos)
