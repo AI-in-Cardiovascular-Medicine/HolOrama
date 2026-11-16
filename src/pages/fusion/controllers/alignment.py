@@ -407,13 +407,16 @@ class AlignmentController(StageController):
         changes. No-op before alignment."""
         if self.data.aligned is None or self.data.results is None or 'mesh' not in self.data.results:
             return
-        self.left_half.viewer.add_mesh(
+        viewer = self.left_half.viewer
+        # Shown by default, a re-added mesh keeps the user's checkbox state.
+        state = viewer.layer_states(FusionScene.INTRAVASCULAR_ALIGNED).get('ccta_mesh')
+        viewer.add_mesh(
             FusionScene.INTRAVASCULAR_ALIGNED,
             'ccta_mesh',
             self.data.results['mesh'],
             color=colors.ALIGNED_CCTA_MESH_COLOR,
             opacity=colors.ALIGNED_CCTA_MESH_OPACITY,
-            visible=False,
+            visible=state[0] if state else True,
         )
         self._refresh_boundary_rings()
         self.left_half.refresh_toolbar(FusionScene.INTRAVASCULAR_ALIGNED)
