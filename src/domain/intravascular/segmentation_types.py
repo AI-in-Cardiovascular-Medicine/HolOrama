@@ -4,6 +4,7 @@ what the runtime reads from a model file (segmentation.onnx_inference)."""
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
+from typing import Literal
 
 DEVICES = ('auto', 'cpu', 'cuda', 'directml')  # 'auto': the first GPU that passes a test inference, else the CPU
 PRECISIONS = ('auto', 'fp32', 'fp16')  # 'auto': fp16 on a GPU when it is clearly faster there, else fp32
@@ -25,13 +26,13 @@ class SegmentationSettings:
     tile_step_size: float = 0.5  # sliding-window overlap as a fraction of the patch
     batch_size: int = 2  # tiles per network call (2 = one 512x512 frame)
     num_threads: int = 0  # CPU threads, 0 = all cores
-
+    seg_type: Literal['ivus', 'ct_seg'] = 'ct_seg'
     @classmethod
-    def from_config(cls, config) -> SegmentationSettings:
+    def from_config(cls, config, **kwargs) -> SegmentationSettings:
         """The segmentation section of config.yaml. Missing or empty keys keep their default."""
         section = getattr(config, 'segmentation', None)
         values = {f.name: getattr(section, f.name, None) for f in fields(cls)}
-        return cls(**{name: value for name, value in values.items() if value is not None})
+        return cls(**{name: value for name, value in (values| kwargs).items()  if value is not None})
 
 
 @dataclass(frozen=True)

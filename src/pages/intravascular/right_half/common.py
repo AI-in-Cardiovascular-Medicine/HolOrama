@@ -16,9 +16,11 @@ from segmentation.segment import segment
 def build_lower_buttons(main_window, right_button: QPushButton) -> QVBoxLayout:
     """Automatic segmentation next to the modality's own action button."""
     layout = QVBoxLayout()
+    
     segment_button = QPushButton('Automatic Segmentation')
     segment_button.setToolTip('Run deep learning based segmentation of lumen')
     segment_button.clicked.connect(partial(segment, main_window))
+    
     command_buttons = QHBoxLayout()
     command_buttons.addWidget(segment_button)
     command_buttons.addWidget(right_button)

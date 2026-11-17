@@ -1,6 +1,6 @@
 import numpy as np
 from PyQt6.QtWidgets import QApplication, QProgressDialog
-
+from typing import Literal
 from domain.intravascular.segmentation_types import SegmentationSettings
 from segmentation.onnx_inference import OnnxSegmenter, SegmentationUnavailable
 
@@ -12,10 +12,12 @@ class Predict:
     OnnxSegmenter: takes the settings from config.yaml and shows a cancellable progress
     dialog when a main window is given."""
 
-    def __init__(self, main_window, config=None) -> None:
+    def __init__(self, main_window, config=None, seg_type: Literal['ivus', 'ct_seg'] = 'ivus') -> None:
         self.main_window = main_window
         config = main_window.config if config is None else config
-        self.segmenter = OnnxSegmenter(SegmentationSettings.from_config(config))
+        self.seg_type = seg_type
+        config = SegmentationSettings.from_config(config, seg_type=seg_type)
+        self.segmenter = OnnxSegmenter(config)
         self._progress: QProgressDialog | None = None
 
     def check_available(self) -> tuple[bool, str]:
@@ -43,7 +45,11 @@ class Predict:
             self._progress.setValue(0)
             QApplication.processEvents()
         try:
-            return self.segmenter.predict(images, range(lower_limit, upper_limit), self._on_progress)
+            if self.seg_type == "ct_seg":
+                spacing = self.main_window.data.voxel_spacing
+            elif self.seg_type == "ivus":
+                spacing = None
+            return self.segmenter.predict(images, spacing=spacing, frames=range(lower_limit, upper_limit), progress_cb=self._on_progress)
         finally:
             if self._progress is not None:
                 self._progress.close()

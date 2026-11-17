@@ -11,6 +11,14 @@ import yaml
 from loguru import logger
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+
+# VTK draws through X11 (GLX). Under a Wayland session Qt creates native Wayland windows, whose
+# ids are not X11 windows, so embedding a VTK view kills the app with "BadWindow
+# (X_ConfigureWindow)". Running Qt through XWayland puts both on X11. setdefault keeps an
+# explicit QT_QPA_PLATFORM from the user.
+if sys.platform.startswith('linux') and os.environ.get('WAYLAND_DISPLAY'):
+    os.environ.setdefault('QT_QPA_PLATFORM', 'xcb')
+
 import qdarktheme
 from PyQt6.QtCore import QtMsgType, qInstallMessageHandler
 from PyQt6.QtGui import QFontDatabase

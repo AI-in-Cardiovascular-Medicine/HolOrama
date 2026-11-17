@@ -50,6 +50,8 @@ from pages.ccta.right_half.right_half import RightHalf
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from tools.sphere_smooth import local_remesh, local_smooth, local_smooth_region
 from version import version_file_str
+from segmentation.predict import Predict
+
 
 if TYPE_CHECKING:
     from gui.app import Master
@@ -62,9 +64,11 @@ _CutPlanes = tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
 class CctaPage(QWidget):
     def __init__(self, config: SimpleNamespace, status_bar) -> None:
         super().__init__()
+        self.image_displayed = False
         self.config: SimpleNamespace = config
         self.status_bar = status_bar
         self.data = CctaRuntimeData()
+        self.predictor: Predict = Predict(self, seg_type="ct_seg")
         self._last_image_dir: str | None = None
         self._source_path: str | None = None
         self._mask_dirty: bool = False
@@ -73,14 +77,15 @@ class CctaPage(QWidget):
         self._centerlines_worker: StdoutCapturingWorker | None = None
         self._console: TextIO | None = None  # the real stdout while a vmtk worker captures it
         self._remesh_worker: StdoutCapturingWorker | None = None
-
+        self.waiting_status: str = 'Waiting for user input...'
+        
         common_cfg = config.common
         windowing_sensitivity = common_cfg.windowing_sensitivity
         zoom_sensitivity = common_cfg.zoom_sensitivity
         mask_alpha = common_cfg.default_mask_alpha
 
         # Create left and right halves; the labels get their colours from apply_label_preset
-        self._left_half = LeftHalf(mask_alpha, windowing_sensitivity, zoom_sensitivity)
+        self._left_half = LeftHalf(self, mask_alpha, windowing_sensitivity, zoom_sensitivity)
         self._right_half = RightHalf(mask_alpha)
 
         # Extract references for signal connections
@@ -161,11 +166,13 @@ class CctaPage(QWidget):
         source = self._choose_data_source()
         if source is None:
             return
-
+        
+        # print("I set image_displayed to True")
         # Path confirmed — reinstantiate for a guaranteed clean state.
         # `self` must not be used after this point.
         master.reload_ccta()
         master.ccta_page._load_case(*source)
+        
 
     def _choose_data_source(self) -> tuple[str, str] | None:
         """Ask DICOM-folder vs NIfTI-file, then prompt for the matching path.
@@ -205,6 +212,7 @@ class CctaPage(QWidget):
         volume, metadata = result
         self._apply_loaded_volume(volume, metadata, mode)
         self._finish_loading_for_mode(path, mode)
+        self.image_displayed = True
 
     def _read_volume_with_progress(self, path: str, mode: str) -> tuple[np.ndarray, dict] | None:
         """Read the CT volume from disk behind a modal progress dialog. Shows an
