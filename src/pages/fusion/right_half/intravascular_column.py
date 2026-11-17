@@ -124,6 +124,16 @@ class IntravascularColumn(QWidget):
         )
         layout.addLayout(row('Step rotation (deg):', self._step_rotation))
 
+        self._range_rotation = QDoubleSpinBox()
+        self._range_rotation.setRange(1.0, 180.0)
+        self._range_rotation.setSingleStep(5.0)
+        self._range_rotation.setValue(30.0)
+        self._range_rotation.setToolTip(
+            'Rotation searched (deg, either way) when aligning the frames to each other. '
+            'IVUS and OCT pullbacks twist differently, so set it per modality.'
+        )
+        layout.addLayout(row('Rotation range (deg):', self._range_rotation))
+
         self._sample_size = QSpinBox()
         self._sample_size.setRange(1, 1000)
         self._sample_size.setValue(200)
@@ -294,7 +304,11 @@ class IntravascularColumn(QWidget):
             (self._oct_radio if plan['mode'] == 'oct' else self._ivus_radio).setChecked(True)
         if plan.get('input_path'):
             self._input_path_edit.setText(plan['input_path'])
-        for key, widget in (('step_rotation_deg', self._step_rotation), ('sample_size', self._sample_size)):
+        for key, widget in (
+            ('step_rotation_deg', self._step_rotation),
+            ('range_rotation_deg', self._range_rotation),
+            ('sample_size', self._sample_size),
+        ):
             if key in plan:
                 widget.setValue(plan[key])
         if 'n_points' in plan:
@@ -435,6 +449,7 @@ class IntravascularColumn(QWidget):
         common = {
             'input_path': self._input_path_edit.text(),
             'step_rotation_deg': self._step_rotation.value(),
+            'range_rotation_deg': self._range_rotation.value(),
             'sample_size': self._sample_size.value(),
             'n_points': self._n_points.value(),
         }

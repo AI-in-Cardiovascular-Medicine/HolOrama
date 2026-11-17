@@ -44,6 +44,7 @@ class AlignmentController(StageController):
         common = {
             'input_path': plan['input_path'],
             'step_rotation_deg': plan['step_rotation_deg'],
+            'range_rotation_deg': plan.get('range_rotation_deg', 30.0),
             'sample_size': plan['sample_size'],
             'n_points': plan['n_points'],
         }
