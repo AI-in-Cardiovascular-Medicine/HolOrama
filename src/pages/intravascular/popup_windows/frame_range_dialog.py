@@ -14,7 +14,9 @@ class FrameRangeDialog(QDialog):
     def __init__(self, main_window, step: bool = False):
         super().__init__(main_window)
         self.main_window = main_window
-        self.main_window_data_images = main_window.runtime_data.images if hasattr(main_window, "runtime_data") else main_window.data.volume
+        self.main_window_data_images = (
+            main_window.runtime_data.images if hasattr(main_window, "runtime_data") else main_window.data.volume
+        )
         self.lower_limit = QLineEdit(self)
         self.lower_limit.setText('1')
         self.upper_limit = QLineEdit(self)

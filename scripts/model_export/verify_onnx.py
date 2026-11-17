@@ -38,7 +38,7 @@ def main() -> None:
     parser.add_argument('--no-mirroring', action='store_true')
     parser.add_argument('--model_type', choices=["ivus", "ct"])
     parser.add_argument("--device", default="cpu")
-    
+
     args = parser.parse_args()
     if args.model_type == "ivus":
         files = sorted(args.frames_dir.glob('*.nii.gz'), key=natural_key)
@@ -53,7 +53,6 @@ def main() -> None:
         spacing = list(img.GetSpacing())[::-1]
     else:
         raise ValueError(f"model_type: {args.model_type} is not supported!")
-
 
     predictor = nnUNetPredictor(
         tile_step_size=0.5,

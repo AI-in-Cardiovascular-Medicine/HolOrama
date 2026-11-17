@@ -20,7 +20,5 @@ def compute_new_shape(
     From nnunetv2.preprocessing.resampling.default_resampling.compute_new_shape."""
     assert len(old_spacing) == len(old_shape)
     assert len(old_shape) == len(new_spacing)
-    new_shape = np.array(
-        [int(round(i / j * k)) for i, j, k in zip(old_spacing, new_spacing, old_shape)]
-    )
+    new_shape = np.array([int(round(i / j * k)) for i, j, k in zip(old_spacing, new_spacing, old_shape)])
     return new_shape

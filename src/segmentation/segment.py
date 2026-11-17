@@ -84,9 +84,10 @@ def segment_ct_seg(main_window):
         main_window.status_bar.showMessage(main_window.waiting_status)
         return
 
-    
     main_window._apply_mask(masks, clear_undo=True)
-    main_window.status_bar.showMessage(f'Mask loaded: {len(main_window.data.labels)} label(s) — {main_window.data.labels}')
+    main_window.status_bar.showMessage(
+        f'Mask loaded: {len(main_window.data.labels)} label(s) — {main_window.data.labels}'
+    )
     main_window._offer_preset_for_mask_soon()
     # main_window.contours_drawn = True
     # main_window.display.set_data(main_window.runtime_data.images)

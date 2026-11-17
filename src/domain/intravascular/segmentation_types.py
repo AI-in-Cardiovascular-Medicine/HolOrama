@@ -27,12 +27,13 @@ class SegmentationSettings:
     batch_size: int = 2  # tiles per network call (2 = one 512x512 frame)
     num_threads: int = 0  # CPU threads, 0 = all cores
     seg_type: Literal['ivus', 'ct_seg'] = 'ct_seg'
+
     @classmethod
     def from_config(cls, config, **kwargs) -> SegmentationSettings:
         """The segmentation section of config.yaml. Missing or empty keys keep their default."""
         section = getattr(config, 'segmentation', None)
         values = {f.name: getattr(section, f.name, None) for f in fields(cls)}
-        return cls(**{name: value for name, value in (values| kwargs).items()  if value is not None})
+        return cls(**{name: value for name, value in (values | kwargs).items() if value is not None})
 
 
 @dataclass(frozen=True)

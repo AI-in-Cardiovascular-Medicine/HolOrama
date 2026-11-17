@@ -32,8 +32,7 @@ import torch
 from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
 from onnxconverter_common import float16
 
-SUPPORTED_NORMALIZATION = {'ZScoreNormalization': 'zscore', 
-                           'CTNormalization': 'CT'}
+SUPPORTED_NORMALIZATION = {'ZScoreNormalization': 'zscore', 'CTNormalization': 'CT'}
 
 
 def main() -> None:

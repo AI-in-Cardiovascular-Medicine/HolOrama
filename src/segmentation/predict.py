@@ -49,7 +49,9 @@ class Predict:
                 spacing = self.main_window.data.voxel_spacing
             elif self.seg_type == "ivus":
                 spacing = None
-            return self.segmenter.predict(images, spacing=spacing, frames=range(lower_limit, upper_limit), progress_cb=self._on_progress)
+            return self.segmenter.predict(
+                images, spacing=spacing, frames=range(lower_limit, upper_limit), progress_cb=self._on_progress
+            )
         finally:
             if self._progress is not None:
                 self._progress.close()

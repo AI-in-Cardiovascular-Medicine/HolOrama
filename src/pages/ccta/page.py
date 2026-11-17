@@ -78,7 +78,7 @@ class CctaPage(QWidget):
         self._console: TextIO | None = None  # the real stdout while a vmtk worker captures it
         self._remesh_worker: StdoutCapturingWorker | None = None
         self.waiting_status: str = 'Waiting for user input...'
-        
+
         common_cfg = config.common
         windowing_sensitivity = common_cfg.windowing_sensitivity
         zoom_sensitivity = common_cfg.zoom_sensitivity
@@ -166,13 +166,12 @@ class CctaPage(QWidget):
         source = self._choose_data_source()
         if source is None:
             return
-        
+
         # print("I set image_displayed to True")
         # Path confirmed — reinstantiate for a guaranteed clean state.
         # `self` must not be used after this point.
         master.reload_ccta()
         master.ccta_page._load_case(*source)
-        
 
     def _choose_data_source(self) -> tuple[str, str] | None:
         """Ask DICOM-folder vs NIfTI-file, then prompt for the matching path.

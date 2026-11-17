@@ -28,6 +28,7 @@ from domain.ccta.presets import fallback_color
 from pages.intravascular.popup_windows.message_boxes import ErrorMessage
 from tools.lasso import Lasso2D, project_world_batch
 from segmentation.segment import segment_ct_seg
+
 # ---------------------------------------------------------------------------
 # Algorithm selection — prefer fastest available in installed VTK build
 # ---------------------------------------------------------------------------
@@ -66,11 +67,10 @@ class CctaViewer3D(QWidget):
         self._lasso_btn.setCheckable(True)
         self._lasso_btn.setToolTip('Draw a closed lasso; right-click to erase selected label inside it')
         self._lasso_btn.toggled.connect(self._on_lasso_toggled)
-        
-        
+
         self._automatic_segmentation_btn = QPushButton('Automatic Segmentation')
         self._automatic_segmentation_btn.clicked.connect(partial(segment_ct_seg, main_window))
-        
+
         btn_bar = QHBoxLayout()
         btn_bar.setContentsMargins(4, 2, 4, 2)
         btn_bar.addStretch()
