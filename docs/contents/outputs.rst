@@ -60,13 +60,17 @@ frames: ``diastolic`` and ``systolic`` for gated IVUS, ``tagged`` for OCT.
        with a stored breathing sort, ``position_mm`` follows the sorted order: the k-th
        sorted frame takes the k-th smallest acquisition position.
    * - ``<group>_reference_points.csv``
-     - The reference point per frame, defining the rotational reference
+     - The reference points: ``frame, x_mm, y_mm, position_mm, auto``, where ``auto`` is 1 for a
+       reference set from a side branch and 0 for one placed by hand
    * - ``eem_<group>_contours.csv``
-     - EEM contours, same layout; only when EEM contours exist
-   * - ``calcium_<group>_contours.csv``
-     - Calcium contours; only when they exist
-   * - ``branch_<group>_contours.csv``
-     - Side-branch contours; only when they exist
+     - EEM contours, same layout as the lumen. Only written when EEM contours exist.
+   * - ``<type>_<group>_contours.csv``
+     - Every other structure (side branches, calcium, lipid, ...), one file per type drawn in the
+       group: ``frame, x_mm, y_mm, position_mm, contour, closed``. ``contour`` numbers the
+       contours of a frame from 0. A side branch is written as drawn: an open one is the arc
+       outside the lumen, both ends on the lumen border. In-wall structures are always closed: an
+       open arc is closed against the contour it lies in, and a ring drawn round the lumen is
+       split into two halves.
    * - ``combined_sorted_manual.csv``
      - Always written with the report: the gated diastolic frames followed by the systolic
        ones (IVUS) or the tagged frames (OCT), in the stored breathing-corrected order

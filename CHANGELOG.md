@@ -3,6 +3,32 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.21.0] - 2026-11-17
+
+### Added
+- **Side branches drawn across the lumen**: a side branch contour that crosses the lumen is cut at the two crossings, and only the open arc outside the lumen is kept. Its region is that arc closed back along the lumen border, in the masks, the metrics and the exports.
+- **Side branch diameter**: the widest chord across each side branch, at right angles to its axis, is drawn on the frame and shown as *Branch diameter* in the frame metrics. The report has a `<type>_diameter` column per side-branch type.
+- **Automatic reference points from side branches**: a side branch that leaves the lumen (an open arc) and is at least `intravascular.branch_reference_min_diameter_mm` wide (new config key, default 1.0 mm) sets a reference point on the middle of its region. A branch seen on several frames in a row gets one reference, on the frame where it is widest. References placed by hand are never moved, and a run of frames that already has one gets none.
+- **Structure CSVs for multimodars 0.13**: the report export writes every structure that is not a pipe (side branches, calcium, lipid, ...) as `<type>_<group>_contours.csv` with rows `frame, x, y, z, contour, closed`. In-wall structures are always written closed (an open arc is closed against its container, a ring round the lumen is split in two halves). `<group>_reference_points.csv` gains a fifth column: 1 for a reference set from a side branch, 0 for one placed by hand.
+- **Fusion viewer shows the annotations**: after loading and aligning a pullback, its EEM, side branches, in-wall structures and reference points are shown where multimodars moved their frames, in their preset colour tinted by the phase. In-wall structures are drawn as closed meshes interpolated between frames. The aligned view starts with the meshes, the side branches and the master reference shown.
+- **Choose the pullback references in Fusion**:
+  - *Diastole anchor*, *Systole anchor* (IVUS) and *Anchor* (OCT) choose the reference each phase is loaded and paired around. The default is the most proximal one.
+  - *Pullback reference* chooses which of the loaded pullback's references Align to Centerline places on the vessel tree reference.
+- **Stitch cut slices**: after Remove Labeled Points, the *Intravascular Aligned* toolbar lists where the stitch cuts: the end rims of the opening and every side branch it reconnects. For each, pick a tree slice like an outlet (Pick Point, ◀ ▶, Default). A target whose default slice may be a problem is marked ⚠.
+- *Rotation range (deg)* for loading a pullback (default 30°): how far the frames may rotate when aligned to each other. IVUS and OCT need different values. Before, multimodars' default of 90° was always used.
+- The fusion state file also saves the removed regions, the Stitch settings, the chosen stitch cut slices and the Inlets & Outlets cuts. A restore fills them in to run again, it does not run them. The stitch cut slices come back for targets still on the same branch, the cuts for slices the current tree has.
+
+### Changed
+- **multimodars 0.13.3** (was 0.10.1). The stitch cuts the end rims and the reconnected side branches flat at tree slices. The OCT loader also reads the EEM and the structures.
+- Sphere Smooth (CCTA Cut Geometry and Fusion CCTA Geometry toolbars) defaults to 100 iterations per click, up to 1000 (was 10, up to 100).
+- Centerline Alignment shows the CCTA mesh by default.
+- Contour files are written compactly, without indentation (about 5x faster to write).
+
+### Fixed
+- The whole window froze for a moment while dragging a contour knot: the contour file was saved in the middle of the drag, on the GUI thread. Saving now waits until the mouse is released.
+- Dragging a knot after deleting a contour could crash (`AssertionError` in `mouseMoveEvent`): the deleted contour's index was kept.
+- Dragging a side branch that crosses the lumen crashed (`IndexError` in `_trim_over_lumen`) and left stray knots, depending on how the branch was finished: one finished without clicking its first point or double-clicking had no open/closed flag. The flag is now always saved, and contours saved without it are handled.
+
 ## [0.20.1] - 2026-11-07
 
 ### Changed

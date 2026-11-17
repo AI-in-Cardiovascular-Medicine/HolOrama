@@ -58,5 +58,5 @@ on all three platforms work there. This PR adds compiled builds for Linux and ma
 - [] macOS signing: Apple Developer account or unsigned
 
 ## Related follow-ups (separate PRs)
-- [] multimodars 0.10.0 upgrade (reverted from fix/cleanup-build-system, start from commit 4a7c839)
+- [x] multimodars 0.10.0 upgrade (now 0.13.3)
 - [] Optional float16 model for the GPU backends (~1.5x faster on DirectML, ~3 px/frame different from float32)

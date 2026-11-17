@@ -84,6 +84,9 @@ analysis outputs are unaffected and are still written next to the file you opene
        pullbacks whose field of view does not reach that far.
    * - ``alpha_contour``
      - Contour fill transparency, 0–255 (higher is more opaque).
+   * - ``branch_reference_min_diameter_mm``
+     - How wide a side branch leaving the lumen must be to set a reference point by itself
+       (default 1.0 mm). See *Reference points from side branches* in :doc:`modules/intravascular`.
 
 ``gating``
 ----------
