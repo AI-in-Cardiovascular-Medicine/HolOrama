@@ -54,8 +54,7 @@ OnnxSegmenter._sliding_window_3d and the tile loop of OnnxSegmenter._ivus_predic
 
 from __future__ import annotations
 
-from collections import OrderedDict
-from typing import Union, List, Tuple, Literal
+from typing import Any, List, Literal, Tuple, Union
 from os.path import join, split
 import itertools
 import json
@@ -84,15 +83,8 @@ from domain.intravascular.segmentation_types import (
 from .utils import compute_new_shape
 
 # Bundled model, shipped next to this module (and next to the compiled module in the Nuitka build).
-DEFAULT_IVUS_MODEL_PATH = (
-    Path(__file__).resolve().parent
-    / "weights"
-    / "ivus_lumen"
-    / "ivus_lumen_u2netp.onnx"
-)
-DEFAULT_CT_SEG_MODEL_PATH = (
-    Path(__file__).resolve().parent / "weights" / "ct_seg" / "ct_seg_u2net_small.onnx"
-)
+DEFAULT_IVUS_MODEL_PATH = Path(__file__).resolve().parent / "weights" / "ivus_lumen" / "ivus_lumen_u2netp.onnx"
+DEFAULT_CT_SEG_MODEL_PATH = Path(__file__).resolve().parent / "weights" / "ct_seg" / "ct_seg_u2net_small.onnx"
 _GPU_PROVIDERS = {
     "cuda": "CUDAExecutionProvider",
     "directml": "DmlExecutionProvider",
@@ -118,9 +110,7 @@ class SegmentationUnavailable(RuntimeError):
 class OnnxSegmenter:
     def __init__(self, settings: SegmentationSettings | None = None) -> None:
         settings = settings or SegmentationSettings()
-        self.model_path = resolve_model_path(
-            settings.model_file, seg_type=settings.seg_type
-        )
+        self.model_path = resolve_model_path(settings.model_file, seg_type=settings.seg_type)
         self.device = str(settings.device or "auto").lower()
         self.precision = str(settings.precision or "auto").lower()
         self.use_mirroring = settings.use_mirroring
@@ -132,23 +122,17 @@ class OnnxSegmenter:
         self._info: ModelInfo | None = None
         self.active_device = ""  # 'cuda', 'directml' or 'cpu' once loaded
         self.active_precision = ""  # 'fp32' or 'fp16' once loaded
-        self.fallback_reason = (
-            ""  # why 'auto' ended up on the CPU although a GPU runtime is installed
-        )
+        self.fallback_reason = ""  # why 'auto' ended up on the CPU although a GPU runtime is installed
         self.config = (
-            JsonUtils.load(join(split(self.model_path)[0], "config.json"))
-            if self.seg_type == "ct_seg"
-            else {}
+            JsonUtils.load(join(split(self.model_path)[0], "config.json")) if self.seg_type == "ct_seg" else {}
         )
         self.tile_step_size = self.config.get("tile_step_size", settings.tile_step_size)
-        self.batch_size = max(
-            1, int(self.config.get("batch_size", settings.batch_size))
-        )
+        self.batch_size = max(1, int(self.config.get("batch_size", settings.batch_size)))
 
     def predict(
         self,
         volume: np.ndarray,
-        spacing: list[float] = None,
+        spacing: list[float] | None = None,
         frames: Iterable[int] | None = None,
         progress_cb: Callable[[int, int], bool] | None = None,
     ) -> np.ndarray | None:
@@ -158,9 +142,7 @@ class OnnxSegmenter:
         self.load()
         info = self.info
         if volume.ndim != 3:
-            raise ValueError(
-                f"Expected a (frames, y, x) volume, got shape {volume.shape}"
-            )
+            raise ValueError(f"Expected a (frames, y, x) volume, got shape {volume.shape}")
         if self.seg_type == "ivus":
             output = self._ivus_predict(volume, info, frames, progress_cb)
         elif self.seg_type == "ct_seg":
@@ -184,18 +166,11 @@ class OnnxSegmenter:
         patch = info.patch_size
         frame_shape = cropped.shape[1:]
         padded_shape = tuple(max(p, s) for p, s in zip(patch, frame_shape))
-        pad = [
-            ((p - s) // 2, (p - s) - (p - s) // 2)
-            for p, s in zip(padded_shape, frame_shape)
-        ]
+        pad = [((p - s) // 2, (p - s) - (p - s) // 2) for p, s in zip(padded_shape, frame_shape)]
         unpad = tuple(slice(lo, size - hi) for (lo, hi), size in zip(pad, padded_shape))
 
         steps = compute_steps(padded_shape, patch, self.tile_step_size)
-        tile_slicers = [
-            (slice(sy, sy + patch[0]), slice(sx, sx + patch[1]))
-            for sy in steps[0]
-            for sx in steps[1]
-        ]
+        tile_slicers = [(slice(sy, sy + patch[0]), slice(sx, sx + patch[1])) for sy in steps[0] for sx in steps[1]]
         gaussian = compute_gaussian(patch)
         weight = np.zeros(padded_shape, dtype=np.float32)
         for sl in tile_slicers:
@@ -221,16 +196,12 @@ class OnnxSegmenter:
             logits = self._run(batch)
             for i, (z, j) in enumerate(chunk):
                 if z not in acc:
-                    acc[z] = np.zeros(
-                        (info.num_classes, *padded_shape), dtype=np.float32
-                    )
+                    acc[z] = np.zeros((info.num_classes, *padded_shape), dtype=np.float32)
                 acc[z][(slice(None), *tile_slicers[j])] += logits[i] * gaussian
                 if j == n_tiles - 1:  # frame complete
                     frame_acc = acc.pop(z) / weight
                     del padded[z]
-                    out[z, crop[1], crop[2]] = (
-                        frame_acc[(slice(None), *unpad)].argmax(axis=0).astype(np.uint8)
-                    )
+                    out[z, crop[1], crop[2]] = frame_acc[(slice(None), *unpad)].argmax(axis=0).astype(np.uint8)
                     done += 1
             if progress_cb is not None and progress_cb(done, total) is False:
                 return None
@@ -261,9 +232,7 @@ class OnnxSegmenter:
 
         model_orientation = self.config.get("orientation", CANONICAL_ORIENTATION)
         app_volume = volume
-        volume, perm = reorient_array(
-            app_volume, CANONICAL_ORIENTATION, model_orientation
-        )
+        volume, perm = reorient_array(app_volume, CANONICAL_ORIENTATION, model_orientation)
         original_spacing = [float(spacing[p]) for p in perm]
         target_spacing = [float(s) for s in self.config["spacing"]]
 
@@ -279,9 +248,7 @@ class OnnxSegmenter:
             percentile_00_5=self.config["percentile_00_5"],
             percentile_99_5=self.config["percentile_99_5"],
         )
-        new_shape = compute_new_shape(
-            shape_after_cropping, original_spacing, target_spacing
-        )
+        new_shape = compute_new_shape(shape_after_cropping, original_spacing, target_spacing)
         data = resample_data_or_seg_to_shape(
             data,
             new_shape,
@@ -305,9 +272,7 @@ class OnnxSegmenter:
         logger.info(f"CT sliding window {time.perf_counter() - tic:.1f} s")
 
         tic = time.perf_counter()
-        labels = resample_logits_to_labels(
-            logits, shape_after_cropping, target_spacing, original_spacing
-        )
+        labels = resample_logits_to_labels(logits, shape_after_cropping, target_spacing, original_spacing)
         del logits
         out = np.zeros(volume.shape, dtype=np.uint8)
         out[crop] = labels
@@ -324,19 +289,13 @@ class OnnxSegmenter:
         logits, or None if progress_cb returned False."""
         patch = self.config["patch_size"]
         padded_shape = tuple(max(p, s) for p, s in zip(patch, image.shape))
-        pad = [
-            ((p - s) // 2, (p - s) - (p - s) // 2)
-            for p, s in zip(padded_shape, image.shape)
-        ]
+        pad = [((p - s) // 2, (p - s) - (p - s) // 2) for p, s in zip(padded_shape, image.shape)]
         if any(lo or hi for lo, hi in pad):
             image = np.pad(image, pad, mode="constant", constant_values=0)
 
         unpad = tuple(slice(lo, size - hi) for (lo, hi), size in zip(pad, padded_shape))
         steps = compute_steps(padded_shape, patch, self.tile_step_size)
-        tile_slicers = [
-            tuple(slice(s, s + p) for s, p in zip(start, patch))
-            for start in itertools.product(*steps)
-        ]
+        tile_slicers = [tuple(slice(s, s + p) for s, p in zip(start, patch)) for start in itertools.product(*steps)]
         gaussian = compute_gaussian(patch)
         logits = np.zeros((len(self.config["labels"]), *padded_shape), dtype=np.float32)
         weight = np.zeros(padded_shape, dtype=np.float32)
@@ -353,10 +312,7 @@ class OnnxSegmenter:
             for i, sl in enumerate(chunk):
                 logits[(slice(None), *sl)] += tile_logits[i] * gaussian
                 weight[sl] += gaussian
-            if (
-                progress_cb is not None
-                and progress_cb(start + len(chunk), total) is False
-            ):
+            if progress_cb is not None and progress_cb(start + len(chunk), total) is False:
                 return None
         logits /= weight
         return logits[(slice(None), *unpad)]
@@ -377,9 +333,7 @@ class OnnxSegmenter:
             )
         ort = _import_onnxruntime()
         if not self.model_path.is_file():
-            raise SegmentationUnavailable(
-                f"Segmentation model not found:\n{self.model_path}"
-            )
+            raise SegmentationUnavailable(f"Segmentation model not found:\n{self.model_path}")
         session = self._open_session(ort)
         self._info = self._read_model_info(session)
         self._session = session
@@ -394,9 +348,7 @@ class OnnxSegmenter:
         """device 'auto' tries CUDA, then DirectML (any GPU on Windows), then the CPU; 'cuda' and
         'directml' require that GPU runtime and refuse otherwise."""
         session = None
-        reasons: list[
-            str
-        ] = []  # only from GPU runtimes that are installed but did not work
+        reasons: list[str] = []  # only from GPU runtimes that are installed but did not work
         try:
             if self.device in _GPU_PROVIDERS:
                 session, reason = self._try_gpu_session(ort, self.device)
@@ -409,31 +361,23 @@ class OnnxSegmenter:
                     session, reason = self._try_gpu_session(ort, device)
                     if session is not None:
                         break
-                    if (
-                        reason != _MISSING_RUNTIME[device]
-                    ):  # installed but unusable: worth reporting
+                    if reason != _MISSING_RUNTIME[device]:  # installed but unusable: worth reporting
                         reasons.append(reason)
             if session is None:
                 session = self._create_session(ort, ["CPUExecutionProvider"])
         except SegmentationUnavailable:
             raise
         except Exception as e:  # corrupt file, unsupported opset, CPU without required instructions, ...
-            raise SegmentationUnavailable(
-                f"Could not load the segmentation model {self.model_path.name}:\n{e}"
-            ) from e
+            raise SegmentationUnavailable(f"Could not load the segmentation model {self.model_path.name}:\n{e}") from e
         provider = session.get_providers()[0]
-        self.active_device = next(
-            (d for d, p in _GPU_PROVIDERS.items() if p == provider), "cpu"
-        )
+        self.active_device = next((d for d, p in _GPU_PROVIDERS.items() if p == provider), "cpu")
         if self.active_device == "cpu":
             self.active_precision = "fp32"
         # Only worth mentioning when a GPU runtime is installed but unusable. A CPU-only package
         # (or a machine without a GPU) is a normal setup, not a fallback.
         self.fallback_reason = " ".join(reasons) if self.active_device == "cpu" else ""
         if self.fallback_reason:
-            logger.warning(
-                f"Automatic segmentation falls back to the CPU: {self.fallback_reason}"
-            )
+            logger.warning(f"Automatic segmentation falls back to the CPU: {self.fallback_reason}")
         logger.info(
             f"Segmentation model {self.model_path.name} loaded on {self.active_device.upper()} ({self.active_precision})"
         )
@@ -445,9 +389,7 @@ class OnnxSegmenter:
         provider = _GPU_PROVIDERS[device]
         if provider not in ort.get_available_providers():
             return None, _MISSING_RUNTIME[device]
-        if device == "cuda" and hasattr(
-            ort, "preload_dlls"
-        ):  # CUDA/cuDNN from the nvidia-* pip wheels
+        if device == "cuda" and hasattr(ort, "preload_dlls"):  # CUDA/cuDNN from the nvidia-* pip wheels
             try:
                 ort.preload_dlls()
             except Exception as e:  # noqa: BLE001 - reported, then the session attempt decides
@@ -498,15 +440,11 @@ class OnnxSegmenter:
             )
         return session, ""
 
-    def _create_session(
-        self, ort, providers: list, options=None, model_path: Path | None = None
-    ):
+    def _create_session(self, ort, providers: list, options=None, model_path: Path | None = None):
         options = options or ort.SessionOptions()
         if self.num_threads:
             options.intra_op_num_threads = int(self.num_threads)
-        return ort.InferenceSession(
-            str(model_path or self.model_path), options, providers=providers
-        )
+        return ort.InferenceSession(str(model_path or self.model_path), options, providers=providers)
 
     def _test_input(self, session) -> np.ndarray:
         """Zero tiles of the one shape predict() always uses: DirectML specialises on the first
@@ -519,20 +457,18 @@ class OnnxSegmenter:
         """The float32 session, or a float16 one of the model's _fp16 copy: always for
         precision 'fp16', for 'auto' only when it runs clearly faster on this GPU (some GPUs,
         e.g. GTX 10xx, run float16 far slower). Any problem with float16 keeps float32."""
-        
+
         path = fp16_model_path(self.model_path)
-        
+
         if not path.is_file() and self.precision == "fp16":
-            logger.warning(
-                f'segmentation.precision is "fp16", but {path.name} does not exist, using fp32'
-            )
+            logger.warning(f'segmentation.precision is "fp16", but {path.name} does not exist, using fp32')
             self.precision = "fp32"
-        
+
         fp16_session, reason = self._gpu_session(ort, device, path, fp16=True)
         if self.precision == "fp16" and fp16_session is None:
-            logger.warning(f"fp16 model not usable, using fp32: {reason}")    
+            logger.warning(f"fp16 model not usable, using fp32: {reason}")
             self.precision = "fp32"
-            
+
         fp32_session, reason = self._gpu_session(ort, device, self.model_path, fp16=False)
         if self.precision == "fp32" and fp32_session is None:
             if fp16_session is not None:
@@ -543,16 +479,14 @@ class OnnxSegmenter:
         if fp16_session is None and fp32_session is not None:
             self.active_precision = "fp32"
             return fp32_session, ""
-        
+
         if self.precision == "auto":
             x = self._test_input(fp32_session)
             t32, t16 = (
                 _median_run_time(fp32_session, x),
                 _median_run_time(fp16_session, x),
             )
-            logger.info(
-                f"{device}: fp32 {t32 * 1000:.0f} ms, fp16 {t16 * 1000:.0f} ms per network call"
-            )
+            logger.info(f"{device}: fp32 {t32 * 1000:.0f} ms, fp16 {t16 * 1000:.0f} ms per network call")
             if t16 > FP16_MAX_TIME_RATIO * t32:
                 self.active_precision = "fp32"
                 return fp32_session, ""
@@ -564,9 +498,7 @@ class OnnxSegmenter:
         try:
             return ModelInfo(
                 patch_size=tuple(int(s) for s in meta["patch_size"].split(",")),  # type: ignore[arg-type]
-                mirror_axes=tuple(
-                    int(a) for a in meta.get("mirror_axes", "").split(",") if a != ""
-                ),
+                mirror_axes=tuple(int(a) for a in meta.get("mirror_axes", "").split(",") if a != ""),
                 num_classes=int(meta["num_classes"]),
                 labels=json.loads(meta.get("labels", "{}")),
             )
@@ -594,17 +526,13 @@ class OnnxSegmenter:
         if not self.use_mirroring or not self.info.mirror_axes:
             return [()]
         axes = [a + 2 for a in self.info.mirror_axes]  # (batch, channel, y, x)
-        return [()] + [
-            c for i in range(len(axes)) for c in itertools.combinations(axes, i + 1)
-        ]
+        return [()] + [c for i in range(len(axes)) for c in itertools.combinations(axes, i + 1)]
 
 
 def get_lowres_axis(new_spacing: Union[Tuple[float, ...], List[float], np.ndarray]):
     """Adapted from nnunetv2.preprocessing.resampling.default_resampling.get_lowres_axis
     (same result, ratio written the other way round)."""
-    axis = np.where(np.array(new_spacing) / max(new_spacing) == 1)[
-        0
-    ]  # find which axis is anisotropic
+    axis = np.where(np.array(new_spacing) / max(new_spacing) == 1)[0]  # find which axis is anisotropic
     # if isinstance(axis, np.ndarray):
     #     axis = axis[0]
     # if not isinstance(axis, (np.int64, np.int32, np.int16, np.int8)):
@@ -612,9 +540,7 @@ def get_lowres_axis(new_spacing: Union[Tuple[float, ...], List[float], np.ndarra
     return axis
 
 
-def get_do_separate_z(
-    spacing: Union[Tuple[float, ...], List[float], np.ndarray], anisotropy_threshold=3
-):
+def get_do_separate_z(spacing: Union[Tuple[float, ...], List[float], np.ndarray], anisotropy_threshold=3):
     """From nnunetv2.preprocessing.resampling.default_resampling.get_do_separate_z
     (anisotropy_threshold = nnunetv2.configuration.ANISO_THRESHOLD)."""
     do_separate_z = (np.max(spacing) / np.min(spacing)) > anisotropy_threshold
@@ -661,9 +587,7 @@ def resample_data_or_seg_to_shape(
 
     if axis is not None:
         if len(axis) == 3:
-            print(
-                "every axis has the same spacing, this should never happen, why is this code here?"
-            )
+            print("every axis has the same spacing, this should never happen, why is this code here?")
             do_separate_z = False
         elif len(axis) == 2:
             print(
@@ -743,9 +667,7 @@ def resize_segmentation(segmentation, new_shape, order=3):
     :return:
     """
     tpe = segmentation.dtype
-    assert len(segmentation.shape) == len(new_shape), (
-        "new shape must have same dimensionality as segmentation"
-    )
+    assert len(segmentation.shape) == len(new_shape), "new shape must have same dimensionality as segmentation"
     if order == 0:
         return resize(
             segmentation.astype(float),
@@ -775,7 +697,7 @@ def resize_segmentation(segmentation, new_shape, order=3):
 
 def resample_data_or_seg(
     data: np.ndarray,
-    new_shape: Union[Tuple[float, ...], List[float], np.ndarray],
+    new_shape: Union[Tuple[int, ...], List[int], np.ndarray],
     is_seg: bool = False,
     axis: Union[None, int] = None,
     order: int = 3,
@@ -800,13 +722,11 @@ def resample_data_or_seg(
     """
     tic = time.time()
     assert data.ndim == 4, "data must be (c, x, y, z)"
-    assert len(new_shape) == data.ndim - 1, (
-        f"new_shape: {new_shape}, data.ndim: {data.ndim}"
-    )
+    assert len(new_shape) == data.ndim - 1, f"new_shape: {new_shape}, data.ndim: {data.ndim}"
 
     if is_seg:
         resize_fn = resize_segmentation
-        kwargs = OrderedDict()
+        kwargs: dict[str, Any] = {}
     else:
         resize_fn = resize
         kwargs = {"mode": "edge", "anti_aliasing": False}
@@ -822,9 +742,7 @@ def resample_data_or_seg(
         data = data.astype(np.float32, copy=False)
         if do_separate_z:
             # print("separate z, order in z is", order_z, "order inplane is", order)
-            assert axis is not None, (
-                "If do_separate_z, we need to know what axis is anisotropic"
-            )
+            assert axis is not None, "If do_separate_z, we need to know what axis is anisotropic"
             if axis == 0:
                 new_shape_2d = new_shape[1:]
             elif axis == 1:
@@ -838,13 +756,9 @@ def resample_data_or_seg(
                 reshaped_here = np.zeros(tmp)
                 for slice_id in range(shape[axis]):
                     if axis == 0:
-                        reshaped_here[slice_id] = resize_fn(
-                            data[c, slice_id], new_shape_2d, order, **kwargs
-                        )
+                        reshaped_here[slice_id] = resize_fn(data[c, slice_id], new_shape_2d, order, **kwargs)
                     elif axis == 1:
-                        reshaped_here[:, slice_id] = resize_fn(
-                            data[c, :, slice_id], new_shape_2d, order, **kwargs
-                        )
+                        reshaped_here[:, slice_id] = resize_fn(data[c, :, slice_id], new_shape_2d, order, **kwargs)
                     else:
                         reshaped_here[:, :, slice_id] = resize_fn(
                             data[c, :, :, slice_id], new_shape_2d, order, **kwargs
@@ -866,13 +780,11 @@ def resample_data_or_seg(
 
                     coord_map = np.array([map_rows, map_cols, map_dims])
                     if not is_seg or order_z == 0:
-                        reshaped_final[c] = map_coordinates(
-                            reshaped_here, coord_map, order=order_z, mode="nearest"
-                        )[None]
+                        reshaped_final[c] = map_coordinates(reshaped_here, coord_map, order=order_z, mode="nearest")[
+                            None
+                        ]
                     else:
-                        unique_labels = np.sort(
-                            pd.unique(reshaped_here.ravel())
-                        )  # np.unique(reshaped_data)
+                        unique_labels = np.sort(pd.unique(reshaped_here.ravel()))  # np.unique(reshaped_data)
                         for i, cl in enumerate(unique_labels):
                             reshaped_final[c][
                                 np.round(
@@ -901,15 +813,12 @@ def resample_data_or_seg(
         # print("no resampling necessary")
         if verbose:
             print(
-                f"[INFO] resample_data_or_seg with no resampling took: {time.time() - tic},"
-                f" and data: {data.shape}"
+                f"[INFO] resample_data_or_seg with no resampling took: {time.time() - tic}," f" and data: {data.shape}"
             )
         return data
 
 
-def resolve_model_path(
-    model_file: str | os.PathLike | None, seg_type: Literal["ivus", "ct_seg"]
-) -> Path:
+def resolve_model_path(model_file: str | os.PathLike | None, seg_type: Literal["ivus", "ct_seg"]) -> Path:
     """segmentation.model_file, or the bundled model when it is empty. Configs written before
     the switch to ONNX still point at an nnU-Net model folder (or a Keras .h5). Those can no
     longer be run, so they fall back to the bundled model as well."""
@@ -920,9 +829,7 @@ def resolve_model_path(
             return DEFAULT_CT_SEG_MODEL_PATH
     path = Path(model_file)
     if path.suffix.lower() != ".onnx":
-        logger.warning(
-            f"segmentation.model_file={str(model_file)!r} is not an .onnx model, using the bundled model"
-        )
+        logger.warning(f"segmentation.model_file={str(model_file)!r} is not an .onnx model, using the bundled model")
         if seg_type == "ivus":
             return DEFAULT_IVUS_MODEL_PATH
         elif seg_type == "ct_seg":
@@ -941,20 +848,14 @@ def nonzero_bbox(volume: np.ndarray) -> tuple[slice, ...]:
     for axis in range(mask.ndim):
         other = tuple(a for a in range(mask.ndim) if a != axis)
         hits = np.flatnonzero(mask.any(axis=other))
-        slicer.append(
-            slice(int(hits[0]), int(hits[-1]) + 1)
-            if hits.size
-            else slice(0, mask.shape[axis])
-        )
+        slicer.append(slice(int(hits[0]), int(hits[-1]) + 1) if hits.size else slice(0, mask.shape[axis]))
     return tuple(slicer)
 
 
 _OPPOSITE_DIRECTION = {"L": "R", "R": "L", "A": "P", "P": "A", "S": "I", "I": "S"}
 
 
-def reorient_array(
-    array: np.ndarray, source: str, target: str
-) -> tuple[np.ndarray, list[int]]:
+def reorient_array(array: np.ndarray, source: str, target: str) -> tuple[np.ndarray, list[int]]:
     """A (z, y, x) array of an image in orientation `source` (SimpleITK/DICOM code such as
     'LAS', letters in x, y, z order), as SimpleITK would give it after
     sitk.DICOMOrient(image, target): only axis permutations and flips, so voxel values are
@@ -965,11 +866,7 @@ def reorient_array(
     for k in range(3):  # numpy axis k is SimpleITK axis 2 - k
         letter = target[2 - k]
         j = next(
-            (
-                i
-                for i, s in enumerate(source)
-                if s in (letter, _OPPOSITE_DIRECTION[letter])
-            ),
+            (i for i, s in enumerate(source) if s in (letter, _OPPOSITE_DIRECTION[letter])),
             None,
         )
         if j is None:
@@ -994,13 +891,7 @@ def zscore_stats(volume: np.ndarray, chunk: int = 32) -> tuple[np.float32, float
         var = float((counts * (values - mean) ** 2).sum() / n)
     else:
         n = volume.size
-        mean = (
-            sum(
-                float(volume[s : s + chunk].sum(dtype=np.float64))
-                for s in range(0, volume.shape[0], chunk)
-            )
-            / n
-        )
+        mean = sum(float(volume[s : s + chunk].sum(dtype=np.float64)) for s in range(0, volume.shape[0], chunk)) / n
         var = (
             sum(
                 float(((volume[s : s + chunk].astype(np.float64) - mean) ** 2).sum())
@@ -1012,9 +903,7 @@ def zscore_stats(volume: np.ndarray, chunk: int = 32) -> tuple[np.float32, float
     return np.float32(mean), max(float(np.float32(np.sqrt(var))), 1e-8)
 
 
-def compute_steps(
-    image_size: tuple[int, ...], tile_size: tuple[int, ...], tile_step_size: float
-) -> list[list[int]]:
+def compute_steps(image_size: tuple[int, ...], tile_size: tuple[int, ...], tile_step_size: float) -> list[list[int]]:
     """nnU-Net's compute_steps_for_sliding_window, condensed from
     nnunetv2.inference.sliding_window_prediction.compute_steps_for_sliding_window."""
     steps = []
@@ -1035,9 +924,7 @@ def compute_gaussian(
     torch tensor, and value_scaling_factor defaults to 10, the value nnUNetPredictor passes."""
     tmp = np.zeros(tile_size)
     tmp[tuple(i // 2 for i in tile_size)] = 1
-    gaussian = gaussian_filter(
-        tmp, [i * sigma_scale for i in tile_size], 0, mode="constant", cval=0
-    )
+    gaussian = gaussian_filter(tmp, [i * sigma_scale for i in tile_size], 0, mode="constant", cval=0)
     gaussian = (gaussian / gaussian.max() * value_scaling_factor).astype(np.float32)
     gaussian[gaussian == 0] = gaussian[gaussian != 0].min()
     return gaussian
@@ -1071,9 +958,7 @@ def _median_run_time(session, x: np.ndarray, runs: int = 3) -> float:
     return float(np.median(times))
 
 
-def ct_normalization(
-    image: np.ndarray, mean_intensity, std_intensity, percentile_00_5, percentile_99_5
-) -> np.ndarray:
+def ct_normalization(image: np.ndarray, mean_intensity, std_intensity, percentile_00_5, percentile_99_5) -> np.ndarray:
     """Clip to the dataset's 0.5/99.5 percentiles, then z-score with the dataset's mean and std.
     Adapted from nnunetv2.preprocessing.normalization.default_normalization_schemes
     .CTNormalization.run, with the intensity properties passed in instead of read from the plans."""
