@@ -23,7 +23,8 @@ from domain.intravascular.display_types import BRUSH_DEFAULT_RADIUS_PX, BRUSH_FO
 from domain.intravascular.io_types import Contour, Measure, is_contour_key, sector_points, set_sector_points
 from tools.knot_resampling import KnotHistory
 from domain.intravascular.undo import push_contour_snapshot
-from input_output.output.imgs_masks import contours_to_mask
+from input_output.output.imgs_masks import closes_on_lumen, contours_to_mask, lumen_knots
+from pages.intravascular.utils.branch_references import update_branch_references
 from pages.intravascular.utils.contours_gui import refresh_overviews, step_selected_contour_knots
 from pages.intravascular.utils.metrics import MetricsMixin
 from segmentation.segment import downsample
@@ -46,6 +47,7 @@ from tools.geometry import (
     SplineGeometry,
     get_qt_pen,
 )
+from tools.branch_arc import trim_outside_lumen
 from tools.painting import BrushCursor
 
 
@@ -536,6 +538,7 @@ class Display(QGraphicsView, MetricsMixin):
         if update_image:
             self._remove_image_items(image_types)
             self.active_point = None
+            self.active_point_index = None  # the knot is gone, so is any drag of it
 
             display_data, h, w, bpl, qfmt = self._prepare_display_data()
             display_data, bpl, qfmt = self._apply_colormap_if_enabled(display_data, w)
@@ -560,7 +563,6 @@ class Display(QGraphicsView, MetricsMixin):
             if update_contours:
                 self._draw_contours_frame()
                 self._draw_measure()
-                self._draw_reference()
                 self._draw_angle_sectors()
                 self._draw_open_spline_edge_lines()
 
@@ -569,6 +571,10 @@ class Display(QGraphicsView, MetricsMixin):
                 self._maybe_compute_metrics(
                     self._first_spline_contour(ContourType.LUMEN), self._first_spline_contour(ContourType.EEM)
                 )
+                # After the metrics, which give the lumen centroid the reference is placed from.
+                if update_branch_references(self.main_window):
+                    self.main_window.save_contours_soon()
+                self._draw_reference()
                 self.update_active_contour()
             else:
                 for it in old_overlays:
@@ -888,6 +894,7 @@ class Display(QGraphicsView, MetricsMixin):
         self.append_contour_mode = False
         self._contour_close_committed = False
         self.active_point = None
+        self.active_point_index = None
         if was_drawing and (
             self.active_contour_type
             in (
@@ -1141,13 +1148,50 @@ class Display(QGraphicsView, MetricsMixin):
                     else:
                         # start/end already set by _close_current_spline
                         pass
+                # Only closing on the start point or a double-click set the flag. Stopping otherwise left none,
+                # and a missing flag reads as closed, so the trim below took an open branch for a closed one.
+                contour_obj.reserve(self.active_contour_index, closed=not is_open)
                 lst = self._ensure_finalized_list_for_key(key, self.active_contour_index + 1)
                 lst[self.active_contour_index] = self.working_spline
+                self._trim_over_lumen(self.active_contour_index)
 
             self._interrupt_drawing_mode()
             self.main_window.save_contours_soon()
 
             refresh_overviews(self.main_window)
+
+    def _trim_over_lumen(self, index: int) -> None:
+        """Cut closed contour `index` of the active type to the open arc outside the lumen, if it crosses it.
+
+        Only for types closed against the lumen (a side branch, see closes_on_lumen). The arc ends on
+        the crossings with the lumen as it is now, and its region is filled back to the lumen border.
+        """
+        ct = self.active_contour_type
+        preset = active_preset()
+        defn = preset.get(ct)
+        fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
+        if defn is None or fd is None or not closes_on_lumen(defn, preset):
+            return
+        contour_obj = fd.contour(self.contour_key(ct))
+        is_closed = contour_obj.closed[index] if index < len(contour_obj.closed) else True
+        if index >= len(contour_obj.contours) or not is_closed:
+            return
+        lumen = lumen_knots(fd.lumen)
+        if lumen is None:
+            return
+        xs, ys = contour_obj.contours[index][0], contour_obj.contours[index][1]
+        try:  # called mid mouse release, which must still finish
+            arc = trim_outside_lumen(xs, ys, lumen[0], lumen[1], self.n_points_contour, self.knot_count_range)
+        except Exception as e:
+            logger.warning(f'Could not trim {ct.value} to the lumen on frame {self.frame + 1}: {e}')
+            return
+        if arc is None:
+            return
+        contour_obj.contours[index] = [arc[0], arc[1]]
+        contour_obj.reserve(index)  # a contour saved without its closed flags
+        contour_obj.closed[index] = False
+        contour_obj.sync_open_ends(index)
+        self._base_mask_cache = None
 
     ################################################################################################
     # measure and reference point, to be refactored into contour manipulation methods
@@ -1299,6 +1343,7 @@ class Display(QGraphicsView, MetricsMixin):
         fd = self.main_window.runtime_data.frame_data_dct.get(self.frame)
         if fd:
             fd.reference = None
+            fd.reference_auto = False
             self.main_window.save_contours_soon()
         self.display_image(update_contours=True)
         if self.active_segmentation_tool == SegmentationTool.OPEN_SPLINE:
@@ -1310,10 +1355,9 @@ class Display(QGraphicsView, MetricsMixin):
 
     def _handle_reference_placement(self, pos):
         """Save the reference point, then exit."""
-        self.main_window.runtime_data.frame_data_dct[self.frame].reference = (
-            pos.x() / self.scaling_factor,
-            pos.y() / self.scaling_factor,
-        )
+        fd = self.main_window.runtime_data.frame_data_dct[self.frame]
+        fd.reference = (pos.x() / self.scaling_factor, pos.y() / self.scaling_factor)
+        fd.reference_auto = False  # placed by hand, so never moved by a side branch
         self.reference_mode = False
         self.main_window.display.setCursor(Qt.CursorShape.ArrowCursor)
         self.main_window.save_contours_soon()
@@ -1950,10 +1994,13 @@ class Display(QGraphicsView, MetricsMixin):
             self._drag_angle_handle(self.mapToScene(event.pos()))
             return
         if event.buttons() == Qt.MouseButton.LeftButton:
+            if self.active_point_index is not None and (self.active_point is None or self.working_spline is None):
+                # A redraw replaced the dragged knot: drop the drag rather than move a knot that is gone.
+                self.active_point_index = None
+                return
             if self.active_point_index is not None:
                 item = self.active_point
-                assert item is not None
-                assert self.working_spline is not None
+                assert item is not None and self.working_spline is not None
                 new_scene_pos = self.mapToScene(event.pos())
 
                 item.update_pos(new_scene_pos)
@@ -2017,6 +2064,7 @@ class Display(QGraphicsView, MetricsMixin):
                 if self.active_point.color == self.end_color and ci < len(contour_obj.end_coords):
                     if label_idx is not None and label_idx < len(contour_obj.end_coords[ci]):
                         contour_obj.end_coords[ci][label_idx] = new_val
+                self._trim_over_lumen(ci)
 
                 mask_active = (
                     getattr(self.main_window, 'mask_mode_box', None) and self.main_window.mask_mode_box.isChecked()

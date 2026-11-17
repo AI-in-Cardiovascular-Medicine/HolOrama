@@ -433,6 +433,15 @@ where the blood impairs the visibility of structures, as in the example below:
   undoes the last edit, whether placing one or dragging a boundary.
 - 🟡 **Reference** places a reference point on the frame. This point defines the rotational
   reference used when the pullback is later aligned in the :doc:`fusion` module.
+- A **side branch** may be drawn across the lumen. It is cut where it crosses the lumen
+  border, and only the open arc outside the lumen is kept. Its region is that arc closed back
+  along the lumen border. Its diameter, the widest chord at right angles to its axis, is drawn
+  on the frame and shown as *Branch diameter* (the widest branch of the frame).
+- **Reference points from side branches**: a side branch leaving the lumen at least
+  ``branch_reference_min_diameter_mm`` wide (default 1 mm) sets a reference point by itself,
+  on the middle of its region. A branch seen on several frames in a row gets one reference, on
+  the frame where it is widest. A reference placed by hand is never moved, and frames that
+  already have one get none from their branch.
 - :kbd:`G` hides the measurement overlays, :kbd:`H` hides all contours.
 
 Lumen area, EEM area, elliptic ratio and the other per-frame metrics are computed

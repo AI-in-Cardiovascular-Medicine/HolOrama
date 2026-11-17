@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from PyQt6.QtCore import QSize, Qt, QTimer
-from PyQt6.QtWidgets import QCheckBox, QPushButton, QSplitter, QTableWidget
+from PyQt6.QtWidgets import QApplication, QCheckBox, QPushButton, QSplitter, QTableWidget
 
 from domain.colors import DIASTOLE_COLOR, SYSTOLE_COLOR
 from domain.intravascular.runtime_types import RuntimeData
@@ -18,6 +18,11 @@ from pages.intravascular.utils.slider import Communicate, Slider
 from segmentation.predict import Predict
 
 PENDING_SAVE_DELAY_MS = 1500  # quiet time after an edit before the pending changes are written
+
+
+def _mouse_held() -> bool:
+    """Whether a mouse button is down, as during a knot drag."""
+    return QApplication.mouseButtons() != Qt.MouseButton.NoButton
 
 
 class IntravascularPage(QSplitter):
@@ -130,8 +135,12 @@ class IntravascularPage(QSplitter):
             top.close()
 
     def auto_save(self) -> None:
-        if self.image_displayed:
-            write_contours(self, force=False)
+        if not self.image_displayed:
+            return
+        if _mouse_held():
+            self._pending_save_timer.start()  # mid-drag: save once the mouse is released
+            return
+        write_contours(self, force=False)
 
     def save_contours_soon(self) -> None:
         """Note that frame data changed and save once the edits stop coming.
@@ -146,6 +155,9 @@ class IntravascularPage(QSplitter):
             self._pending_save_timer.start()
 
     def _save_pending_changes(self) -> None:
+        if _mouse_held():
+            self._pending_save_timer.start()  # serializing blocks the GUI thread, wait for the release
+            return
         if self.image_displayed and self.runtime_data.unsaved_changes:
             write_contours(self, force=False)
             self.runtime_data.unsaved_changes = False

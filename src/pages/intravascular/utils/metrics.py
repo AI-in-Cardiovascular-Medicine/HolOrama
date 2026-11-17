@@ -8,6 +8,7 @@ from shapely.geometry import MultiPolygon, Polygon
 
 from domain.intravascular.contour_presets import active_preset
 from domain.intravascular.io_types import FrameData, Measurements
+from input_output.output.branch_metrics import branch_diameters
 from input_output.output.reports import (
     closest_points,
     compute_polygon_metrics,
@@ -15,6 +16,7 @@ from input_output.output.reports import (
 )
 
 # Internal imports based on your file structure
+from pages.intravascular.utils.branch_references import update_branch_references
 from tools.geometry import get_qt_pen
 
 # Bundled and registered in main.py; hardcoded here (rather than read from the app-wide
@@ -88,6 +90,7 @@ class MetricsMixin:
         shortest_d, close_x, close_y = closest_points(self.main_window, poly, self.frame)
 
         eem_area, pct = self.compute_eem_and_percent_stenosis(self.frame, lumen_area, unscaled_eem)
+        branches = branch_diameters(self.main_window, self.frame, self.n_points_contour)  # after the centroid
 
         if not self.main_window.hide_special_points:
             pen = get_qt_pen('yellow', self.point_thickness * 2, self.alpha_contour)
@@ -110,9 +113,22 @@ class MetricsMixin:
                 pen,
             )
 
+            for branch in branches:
+                branch_pen = get_qt_pen('yellow', self.point_thickness * 2, self.alpha_contour)
+                self.graphics_scene.addLine(
+                    QLineF(
+                        branch.start[0] * self.scaling_factor,
+                        branch.start[1] * self.scaling_factor,
+                        branch.end[0] * self.scaling_factor,
+                        branch.end[1] * self.scaling_factor,
+                    ),
+                    branch_pen,
+                )
+
             ell = (longest_d / shortest_d) if shortest_d else 0
+            branch_d = max((branch.diameter for branch in branches), default=None)
             self.build_frame_metrics_text(
-                lumen_area, lumen_circumf, ell, longest_d, shortest_d, eem_area, pct, update_phase=False
+                lumen_area, lumen_circumf, ell, longest_d, shortest_d, eem_area, pct, branch_d, update_phase=False
             )
 
     def _clear_lumen_metrics_if_uncontoured(self):
@@ -136,6 +152,8 @@ class MetricsMixin:
         as the user visits each frame, leaving both overviews blank in the meantime.
         """
         self.compute_all_frame_metrics()
+        if update_branch_references(self.main_window):  # needs the centroids just computed
+            self.main_window.save_contours_soon()
         try:
             self.main_window.longitudinal_view.plot_areas()
         except Exception as exc:
@@ -295,6 +313,7 @@ class MetricsMixin:
         shortest_distance,
         eem_area,
         percent_stenosis_text,
+        branch_diameter,
         update_phase,
     ):
         """
@@ -325,6 +344,7 @@ class MetricsMixin:
             ('Shortest distance:', f'{round(shortest_distance, 2)} (mm)' if shortest_distance is not None else 'n/a'),
             ('EEM area:', f'{round(eem_area, 2)} {squared}' if eem_area is not None else 'n/a'),
             ('Plaque burden:', f'{percent_stenosis_text}'),
+            ('Branch diameter:', f'{round(branch_diameter, 2)} (mm)' if branch_diameter is not None else 'n/a'),
         ]
         label_width = max(len(label) for label, _ in metrics) + 2
         lines = [f'{label:<{label_width}}{value}' for label, value in metrics]

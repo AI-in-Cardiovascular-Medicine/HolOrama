@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, ClassVar, Tuple, Union
+from typing import Any, ClassVar, Dict, Tuple, Union
 
 OCT_QUALITY_LABELS = ['Very Bad', 'Bad', 'Ok', 'Good', 'Very Good']  # best needs to be on the right
 
@@ -60,3 +60,25 @@ class ContourConfig:
     alpha: int
     n_points_contour: int
     n_interactive_points: int
+
+
+@dataclass(frozen=True)
+class BranchMeasurement:
+    """One side-branch contour's diameter on a frame (see branch_metrics.branch_diameters)."""
+
+    key: str  # its contour type id
+    index: int  # which of that type's contours on the frame
+    closed: bool  # False once it was cut at the lumen it leaves (tools.branch_arc)
+    diameter: float  # mm
+    start: Tuple[float, float]  # the diameter line's ends, unscaled px
+    end: Tuple[float, float]
+
+
+@dataclass(frozen=True)
+class BranchRun:
+    """Neighbouring frames showing one side branch leaving the lumen (see branch_metrics.branch_runs)."""
+
+    frames: Tuple[int, ...]
+    widest: Dict[int, BranchMeasurement]  # per frame, its widest branch leaving the lumen
+    reference_frame: int  # the frame where that branch is widest
+    landmark: Tuple[float, float]  # where its reference point goes on that frame, unscaled px

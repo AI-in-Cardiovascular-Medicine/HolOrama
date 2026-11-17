@@ -16,6 +16,8 @@ import trimesh
 import multimodars as mm
 from loguru import logger
 
+from fusion_pipeline.annotations import read_case_structures
+
 
 def load_centerline(path: str, name: str) -> Any:
     return mm.load_centerline(path, name)  # type: ignore[attr-defined]
@@ -122,28 +124,38 @@ def run_from_array(
     labels: str,
     *,
     step_rotation_deg: float = 0.1,
+    range_rotation_deg: float = 30.0,
     sample_size: int = 200,
     n_points: int = 20,
     output_path: str = 'output/single',
     watertight: bool = False,
     write_obj: bool = False,
     smooth: bool = True,
+    reference_frame: int | None = None,
 ) -> tuple[Any, Any]:
-    # Tab-delimited, as written by the report exporter. Rows: [frame, x, y, z].
+    """OCT: the tagged frames. `reference_frame` is the master reference (frame as in the CSV
+    files), None for multimodars' default (the most proximal)."""
+    # Tab-delimited, as written by the report exporter. Contours [frame, x, y, z], references
+    # [frame, x, y, z, auto], structures [frame, x, y, z, contour, closed].
     oct_raw = np.genfromtxt(os.path.join(input_path, "tagged_contours.csv"), delimiter='\t')
-    oct_ref = np.genfromtxt(os.path.join(input_path, "tagged_reference_points.csv"), delimiter='\t')
+    oct_ref = np.atleast_2d(np.genfromtxt(os.path.join(input_path, "tagged_reference_points.csv"), delimiter='\t'))
+    eem_path = os.path.join(input_path, "eem_tagged_contours.csv")
+    oct_eem = np.genfromtxt(eem_path, delimiter='\t') if os.path.isfile(eem_path) else None
 
     oct_input = mm.numpy_to_inputdata(
         lumen_arr=oct_raw,
-        ref_point=oct_ref,
-        record=None,
+        reference_points=oct_ref,
         diastole=True,
+        eem_arr=oct_eem,
         label=labels,
+        structures=read_case_structures(input_path, 'tagged'),
+        master_reference=reference_frame,
     )
 
     return mm.from_array_single(
         input_data=oct_input,
         step_rotation_deg=step_rotation_deg,
+        range_rotation_deg=range_rotation_deg,
         sample_size=sample_size,
         image_center=(5.0, 5.0),
         n_points=n_points,
@@ -160,25 +172,30 @@ def run_from_file_single(
     *,
     diastole: bool = True,
     step_rotation_deg: float = 0.1,
+    range_rotation_deg: float = 30.0,
     sample_size: int = 200,
     n_points: int = 20,
     output_path: str = 'output/single',
     watertight: bool = False,
     write_obj: bool = False,
     smooth: bool = True,
+    reference_frame: int | None = None,
 ) -> tuple[Any, Any]:
-    # `diastole` picks which phase of the IVUS CSV folder to read.
+    """One IVUS phase of a case folder (`diastole` picks which). `reference_frame` is its master
+    reference, None for the most proximal."""
     return mm.from_file_single(
         input_path=input_path,
         labels=[label],
         diastole=diastole,
         step_rotation_deg=step_rotation_deg,
+        range_rotation_deg=range_rotation_deg,
         sample_size=sample_size,
         n_points=n_points,
         output_path=output_path,
         watertight=watertight,
         write_obj=write_obj,
         smooth=smooth,
+        master_references=[reference_frame],
     )
 
 
@@ -187,23 +204,29 @@ def run_from_file_singlepair(
     labels: list[str],
     *,
     step_rotation_deg: float = 0.1,
+    range_rotation_deg: float = 30.0,
     sample_size: int = 200,
     n_points: int = 20,
     output_path: str = 'output/singlepair',
     watertight: bool = False,
     write_obj: bool = False,
     smooth: bool = True,
+    reference_frames: tuple[int | None, int | None] = (None, None),
 ) -> tuple[Any, tuple[Any, Any]]:
+    """Diastole and systole of a case folder as a pair, aligned to each other around their master
+    references `reference_frames` (diastole, systole). Pick the same landmark in both."""
     return mm.from_file_singlepair(
         input_path=input_path,
         labels=labels,
         step_rotation_deg=step_rotation_deg,
+        range_rotation_deg=range_rotation_deg,
         sample_size=sample_size,
         n_points=n_points,
         output_path=output_path,
         watertight=watertight,
         write_obj=write_obj,
         smooth=smooth,
+        master_references=list(reference_frames),
     )
 
 
@@ -222,14 +245,18 @@ def run_align_combined(
     watertight: bool = True,
     output_dir: str = 'output/aligned',
     align_wall_anomalous: bool = False,
+    reference_frame: int | None = None,
 ) -> tuple[Any, float, float]:
     """Returns (aligned_geometry, spacing_mm, total_rotation_deg).
+
+    `reference_frame` is the reference of the primary geometry placed on main_ref_pt (frame as in
+    the CSV files), None for the one the pullback was loaded with.
 
     Use `centerline` as-is afterwards. Resampling it to spacing_mm anchors at index 0, not
     at main_ref_pt, so it would not match the grid the frames were placed on."""
     return mm.align_combined(
         centerline,
-        geometry,
+        _reanchored(geometry, reference_frame),
         main_ref_pt,
         counterclockwise_ref_pt,
         clockwise_ref_pt,
@@ -252,19 +279,32 @@ def run_align_manual(
     *,
     watertight: bool = True,
     align_wall_anomalous: bool = False,
+    reference_frame: int | None = None,
 ) -> tuple[Any, float, float]:
     """Only works for elliptic vessels (anomalous coronaries).
 
     Returns (aligned_geometry, spacing_mm, total_rotation_deg), see run_align_combined."""
     return mm.align_manual(
         centerline,
-        geometry,
+        _reanchored(geometry, reference_frame),
         rotation_angle_deg,
         ref_point,
         write=False,
         watertight=watertight,
         align_wall_anomalous=align_wall_anomalous,
     )
+
+
+def _reanchored(geometry, reference_frame: int | None):
+    """`geometry` with the reference at `reference_frame` as its master, the one placed on the
+    centerline, unchanged for None. A pair gets it on diastole and is realigned to systole around it."""
+    if reference_frame is None:
+        return geometry
+    if hasattr(geometry, 'set_master_references'):
+        geometry.set_master_references(master_a=reference_frame)
+    else:
+        geometry.master_reference = reference_frame
+    return geometry
 
 
 def run_label_anomalous_region(centerline, frames, results: dict, *, branch_id: int = 0) -> dict:
@@ -348,9 +388,14 @@ def run_stitch(
     seam_points_a: int = 2,
     seam_points_b: int = 4,
     tree: Any | None = None,
+    centerlines: dict[str, Any] | None = None,
+    branch_cut_slices: dict[tuple[str, int], int] | None = None,
+    proximal_cut_slice: int | None = None,
+    distal_cut_slice: int | None = None,
 ) -> dict:
-    """With `tree` (the vessel tree before removal), side branches leaving the removed
-    segment are reconnected to the intravascular wall."""
+    """With `tree` (the vessel tree before removal) and the vessel `centerlines`, the end rims
+    are cut flat at tree slices and side branches leaving the removed segment are reconnected
+    to the intravascular wall. The *_cut_slice(s) choose those slices (see run_stitch_cut_targets)."""
     return mm.stitch_ccta_to_intravascular(
         iv_mesh,
         mesh,
@@ -363,7 +408,17 @@ def run_stitch(
         seam_points_a=seam_points_a,
         seam_points_b=seam_points_b,
         tree=tree,
+        centerlines=centerlines,
+        branch_cut_slices=branch_cut_slices,
+        proximal_cut_slice=proximal_cut_slice,
+        distal_cut_slice=distal_cut_slice,
     )
+
+
+def run_stitch_cut_targets(iv_geometry, results: dict, tree: Any) -> dict:
+    """What run_stitch with `tree` would cut: 'distal' and 'proximal' (None for the ostium) as
+    (vessel, branch, default slice), 'side_branches' as [(vessel, branch)] (default slice 0)."""
+    return mm.stitch_cut_targets(iv_geometry, results, tree)
 
 
 def run_remesh(
