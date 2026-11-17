@@ -456,42 +456,29 @@ class OnnxSegmenter:
     def _pick_precision(self, ort, device: str):
         """The float32 session, or a float16 one of the model's _fp16 copy: always for
         precision 'fp16', for 'auto' only when it runs clearly faster on this GPU (some GPUs,
-        e.g. GTX 10xx, run float16 far slower). Any problem with float16 keeps float32."""
-
+        e.g. GTX 10xx, run float16 far slower). Any problem with float16 keeps float32. float16
+        alone is used when float32 does not run, e.g. with too little GPU memory. (None, reason)
+        when neither runs."""
+        self.active_precision = 'fp32'
         path = fp16_model_path(self.model_path)
-
-        if not path.is_file() and self.precision == "fp16":
+        if self.precision == 'fp16' and not path.is_file():
             logger.warning(f'segmentation.precision is "fp16", but {path.name} does not exist, using fp32')
-            self.precision = "fp32"
-
-        fp16_session, reason = self._gpu_session(ort, device, path, fp16=True)
-        if self.precision == "fp16" and fp16_session is None:
-            logger.warning(f"fp16 model not usable, using fp32: {reason}")
-            self.precision = "fp32"
-
         fp32_session, reason = self._gpu_session(ort, device, self.model_path, fp16=False)
-        if self.precision == "fp32" and fp32_session is None:
-            if fp16_session is not None:
-                self.active_precision = "fp16"
-                return fp16_session, reason
-            else:
-                return None, reason
-        if fp16_session is None and fp32_session is not None:
-            self.active_precision = "fp32"
-            return fp32_session, ""
-
-        if self.precision == "auto":
+        if self.precision == 'fp32' or not path.is_file():
+            return fp32_session, reason
+        fp16_session, fp16_reason = self._gpu_session(ort, device, path, fp16=True)
+        if fp16_session is None:
+            if fp32_session is not None:
+                logger.warning(f'fp16 model not usable, using fp32: {fp16_reason}')
+            return fp32_session, reason
+        if fp32_session is not None and self.precision == 'auto':
             x = self._test_input(fp32_session)
-            t32, t16 = (
-                _median_run_time(fp32_session, x),
-                _median_run_time(fp16_session, x),
-            )
-            logger.info(f"{device}: fp32 {t32 * 1000:.0f} ms, fp16 {t16 * 1000:.0f} ms per network call")
+            t32, t16 = _median_run_time(fp32_session, x), _median_run_time(fp16_session, x)
+            logger.info(f'{device}: fp32 {t32 * 1000:.0f} ms, fp16 {t16 * 1000:.0f} ms per network call')
             if t16 > FP16_MAX_TIME_RATIO * t32:
-                self.active_precision = "fp32"
-                return fp32_session, ""
-        self.active_precision = "fp16"
-        return fp16_session, ""
+                return fp32_session, ''
+        self.active_precision = 'fp16'
+        return fp16_session, ''
 
     def _read_model_info(self, session) -> ModelInfo:
         meta = session.get_modelmeta().custom_metadata_map
