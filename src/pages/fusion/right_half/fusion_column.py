@@ -288,6 +288,26 @@ class FusionColumn(QWidget):
             keys.append('proximal_points')
         return keys
 
+    def set_remove_point_keys(self, keys: list[str]) -> None:
+        """Tick the regions in `keys` (a saved removal), untick the others."""
+        self._remove_anomalous.setChecked('anomalous_points' in keys)
+        self._remove_proximal.setChecked('proximal_points' in keys)
+
+    def set_stitch_kwargs(self, kwargs: dict) -> None:
+        """Fill the Stitch group from saved stitch_kwargs. Missing keys keep their current value."""
+        for key, combo in (('prox_start_mode', self._prox_start_mode), ('dist_start_mode', self._dist_start_mode)):
+            if key in kwargs:
+                combo.setCurrentText(str(kwargs[key]))
+        for key, spin in (
+            ('clamp_overshoot', self._clamp_overshoot),
+            ('fillet_bulge', self._fillet_bulge),
+            ('fillet_layers', self._fillet_layers),
+            ('seam_points_a', self._seam_points_a),
+            ('seam_points_b', self._seam_points_b),
+        ):
+            if key in kwargs:
+                spin.setValue(kwargs[key])
+
     def stitch_kwargs(self) -> dict:
         return {
             'prox_start_mode': self._prox_start_mode.currentText(),

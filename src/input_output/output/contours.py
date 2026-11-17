@@ -42,7 +42,8 @@ def write_contours(main_window, force: bool = True, blocking: bool | None = None
         # The contour types the frames were drawn with travel along with them, so the file
         # still says what each contour is when opened with another preset active.
         serializable['contour_types'] = active_preset().to_dict()
-        content = json.dumps(serializable, default=_to_serializable, indent=2)
+        # Compact: indenting the point lists made the dump 5x slower, on the GUI thread.
+        content = json.dumps(serializable, default=_to_serializable)
     except Exception as e:
         logger.exception(f'Failed to serialize contours: {e}')
         return

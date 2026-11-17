@@ -75,6 +75,8 @@ class CutController(StageController):
         if on_gone:
             logger.info(f'Dropping cut(s) on deleted branches: {", ".join(on_gone)}')
         self.data.cuts = [s for s in self.data.cuts if not (s.vessel == vessel and s.branch in gone)]
+        if on_gone:
+            self.page.case_state.on_cuts_changed(self.data.cuts)
         selection = self.data.cut_selection
         if selection is not None and selection[0] == vessel and selection[1] in gone:
             self.data.cut_selection = None
@@ -88,6 +90,18 @@ class CutController(StageController):
         self.data.cuts = self.data.cuts + returning
         self.data.cut_result = None
         self._tree_cache = None  # same tree object, more branches
+        if returning:
+            self.page.case_state.on_cuts_changed(self.data.cuts)
+
+    def restore_saved(self, specs: list[CutSpec]) -> None:
+        """Saved cuts from the case state, those on a slice the current tree has."""
+        slices = self._slices()
+        kept = [s for s in specs if 0 <= s.slice_idx < len(slices.get((s.vessel, s.branch), []))]
+        if len(kept) < len(specs):
+            logger.info(f'{len(specs) - len(kept)} saved cut(s) not restored: their slice is not in the vessel tree.')
+        self.data.cuts = kept
+        self.data.cut_result = None
+        self._sync_cut_list()
 
     def _tree(self) -> tuple | None:
         tree = self.data.vessel_tree
@@ -336,11 +350,13 @@ class CutController(StageController):
         self.data.cut_result = cut
         self.data.cut_selection = None
         self.refresh()
+        self.page.case_state.on_cuts_changed(specs)
         self.status_bar.showMessage(f'Cut {spec.name!r} at {self._slice_label(selection)}.')
 
     def on_remove(self, index: int) -> None:
         spec = self.data.cuts.pop(index)
         self.refresh()  # replays the remaining cuts
+        self.page.case_state.on_cuts_changed(self.data.cuts)
         self.status_bar.showMessage(f'Removed cut {spec.name!r}.')
 
     def on_rename(self, index: int) -> None:
@@ -350,6 +366,7 @@ class CutController(StageController):
             return
         self.data.cuts[index] = dataclasses.replace(spec, name=self._unique_name(name.strip(), skip=index))
         self._sync_cut_list()  # the name doesn't change the geometry, so no replay
+        self.page.case_state.on_cuts_changed(self.data.cuts)
 
     def on_export(self, path: str) -> None:
         if not self.require(bool(self.data.cuts), 'Make a cut on the Inlets & Outlets tab first.'):

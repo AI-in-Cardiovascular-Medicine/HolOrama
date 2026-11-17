@@ -26,6 +26,7 @@ intravascular:
   angle_handle_radius_mm: 5.0  # how far from the image centre a wire/blood sector's handles and arc sit
   alpha_contour: 100  # 0-255
   catheter_diameter: 0.9  # mm, drawn in the OCT vessel schematic (0.9 = 2.7 F)
+  branch_reference_min_diameter_mm: 1.0  # a side branch leaving the lumen at least this wide sets a reference point
 
 ccta:
   # The name and colour of each mask label (Settings > CCTA Contour Settings)

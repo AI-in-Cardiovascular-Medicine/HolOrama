@@ -9,6 +9,7 @@ from domain.fusion.types import FusionScene
 from fusion_pipeline import geometry as geo
 from fusion_pipeline import multimodars_api as mm_api
 from fusion_pipeline import scaling as scaling_ops
+from fusion_pipeline import stitch_cuts as cut_ops
 from pages.fusion.controllers.base import StageController
 
 
@@ -100,17 +101,19 @@ class FusionController(StageController):
         # Taken before the call, in case remove_labeled_points_from_mesh touches its input.
         before = copy.deepcopy(self.data.results)
         assert before is not None
+        keys = fc.remove_point_keys()
         results = self.run(
             'Removing labeled points…',
             'Points removed.',
             mm_api.run_remove_labeled_points,
             self.data.results,
-            fc.remove_point_keys(),
+            keys,
         )
         if results is not None:
             self.page.branches.clear_delete_undo()  # its snapshots predate this removal
             self.data.removal_undo.push(before)
             self._set_removed_results(results)
+            self.page.case_state.on_points_removed(keys)
             if self.data.aligned is not None:  # the aligned scene is empty until alignment
                 self.left_half.show_scene(FusionScene.INTRAVASCULAR_ALIGNED)
 
@@ -118,6 +121,7 @@ class FusionController(StageController):
         results = self.data.removal_undo.pop()
         if results is None:
             return
+        self.page.case_state.on_removal_undone()
         # With removals left, the restored state is a post-removal one Stitch can start from.
         # Otherwise it is the labelled mesh from before any removal.
         if self.data.removal_undo:
@@ -130,6 +134,7 @@ class FusionController(StageController):
             self.page.branches.refresh_labels_scene()
             self.page.alignment.refresh_ccta_mesh()
             self.update_removal_undo_button()
+            self.page.stitch_cuts.refresh()
         self.status_bar.showMessage(f'Undid point removal ({len(self.data.removal_undo)} left).')
 
     def _set_removed_results(self, results: dict) -> None:
@@ -142,12 +147,15 @@ class FusionController(StageController):
         self.page.branches.refresh_labels_scene()
         self.page.alignment.refresh_ccta_mesh()
         self.update_removal_undo_button()
+        self.page.stitch_cuts.refresh()
 
     def invalidate_removal(self) -> None:
         """`results` was replaced by something other than a removal: the post-removal
         snapshot and the removal undo stack no longer match it."""
         self.data.results_points_removed = None
         self.clear_removal_undo()
+        self.page.stitch_cuts.refresh()
+        self.page.case_state.on_removal_invalidated()
 
     def clear_removal_undo(self) -> None:
         """Also drops the branch deletion undo: both go stale when `results` is replaced otherwise."""
@@ -180,14 +188,22 @@ class FusionController(StageController):
         snapshot = self.data.results_points_removed
         assert aligned_geom is not None and snapshot is not None
 
+        d = self.data
+        settings = fc.stitch_kwargs()
+        kwargs = dict(settings)
+        if d.vessel_tree is not None:
+            # The tree's centerlines: the cut side branches move back along them to the wall.
+            centerlines = {'rca': d.centerline_rca, 'lca': d.centerline_lca}
+            kwargs['centerlines'] = {v: cl for v, cl in centerlines.items() if cl is not None}
+            kwargs.update(cut_ops.stitch_kwargs(self.page.stitch_cuts.current()))
         stitched = self.run(
             'Stitching CCTA to intravascular…',
             'Stitched.',
             _stitch_copy,
             aligned_geom,
             snapshot,
-            self.data.vessel_tree,
-            fc.stitch_kwargs(),
+            d.vessel_tree,
+            kwargs,
         )
         if stitched is None:
             return
@@ -198,6 +214,8 @@ class FusionController(StageController):
         viewer.isolate_layer(FusionScene.CCTA_GEOMETRY, 'stitched_mesh')
         self.left_half.refresh_toolbar(FusionScene.CCTA_GEOMETRY)
         self.left_half.show_scene(FusionScene.CCTA_GEOMETRY)
+        self.page.stitch_cuts.on_stitched(stitched)
+        self.page.case_state.on_stitched(settings, d.stitch_cuts)
 
 
 def _stitch_copy(aligned_geom, snapshot: dict, tree, stitch_kwargs: dict) -> dict:

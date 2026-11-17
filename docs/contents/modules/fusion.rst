@@ -296,12 +296,18 @@ Stage 2: intravascular alignment
   loaded; with one, only that phase. Each has its own label field (defaults ``aligned_dia``
   and ``aligned_sys``).
 - **OCT**: a single label field (default ``tagged``); the exported tagged-frame arrays
-  ``tagged_contours.csv`` and ``tagged_reference_points.csv`` are read.
+  ``tagged_contours.csv`` and ``tagged_reference_points.csv`` are read, with the EEM and the
+  structure files if present.
+- *Diastole anchor* / *Systole anchor* (IVUS) or *Anchor* (OCT): the reference each phase is
+  loaded around. Diastole and systole are paired at it and turned so it points the same way, so
+  pick the same landmark in both. The default is the most proximal reference.
 
-Three parameters control how the frames are aligned *to each other* inside the pullback:
+These parameters control how the frames are aligned *to each other* inside the pullback:
 
 - *Step rotation (deg)*: rotation step of the coarse search (default 0.1). Finer is more
   precise and slower.
+- *Rotation range (deg)*: how far the frames may rotate, either way, when aligned to each
+  other (default 30). IVUS and OCT pullbacks twist differently, so set it per modality.
 - *Sample size*: points each frame is downsampled to before alignment (default 200).
 - *Catheter points*: points on the synthetic catheter contour (default 20).
 
@@ -321,6 +327,8 @@ one of its side branches. The three reference points (the main point, plus two t
 rotation) are shown as coordinates. For a side branch, *Include parent vessel* aligns onto the path from the
 vessel ostium through the parent branches, so frames running proximally past the side
 branch's ostium land on the parent instead of being left unaligned.
+*Pullback reference* chooses which reference of the loaded pullback (diastole for a pair) is
+placed on that vessel tree reference. The default is the anchor it was loaded with.
 
 **8. Align.** Click **Align**.
 
@@ -331,7 +339,11 @@ branch's ostium land on the parent instead of being left unaligned.
 - *Watertight*: close the lofted geometry.
 
 The result appears in *Intravascular Aligned*: the aligned pullback, the resampled
-centerline, and the CCTA mesh overlaid so you can judge the fit directly.
+centerline, and the CCTA mesh overlaid so you can judge the fit directly. The pullback's
+annotations move with their frames: side branches, in-wall structures (calcium, lipid, ...)
+as closed meshes, the EEM and the reference points (the master in white), each in its
+intravascular preset colour. The meshes, side branches and master reference are shown first,
+the rest can be switched on.
 
 *Manual alignment (optional).* For elliptic, anomalous vessels the automatic search can
 land on the wrong rotation. The **Manual Alignment** group rotates by an explicit angle
@@ -376,6 +388,12 @@ the inlet/outlet cuts use slices at their scaled size.
 drop (``overlap_points`` and ``proximal_points`` by default) and click **Remove**. These
 are the CCTA points the intravascular geometry replaces; leaving them in would put two
 surfaces in the same place.
+
+With the vessel tree, the *Intravascular Aligned* toolbar then lists where the stitch will
+cut: the end rims of the opening (the proximal one unless it is the ostium) and every side
+branch it reconnects. Each is cut flat at a tree slice. Select one, then **Pick Point** near a
+slice or step with ◀ ▶. **Default** goes back to multimodars' choice. A target marked ⚠ has a
+note in its tooltip.
 
 **12. Stitch.** Click **Stitch**. The intravascular geometry and the CCTA mesh are joined
 into one surface.
@@ -438,9 +456,13 @@ rename, delete, undo) and after alignment and scaling. It holds:
 - the pullback loader settings and the alignment: vessel, branch, reference, automatic or
   manual, rotation and *Ref. point offset*
 - the computed and applied scaling factors, for later analysis
+- the removed regions, the Stitch settings, the chosen stitch cut slices and the Inlets &
+  Outlets cuts
 
-It does not hold the scaled mesh, the removed points or anything after them: those steps
-are quick to redo. A deleted branch's vertices keep their labels in the file, so the file
+It does not hold the scaled mesh, the stitched mesh or any other mesh: those steps are quick
+to redo. On a restore the removal, stitch and cut choices are filled in for you to run again.
+Stitch cut slices come back only for targets still on the same branch, and cuts only for
+slices the current tree has. A deleted branch's vertices keep their labels in the file, so the file
 always describes the whole original mesh.
 
 **Restoring.** Picking the same mesh again asks whether to restore. **Yes** prepares the

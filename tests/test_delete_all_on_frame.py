@@ -128,7 +128,7 @@ class TestDeleteAllOnFrame:
             if name == 'contours':
                 assert all(contour.contours == [] for contour in value.values()), name
             else:
-                assert value is None, name
+                assert value == getattr(FrameData(), name), name
         assert frame_data.lumen.measurements == Measurements()
 
     def test_leaves_every_other_frame_alone(self, main_window):

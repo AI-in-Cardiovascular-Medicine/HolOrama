@@ -147,8 +147,8 @@ class CutGeometryViewer3D(QWidget):
         self.sphere_radius.valueChanged.connect(self._on_sphere_radius_changed)
 
         self.sphere_iterations = QSpinBox()
-        self.sphere_iterations.setRange(1, 100)
-        self.sphere_iterations.setValue(10)
+        self.sphere_iterations.setRange(1, 1000)
+        self.sphere_iterations.setValue(100)
         self.sphere_iterations.setToolTip('Sphere Smooth: Taubin iterations per click')
 
         self._undo_btn = QPushButton('Undo')

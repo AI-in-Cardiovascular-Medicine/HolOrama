@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 
-from domain.fusion.runtime_types import FusionRuntimeData
+from domain.fusion.runtime_types import CutSpec, FusionRuntimeData, StitchCuts, StitchCutTarget
 from fusion_pipeline import case_state as cs
 from pages.fusion.controllers.case_state import CaseStateController
 
@@ -218,3 +218,56 @@ def test_picking_a_mesh_with_a_state_reruns_the_pipeline_in_order(tmp_path):
     page.reset_data.assert_called_once()
     assert order == ['prepare', "split ('rca', 1, 12)", 'label geometry', 'tree']
     page.alignment.on_load_pullback.assert_not_called()  # nothing aligned in the saved state
+
+
+STITCH_SETTINGS = {'prox_start_mode': 'highest_z', 'seam_points_a': 3}
+TARGETS = [StitchCutTarget('distal', 'rca', 0, 7), StitchCutTarget(('rca', 2), 'rca', 2, 0)]
+OUTLET = CutSpec('rca', 1, 4, keep='proximal', name='PDA outlet')
+
+
+def _decided(tmp_path):
+    """A session that removed points (twice, one undone), stitched with chosen slices and cut an outlet."""
+    ctrl, data = _session(tmp_path)
+    ctrl.on_label_geometry()
+    ctrl.on_points_removed(['anomalous_points', 'proximal_points'])
+    ctrl.on_points_removed(['anomalous_points'])
+    ctrl.on_removal_undone()
+    cuts = StitchCuts(TARGETS, (None, None, None), chosen={'distal': 9, ('rca', 2): 3})
+    ctrl.on_stitched(STITCH_SETTINGS, cuts)
+    ctrl.on_cuts_changed([OUTLET])
+    return ctrl, data
+
+
+def test_removal_stitch_and_cuts_are_saved(tmp_path):
+    _decided(tmp_path)
+    saved = _saved(tmp_path)
+    assert saved['removals'] == [['anomalous_points', 'proximal_points']]
+    assert saved['stitch']['settings'] == STITCH_SETTINGS
+    assert {e['slice'] for e in saved['stitch']['cut_slices']} == {9, 3}
+    assert saved['cuts'] == [{'vessel': 'rca', 'branch': 1, 'slice_idx': 4, 'keep': 'proximal', 'name': 'PDA outlet'}]
+
+
+def test_scaling_after_a_removal_drops_it(tmp_path):
+    ctrl, _data = _decided(tmp_path)
+    ctrl.on_removal_invalidated()
+    assert _saved(tmp_path)['removals'] == []
+
+
+def test_a_restore_fills_in_the_decisions_and_keeps_them_until_used(tmp_path):
+    _decided(tmp_path)
+    _flush()
+    ctrl, data = _session(tmp_path)
+    fc = ctrl.page.right_half.fusion_column
+    ctrl._prefill_settings(ctrl._pending)
+    fc.set_remove_point_keys.assert_called_once_with(['anomalous_points', 'proximal_points'])
+    fc.set_stitch_kwargs.assert_called_once_with(STITCH_SETTINGS)
+
+    ctrl.on_label_geometry()  # a fresh state: the saved decisions wait in the file
+    saved = _saved(tmp_path)
+    assert saved['removals'] and saved['stitch'] and saved['cuts']
+
+    ctrl.on_tree_ready()
+    ctrl.page.cutting.restore_saved.assert_called_once_with([OUTLET])
+    moved = [StitchCutTarget('distal', 'rca', 0, 7)]  # the branch target is gone after this removal
+    assert ctrl.take_stitch_choices(moved) == {'distal': 9}
+    assert ctrl.take_stitch_choices(moved) == {}  # only once

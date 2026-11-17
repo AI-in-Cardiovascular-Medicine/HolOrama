@@ -29,8 +29,8 @@ class GeometryToolbar(SceneToolbar):
         self._sphere_radius.setToolTip('Brush radius, measured along the surface (Ctrl+wheel in the view)')
 
         self._sphere_iterations = QSpinBox()
-        self._sphere_iterations.setRange(1, 100)
-        self._sphere_iterations.setValue(10)
+        self._sphere_iterations.setRange(1, 1000)
+        self._sphere_iterations.setValue(100)
         self._sphere_iterations.setToolTip(
             'Taubin iterations per click (uses the Taubin lambda from Remesh and Smooth)'
         )
