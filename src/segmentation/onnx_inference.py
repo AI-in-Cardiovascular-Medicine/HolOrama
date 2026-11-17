@@ -55,7 +55,6 @@ OnnxSegmenter._sliding_window_3d and the tile loop of OnnxSegmenter._ivus_predic
 from __future__ import annotations
 
 from typing import Any, List, Literal, Tuple, Union
-from os.path import join, split
 import itertools
 import json
 import os
@@ -68,7 +67,6 @@ from scipy.ndimage import map_coordinates
 from skimage.transform import resize
 import pandas as pd
 import numpy as np
-from deep_utils import JsonUtils
 from loguru import logger
 from scipy.ndimage import gaussian_filter
 
@@ -102,6 +100,11 @@ _INIT_FAILED = {
 }
 
 
+# onnxruntime's message for a failed allocation (CUDA BFC arena, DirectML, CPU arena).
+_OOM_MARKERS = ('failed to allocate memory', 'out of memory', 'e_outofmemory', 'bad_alloc')
+_MODEL_NAMES = {'ivus': 'IVUS', 'ct_seg': 'CT'}
+
+
 class SegmentationUnavailable(RuntimeError):
     """Raised when automatic segmentation cannot run on this installation (runtime missing,
     model missing or unreadable). The message is meant to be shown to the user as is."""
@@ -123,34 +126,41 @@ class OnnxSegmenter:
         self.active_device = ""  # 'cuda', 'directml' or 'cpu' once loaded
         self.active_precision = ""  # 'fp32' or 'fp16' once loaded
         self.fallback_reason = ""  # why 'auto' ended up on the CPU although a GPU runtime is installed
-        self.config = (
-            JsonUtils.load(join(split(self.model_path)[0], "config.json")) if self.seg_type == "ct_seg" else {}
-        )
-        self.tile_step_size = self.config.get("tile_step_size", settings.tile_step_size)
-        self.batch_size = max(1, int(self.config.get("batch_size", settings.batch_size)))
+        self.config: dict = {}  # the CT model's config.json, read by load()
+        self.tile_step_size = settings.tile_step_size
+        self.batch_size = max(1, int(settings.batch_size))
+
+    @property
+    def model_name(self) -> str:
+        return _MODEL_NAMES.get(self.seg_type, self.seg_type)
 
     def predict(
         self,
         volume: np.ndarray,
-        spacing: list[float] | None = None,
         frames: Iterable[int] | None = None,
         progress_cb: Callable[[int, int], bool] | None = None,
+        *,
+        spacing: list[float] | None = None,
     ) -> np.ndarray | None:
         """Segment `frames` (default: all) of a (frames, y, x) volume. Returns a uint8 label
         volume of the same shape (frames not requested stay 0), or None if progress_cb
-        returned False (cancelled). progress_cb(frames done, total) is called after each network call."""
+        returned False (cancelled). progress_cb(frames done, total) is called after each network call.
+        `spacing` (dz, dy, dx) in mm is needed for CT, which always segments the whole volume."""
         self.load()
         info = self.info
         if volume.ndim != 3:
             raise ValueError(f"Expected a (frames, y, x) volume, got shape {volume.shape}")
-        if self.seg_type == "ivus":
-            output = self._ivus_predict(volume, info, frames, progress_cb)
-        elif self.seg_type == "ct_seg":
-            output = self._ct_seg_predict(volume, spacing, progress_cb)
-        else:
-            raise ValueError("seg_type is not supported")
-
-        return output
+        if self.seg_type == "ct_seg" and spacing is None:
+            raise ValueError("CT segmentation needs the volume's voxel spacing")
+        try:
+            if self.seg_type == "ct_seg":
+                return self._ct_seg_predict(volume, spacing, progress_cb)
+            return self._ivus_predict(volume, info, frames, progress_cb)
+        except Exception as e:
+            if isinstance(e, MemoryError) or _is_out_of_memory(e):
+                where = 'GPU' if self.active_device in _GPU_PROVIDERS else 'computer'
+                raise MemoryError(f'The {where} ran out of memory running the {self.model_name} model.') from e
+            raise
 
     def _ivus_predict(self, volume, info, frames, progress_cb):
         crop = nonzero_bbox(volume)
@@ -225,11 +235,6 @@ class OnnxSegmenter:
         while both are the same.
 
         As for IVUS, logits are accumulated in float32 where nnU-Net uses float16."""
-        if spacing is None:
-            raise ValueError("CT segmentation needs the volume's voxel spacing")
-        if self.config is None:
-            raise ValueError("config for the ct model is required")
-
         model_orientation = self.config.get("orientation", CANONICAL_ORIENTATION)
         app_volume = volume
         volume, perm = reorient_array(app_volume, CANONICAL_ORIENTATION, model_orientation)
@@ -333,10 +338,26 @@ class OnnxSegmenter:
             )
         ort = _import_onnxruntime()
         if not self.model_path.is_file():
-            raise SegmentationUnavailable(f"Segmentation model not found:\n{self.model_path}")
+            raise SegmentationUnavailable(f"The {self.model_name} segmentation model was not found:\n{self.model_path}")
+        if self.seg_type == "ct_seg":
+            self._load_config()
         session = self._open_session(ort)
         self._info = self._read_model_info(session)
         self._session = session
+
+    def _load_config(self) -> None:
+        """The CT model's config.json (spacing, intensities, patch, labels), next to the model."""
+        path = self.model_path.with_name("config.json")
+        if not path.is_file():
+            raise SegmentationUnavailable(f"The CT segmentation model's config.json was not found:\n{path}")
+        try:
+            self.config = json.loads(path.read_text(encoding="utf-8"))
+            for key in ("spacing", "mean", "std", "percentile_00_5", "percentile_99_5", "patch_size", "labels"):
+                self.config[key]
+        except (ValueError, KeyError) as e:
+            raise SegmentationUnavailable(f"The CT model's config.json is unreadable or lacks {e}:\n{path}") from e
+        self.tile_step_size = self.config.get("tile_step_size", self.tile_step_size)
+        self.batch_size = max(1, int(self.config.get("batch_size", self.batch_size)))
 
     @property
     def info(self) -> ModelInfo:
@@ -377,7 +398,7 @@ class OnnxSegmenter:
         # (or a machine without a GPU) is a normal setup, not a fallback.
         self.fallback_reason = " ".join(reasons) if self.active_device == "cpu" else ""
         if self.fallback_reason:
-            logger.warning(f"Automatic segmentation falls back to the CPU: {self.fallback_reason}")
+            logger.warning(f"{self.model_name} segmentation falls back to the CPU: {self.fallback_reason}")
         logger.info(
             f"Segmentation model {self.model_path.name} loaded on {self.active_device.upper()} ({self.active_precision})"
         )
@@ -405,6 +426,7 @@ class OnnxSegmenter:
         provider = _GPU_PROVIDERS[device]
         name = "CUDA" if device == "cuda" else "DirectML"
         options = ort.SessionOptions()
+        options.log_severity_level = 4  # fatal only: a failed test inference is logged below, once
         if device == "cuda":
             # use_tf32=0: TF32 convolutions (RTX 30xx and newer) shift hundreds of mask pixels per
             # frame away from the validated float32 result, full float32 is still ~16x the CPU.
@@ -433,11 +455,10 @@ class OnnxSegmenter:
         try:
             session.run(None, {"image": self._test_input(session)})
         except Exception as e:
-            logger.warning(f"{name} test inference failed: {e}")
-            return (
-                None,
-                f"{name} inference failed on the GPU ({str(e).splitlines()[0][:200]})",
-            )
+            logger.debug(f"{name} test inference of {model_path.name}: {e}")
+            if _is_out_of_memory(e):
+                return None, f"The GPU ({name}) has too little memory for the {self.model_name} model."
+            return None, f"{name} could not run the {self.model_name} model ({str(e).splitlines()[0][:200]})."
         return session, ""
 
     def _create_session(self, ort, providers: list, options=None, model_path: Path | None = None):
@@ -805,23 +826,24 @@ def resample_data_or_seg(
         return data
 
 
-def resolve_model_path(model_file: str | os.PathLike | None, seg_type: Literal["ivus", "ct_seg"]) -> Path:
-    """segmentation.model_file, or the bundled model when it is empty. Configs written before
-    the switch to ONNX still point at an nnU-Net model folder (or a Keras .h5). Those can no
+def resolve_model_path(model_file: str | os.PathLike | None, seg_type: Literal["ivus", "ct_seg"] = "ivus") -> Path:
+    """segmentation.model_file, or the bundled model of `seg_type` when it is empty. Configs written
+    before the switch to ONNX still point at an nnU-Net model folder (or a Keras .h5). Those can no
     longer be run, so they fall back to the bundled model as well."""
+    bundled = DEFAULT_CT_SEG_MODEL_PATH if seg_type == "ct_seg" else DEFAULT_IVUS_MODEL_PATH
     if not model_file:
-        if seg_type == "ivus":
-            return DEFAULT_IVUS_MODEL_PATH
-        elif seg_type == "ct_seg":
-            return DEFAULT_CT_SEG_MODEL_PATH
+        return bundled
     path = Path(model_file)
     if path.suffix.lower() != ".onnx":
         logger.warning(f"segmentation.model_file={str(model_file)!r} is not an .onnx model, using the bundled model")
-        if seg_type == "ivus":
-            return DEFAULT_IVUS_MODEL_PATH
-        elif seg_type == "ct_seg":
-            return DEFAULT_CT_SEG_MODEL_PATH
+        return bundled
     return path
+
+
+def _is_out_of_memory(e: Exception) -> bool:
+    """Whether an onnxruntime error is a failed memory allocation."""
+    text = str(e).lower()
+    return any(marker in text for marker in _OOM_MARKERS)
 
 
 def nonzero_bbox(volume: np.ndarray) -> tuple[slice, ...]:

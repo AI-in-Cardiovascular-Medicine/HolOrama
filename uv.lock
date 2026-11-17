@@ -375,20 +375,6 @@ wheels = [
 ]
 
 [[package]]
-name = "deep-utils"
-version = "1.6.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32' or (extra == 'extra-8-holorama-segmentation' and extra == 'extra-8-holorama-segmentation-gpu')" },
-    { name = "requests", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32' or (extra == 'extra-8-holorama-segmentation' and extra == 'extra-8-holorama-segmentation-gpu')" },
-    { name = "tqdm", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32' or (extra == 'extra-8-holorama-segmentation' and extra == 'extra-8-holorama-segmentation-gpu')" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/92/b5/c216edd37a67a4d5992fcb44969448b821fc8f203c83eea00b73866dfd9b/deep_utils-1.6.1.tar.gz", hash = "sha256:18748923ae16e6f3ed84863a2d726b2b332021897b83c46671156d9c7c03fa7f", size = 452826, upload-time = "2026-08-20T08:21:33.96Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a3/d4/c9f22094b4f49d71e412d328aad233b17f241cefe636790842be54407f87/deep_utils-1.6.1-py3-none-any.whl", hash = "sha256:e817afd6be6621f0ec75b227881b8602c7f8e053b63b338cffc12f31a2151793", size = 573033, upload-time = "2026-08-20T08:21:32.396Z" },
-]
-
-[[package]]
 name = "distlib"
 version = "0.4.1"
 source = { registry = "https://pypi.org/simple" }
@@ -476,7 +462,6 @@ wheels = [
 name = "holorama"
 source = { virtual = "." }
 dependencies = [
-    { name = "deep-utils", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32' or (extra == 'extra-8-holorama-segmentation' and extra == 'extra-8-holorama-segmentation-gpu')" },
     { name = "loguru", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32' or (extra == 'extra-8-holorama-segmentation' and extra == 'extra-8-holorama-segmentation-gpu')" },
     { name = "matplotlib", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32' or (extra == 'extra-8-holorama-segmentation' and extra == 'extra-8-holorama-segmentation-gpu')" },
     { name = "multimodars", extra = ["meshlab"], marker = "sys_platform == 'darwin' or sys_platform == 'linux' or sys_platform == 'win32' or (extra == 'extra-8-holorama-segmentation' and extra == 'extra-8-holorama-segmentation-gpu')" },
@@ -530,7 +515,6 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "deep-utils", specifier = ">=1.6.1" },
     { name = "loguru" },
     { name = "matplotlib" },
     { name = "multimodars", extras = ["meshlab"], specifier = ">=0.13.3" },

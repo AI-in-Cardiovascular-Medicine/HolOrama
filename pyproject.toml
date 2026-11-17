@@ -34,7 +34,6 @@ dependencies = [
     "nibabel",
     "multimodars[meshlab]>=0.13.3",
     "ruamel.yaml>=0.18",
-    "deep-utils>=1.6.1",
 ]
 
 [project.optional-dependencies]

@@ -26,14 +26,17 @@ class SegmentationSettings:
     tile_step_size: float = 0.5  # sliding-window overlap as a fraction of the patch
     batch_size: int = 2  # tiles per network call (2 = one 512x512 frame)
     num_threads: int = 0  # CPU threads, 0 = all cores
-    seg_type: Literal['ivus', 'ct_seg'] = 'ct_seg'
+    seg_type: Literal['ivus', 'ct_seg'] = 'ivus'  # which bundled model: the IVUS lumen or the CT heart model
 
     @classmethod
     def from_config(cls, config, **kwargs) -> SegmentationSettings:
-        """The segmentation section of config.yaml. Missing or empty keys keep their default."""
+        """The segmentation section of config.yaml, overridden by `kwargs`. Missing or empty keys
+        keep their default. Its model_file is the IVUS model, the CT model is always the bundled one."""
         section = getattr(config, 'segmentation', None)
-        values = {f.name: getattr(section, f.name, None) for f in fields(cls)}
-        return cls(**{name: value for name, value in (values | kwargs).items() if value is not None})
+        values = {f.name: getattr(section, f.name, None) for f in fields(cls)} | kwargs
+        if values.get('seg_type') == 'ct_seg' and 'model_file' not in kwargs:
+            values['model_file'] = None
+        return cls(**{name: value for name, value in values.items() if value is not None})
 
 
 @dataclass(frozen=True)

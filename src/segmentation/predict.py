@@ -1,6 +1,9 @@
-import numpy as np
-from PyQt6.QtWidgets import QApplication, QProgressDialog
 from typing import Literal
+
+import numpy as np
+from loguru import logger
+from PyQt6.QtWidgets import QApplication, QProgressDialog
+
 from domain.intravascular.segmentation_types import SegmentationSettings
 from segmentation.onnx_inference import OnnxSegmenter, SegmentationUnavailable
 
@@ -21,11 +24,16 @@ class Predict:
         self._progress: QProgressDialog | None = None
 
     def check_available(self) -> tuple[bool, str]:
-        """(True, '') if the runtime and model load, else (False, user-facing reason)."""
+        """(True, '') if the runtime and model load, else (False, user-facing reason): onnxruntime
+        missing, model or config.json missing or unreadable, a bad device/precision setting, or the
+        GPU segmentation.device asks for not working (too little memory, no driver, ...)."""
         try:
             self.segmenter.load()
         except SegmentationUnavailable as e:
             return False, str(e)
+        except Exception as e:  # anything load() did not foresee: still a reason, not a crash
+            logger.exception(f'Loading the {self.segmenter.model_name} segmentation model failed')
+            return False, f'The {self.segmenter.model_name} segmentation model could not be loaded:\n{e}'
         return True, ''
 
     def __call__(self, images: np.ndarray, lower_limit: int, upper_limit: int) -> np.ndarray | None:
@@ -39,19 +47,14 @@ class Predict:
                 max(1, upper_limit - lower_limit),
                 self.main_window,
             )
-            self._progress.setWindowTitle('Automatic segmentation')
+            self._progress.setWindowTitle(f'Automatic {self.segmenter.model_name} segmentation')
             self._progress.setMinimumDuration(0)
             self._progress.setModal(True)
             self._progress.setValue(0)
             QApplication.processEvents()
         try:
-            if self.seg_type == "ct_seg":
-                spacing = self.main_window.data.voxel_spacing
-            elif self.seg_type == "ivus":
-                spacing = None
-            return self.segmenter.predict(
-                images, spacing=spacing, frames=range(lower_limit, upper_limit), progress_cb=self._on_progress
-            )
+            spacing = self.main_window.data.voxel_spacing if self.seg_type == 'ct_seg' else None
+            return self.segmenter.predict(images, range(lower_limit, upper_limit), self._on_progress, spacing=spacing)
         finally:
             if self._progress is not None:
                 self._progress.close()
