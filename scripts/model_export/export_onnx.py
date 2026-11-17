@@ -73,7 +73,6 @@ def main() -> None:
     dummy = torch.zeros((1, num_input_channels, *patch_size), dtype=torch.float32)
     with torch.no_grad():
         out = network(dummy)
-    # print(out)
     num_classes = int(out.shape[1])
 
     args.output.parent.mkdir(parents=True, exist_ok=True)

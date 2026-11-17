@@ -167,7 +167,6 @@ class CctaPage(QWidget):
         if source is None:
             return
 
-        # print("I set image_displayed to True")
         # Path confirmed — reinstantiate for a guaranteed clean state.
         # `self` must not be used after this point.
         master.reload_ccta()

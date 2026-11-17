@@ -58,8 +58,8 @@ def segment(main_window):
 
 
 def segment_ct_seg(main_window):
-    """Automatic segmentation of IVUS images"""
-    main_window.status_bar.showMessage('Segmenting frames...')
+    """Automatic segmentation of the loaded CT volume"""
+    main_window.status_bar.showMessage('Segmenting the volume...')
     if not main_window.image_displayed:
         ErrorMessage(main_window, 'Cannot perform automatic segmentation before reading input file')
         main_window.status_bar.showMessage(main_window.waiting_status)
@@ -89,17 +89,6 @@ def segment_ct_seg(main_window):
         f'Mask loaded: {len(main_window.data.labels)} label(s) — {main_window.data.labels}'
     )
     main_window._offer_preset_for_mask_soon()
-    # main_window.contours_drawn = True
-    # main_window.display.set_data(main_window.runtime_data.images)
-    # main_window.hide_contours_box.setChecked(False)
-    # main_window.save_contours_soon()  # a whole frame range was rewritten
-
-    # SuccessMessage(main_window, 'Automatic segmentation')
-    # # Every segmented frame needs its metrics computed here: a frame is otherwise only
-    # # measured when displayed, so the pullback overviews would stay empty until the user
-    # # scrolled through the whole segmented range.
-    # main_window.display.refresh_all_frame_metrics()
-    # main_window.status_bar.showMessage(main_window.waiting_status)
 
 
 def mask_to_contours(main_window, masks, lower_limit, upper_limit):

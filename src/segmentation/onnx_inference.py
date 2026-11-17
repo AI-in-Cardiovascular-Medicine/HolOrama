@@ -541,10 +541,6 @@ def get_lowres_axis(new_spacing: Union[Tuple[float, ...], List[float], np.ndarra
     """Adapted from nnunetv2.preprocessing.resampling.default_resampling.get_lowres_axis
     (same result, ratio written the other way round)."""
     axis = np.where(np.array(new_spacing) / max(new_spacing) == 1)[0]  # find which axis is anisotropic
-    # if isinstance(axis, np.ndarray):
-    #     axis = axis[0]
-    # if not isinstance(axis, (np.int64, np.int32, np.int16, np.int8)):
-    #     axis = axis[0]
     return axis
 
 
@@ -744,12 +740,9 @@ def resample_data_or_seg(
     dtype_out = dtype_out or data.dtype
 
     reshaped_final = np.zeros((data.shape[0], *new_shape), dtype=dtype_out)
-    # print("resample_data_or_seg -> shape: ", shape)
-    # print("resample_data_or_seg -> new_shape: ", new_shape)
     if np.any(shape != new_shape):
         data = data.astype(np.float32, copy=False)
         if do_separate_z:
-            # print("separate z, order in z is", order_z, "order inplane is", order)
             assert axis is not None, "If do_separate_z, we need to know what axis is anisotropic"
             if axis == 0:
                 new_shape_2d = new_shape[1:]
@@ -808,7 +801,6 @@ def resample_data_or_seg(
                 else:
                     reshaped_final[c] = reshaped_here
         else:
-            # print("no separate z, order", order)
             for c in range(data.shape[0]):
                 reshaped_final[c] = resize_fn(data[c], new_shape, order, **kwargs)
         if verbose:
@@ -818,7 +810,6 @@ def resample_data_or_seg(
             )
         return reshaped_final
     else:
-        # print("no resampling necessary")
         if verbose:
             print(
                 f"[INFO] resample_data_or_seg with no resampling took: {time.time() - tic}," f" and data: {data.shape}"
