@@ -52,8 +52,9 @@ segmentation = [
 # Use instead of 'segmentation' (both provide the `onnxruntime` module). Source installs only;
 # the compiled installer is CPU-only.
 segmentation-gpu = [
-    "onnxruntime-gpu[cuda,cudnn]>=1.21,<1.27; sys_platform != 'darwin'",
+    "onnxruntime-gpu[cuda,cudnn]>=1.21,<1.27; sys_platform != 'darwin' and platform_machine != 'aarch64'",
 ]
+
 # Centerlines (vmtk) are not a Python extra: vmtk only exists on conda-forge and runs in its
 # own pixi-managed environment, see src/centerlines/vmtk_env/.
 

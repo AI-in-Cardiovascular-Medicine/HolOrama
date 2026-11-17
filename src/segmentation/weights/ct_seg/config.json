@@ -1,0 +1,28 @@
+{
+    "patch_size": [128, 256, 224],
+    "spacing": [0.5, 0.349609375, 0.349609375],
+    "mean":	199.32492065429688,
+    "percentile_00_5": 	-163.0,
+    "percentile_99_5":	826.0,
+    "std": 220.91062927246094,
+    "labels": {
+        "background": 0,
+        "Coronary Artery": 1,
+        "LVM": 2,
+        "LA": 3,
+        "LV": 4,
+        "RA": 5,
+        "RV": 6,
+        "Aorta": 7,
+        "Superior Vena Cava": 12,
+        "Inferior Vena Cava": 13,
+        "Pulmonary Arteries": 8,
+        "Pulmonary Vein": 11,
+        "LA Appendage": 14,
+        "Epicardial Fat": 10,
+        "Precardial Fat": 9
+    },
+    "orientation": "LAS",
+    "batch_size": 1,
+    "tile_step_size": 0.75
+}

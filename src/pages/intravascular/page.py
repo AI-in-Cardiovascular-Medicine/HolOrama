@@ -34,7 +34,7 @@ class IntravascularPage(QSplitter):
 
         self.file_name: str | None = None
         self.gating_plot: GatingPlot = GatingPlot(self)
-        self.predictor: Predict = Predict(self)
+        self.predictor: Predict = Predict(self, seg_type="ivus")
         self.image_displayed: bool = False
         self.segmentation: bool = False
         self.contours_drawn: bool = False

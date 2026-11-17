@@ -92,10 +92,9 @@ try {
         # The built-in contour presets are read from presets/ next to the executable
         # (domain/intravascular/contour_presets.py and domain/ccta/presets.py).
         '--include-data-dir=src\presets=presets',
-        # The automatic segmentation model, found next to segmentation/onnx_inference.py.
-        '--include-data-files=src\segmentation\weights\ivus_lumen_u2netp.onnx=segmentation\weights\ivus_lumen_u2netp.onnx',
-        # Its float16 copy, used on GPUs (segmentation.precision).
-        '--include-data-files=src\segmentation\weights\ivus_lumen_u2netp_fp16.onnx=segmentation\weights\ivus_lumen_u2netp_fp16.onnx',
+        # The automatic segmentation models (IVUS lumen, CT with its config.json) and their float16
+        # copies used on GPUs (segmentation.precision), found next to segmentation/onnx_inference.py.
+        '--include-data-dir=src\segmentation\weights=segmentation\weights',
         # pixi manifest + lock of the vmtk environment, found next to centerlines/environment.py.
         '--include-data-files=src\centerlines\vmtk_env\pixi.toml=centerlines\vmtk_env\pixi.toml',
         '--include-data-files=src\centerlines\vmtk_env\pixi.lock=centerlines\vmtk_env\pixi.lock',
@@ -147,8 +146,11 @@ try {
 
     # Everything segmentation needs at runtime must have made it into the dist.
     $required = @(
-        'segmentation\weights\ivus_lumen_u2netp.onnx',
-        'segmentation\weights\ivus_lumen_u2netp_fp16.onnx',
+        'segmentation\weights\ivus_lumen\ivus_lumen_u2netp.onnx',
+        'segmentation\weights\ivus_lumen\ivus_lumen_u2netp_fp16.onnx',
+        'segmentation\weights\ct_seg\ct_seg_u2net_small.onnx',
+        'segmentation\weights\ct_seg\ct_seg_u2net_small_fp16.onnx',
+        'segmentation\weights\ct_seg\config.json',
         'centerlines\vmtk_env\pixi.toml',
         'centerlines\vmtk_env\pixi.lock',
         'pymeshlab\lib\plugins\filter_clean.dll'

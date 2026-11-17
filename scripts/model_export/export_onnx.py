@@ -32,7 +32,7 @@ import torch
 from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
 from onnxconverter_common import float16
 
-SUPPORTED_NORMALIZATION = {'ZScoreNormalization': 'zscore'}
+SUPPORTED_NORMALIZATION = {'ZScoreNormalization': 'zscore', 'CTNormalization': 'CT'}
 
 
 def main() -> None:
@@ -40,8 +40,9 @@ def main() -> None:
     parser.add_argument('model_folder', type=Path)
     parser.add_argument('output', type=Path)
     parser.add_argument('--fold', type=int, default=0)
-    parser.add_argument('--checkpoint', default='checkpoint_final.pth')
+    parser.add_argument('--checkpoint', default='checkpoint_best.pth')
     parser.add_argument('--opset', type=int, default=17)
+    parser.add_argument('--patch_size', type=int, default=[96, 96, 96])
     parser.add_argument('--no-fp16', action='store_true', help='do not write the float16 copy')
     args = parser.parse_args()
 
@@ -52,21 +53,24 @@ def main() -> None:
     network = predictor.network
     network.load_state_dict(predictor.list_of_parameters[0])
     network.eval()
+    if hasattr(network, "deep_supervision"):
+        network.deep_supervision = False
 
     cm = predictor.configuration_manager
     pm = predictor.plans_manager
-    if len(cm.patch_size) != 2:
-        raise SystemExit(f'Only 2D configurations are supported, got patch size {cm.patch_size}')
+    patch_size = args.patch_size or cm.patch_size
+    # if len(cm.patch_size) != 2:
+    #     raise SystemExit(f'Only 2D configurations are supported, got patch size {cm.patch_size}')
     if list(pm.transpose_forward) != [0, 1, 2]:
         raise SystemExit(f'Non-identity transpose_forward {pm.transpose_forward} is not supported by the runtime')
     schemes = cm.normalization_schemes
     if len(schemes) != 1 or schemes[0] not in SUPPORTED_NORMALIZATION or cm.use_mask_for_norm[0]:
         raise SystemExit(f'Unsupported normalization {schemes} (use_mask_for_norm={cm.use_mask_for_norm})')
-    if list(cm.spacing) != [1.0, 1.0]:
-        raise SystemExit(f'Runtime assumes a target spacing of [1, 1] (no resampling), got {cm.spacing}')
+    # if list(cm.spacing) != [1.0, 1.0]:
+    #     raise SystemExit(f'Runtime assumes a target spacing of [1, 1] (no resampling), got {cm.spacing}')
 
     num_input_channels = 1
-    dummy = torch.zeros((1, num_input_channels, *cm.patch_size), dtype=torch.float32)
+    dummy = torch.zeros((1, num_input_channels, *patch_size), dtype=torch.float32)
     with torch.no_grad():
         out = network(dummy)
     num_classes = int(out.shape[1])
@@ -85,7 +89,7 @@ def main() -> None:
 
     mirror_axes = predictor.allowed_mirroring_axes or ()
     metadata = {
-        'patch_size': ','.join(str(int(s)) for s in cm.patch_size),
+        'patch_size': ','.join(str(int(s)) for s in patch_size),
         'mirror_axes': ','.join(str(int(a)) for a in mirror_axes),
         'normalization': SUPPORTED_NORMALIZATION[schemes[0]],
         'num_classes': str(num_classes),

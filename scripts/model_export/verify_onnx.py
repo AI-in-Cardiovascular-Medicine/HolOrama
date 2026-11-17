@@ -36,41 +36,54 @@ def main() -> None:
     parser.add_argument('--max-frames', type=int, default=64)
     parser.add_argument('--min-dice', type=float, default=0.995)
     parser.add_argument('--no-mirroring', action='store_true')
-    args = parser.parse_args()
+    parser.add_argument('--model_type', choices=["ivus", "ct"])
+    parser.add_argument("--device", default="cpu")
 
-    files = sorted(args.frames_dir.glob('*.nii.gz'), key=natural_key)
-    arrays = [sitk.GetArrayFromImage(sitk.ReadImage(str(f))) for f in files]
-    frames = [a[None] if a.ndim == 2 else a for a in arrays]
-    volume = np.concatenate(frames)[: args.max_frames]
-    print(f'Volume {volume.shape} {volume.dtype} from {len(files)} files')
+    args = parser.parse_args()
+    if args.model_type == "ivus":
+        files = sorted(args.frames_dir.glob('*.nii.gz'), key=natural_key)
+        arrays = [sitk.GetArrayFromImage(sitk.ReadImage(str(f))) for f in files]
+        frames = [a[None] if a.ndim == 2 else a for a in arrays]
+        volume = np.concatenate(frames)[: args.max_frames]
+        spacing = None
+        print(f'Volume {volume.shape} {volume.dtype} from {len(files)} files')
+    elif args.model_type == "ct":
+        img = sitk.ReadImage(args.frames_dir)
+        volume = sitk.GetArrayFromImage(img)
+        spacing = list(img.GetSpacing())[::-1]
+    else:
+        raise ValueError(f"model_type: {args.model_type} is not supported!")
 
     predictor = nnUNetPredictor(
         tile_step_size=0.5,
         use_gaussian=True,
         use_mirroring=not args.no_mirroring,
         perform_everything_on_device=False,
-        device=torch.device('cpu'),
+        device=torch.device(args.device),
         verbose=False,
         allow_tqdm=False,
     )
     predictor.initialize_from_trained_model_folder(
-        str(args.model_folder), use_folds=(args.fold,), checkpoint_name='checkpoint_final.pth'
+        str(args.model_folder), use_folds=(args.fold,), checkpoint_name='checkpoint_best.pth'
     )
     t = time.perf_counter()
-    reference = predictor.predict_single_npy_array(volume[None].astype(np.float32), {'spacing': [1, 1, 1]})
+    cm = predictor.configuration_manager
+
+    reference = predictor.predict_single_npy_array(volume[None].astype(np.float32), {'spacing': cm.spacing})
     t_ref = time.perf_counter() - t
 
-    settings = SegmentationSettings(model_file=str(args.onnx), device='cpu', use_mirroring=not args.no_mirroring)
+    settings = SegmentationSettings(model_file=str(args.onnx), device=args.device, use_mirroring=not args.no_mirroring)
     segmenter = OnnxSegmenter(settings)
     segmenter.load()
     t = time.perf_counter()
-    ours = segmenter.predict(volume)
+    ours = segmenter.predict(volume, spacing=spacing)
     t_onnx = time.perf_counter() - t
     assert ours is not None
 
     # Sub-range must give the same masks as the corresponding frames of a full run.
-    sub = segmenter.predict(volume, frames=range(3, 7))
-    assert sub is not None and np.array_equal(sub[3:7], ours[3:7]) and not sub[:3].any()
+    if args.model_type == "ivus":
+        sub = segmenter.predict(volume, frames=range(3, 7), spacing=spacing)
+        assert sub is not None and np.array_equal(sub[3:7], ours[3:7]) and not sub[:3].any()
 
     dices = []
     for z in range(volume.shape[0]):
@@ -81,8 +94,8 @@ def main() -> None:
         print(f'frame {z:3d}: dice {dice:.5f}, differing pixels {(a != b).sum():5d}, fg {a.sum():6d}')
     n = volume.shape[0]
     print(f'\nmean dice {np.mean(dices):.5f}, min {np.min(dices):.5f}')
-    print(f'nnUNetPredictor (torch cpu): {t_ref:.1f}s ({t_ref / n:.2f}s/frame)')
-    print(f'onnxruntime cpu:             {t_onnx:.1f}s ({t_onnx / n:.2f}s/frame)')
+    print(f'nnUNetPredictor (torch {args.device}): {t_ref:.1f}s ({t_ref / n:.2f}s/frame)')
+    print(f'onnxruntime {args.device}:             {t_onnx:.1f}s ({t_onnx / n:.2f}s/frame)')
     if np.mean(dices) < args.min_dice:
         sys.exit(f'FAILED: mean dice {np.mean(dices):.5f} < {args.min_dice}')
     print('OK')

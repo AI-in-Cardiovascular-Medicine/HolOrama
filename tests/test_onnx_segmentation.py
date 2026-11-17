@@ -170,14 +170,14 @@ def test_invalid_precision_is_reported_as_unavailable():
 
 def test_fp16_model_path_sits_next_to_the_model():
     assert oi.fp16_model_path('C:/m/ivus.onnx').as_posix() == 'C:/m/ivus_fp16.onnx'
-    assert oi.fp16_model_path(oi.DEFAULT_MODEL_PATH).name == 'ivus_lumen_u2netp_fp16.onnx'
+    assert oi.fp16_model_path(oi.DEFAULT_IVUS_MODEL_PATH).name == 'ivus_lumen_u2netp_fp16.onnx'
 
 
 def test_bundled_fp16_model_keeps_float32_io_and_metadata():
     import onnxruntime as ort
 
-    fp32 = ort.InferenceSession(str(oi.DEFAULT_MODEL_PATH), providers=['CPUExecutionProvider'])
-    fp16 = ort.InferenceSession(str(oi.fp16_model_path(oi.DEFAULT_MODEL_PATH)), providers=['CPUExecutionProvider'])
+    fp32 = ort.InferenceSession(str(oi.DEFAULT_IVUS_MODEL_PATH), providers=['CPUExecutionProvider'])
+    fp16 = ort.InferenceSession(str(oi.fp16_model_path(oi.DEFAULT_IVUS_MODEL_PATH)), providers=['CPUExecutionProvider'])
     assert [i.type for i in fp16.get_inputs()] == ['tensor(float)']
     assert [o.type for o in fp16.get_outputs()] == ['tensor(float)']
     meta32, meta16 = fp32.get_modelmeta().custom_metadata_map, fp16.get_modelmeta().custom_metadata_map
@@ -186,7 +186,7 @@ def test_bundled_fp16_model_keeps_float32_io_and_metadata():
 
 def test_fp16_masks_agree_with_fp32(segmenter):
     # The fp16 copy runs on the CPU too (slowly), which checks it belongs to the fp32 model.
-    fp16_file = str(oi.fp16_model_path(oi.DEFAULT_MODEL_PATH))
+    fp16_file = str(oi.fp16_model_path(oi.DEFAULT_IVUS_MODEL_PATH))
     fp16 = oi.OnnxSegmenter(SegmentationSettings(model_file=fp16_file, use_mirroring=False, batch_size=1, device='cpu'))
     vol = _ring_volume()
     ref, out = segmenter.predict(vol), fp16.predict(vol)
@@ -258,12 +258,52 @@ def test_bundled_config_matches_the_settings_defaults():
 
 
 def test_old_configs_fall_back_to_bundled_model():
-    assert oi.resolve_model_path('') == oi.DEFAULT_MODEL_PATH
-    assert oi.resolve_model_path(None) == oi.DEFAULT_MODEL_PATH
+    assert oi.resolve_model_path('') == oi.DEFAULT_IVUS_MODEL_PATH
+    assert oi.resolve_model_path(None) == oi.DEFAULT_IVUS_MODEL_PATH
     # pre-ONNX configs pointed at an nnU-Net folder or a Keras .h5
-    assert oi.resolve_model_path('./models/nnUNetTrainerU2NetP__nnUNetResEncUNetLPlans__2d') == oi.DEFAULT_MODEL_PATH
-    assert oi.resolve_model_path('./models/old/u2net.h5') == oi.DEFAULT_MODEL_PATH
+    assert (
+        oi.resolve_model_path('./models/nnUNetTrainerU2NetP__nnUNetResEncUNetLPlans__2d') == oi.DEFAULT_IVUS_MODEL_PATH
+    )
+    assert oi.resolve_model_path('./models/old/u2net.h5') == oi.DEFAULT_IVUS_MODEL_PATH
     assert str(oi.resolve_model_path('C:/models/custom.onnx')).endswith('custom.onnx')
+    assert oi.resolve_model_path('', 'ct_seg') == oi.DEFAULT_CT_SEG_MODEL_PATH
+
+
+def test_config_model_file_is_the_ivus_model():
+    section = SimpleNamespace(model_file='C:/models/custom.onnx')
+    assert SegmentationSettings.from_config(SimpleNamespace(segmentation=section)).model_file == 'C:/models/custom.onnx'
+    ct = SegmentationSettings.from_config(SimpleNamespace(segmentation=section), seg_type='ct_seg')
+    assert ct.seg_type == 'ct_seg' and ct.model_file == ''
+
+
+def test_ct_model_without_config_is_reported_as_unavailable(tmp_path):
+    model = tmp_path / 'ct.onnx'
+    model.touch()
+    s = oi.OnnxSegmenter(SegmentationSettings(model_file=str(model), seg_type='ct_seg', device='cpu'))
+    with pytest.raises(oi.SegmentationUnavailable, match='config.json was not found'):
+        s.load()
+    (tmp_path / 'config.json').write_text('{"spacing": [1, 1, 1]}')
+    with pytest.raises(oi.SegmentationUnavailable, match="lacks 'mean'"):
+        s.load()
+
+
+def test_ct_needs_the_voxel_spacing():
+    s = oi.OnnxSegmenter(SegmentationSettings(seg_type='ct_seg', device='cpu'))
+    with pytest.raises(ValueError, match='voxel spacing'):
+        s.predict(np.zeros((4, 8, 8), dtype=np.int16))
+
+
+def test_running_out_of_memory_is_named(monkeypatch, segmenter):
+    def fails(*args):
+        raise RuntimeError(
+            'BFCArena::AllocateRawInternal Failed to allocate memory for requested buffer of size 2819014912'
+        )
+
+    assert oi._is_out_of_memory(RuntimeError('Failed to allocate memory for requested buffer'))
+    assert not oi._is_out_of_memory(RuntimeError('Invalid input name'))
+    monkeypatch.setattr(segmenter, '_ivus_predict', fails)
+    with pytest.raises(MemoryError, match='ran out of memory running the IVUS model'):
+        segmenter.predict(_ring_volume())
 
 
 def _ring_volume(frames=3, size=320, seed=0):

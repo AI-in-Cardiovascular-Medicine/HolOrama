@@ -57,6 +57,40 @@ def segment(main_window):
     main_window.status_bar.showMessage(main_window.waiting_status)
 
 
+def segment_ct_seg(main_window):
+    """Automatic segmentation of the loaded CT volume"""
+    main_window.status_bar.showMessage('Segmenting the volume...')
+    if not main_window.image_displayed:
+        ErrorMessage(main_window, 'Cannot perform automatic segmentation before reading input file')
+        main_window.status_bar.showMessage(main_window.waiting_status)
+        return
+
+    # Blocks the feature with a specific reason when this install cannot run it (optional
+    # onnxruntime missing, model file missing/unreadable) instead of failing mid-run.
+    available, reason = main_window.predictor.check_available()
+    if not available:
+        ErrorMessage(main_window, f'Automatic segmentation is not available.\n\n{reason}')
+        main_window.status_bar.showMessage(main_window.waiting_status)
+        return
+
+    try:
+        masks = main_window.predictor(main_window.data.volume, 0, main_window.data.volume.shape[0])
+    except Exception as e:  # e.g. out of memory: report instead of crashing the GUI
+        logger.exception('Automatic segmentation failed')
+        ErrorMessage(main_window, f'Automatic segmentation failed:\n{e}')
+        main_window.status_bar.showMessage(main_window.waiting_status)
+        return
+    if masks is None:  # cancelled
+        main_window.status_bar.showMessage(main_window.waiting_status)
+        return
+
+    main_window._apply_mask(masks, clear_undo=True)
+    main_window.status_bar.showMessage(
+        f'Mask loaded: {len(main_window.data.labels)} label(s) — {main_window.data.labels}'
+    )
+    main_window._offer_preset_for_mask_soon()
+
+
 def mask_to_contours(main_window, masks, lower_limit, upper_limit):
     """Write the largest lumen contour of each mask in-place to
     main_window.runtime_data.frame_data_dct[frame].lumen (a catheter-sized circle if empty)."""

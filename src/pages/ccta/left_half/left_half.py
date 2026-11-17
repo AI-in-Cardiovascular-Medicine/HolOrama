@@ -11,6 +11,7 @@ class LeftHalf:
 
     def __init__(
         self,
+        ccta_page_window,
         mask_alpha: float,
         windowing_sensitivity: float,
         zoom_sensitivity: float,
@@ -30,7 +31,7 @@ class LeftHalf:
         self.coronal = display('coronal')
         self.sagittal = display('sagittal')
 
-        self.segmentation_viewer_3d = CctaViewer3D()
+        self.segmentation_viewer_3d = CctaViewer3D(ccta_page_window)
 
         self.segmentation_views = SegmentationViews(
             self.axial, self.coronal, self.sagittal, self.segmentation_viewer_3d
