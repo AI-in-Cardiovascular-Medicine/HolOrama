@@ -41,6 +41,8 @@ ANGLE_SHORTCUTS: tuple[tuple[str, str | None], ...] = (('3', 'Ctrl+3'), ('B', 'C
 
 _ID_PATTERN = re.compile(r'^[a-z][a-z0-9_]*$')
 
+MACROPHAGE_ID = 'macrophage'  # the type whose open arcs are read about the catheter
+
 
 class ToolSet(Enum):
     """What a contour type can be drawn with (preset's Tools column).
@@ -88,6 +90,12 @@ class ContourTypeDef:
     @property
     def is_angle(self) -> bool:
         return self.tools is ToolSet.ANGLE
+
+    @property
+    def arcs_from_catheter(self) -> bool:
+        """Whether its open arcs fill outwards from the image centre (the catheter), not the
+        lumen centroid. Macrophages line the catheter's view, so they are read about it."""
+        return self.type.value == MACROPHAGE_ID
 
     @property
     def appendable(self) -> bool:

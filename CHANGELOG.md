@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.21.1] - 2026-11-20
+
+### Fixed
+- An open macrophage arc is filled outwards from the catheter (image centre) in the exported mask and read back the same way, as it is shown on the frame. Before, the mask and the import used the lumen centroid.
+
 ## [0.21.0] - 2026-11-17
 
 ### Added

@@ -430,8 +430,9 @@ def _scaled_frame_view(frame_data, factor: float):
 def frame_regions(frame_data, image_shape, preset: ContourPreset) -> dict[str, np.ndarray]:
     """Every contour type's region on one frame, by id, each on its own (not layered).
 
-    Angular sectors are wedges about the image centre (the catheter); every other open
-    contour fills outwards about the lumen centroid. A type lying inside another is
+    Angular sectors are wedges about the image centre (the catheter). Every other open
+    contour fills outwards about the lumen centroid, or the image centre for a type with
+    arcs_from_catheter (macrophage). A type lying inside another is
     clipped to that one's region (see _contained_mask), so the containers are worked out
     first.
     """
@@ -491,7 +492,7 @@ def _region(contour_obj, defn, frame_data, image_shape, preset, lumen_mask, cont
         return _angle_sector_mask(contour_obj, image_shape, height / 2.0, width / 2.0)
     if closes_on_lumen(defn, preset):
         return _lumen_closed_mask(contour_obj, frame_data.lumen, lumen_mask, image_shape)
-    cx, cy = _centroid(frame_data, image_shape)
+    cx, cy = (width / 2.0, height / 2.0) if defn.arcs_from_catheter else _centroid(frame_data, image_shape)
     if defn.inside is None:
         return _contour_obj_to_mask(contour_obj, cx, cy, image_shape)
     if not contour_obj.contours:

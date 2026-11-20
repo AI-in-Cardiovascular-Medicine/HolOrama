@@ -1642,7 +1642,8 @@ class Display(QGraphicsView, MetricsMixin):
         half_size = self.image_size / 2
         image_center = QPointF(half_size, half_size)
 
-        for ct in active_preset().with_tool(SegmentationTool.OPEN_SPLINE):
+        preset = active_preset()
+        for ct in preset.with_tool(SegmentationTool.OPEN_SPLINE):
             contour_obj = fd.contour(ct)
             if not contour_obj.contours:
                 continue
@@ -1651,7 +1652,7 @@ class Display(QGraphicsView, MetricsMixin):
 
             # Macrophage lines point away from the image centre, the rest from the lumen centroid
             centroid = image_center
-            if fd.centroid and ct.value != 'macrophage':
+            if fd.centroid and not preset[ct].arcs_from_catheter:
                 centroid = QPointF(fd.centroid[0] * self.scaling_factor, fd.centroid[1] * self.scaling_factor)
 
             for i in range(len(contour_obj.contours)):

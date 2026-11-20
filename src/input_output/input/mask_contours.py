@@ -63,6 +63,10 @@ class _Frame:
         height, width = self.mask.shape
         return width / 2.0, height / 2.0
 
+    def arc_centre(self, defn: ContourTypeDef) -> Point:
+        """What `defn`'s open arcs fill outwards from, as imgs_masks paints them."""
+        return self.centre if defn.arcs_from_catheter else self.centroid
+
     def region(self, defn: ContourTypeDef) -> np.ndarray:
         return np.isin(self.mask, list(self.preset.mask_labels(defn.type)))
 
@@ -82,7 +86,7 @@ class _Frame:
 @dataclass
 class _Arc:
     points: list[Point]  # its luminal edge, by increasing angle
-    start: float  # angle of the first point about the centroid
+    start: float  # angle of the first point about the arc centre (see _Frame.arc_centre)
     end: float  # angle of the last
 
 
@@ -355,12 +359,13 @@ def _contained_contours(frame: _Frame, defn: ContourTypeDef, n_knots: int) -> Co
     """Each part of a contained type, read as an arc, ring or closed contour (see module docstring)."""
     assert defn.inside is not None
     container = frame.preset[defn.inside]
-    container_reach = _reach(frame.region(container), frame.centroid)
+    centre = frame.arc_centre(defn)
+    container_reach = _reach(frame.region(container), centre)
     contour = Contour()
     arcs: list[_Arc] = []
     for part in _components(frame.region(defn), frame.mask, defn):
         rows, cols = np.nonzero(part)
-        cx, cy = frame.centroid
+        cx, cy = centre
         theta = np.arctan2(rows - cy, cols - cx)
         radius = np.hypot(cols - cx, rows - cy)
         bins = np.floor(np.degrees(theta)).astype(int) % _BINS
@@ -373,14 +378,14 @@ def _contained_contours(frame: _Frame, defn: ContourTypeDef, n_knots: int) -> Co
             if knots is not None:
                 contour.add(knots, closed=True)
         elif _widest_gap(theta)[1] < math.radians(RING_GAP_DEG):
-            ring = _inner_edge(theta, radius, bins, frame.centroid)
+            ring = _inner_edge(theta, radius, bins, centre)
             knots = _evenly(np.array([(y, x) for x, y in ring]), n_knots)
             if knots is not None:
                 contour.add(knots, closed=True)
         else:
-            arcs.append(_arc(theta, radius, bins, frame.centroid))
+            arcs.append(_arc(theta, radius, bins, centre))
 
-    for arc in _merge_arcs(arcs, frame, defn):
+    for arc in _merge_arcs(arcs, frame, defn, centre):
         knots = _arc_knots(arc.points, n_knots)
         if knots is not None:
             contour.add(knots, closed=False)
@@ -447,7 +452,7 @@ def _arc(theta, radius, bins, centroid: Point) -> _Arc:
     )
 
 
-def _merge_arcs(arcs: list[_Arc], frame: _Frame, defn: ContourTypeDef) -> list[_Arc]:
+def _merge_arcs(arcs: list[_Arc], frame: _Frame, defn: ContourTypeDef, centre: Point) -> list[_Arc]:
     """Join arc pieces cut apart by an occluder (the wire shadow): arcs whose gap is hidden
     all the way across at their meeting radius are one."""
     occluders = frame.occluders(defn)
@@ -456,22 +461,22 @@ def _merge_arcs(arcs: list[_Arc], frame: _Frame, defn: ContourTypeDef) -> list[_
     arcs = sorted(arcs, key=lambda arc: arc.start % TWO_PI)
     merged = [arcs[0]]
     for arc in arcs[1:]:
-        if _hidden_between(merged[-1], arc, frame, occluders):
+        if _hidden_between(merged[-1], arc, frame, occluders, centre):
             previous = merged[-1]
             merged[-1] = _Arc(points=previous.points + arc.points, start=previous.start, end=arc.end)
         else:
             merged.append(arc)
-    if len(merged) > 1 and _hidden_between(merged[-1], merged[0], frame, occluders):
+    if len(merged) > 1 and _hidden_between(merged[-1], merged[0], frame, occluders, centre):
         last = merged.pop()
         merged[0] = _Arc(points=last.points + merged[0].points, start=last.start, end=merged[0].end)
     return merged
 
 
-def _hidden_between(first: _Arc, second: _Arc, frame: _Frame, occluders: np.ndarray) -> bool:
+def _hidden_between(first: _Arc, second: _Arc, frame: _Frame, occluders: np.ndarray, centre: Point) -> bool:
     gap = (second.start - first.end) % TWO_PI
     if gap > math.radians(MAX_MERGE_GAP_DEG):
         return False
-    cx, cy = frame.centroid
+    cx, cy = centre
     r_first = math.hypot(first.points[-1][0] - cx, first.points[-1][1] - cy)
     r_second = math.hypot(second.points[0][0] - cx, second.points[0][1] - cy)
     radius = (r_first + r_second) / 2 + 1.0  # just outside the edge, inside the region

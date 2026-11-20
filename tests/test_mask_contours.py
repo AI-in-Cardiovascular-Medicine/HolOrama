@@ -144,6 +144,34 @@ class TestWhatComesBack:
         ends = [math.degrees(math.atan2(ys[i] - CY, xs[i] - CX)) for i in (0, -1)]
         assert sorted(ends) == pytest.approx([40, 120], abs=3)
 
+    def test_a_macrophage_arc_fills_and_reads_about_the_catheter(self):
+        # A lumen far off the image centre, so the two centres give different wedges.
+        cx, cy = CENTRE[0] + 30, CENTRE[1]
+        frame_data = FrameData(centroid=(cx, cy))
+        frame_data.lumen = Contour(contours=[_circle(LUMEN_R, cx=cx, cy=cy)], closed=[True])
+        frame_data.eem = Contour(contours=[_circle(EEM_R, cx=cx, cy=cy)], closed=[True])
+        angles = np.radians(np.linspace(100, 160, 20))
+        arc = (
+            [float(cx + (LUMEN_R + 10) * math.cos(a)) for a in angles],
+            [float(cy + (LUMEN_R + 10) * math.sin(a)) for a in angles],
+        )
+        frame_data.contours['macrophage'] = _open(arc)
+        first, read, second = _round_trip(frame_data)
+
+        def about_centre(xs, ys):
+            return np.degrees(np.arctan2(np.asarray(ys) - CENTRE[1], np.asarray(xs) - CENTRE[0])) % 360
+
+        rows, cols = np.nonzero(first == LABELS['macrophage'])
+        drawn = sorted(about_centre(arc[0], arc[1])[[0, -1]])
+        filled = about_centre(cols, rows)
+        assert filled.min() >= drawn[0] - 2 and filled.max() <= drawn[1] + 2  # wedge bounded by catheter rays
+
+        macrophage = read.contour('macrophage')
+        assert macrophage.closed == [False]
+        xs, ys = macrophage.contours[0]
+        assert sorted(about_centre(xs, ys)[[0, -1]]) == pytest.approx(drawn, abs=3)
+        assert _iou(first, second, LABELS['macrophage']) >= MIN_IOU
+
     def test_a_pool_in_the_wall_comes_back_closed(self):
         lipid = _closed(_circle(14, cx=CX + 80, cy=CY))
         _, read, _ = _round_trip(_vessel(lipid=lipid))
